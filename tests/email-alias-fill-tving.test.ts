@@ -30,7 +30,7 @@ describe('resolveEmailAliasFill tving aliases', () => {
     expect(result.ok).toBe(true);
     expect(result.emailId).toBe(90210);
     expect(result.pin).toBe('123456');
-    expect(result.memo).toContain('https://email-verify.xyz/email/mail/90210');
+    expect(result.memo).toContain('https://email-verify.one/email/mail/90210');
     expect(result.memo).toContain('핀번호는 : 123456입니다!');
   });
 
@@ -55,6 +55,31 @@ describe('resolveEmailAliasFill tving aliases', () => {
     expect(result.ok).toBe(true);
     expect(result.emailId).toBe(100);
     expect(result.pin).toBe('777777');
+  });
+
+  test('binds 티빙 manual double-pass IDs to their corrected Wavve aliases before generic fallback', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'alias-pins-'));
+    const pinPath = join(dir, 'alias-pins.json');
+    writeFileSync(pinPath, JSON.stringify({
+      444: { pin: '444444' },
+      555: { pin: '555555' },
+      4444: { pin: '890827' },
+    }));
+    process.env.EMAIL_ALIAS_PIN_STORE_PATH = pinPath;
+
+    const aliases = [
+      { id: 444, email: 'wavve4.hyperlink631@aleeas.com', enabled: true },
+      { id: 555, email: 'wavve5.unused706@aleeas.com', enabled: true },
+      { id: 4444, email: 'wavve4444.prozac789@aleeas.com', enabled: true },
+    ];
+
+    const tving4 = await resolveEmailAliasFill({ accountEmail: 'gtwavve4', serviceType: '티빙', aliases });
+    const tving444 = await resolveEmailAliasFill({ accountEmail: 'gtwavve444', serviceType: '티빙', aliases });
+    const tving4444 = await resolveEmailAliasFill({ accountEmail: 'gtwavve4444', serviceType: '티빙', aliases });
+
+    expect(tving4).toMatchObject({ ok: true, emailId: 444, pin: '444444' });
+    expect(tving444).toMatchObject({ ok: true, emailId: 4444, email: 'wavve4444.prozac789@aleeas.com', pin: '890827' });
+    expect(tving4444).toMatchObject({ ok: true, emailId: 444, email: 'wavve4.hyperlink631@aleeas.com', pin: '444444' });
   });
 
   test('verifies the selected email dashboard alias PIN really changed after update', async () => {

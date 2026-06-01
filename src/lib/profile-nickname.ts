@@ -1,51 +1,62 @@
-export type ProfileNicknameCategory = 'animal' | 'fruit';
+export type ProfileNicknameCategory = 'common-word';
 
 export interface ProfileNicknameDictionaryItem {
   name: string;
   category: ProfileNicknameCategory;
 }
 
+// 파티원 프로필명은 사람이름이 아니라, 실제로 친숙하게 쓰는 일상 단어로만 만든다.
 export const PROFILE_NICKNAME_DICTIONARY: ProfileNicknameDictionaryItem[] = [
-  { name: '고양이', category: 'animal' },
-  { name: '강아지', category: 'animal' },
-  { name: '다람쥐', category: 'animal' },
-  { name: '고슴도치', category: 'animal' },
-  { name: '너구리', category: 'animal' },
-  { name: '수달이', category: 'animal' },
-  { name: '토끼야', category: 'animal' },
-  { name: '사슴이', category: 'animal' },
-  { name: '코알라', category: 'animal' },
-  { name: '판다곰', category: 'animal' },
-  { name: '여우비', category: 'animal' },
-  { name: '햄스터', category: 'animal' },
-  { name: '돌고래', category: 'animal' },
-  { name: '참새랑', category: 'animal' },
-  { name: '고래별', category: 'animal' },
-  { name: '하마랑', category: 'animal' },
-  { name: '치타별', category: 'animal' },
-  { name: '알파카', category: 'animal' },
-  { name: '라마야', category: 'animal' },
-  { name: '기린이', category: 'animal' },
-  { name: '바나나', category: 'fruit' },
-  { name: '복숭아', category: 'fruit' },
-  { name: '파인애플', category: 'fruit' },
-  { name: '블루베리', category: 'fruit' },
-  { name: '딸기잼', category: 'fruit' },
-  { name: '망고링', category: 'fruit' },
-  { name: '사과별', category: 'fruit' },
-  { name: '자두잼', category: 'fruit' },
-  { name: '포도알', category: 'fruit' },
-  { name: '레몬톡', category: 'fruit' },
-  { name: '라임톡', category: 'fruit' },
-  { name: '체리봉', category: 'fruit' },
-  { name: '멜론볼', category: 'fruit' },
-  { name: '감귤이', category: 'fruit' },
-  { name: '키위새', category: 'fruit' },
-  { name: '수박씨', category: 'fruit' },
-  { name: '살구빛', category: 'fruit' },
-  { name: '오렌지', category: 'fruit' },
-  { name: '무화과', category: 'fruit' },
-  { name: '유자청', category: 'fruit' },
+  { name: '사과', category: 'common-word' },
+  { name: '망고', category: 'common-word' },
+  { name: '바나나', category: 'common-word' },
+  { name: '포도', category: 'common-word' },
+  { name: '딸기', category: 'common-word' },
+  { name: '복숭아', category: 'common-word' },
+  { name: '오렌지', category: 'common-word' },
+  { name: '수박', category: 'common-word' },
+  { name: '멜론', category: 'common-word' },
+  { name: '자두', category: 'common-word' },
+  { name: '체리', category: 'common-word' },
+  { name: '레몬', category: 'common-word' },
+  { name: '라임', category: 'common-word' },
+  { name: '감귤', category: 'common-word' },
+  { name: '유자차', category: 'common-word' },
+  { name: '커피', category: 'common-word' },
+  { name: '우유', category: 'common-word' },
+  { name: '쿠키', category: 'common-word' },
+  { name: '식빵', category: 'common-word' },
+  { name: '도넛', category: 'common-word' },
+  { name: '숟가락', category: 'common-word' },
+  { name: '젓가락', category: 'common-word' },
+  { name: '물컵', category: 'common-word' },
+  { name: '종이컵', category: 'common-word' },
+  { name: '물병', category: 'common-word' },
+  { name: '연필', category: 'common-word' },
+  { name: '공책', category: 'common-word' },
+  { name: '책상', category: 'common-word' },
+  { name: '의자', category: 'common-word' },
+  { name: '가방', category: 'common-word' },
+  { name: '시계', category: 'common-word' },
+  { name: '우산', category: 'common-word' },
+  { name: '모자', category: 'common-word' },
+  { name: '양말', category: 'common-word' },
+  { name: '수건', category: 'common-word' },
+  { name: '베개', category: 'common-word' },
+  { name: '담요', category: 'common-word' },
+  { name: '리모컨', category: 'common-word' },
+  { name: '충전기', category: 'common-word' },
+  { name: '이어폰', category: 'common-word' },
+  { name: '키보드', category: 'common-word' },
+  { name: '마우스', category: 'common-word' },
+  { name: '노트북', category: 'common-word' },
+  { name: '휴대폰', category: 'common-word' },
+  { name: '달력', category: 'common-word' },
+  { name: '냉장고', category: 'common-word' },
+  { name: '선풍기', category: 'common-word' },
+  { name: '세탁기', category: 'common-word' },
+  { name: '손전등', category: 'common-word' },
+  { name: '필통', category: 'common-word' },
 ];
 
 export interface ProfileAssignment {
@@ -75,12 +86,12 @@ export function generateProfileNickname(random = Math.random): string {
   return PROFILE_NICKNAME_DICTIONARY[index]?.name || PROFILE_NICKNAME_DICTIONARY[0].name;
 }
 
-export function generateUniqueProfileNicknames(count: number, preferredFirst = '', random = Math.random): string[] {
+export function generateUniqueProfileNicknames(count: number, preferredFirst = '', random = Math.random, excludedNames: string[] = []): string[] {
   const max = Math.max(0, Math.min(count, PROFILE_NICKNAME_DICTIONARY.length));
   const picked: string[] = [];
-  const seen = new Set<string>();
+  const seen = new Set<string>(excludedNames.map(normalizeProfileNickname).filter(Boolean));
   const first = isValidProfileNickname(preferredFirst) ? normalizeProfileNickname(preferredFirst) : '';
-  if (first) {
+  if (first && !seen.has(first)) {
     picked.push(first);
     seen.add(first);
   }
@@ -100,7 +111,7 @@ export function normalizeProfileNickname(value: string): string {
 
 export function isValidProfileNickname(value: string): boolean {
   const length = Array.from(normalizeProfileNickname(value)).length;
-  return length >= 3 && length <= 4;
+  return length >= 2 && length <= 4;
 }
 
 export function profileNicknameForPartyMember(input: {

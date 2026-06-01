@@ -1,6 +1,6 @@
 import { hasRiskKeyword } from './auto-reply-policy';
 
-export type AutoReplyCategory = 'auth_code_request' | 'pin_or_email_link' | 'login_issue' | 'profile_issue' | 'refund_or_dispute' | 'general' | 'unknown';
+export type AutoReplyCategory = 'auth_code_request' | 'pin_or_email_link' | 'login_issue' | 'profile_issue' | 'refund_or_dispute' | 'safe_receipt' | 'general' | 'unknown';
 export type AutoReplyRisk = 'low' | 'medium' | 'high';
 export type AutoReplyAction = 'template' | 'hermes_draft' | 'human_review';
 
@@ -28,6 +28,9 @@ export function routeAutoReply(message: string): AutoReplyRoute {
   }
   if (includesAny(message, ['로그인', '비밀번호', '접속', '안돼요', '안 되요', '안 됩니다'])) {
     return { category: 'login_issue', risk: 'low', action: 'hermes_draft', reason: '로그인 문제 문의' };
+  }
+  if (includesAny(message, ['프로필 삭제', '프로필 지워', '프로필 만들어', '프로필 생성', '계정 새로', '새 계정', '계정 생성', '계정 바꿔', '계정 변경'])) {
+    return { category: 'profile_issue', risk: 'high', action: 'human_review', reason: '판매자 직접 조작 필요 가능성' };
   }
   if (includesAny(message, ['프로필', '동시접속', '동시 접속', '이름 변경'])) {
     return { category: 'profile_issue', risk: 'medium', action: 'hermes_draft', reason: '프로필/동시접속 문의' };

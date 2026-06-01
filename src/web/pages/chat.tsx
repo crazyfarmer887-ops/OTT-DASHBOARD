@@ -30,6 +30,9 @@ const stripHtml = (html: string) => {
   return decodeHtml(html).replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').trim();
 };
 
+const CHAT_ROOMS_CACHE_KEY = 'aio_chat_rooms_cache_v1';
+const CHAT_ROOMS_CACHE_MAX_AGE_MS = 5 * 60 * 1000;
+
 export default function ChatPage() {
   const [rooms, setRooms] = useState<ChatRoom[]>([]);
   const [loading, setLoading] = useState(false);
@@ -100,15 +103,27 @@ export default function ChatPage() {
     finally { setArLogLoading(false); }
   }, []);
 
-  const loadRooms = useCallback(async () => {
-    setLoading(true); setError(null);
+  const loadRooms = useCallback(async (options: { force?: boolean; quiet?: boolean } = {}) => {
+    if (!options.quiet) setLoading(true);
+    setError(null);
     try {
-      const res = await fetch('/api/chat/rooms');
+      if (!options.force) {
+        const cached = localStorage.getItem(CHAT_ROOMS_CACHE_KEY);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Date.now() - Number(parsed.savedAt || 0) < CHAT_ROOMS_CACHE_MAX_AGE_MS && Array.isArray(parsed.rooms)) {
+            setRooms(parsed.rooms);
+          }
+        }
+      }
+      const res = await fetch(`/api/chat/rooms${options.force ? '?refresh=1' : ''}`);
       if (!res.ok) throw new Error(res.statusText);
       const data = await res.json();
-      setRooms(data.rooms || []);
+      const nextRooms = data.rooms || [];
+      setRooms(nextRooms);
+      localStorage.setItem(CHAT_ROOMS_CACHE_KEY, JSON.stringify({ savedAt: Date.now(), rooms: nextRooms }));
     } catch (e: any) { setError(e.message); }
-    finally { setLoading(false); }
+    finally { if (!options.quiet) setLoading(false); }
   }, []);
 
   // 메시지 로드
@@ -148,7 +163,7 @@ export default function ChatPage() {
   // 1분 polling
   useEffect(() => {
     pollRef.current = setInterval(() => {
-      loadRooms();
+      loadRooms({ quiet: true });
       setPollCount(c => c + 1);
       if (selectedRoom) loadMessages(selectedRoom.chatRoomUuid, 1);
     }, 60000);
@@ -193,7 +208,7 @@ export default function ChatPage() {
     try {
       const res = await fetch('/api/chat/mark-read', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chatRoomUuid: room.chatRoomUuid }) });
       if (!res.ok) throw new Error('읽음 처리 실패');
-      setTimeout(() => loadRooms(), 400);
+      setTimeout(() => loadRooms({ force: true }), 400);
     } catch (e: any) {
       setRooms(previous);
       alert(e.message || '읽음 처리 실패');
@@ -494,13 +509,13 @@ export default function ChatPage() {
             fetch('/api/chat/mark-read',{method:'POST',headers:{'Content-Type':'application/json'},
               body:JSON.stringify({chatRoomUuid:room.chatRoomUuid})}).catch(()=>{});
           });
-          setTimeout(()=>loadRooms(),500);
+          setTimeout(()=>loadRooms({ force: true }),500);
         }} disabled={loading||rooms.filter(r=>r.lenderChatUnread).length===0}
           style={{flex:1,fontSize:12,fontWeight:600,padding:"7px 0",borderRadius:8,background:"#EDE9FE",border:"none",cursor:"pointer",color:"#7C3AED",
             opacity:rooms.filter(r=>r.lenderChatUnread).length===0?0.4:1}}>
           모두 읽기
         </button>
-        <button onClick={loadRooms} disabled={loading}
+        <button onClick={() => loadRooms({ force: true })} disabled={loading}
           style={{flex:1,fontSize:12,fontWeight:600,padding:"7px 0",borderRadius:8,background:"#EDE9FE",border:"none",cursor:"pointer",color:"#7C3AED"}}>
           {loading?<Loader2 size={12} style={{animation:"spin 1s linear infinite"}}/>:"새로고침"}
         </button>

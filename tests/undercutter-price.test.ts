@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { planUndercutterPriceChange } from '../src/lib/undercutter-price';
+import { chooseUndercutterTargetDaily, planUndercutterPriceChange } from '../src/lib/undercutter-price';
 
 describe('planUndercutterPriceChange', () => {
   test('drops long 티빙 products to the final target in one run', () => {
@@ -30,5 +30,44 @@ describe('planUndercutterPriceChange', () => {
     expect(plan.nextPrice).toBe(4728);
     expect(plan.stepped).toBe(false);
     expect(plan.delta).toBe(478);
+  });
+});
+
+describe('chooseUndercutterTargetDaily', () => {
+  test('uses one won below the cheapest rival when it stays above the typed floor', () => {
+    const plan = chooseUndercutterTargetDaily({
+      floorDaily: 200,
+      myDaily: 250,
+      rivals: [{ name: '현재1등', daily: 211 }, { name: '2등', daily: 231 }],
+    });
+
+    expect(plan.targetDaily).toBe(210);
+    expect(plan.action).toBe('lead');
+    expect(plan.rivalDaily).toBe(211);
+  });
+
+  test('targets just below the next affordable rival when the cheapest rival is below the typed floor', () => {
+    const plan = chooseUndercutterTargetDaily({
+      floorDaily: 200,
+      myDaily: 250,
+      rivals: [{ name: '하한선아래', daily: 199 }, { name: '2등', daily: 231 }],
+    });
+
+    expect(plan.targetDaily).toBe(230);
+    expect(plan.action).toBe('lead-above-floor');
+    expect(plan.rivalDaily).toBe(231);
+    expect(plan.blockingRivalDaily).toBe(199);
+  });
+
+  test('keeps the typed floor and reports impossible first place when every rival is below the floor', () => {
+    const plan = chooseUndercutterTargetDaily({
+      floorDaily: 200,
+      myDaily: 210,
+      rivals: [{ name: '하한선아래', daily: 199 }],
+    });
+
+    expect(plan.targetDaily).toBe(200);
+    expect(plan.action).toBe('floor-blocked');
+    expect(plan.canBeFirst).toBe(false);
   });
 });

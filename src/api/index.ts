@@ -5,19 +5,20 @@ import { promisify } from 'node:util';
 const execFileAsync = promisify(execFile);
 import { cors } from "hono/cors"
 import { readFileSync, writeFileSync, existsSync, mkdirSync, statSync } from 'node:fs';
+import { Buffer } from 'node:buffer';
 import { sendSellerAlert } from '../alerts/telegram';
 import { appendAuditLog, auditRequestId, readAuditLog } from './audit-log';
 import { assertPriceChangeAllowed, loadPriceSafetyConfig, previewPriceChange, recordSuccessfulPriceDecrease, savePriceSafetyConfig } from './price-safety';
 import { loadSafeModeConfig, saveSafeModeConfig } from './safe-mode';
 import { generateSixDigitPin, makeEmailVerifyMemo, resolveEmailAliasFill, updateEmailAliasPin, verifyEmailAliasPinUpdate } from './email-alias-fill';
-import { buildFinishedDealsUrl } from '../lib/graytag-fill';
+import { buildFinishedDealsUrl, isGraytagAccessNoticeCredential } from '../lib/graytag-fill';
 import { extractDeliveredAccountFromChats, resolveDealChatRoomUuid, shouldHydrateDeliveredAccountFromChat } from '../lib/deal-delivered-account';
-import { planUndercutterPriceChange } from '../lib/undercutter-price';
+import { chooseUndercutterTargetDaily, planUndercutterPriceChange } from '../lib/undercutter-price';
 import { DEFAULT_MANAGEMENT_CACHE_TTL_MS, isAutoSessionManagementRequest, managementCache, shouldForceManagementRefresh } from './management-cache';
 import { buildProfileAuditRows, profileAuditKey, runProfileCheckPlaceholder, summarizeProfileAudit, type ProfileAuditRow, type ProfileAuditStore } from '../lib/profile-audit';
 import { createProfileAuditProgress, finishProfileAuditProgress, loadProfileAuditStore, saveProfileAuditStore, updateProfileAuditProgress, type ProfileAuditProgress } from './profile-audit';
 import { checkNetflixProfiles, fetchNetflixEmailCodeViaEmailServer } from './netflix-profile-checker';
-import { extractGraytagChats, findLatestBuyerInquiryMessage } from './chat-message-summary';
+import { extractGraytagChats, findLatestBuyerInquiryMessage, findLatestBuyerInquiryThread, type GraytagChatMessage } from './chat-message-summary';
 import { mergePartyMaintenanceChecklistState, type PartyMaintenanceChecklistStore } from '../lib/party-maintenance-checklist';
 import { buildProfileAssignment, profileNicknameForPartyMember, type ProfileAssignment } from '../lib/profile-nickname';
 import { buildGeneratedAccount, deleteGeneratedAccountFromStore, extractSimpleLoginAliasRef, generateAccountPassword, mergeGeneratedAccountsIntoManagement, nextGeneratedAliasPrefix, normalizeGeneratedAccountPatch, normalizeManualAliasPrefix, type GeneratedAccountStore, type SimpleLoginAliasRef } from '../lib/generated-accounts';
@@ -28,11 +29,12 @@ import { normalizeBuyerMessage, messageFingerprint, messageTimestamp, isBuyerTex
 import { createAutoReplyJob, listAutoReplyJobs, loadAutoReplyJobStore, saveAutoReplyJobStore, updateAutoReplyJob, type AutoReplyJobStore } from './auto-reply-jobs';
 import { routeAutoReply } from './auto-reply-router';
 import { buildHermesAutoReplyPrompt, parseHermesAutoReplyJson, type HermesAutoReplyResult } from './hermes-auto-reply';
+import { buildOpenRouterAutoReplyRequest, parseOpenRouterAutoReplyJson, resolveOpenRouterAutoReplyModels, type AutoReplyThreadMessage } from './openrouter-auto-reply';
 import { evaluateAutoReplySafety } from './auto-reply-safety';
 import { decideAutonomousReply } from './auto-reply-autonomy';
 import { buildOperationsCenter, createManualResponseQueueItem, mergeManualResponseQueueItem, summarizeManualResponseQueue, type ManualResponseQueueItem } from '../lib/operations-center';
-import { buildPartyAccessPublicPayload, createPartyAccessLinkRecord, normalizePartyAccessToken, partyAccessTokenHash, type PartyAccessLinkRecord, type PartyAccessLinkStore } from '../lib/party-access';
-import { DAILY_ACCOUNT_ACCESS_NOTICE_CATEGORY, OFF_HOURS_NOTICE_CATEGORY, buildDailyAccountAccessNoticeReply, buildOffHoursNoticeReply, combineNoticeReplies, hasDailyAccountAccessNoticeToday, isSimpleAcknowledgement, shouldSendDailyAccountAccessNotice, shouldSendOffHoursNotice } from './auto-reply-daily-notice';
+import { buildPartyAccessDeliverySnapshotByMember, buildPartyAccessPublicPayload, createPartyAccessLinkRecord, enrichPartyAccessRecordWithKnownCredentials, normalizePartyAccessToken, partyAccessMemberHistoryKey, partyAccessTokenHash, resolvePartyAccessDeliverySnapshotByListing, resolvePartyAccessDeliverySnapshotForDeal, syncPartyAccessStoreWithMembers, type PartyAccessDeliverySnapshot, type PartyAccessLinkRecord, type PartyAccessLinkStore } from '../lib/party-access';
+import { CLOSING_ACKNOWLEDGEMENT_CATEGORY, DAILY_ACCOUNT_ACCESS_NOTICE_CATEGORY, OFF_HOURS_NOTICE_CATEGORY, buildClosingAcknowledgementReply, buildDailyAccountAccessNoticeReply, buildOffHoursNoticeReply, combineNoticeReplies, hasDailyAccountAccessNoticeToday, isSimpleAcknowledgement, shouldSendClosingAcknowledgement, shouldSendDailyAccountAccessNotice, shouldSendOffHoursNotice } from './auto-reply-daily-notice';
 
 const EMAIL_SERVER = "http://127.0.0.1:3001";
 const MANAGEMENT_HIDDEN_ACCOUNTS_PATH = '/home/ubuntu/.hermes/hermes-agent/graytag-aio-manager-0606/data/management-hidden-accounts.json';
@@ -48,11 +50,13 @@ function loadManagementHiddenAccounts(): { serviceType: string; accountEmail: st
 }
 
 function applyManagementHiddenAccounts<T extends { services?: any[]; onSaleByKeepAcct?: Record<string, any[]>; summary?: any }>(management: T): T {
+  const normalizeHiddenService = (value: string) => String(value || '').trim().toLowerCase().replace(/\s+/g, '');
+  const normalizeHiddenAccount = (value: string) => String(value || '').trim().toLowerCase();
   const hidden = loadManagementHiddenAccounts()
-    .map(item => ({ serviceType: String(item.serviceType || '').trim(), accountEmail: String(item.accountEmail || '').trim().toLowerCase() }))
+    .map(item => ({ serviceType: normalizeHiddenService(item.serviceType), accountEmail: normalizeHiddenAccount(item.accountEmail) }))
     .filter(item => item.serviceType && item.accountEmail);
   if (hidden.length === 0 || !Array.isArray(management.services)) return management;
-  const isHidden = (serviceType: string, accountEmail: string) => hidden.some(item => item.serviceType === serviceType && item.accountEmail === String(accountEmail || '').toLowerCase());
+  const isHidden = (serviceType: string, accountEmail: string) => hidden.some(item => item.serviceType === normalizeHiddenService(serviceType) && item.accountEmail === normalizeHiddenAccount(accountEmail));
   const services = management.services
     .map((svc: any) => {
       const accounts = (svc.accounts || []).filter((acct: any) => !isHidden(String(acct.serviceType || svc.serviceType || ''), String(acct.email || '')));
@@ -66,8 +70,14 @@ function applyManagementHiddenAccounts<T extends { services?: any[]; onSaleByKee
       };
     })
     .filter((svc: any) => (svc.accounts || []).length > 0);
-  const onSaleByKeepAcct = { ...(management.onSaleByKeepAcct || {}) };
-  for (const item of hidden) delete onSaleByKeepAcct[item.accountEmail];
+  const onSaleByKeepAcct: Record<string, any[]> = {};
+  for (const [accountEmail, items] of Object.entries(management.onSaleByKeepAcct || {})) {
+    const visibleItems = (Array.isArray(items) ? items : []).filter((item: any) => {
+      const serviceType = String(item?.productType || item?.serviceType || '').trim();
+      return !isHidden(serviceType, accountEmail);
+    });
+    if (visibleItems.length > 0) onSaleByKeepAcct[accountEmail] = visibleItems;
+  }
   return {
     ...management,
     services,
@@ -481,6 +491,7 @@ let _proxyIndex = 0;
 let _lastGraytagRequest = 0;
 let _rateLimitUntil: number = 0;
 let _chatRoomsCache: { rooms: any[]; totalRooms: number; unreadCount: number; updatedAt: string } | null = null;
+const CHAT_ROOMS_CACHE_TTL_MS = 60_000;
 
 /** webshare 프록시 리스트 로드 (서버 시작 시 + 1시간마다 자동 갱신) */
 async function loadProxies() {
@@ -813,15 +824,15 @@ app.post('/my/management', async (c) => {
       return collected;
     };
 
-    const afterDeals = [
-      ...(await fetchPagedDeals('after', false, 'https://graytag.co.kr/lender/deal/listAfterUsing')),
-      ...(await fetchPagedDeals('after', true, 'https://graytag.co.kr/lender/deal/listAfterUsing')),
-    ];
+    const [afterOpenDeals, afterFinishedDeals, beforeOpenDeals, beforeFinishedDeals] = await Promise.all([
+      fetchPagedDeals('after', false, 'https://graytag.co.kr/lender/deal/listAfterUsing'),
+      fetchPagedDeals('after', true, 'https://graytag.co.kr/lender/deal/listAfterUsing'),
+      fetchPagedDeals('before', false, 'https://graytag.co.kr/lender/deal/list'),
+      fetchPagedDeals('before', true, 'https://graytag.co.kr/lender/deal/list'),
+    ]);
 
-    const beforeDeals = [
-      ...(await fetchPagedDeals('before', false, 'https://graytag.co.kr/lender/deal/list')),
-      ...(await fetchPagedDeals('before', true, 'https://graytag.co.kr/lender/deal/list')),
-    ];
+    const afterDeals = [...afterOpenDeals, ...afterFinishedDeals];
+    const beforeDeals = [...beforeOpenDeals, ...beforeFinishedDeals];
 
     console.log(`[management] after=${afterDeals.length}, before=${beforeDeals.length}`);
 
@@ -870,10 +881,20 @@ app.post('/my/management', async (c) => {
     const ACTIVE_STATUSES = new Set(['Using', 'UsingNearExpiration', 'Delivered', 'Delivering', 'DeliveredAndCheckPrepaid', 'LendingAcceptanceWaiting', 'Reserved', 'OnSale']);
     const USING_STATUSES = new Set(['Using', 'UsingNearExpiration', 'DeliveredAndCheckPrepaid']);
     const SKIP_STATUSES = new Set(['Deleted']);
+    const extractLastPinFromDeal = (deal: any): string => {
+      const direct = String(deal.keepPin || deal.pin || deal.profilePin || deal.emailPin || '').replace(/\D/g, '').slice(0, 6);
+      if (direct.length === 6) return direct;
+      const memo = String(deal.keepMemo || '');
+      const labeled = memo.match(/(?:PIN|핀|인증|코드)[^0-9]{0,20}(\d{6})/i);
+      if (labeled?.[1]) return labeled[1];
+      return '';
+    };
 
     type MemberEntry = {
       dealUsid: string;
+      productUsid: string;
       name: string | null;
+      profileName?: string | null;
       status: string;
       statusName: string;
       price: string;
@@ -882,9 +903,14 @@ app.post('/my/management', async (c) => {
       progressRatio: string;
       startDateTime: string | null;
       inflowDateTime?: string | null;
+      cancellationDateTime?: string | null;
       endDateTime: string | null;
       remainderDays: number;
       source: 'after' | 'before';
+      lastPassword?: string;
+      lastPin?: string;
+      lastAccessDeliveredAt?: string | null;
+      lastAccessRevokedAt?: string | null;
     };
 
     type AccountEntry = {
@@ -902,12 +928,203 @@ app.post('/my/management', async (c) => {
 
     // email(keepAcct) 기준으로 그룹핑
     const accountMap: Record<string, AccountEntry> = {};
+    const profileNameByProductUsid = buildProfileNameByProductUsid();
+    const profileAssignmentByProductUsid = buildProfileAssignmentByProductUsid();
+    const generatedStore = readGeneratedAccountStore();
+    const checklistStore = loadPartyMaintenanceChecklistStore();
+    const findGeneratedAccountForManagement = (serviceType: string, accountEmail: string) => {
+      const normalizedService = String(serviceType || '').trim();
+      const normalizedEmail = String(accountEmail || '').trim().toLowerCase();
+      if (!normalizedEmail || isGraytagAccessNoticeCredential(normalizedEmail)) return undefined;
+      return Object.values(generatedStore || {}).find((account: any) => {
+        const accountService = String(account?.serviceType || '').trim();
+        const accountEmail = String(account?.email || '').trim().toLowerCase();
+        if (accountEmail !== normalizedEmail) return false;
+        if (accountService === normalizedService) return true;
+        return accountService === '티빙+웨이브' && (normalizedService === '웨이브' || normalizedService === '티빙');
+      }) as any;
+    };
+    const partyAccessStoreBeforeSync = loadPartyAccessLinkStore();
+    const syncedPartyAccess = syncPartyAccessStoreWithMembers({
+      store: partyAccessStoreBeforeSync,
+      members: allDeals.map((deal: any) => ({
+        kind: 'graytag',
+        memberId: String(deal.dealUsid || '').trim(),
+        memberName: deal.borrowerName?.trim() || null,
+        status: deal.dealStatus,
+        statusName: deal.lenderDealStatusName || deal.dealStatus,
+        startDateTime: deal.startDateTime || null,
+        endDateTime: deal.endDateTime || null,
+      })),
+    });
+    if (syncedPartyAccess.changed) savePartyAccessLinkStore(syncedPartyAccess.store);
+    const deliverySnapshotByMember = buildPartyAccessDeliverySnapshotByMember(syncedPartyAccess.store);
+
+    const snapshotFromAccessRecord = (record: PartyAccessLinkRecord): PartyAccessDeliverySnapshot => ({
+      serviceType: record.serviceType,
+      accountEmail: record.accountEmail,
+      memberKind: record.member.kind,
+      memberId: record.member.memberId,
+      memberName: record.member.memberName,
+      password: String(record.fallbackPassword || '').trim(),
+      pin: String(record.fallbackPin || '').replace(/\D/g, '').slice(0, 6),
+      emailAccessUrl: String(record.emailAccessUrl || '').trim(),
+      profileName: String(record.profileName || '').trim(),
+      deliveredAt: String(record.createdAt || '').trim(),
+      revokedAt: record.revokedAt || null,
+    });
+
+    const accessTokenPattern = /https?:\/\/email-verify\.(?:one|xyz)\/(?:dashboard\/)?access\/([^\s<>'\"]+)/gi;
+    const findPartyAccessSnapshotsFromText = (text: string, serviceType: string): PartyAccessDeliverySnapshot[] => {
+      const records: PartyAccessLinkRecord[] = [];
+      let match: RegExpExecArray | null;
+      accessTokenPattern.lastIndex = 0;
+      while ((match = accessTokenPattern.exec(String(text || ''))) !== null) {
+        const token = normalizePartyAccessToken(String(match[1] || '').replace(/[),.;:!?，。、]+$/g, ''));
+        if (!token) continue;
+        const record = syncedPartyAccess.store[partyAccessTokenHash(token)];
+        if (record) records.push(record);
+      }
+      return records
+        .filter((record) => String(record.serviceType || '').trim() === String(serviceType || '').trim())
+        .filter((record) => !record.revokedAt)
+        .filter((record) => !isGraytagAccessNoticeCredential(record.accountEmail))
+        .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))
+        .map(snapshotFromAccessRecord);
+    };
+    const snapshotByOnSaleProductUsid = new Map<string, PartyAccessDeliverySnapshot>();
+    const onSaleProductsNeedingLiveAccessLookup = beforeDeals.filter((deal: any) => {
+      const productUsid = String(deal.productUsid || '').trim();
+      if (!productUsid || deal.dealStatus !== 'OnSale') return false;
+      const rawKeepAcct = String(deal.keepAcct || '').trim();
+      if (!isGraytagAccessNoticeCredential(rawKeepAcct)) return false;
+      const direct = resolvePartyAccessDeliverySnapshotByListing(deliverySnapshotByMember, {
+        serviceType: deal.productTypeString || '기타',
+        dealUsid: String(deal.dealUsid || ''),
+        productUsid,
+      });
+      return !direct?.accountEmail || isGraytagAccessNoticeCredential(direct.accountEmail);
+    });
+    if (onSaleProductsNeedingLiveAccessLookup.length > 0) {
+      await Promise.all(onSaleProductsNeedingLiveAccessLookup.map(async (deal: any) => {
+        const productUsid = String(deal.productUsid || '').trim();
+        const serviceType = deal.productTypeString || '기타';
+        if (!productUsid) return;
+        try {
+          const localText = [deal.keepMemo, deal.keepPasswd, deal.memo, deal.description].map((v) => String(v || '')).join('\n');
+          const localSnapshot = findPartyAccessSnapshotsFromText(localText, serviceType)[0];
+          if (localSnapshot) {
+            snapshotByOnSaleProductUsid.set(productUsid, localSnapshot);
+            return;
+          }
+
+          const keepAcctResp = await rateLimitedFetch(
+            `https://graytag.co.kr/lender/product/keepAcctSetting?productUsid=${encodeURIComponent(productUsid)}`,
+            { headers: authedHeaders(`https://graytag.co.kr/lender/product/keepAcctSetting?productUsid=${encodeURIComponent(productUsid)}`), redirect: 'manual', signal: AbortSignal.timeout(4000) }
+          );
+          if (!keepAcctResp.ok) return;
+          const html = await keepAcctResp.text();
+          const liveSnapshot = findPartyAccessSnapshotsFromText(html, serviceType)[0];
+          if (!liveSnapshot) return;
+          snapshotByOnSaleProductUsid.set(productUsid, liveSnapshot);
+        } catch (e: any) {
+          console.warn(`[management] on-sale access-link lookup failed for product ${productUsid}: ${e?.message || e}`);
+        }
+      }));
+    }
+    const uniqueOnSaleSnapshotForService = (serviceType: string): PartyAccessDeliverySnapshot | undefined => {
+      const serviceSnapshots = Array.from(snapshotByOnSaleProductUsid.values())
+        .filter((snapshot) => String(snapshot.serviceType || '').trim() === String(serviceType || '').trim())
+        .filter((snapshot) => !snapshot.revokedAt)
+        .filter((snapshot) => !isGraytagAccessNoticeCredential(snapshot.accountEmail));
+      const byAccount = new Map<string, PartyAccessDeliverySnapshot>();
+      for (const snapshot of serviceSnapshots) {
+        const key = String(snapshot.accountEmail || '').trim().toLowerCase();
+        if (!key) continue;
+        const existing = byAccount.get(key);
+        if (!existing || String(snapshot.deliveredAt || '').localeCompare(String(existing.deliveredAt || '')) > 0) {
+          byAccount.set(key, snapshot);
+        }
+      }
+      return byAccount.size === 1 ? Array.from(byAccount.values())[0] : undefined;
+    };
+    const snapshotByPlaceholderDealUsid = new Map<string, PartyAccessDeliverySnapshot>();
+    const placeholderDealsNeedingChatLookup = allDeals.filter((deal: any) => {
+      const rawKeepAcct = String(deal.keepAcct || '').trim();
+      if (!isGraytagAccessNoticeCredential(rawKeepAcct)) return false;
+      const direct = resolvePartyAccessDeliverySnapshotByListing(deliverySnapshotByMember, {
+        serviceType: deal.productTypeString || '기타',
+        dealUsid: String(deal.dealUsid || ''),
+        productUsid: String(deal.productUsid || ''),
+      });
+      return !direct?.accountEmail || isGraytagAccessNoticeCredential(direct.accountEmail);
+    });
+    if (placeholderDealsNeedingChatLookup.length > 0) {
+      await Promise.all(placeholderDealsNeedingChatLookup.map(async (deal: any) => {
+        const dealUsid = String(deal.dealUsid || '').trim();
+        const chatRoomUuid = resolveDealChatRoomUuid(deal);
+        if (!dealUsid || !chatRoomUuid) return;
+        try {
+          const snapshots: PartyAccessDeliverySnapshot[] = [];
+          for (let page = 1; page <= 3; page++) {
+            const msgResp = await rateLimitedFetch(
+              `https://graytag.co.kr/ws/chat/findChats?uuid=${encodeURIComponent(chatRoomUuid)}&page=${page}`,
+              { headers: authedHeaders('https://graytag.co.kr/lender/deal/list'), redirect: 'manual', signal: AbortSignal.timeout(3000) }
+            );
+            if (!msgResp.ok) break;
+            const msgData = await safeJson(msgResp);
+            const pageChats: any[] = extractGraytagChats(msgData);
+            const text = pageChats.map((chat: any) => String(chat?.message || '')).join('\n');
+            snapshots.push(...findPartyAccessSnapshotsFromText(text, deal.productTypeString || '기타'));
+            if (pageChats.length === 0 || pageChats.length < 20) break;
+          }
+          const preferred = snapshots[0];
+          if (preferred) snapshotByPlaceholderDealUsid.set(dealUsid, preferred);
+        } catch (e: any) {
+          console.warn(`[management] placeholder access-link chat lookup failed for deal ${dealUsid}: ${e?.message || e}`);
+        }
+      }));
+    }
 
     for (const deal of allDeals) {
       if (SKIP_STATUSES.has(deal.dealStatus)) continue;
 
-      const email = deal.keepAcct?.trim() || '(직접전달)';
       const svc = deal.productTypeString || '기타';
+      const rawKeepAcct = deal.keepAcct?.trim() || '';
+      const productUsid = String(deal.productUsid || '').trim();
+      const profileAssignment = productUsid ? profileAssignmentByProductUsid.get(productUsid) : undefined;
+      const assignmentAccountEmail = profileAssignment && !isGraytagAccessNoticeCredential(profileAssignment.accountEmail)
+        ? String(profileAssignment.accountEmail || '').trim()
+        : '';
+      const accessMappedSnapshot = isGraytagAccessNoticeCredential(rawKeepAcct)
+        ? (snapshotByPlaceholderDealUsid.get(String(deal.dealUsid || '').trim())
+          || snapshotByOnSaleProductUsid.get(productUsid)
+          || uniqueOnSaleSnapshotForService(svc)
+          || resolvePartyAccessDeliverySnapshotByListing(deliverySnapshotByMember, {
+            serviceType: svc,
+            dealUsid: String(deal.dealUsid || ''),
+            productUsid,
+          }))
+        : undefined;
+      const mappedAccountEmail = accessMappedSnapshot?.accountEmail && !isGraytagAccessNoticeCredential(accessMappedSnapshot.accountEmail)
+        ? accessMappedSnapshot.accountEmail
+        : assignmentAccountEmail;
+      const email = mappedAccountEmail || rawKeepAcct || '(직접전달)';
+      const generatedAccountForEmail = findGeneratedAccountForManagement(svc, email);
+      const checklistForEmail = checklistStore[`${svc}:${email}`];
+      const mappedPassword = accessMappedSnapshot?.password
+        || String(checklistForEmail?.changedPassword || '').trim()
+        || String(generatedAccountForEmail?.password || '').trim()
+        || (!isGraytagAccessNoticeCredential(deal.keepPasswd?.trim()) ? deal.keepPasswd?.trim() : '')
+        || '';
+      const mappedPin = accessMappedSnapshot?.pin
+        || String(checklistForEmail?.generatedPin || '').trim()
+        || String(generatedAccountForEmail?.pin || '').trim()
+        || extractLastPinFromDeal(deal);
+      const mappedProfileName = accessMappedSnapshot?.profileName
+        || String(profileAssignment?.profileNickname || '').trim()
+        || profileNameByProductUsid.get(productUsid)
+        || null;
       const key = `${email}__${svc}`; // 같은 이메일이라도 서비스가 다르면 분리
 
       if (!accountMap[key]) {
@@ -921,7 +1138,7 @@ app.post('/my/management', async (c) => {
           totalIncome: 0,
           totalRealizedIncome: 0,
           expiryDate: null,
-          keepPasswd: deal.keepPasswd?.trim() || undefined,
+          keepPasswd: mappedPassword || undefined,
         };
       }
 
@@ -930,10 +1147,19 @@ app.post('/my/management', async (c) => {
       const isActive = ACTIVE_STATUSES.has(deal.dealStatus);
       const isUsing = USING_STATUSES.has(deal.dealStatus) || isAccountCheckingDeal(deal);
       const isFromAfter = afterDeals.some(d => d.dealUsid === deal.dealUsid);
+      const resolvedDealSnapshot = resolvePartyAccessDeliverySnapshotForDeal(deliverySnapshotByMember, {
+        serviceType: svc,
+        accountEmail: email,
+        dealUsid: String(deal.dealUsid || ''),
+        productUsid: String(deal.productUsid || ''),
+      });
+      const deliverySnapshot = accessMappedSnapshot || resolvedDealSnapshot;
 
       accountMap[key].members.push({
         dealUsid: deal.dealUsid,
+        productUsid: String(deal.productUsid || ''),
         name: deal.borrowerName?.trim() || null,
+        profileName: mappedProfileName,
         status: deal.dealStatus,
         statusName: deal.lenderDealStatusName || deal.dealStatus,
         price: deal.price,
@@ -942,16 +1168,26 @@ app.post('/my/management', async (c) => {
         progressRatio: deal.progressRatio || '0%',
         startDateTime: deal.startDateTime,
         inflowDateTime: accountCheckInflow.inflowDateByDealUsid[String(deal.dealUsid || '')] || deal.startDateTime || deal.deliveredDateTime || deal.createdDateTime || deal.registeredDateTime || deal.dealRegisteredDateTime || deal.productRegisteredDateTime || deal.updatedAt || null,
+        cancellationDateTime: deal.dealEndTime || deal.progressTime || deal.cancelledDateTime || deal.cancelDateTime || deal.updatedAt || null,
         endDateTime: deal.endDateTime,
         remainderDays: deal.remainderDays,
         source: isFromAfter ? 'after' : 'before',
+        lastPassword: mappedPassword,
+        lastPin: mappedPin,
+        lastAccessDeliveredAt: deliverySnapshot?.deliveredAt || null,
+        lastAccessRevokedAt: deliverySnapshot?.revokedAt || null,
       });
 
-      if (isActive) { accountMap[key].activeCount++; accountMap[key].totalIncome += priceNum; }
+      if (isActive) accountMap[key].activeCount++;
+      // 매출 합계는 실제 이용 중/계정확인중 거래만 더한다.
+      // OnSale/Delivered/Reserved 같은 대기 상태까지 합치면 아직 발생하지 않은 금액이 섞인다.
+      if (isUsing) accountMap[key].totalIncome += priceNum;
       if (isUsing) accountMap[key].usingCount++;
       accountMap[key].totalRealizedIncome += realizedNum;
 
-      if (deal.keepPasswd?.trim() && !accountMap[key].keepPasswd) {
+      if (mappedPassword && !accountMap[key].keepPasswd) {
+        accountMap[key].keepPasswd = mappedPassword;
+      } else if (deal.keepPasswd?.trim() && !isGraytagAccessNoticeCredential(deal.keepPasswd.trim()) && !accountMap[key].keepPasswd) {
         accountMap[key].keepPasswd = deal.keepPasswd.trim();
       }
 
@@ -966,6 +1202,68 @@ app.post('/my/management', async (c) => {
       }
     }
 
+    // Buyer-facing /dashboard/access pages need the same current-member basis as account management.
+    // Some historical buyers never had their own access-link token, so relying only on
+    // party-access-links makes full accounts look like they have one member. Mirror the
+    // current accountMap rows into synthetic sibling records keyed by dealUsid; real
+    // token records are preserved and updated in place.
+    {
+      const nextPartyAccessStore: PartyAccessLinkStore = { ...syncedPartyAccess.store };
+      let partyAccessStoreChanged = false;
+      const nowIso = new Date().toISOString();
+      const isCurrentAccessMember = (member: MemberEntry) => {
+        const status = String(member.status || '').trim();
+        const statusName = String(member.statusName || '').trim();
+        return USING_STATUSES.has(status) || statusName.includes('계정확인중');
+      };
+      const findExistingAccessRecord = (serviceType: string, accountEmail: string, memberId: string) => Object.values(nextPartyAccessStore)
+        .find((item) => item?.member?.kind === 'graytag'
+          && item.member.memberId === memberId
+          && item.serviceType === serviceType
+          && item.accountEmail === accountEmail);
+
+      for (const entry of Object.values(accountMap)) {
+        if (!entry.email || isGraytagAccessNoticeCredential(entry.email)) continue;
+        for (const member of entry.members) {
+          if (!isCurrentAccessMember(member)) continue;
+          const memberId = String(member.dealUsid || '').trim();
+          if (!memberId) continue;
+          const existing = findExistingAccessRecord(entry.serviceType, entry.email, memberId);
+          const tokenHash = existing?.tokenHash || partyAccessTokenHash(`management-${entry.serviceType}-${entry.email}-${memberId}`);
+          const profileName = String(member.profileName || existing?.profileName || member.name || '(미확인)').trim();
+          const nextRecord: PartyAccessLinkRecord = {
+            id: existing?.id || `${entry.serviceType}:${entry.email}:graytag:${memberId}:management`,
+            shareToken: existing?.shareToken,
+            tokenHash,
+            serviceType: entry.serviceType,
+            accountEmail: entry.email,
+            fallbackPassword: String(existing?.fallbackPassword || member.lastPassword || entry.keepPasswd || '').trim(),
+            fallbackPin: String(existing?.fallbackPin || member.lastPin || '').replace(/\D/g, '').slice(0, 6),
+            profileName,
+            emailAccessUrl: String(existing?.emailAccessUrl || '').trim(),
+            member: {
+              kind: 'graytag',
+              memberId,
+              memberName: String(member.name || existing?.member?.memberName || '(미확인)').trim(),
+              status: String(member.status || existing?.member?.status || '').trim(),
+              statusName: String(member.statusName || existing?.member?.statusName || member.status || '').trim(),
+              startDateTime: member.startDateTime || existing?.member?.startDateTime || null,
+              endDateTime: member.endDateTime || existing?.member?.endDateTime || null,
+            },
+            createdAt: existing?.createdAt || nowIso,
+            revokedAt: null,
+            lastViewedAt: existing?.lastViewedAt || null,
+            viewCount: existing?.viewCount || 0,
+          };
+          if (JSON.stringify(nextPartyAccessStore[tokenHash]) !== JSON.stringify(nextRecord)) {
+            nextPartyAccessStore[tokenHash] = nextRecord;
+            partyAccessStoreChanged = true;
+          }
+        }
+      }
+      if (partyAccessStoreChanged) savePartyAccessLinkStore(nextPartyAccessStore);
+    }
+
     // 서비스 타입별로 계정 묶기
     const serviceMap: Record<string, {
       serviceType: string;
@@ -977,6 +1275,9 @@ app.post('/my/management', async (c) => {
     }> = {};
 
     for (const entry of Object.values(accountMap)) {
+      // 전달용 안내 문구 계정이 실제 /access 기록으로 매핑되면 진짜 계정 카드로 이동한다.
+      // 남는 안내 문구 카드는 보통 취소/노쇼 같은 잔여 행뿐이라 계정관리에서 숨긴다.
+      if (isGraytagAccessNoticeCredential(entry.email) && entry.usingCount === 0 && entry.activeCount === 0) continue;
       const svc = entry.serviceType;
       if (!serviceMap[svc]) serviceMap[svc] = { serviceType: svc, accounts: [], totalUsingMembers: 0, totalActiveMembers: 0, totalIncome: 0, totalRealized: 0 };
       serviceMap[svc].accounts.push(entry);
@@ -998,7 +1299,16 @@ app.post('/my/management', async (c) => {
     const allBeforeDeals = [...beforeDeals];
     for (const deal of allBeforeDeals) {
       if (deal.dealStatus === 'OnSale' && deal.keepAcct?.trim()) {
-        const key = deal.keepAcct.trim();
+        const rawKeepAcct = deal.keepAcct.trim();
+        const productUsid = String(deal.productUsid || '').trim();
+        const accessMappedSnapshot = isGraytagAccessNoticeCredential(rawKeepAcct)
+          ? (snapshotByOnSaleProductUsid.get(productUsid) || resolvePartyAccessDeliverySnapshotByListing(deliverySnapshotByMember, {
+            serviceType: deal.productTypeString || '기타',
+            dealUsid: String(deal.dealUsid || ''),
+            productUsid,
+          }))
+          : undefined;
+        const key = accessMappedSnapshot?.accountEmail || rawKeepAcct;
         // 중복 방지
         if (!onSaleByKeepAcct[key]) onSaleByKeepAcct[key] = [];
         if (onSaleByKeepAcct[key].some((p: any) => p.productUsid === deal.productUsid)) continue;
@@ -1006,18 +1316,19 @@ app.post('/my/management', async (c) => {
           productUsid: deal.productUsid,
           productName: deal.productName,
           productType: deal.productTypeString,
+          profileName: accessMappedSnapshot?.profileName || profileNameByProductUsid.get(String(deal.productUsid || '')) || null,
           price: deal.price,
           purePrice: parseInt((deal.price || '0').replace(/[^0-9]/g, '') || '0'),
           endDateTime: deal.endDateTime,
           remainderDays: deal.remainderDays,
-          keepAcct: deal.keepAcct,
-          keepPasswd: deal.keepPasswd || '',
+          keepAcct: key,
+          originalKeepAcct: rawKeepAcct,
+          keepPasswd: accessMappedSnapshot?.password || deal.keepPasswd || '',
           keepMemo: deal.keepMemo || '',
         });
       }
     }
 
-    const generatedStore = readGeneratedAccountStore();
     const management = {
       services,
       onSaleByKeepAcct,
@@ -1026,7 +1337,7 @@ app.post('/my/management', async (c) => {
         totalActiveMembers: services.reduce((s, sv) => s + sv.totalActiveMembers, 0),
         totalIncome: services.reduce((s, sv) => s + sv.totalIncome, 0),
         totalRealized: services.reduce((s, sv) => s + sv.totalRealized, 0),
-        totalAccounts: Object.keys(accountMap).length,
+        totalAccounts: services.reduce((sum, sv) => sum + sv.accounts.length, 0),
       },
       cookieSource: body?.JSESSIONID?.trim() ? 'manual' : 'session-keeper',
       updatedAt: new Date().toISOString(),
@@ -1329,6 +1640,10 @@ app.get('/chat/rooms', async (c) => {
   const headers = { ...BASE_HEADERS, Cookie: cookieStr, Referer: 'https://graytag.co.kr/lender/deal/listAfterUsing' };
 
   try {
+    const forceRefresh = c.req.query('refresh') === '1' || c.req.query('force') === '1';
+    if (!forceRefresh && _chatRoomsCache && Date.now() - new Date(_chatRoomsCache.updatedAt).getTime() < CHAT_ROOMS_CACHE_TTL_MS) {
+      return c.json({ ..._chatRoomsCache, fromCache: true, cacheTtlMs: CHAT_ROOMS_CACHE_TTL_MS });
+    }
     // rate-limit 백오프 중이면 캐시된 결과 즉시 반환
     if (Date.now() < _rateLimitUntil && _chatRoomsCache) {
       console.log("[chat/rooms] rate-limit 백오프 중 — 캐시 반환");
@@ -1601,6 +1916,8 @@ function loadAutoReplyPolicyFromConfig() {
     draftOnly: envFlag('AUTO_REPLY_DRAFT_ONLY', true),
     autoSendAuthCode: envFlag('AUTO_REPLY_AUTO_SEND_AUTH_CODE', false),
     autoSendLowRisk: envFlag('AUTO_REPLY_AUTO_SEND_LOW_RISK', false),
+    autoSendLoginIssue: envFlag('AUTO_REPLY_AUTO_SEND_LOGIN_ISSUE', false),
+    autoSendSafeReceipts: envFlag('AUTO_REPLY_AUTO_SEND_SAFE_RECEIPT', false),
   });
 }
 
@@ -1632,7 +1949,9 @@ function templateAutoReply(category: string): HermesAutoReplyResult {
 
 async function runHermesJsonPrompt(prompt: string): Promise<string> {
   const hermesCli = process.env.HERMES_CLI_PATH || '/home/ubuntu/.local/bin/hermes';
-  const { stdout } = await execFileAsync(hermesCli, ['chat', '-q', prompt, '--quiet'], {
+  const provider = String(process.env.AUTO_REPLY_HERMES_PROVIDER || 'openrouter').trim() || 'openrouter';
+  const model = String(process.env.AUTO_REPLY_HERMES_MODEL || process.env.AUTO_REPLY_OPENROUTER_MODEL || 'nvidia/nemotron-3-super-120b-a12b:free').trim() || 'nvidia/nemotron-3-super-120b-a12b:free';
+  const { stdout } = await execFileAsync(hermesCli, ['chat', '-q', prompt, '--provider', provider, '--model', model, '--quiet'], {
     timeout: Number(process.env.HERMES_AUTO_REPLY_TIMEOUT_MS || 45000),
     maxBuffer: 1024 * 1024,
     env: { ...process.env, PATH: `/home/ubuntu/.local/bin:${process.env.PATH || ''}` },
@@ -1651,6 +1970,21 @@ async function draftWithHermesOrFallback(job: any): Promise<HermesAutoReplyResul
       needsHuman: false,
     };
   }
+  const provider = String(process.env.AUTO_REPLY_AI_PROVIDER || 'hermes').toLowerCase();
+  if (provider === 'openrouter-direct' || provider === 'direct-openrouter') {
+    try {
+      return await runOpenRouterAutoReply(job);
+    } catch (e: any) {
+      return {
+        category: job.category || 'general',
+        risk: 'high',
+        autoSendAllowed: false,
+        reply: '확인이 필요한 내용이라 바로 확인 후 안내드리겠습니다. 조금만 기다려주세요.',
+        reason: `OpenRouter 자동답변 실패: ${e?.message || e}`,
+        needsHuman: true,
+      };
+    }
+  }
   const cfg = loadAutoReplyRuntimeConfig();
   const prompt = buildHermesAutoReplyPrompt({
     buyerMessage: job.buyerMessage,
@@ -1658,6 +1992,8 @@ async function draftWithHermesOrFallback(job: any): Promise<HermesAutoReplyResul
     productType: job.productType,
     productName: job.productName,
     systemPrompt: cfg.systemPrompt,
+    threadMessages: job.threadMessages || [],
+    dashboardUrl: job.dashboardUrl || dashboardChatRoomUrl(job.chatRoomUuid),
   });
   const stdout = await runHermesJsonPrompt(prompt);
   return parseHermesAutoReplyJson(stdout);
@@ -1713,27 +2049,235 @@ function recentAutoReplyTimesForRoom(chatRoomUuid: string): string[] {
     .filter(Boolean);
 }
 
+function hasRecentAutoReplyJobForRoom(chatRoomUuid: string, messageTime: string, windowMinutes = 10): boolean {
+  const current = new Date(messageTime || Date.now()).getTime();
+  if (!Number.isFinite(current)) return false;
+  const windowMs = Math.max(1, windowMinutes) * 60 * 1000;
+  return Object.values(AUTO_REPLY_MEMORY_STORE.jobs).some((entry: any) => {
+    if (entry.chatRoomUuid !== chatRoomUuid) return false;
+    if (['error', 'ignored'].includes(String(entry.status || ''))) return false;
+    const t = new Date(entry.messageTime || entry.createdAt || 0).getTime();
+    return Number.isFinite(t) && Math.abs(current - t) < windowMs;
+  });
+}
+
+function hasAnyDailyAccountAccessNoticeForRoom(chatRoomUuid: string): boolean {
+  return Object.values(AUTO_REPLY_MEMORY_STORE.jobs).some((entry: any) =>
+    entry.chatRoomUuid === chatRoomUuid &&
+    String(entry.category || '').split(',').map((part) => part.trim()).includes(DAILY_ACCOUNT_ACCESS_NOTICE_CATEGORY) &&
+    ['queued', 'drafted', 'sent', 'blocked'].includes(String(entry.status || ''))
+  );
+}
+
 function publicDashboardOrigin(): string {
-  const raw = String(process.env.DASHBOARD_PUBLIC_ORIGIN || process.env.PUBLIC_DASHBOARD_ORIGIN || 'https://email-verify.xyz').trim();
-  return raw.replace(/\/$/, '');
+  const raw = String(process.env.DASHBOARD_PUBLIC_ORIGIN || process.env.PUBLIC_DASHBOARD_ORIGIN || 'https://email-verify.one').trim();
+  return raw
+    .replace(/^http:\/\/email-verify\.one(?=\/|$)/i, 'https://email-verify.one')
+    .replace(/\/$/, '');
+}
+
+function dashboardChatRoomUrl(chatRoomUuid: string): string {
+  return `${publicDashboardOrigin()}/dashboard/chat?room=${encodeURIComponent(String(chatRoomUuid || ''))}`;
+}
+
+function absoluteGraytagUrl(url: string): string {
+  const trimmed = String(url || '').trim();
+  if (!trimmed) return '';
+  if (/^https?:\/\//i.test(trimmed) || /^data:/i.test(trimmed)) return trimmed;
+  if (trimmed.startsWith('//')) return `https:${trimmed}`;
+  if (trimmed.startsWith('/')) return `https://graytag.co.kr${trimmed}`;
+  return `https://graytag.co.kr/${trimmed.replace(/^\/+/, '')}`;
+}
+
+function extractImageUrlsFromHtml(html = ''): string[] {
+  const urls = new Set<string>();
+  for (const match of Array.from(String(html || '').matchAll(/<img\b[^>]*\bsrc=["']([^"']+)["']/gi))) urls.add(absoluteGraytagUrl(match[1]));
+  for (const match of Array.from(String(html || '').matchAll(/https?:\/\/[^\s"'<>]+\.(?:png|jpe?g|webp|gif)(?:\?[^\s"'<>]*)?/gi))) urls.add(match[0]);
+  for (const match of Array.from(String(html || '').matchAll(/https?:\/\/graytag\.co\.kr\/images\/[^\s"'<>]+/gi))) urls.add(match[0]);
+  return Array.from(urls).filter(Boolean).slice(0, 4);
+}
+
+function cleanChatTextForAi(html = ''): string {
+  return normalizeBuyerMessage(String(html || '')).slice(0, 1200);
+}
+
+function threadMessagesForAi(messages: GraytagChatMessage[]): AutoReplyThreadMessage[] {
+  return messages.map((message) => ({
+    role: (message.owned || message.isOwned) ? 'seller' : 'buyer',
+    content: cleanChatTextForAi(message.message || ''),
+    time: message.registeredDateTime || message.createdAt || message.updatedAt,
+    imageUrls: extractImageUrlsFromHtml(message.message || ''),
+  }));
+}
+
+async function downloadImageAsDataUrl(url: string, headers?: Record<string, string>): Promise<string | null> {
+  const absolute = absoluteGraytagUrl(url);
+  if (!absolute || absolute.startsWith('data:')) return absolute || null;
+  try {
+    const res = await fetch(absolute, { headers, signal: AbortSignal.timeout(3500), redirect: 'follow' });
+    if (!res.ok) return null;
+    const contentType = String(res.headers.get('content-type') || 'image/jpeg').split(';')[0];
+    if (!contentType.startsWith('image/')) return null;
+    const arrayBuffer = await res.arrayBuffer();
+    if (arrayBuffer.byteLength > 2_000_000 || arrayBuffer.byteLength < 32) return null;
+    const bytes = new Uint8Array(arrayBuffer.slice(0, 16));
+    const looksLikeImage =
+      (bytes[0] === 0xff && bytes[1] === 0xd8) ||
+      (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) ||
+      (bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46) ||
+      (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46);
+    if (!looksLikeImage) return null;
+    return `data:${contentType};base64,${Buffer.from(arrayBuffer).toString('base64')}`;
+  } catch {
+    return null;
+  }
+}
+
+async function imageDataUrlsForAi(urls: string[], headers?: Record<string, string>): Promise<string[]> {
+  const out: string[] = [];
+  for (const url of urls.slice(0, 4)) {
+    const dataUrl = await downloadImageAsDataUrl(url, headers);
+    if (dataUrl) out.push(dataUrl);
+  }
+  return out;
+}
+
+function sleepMs(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function retryDelayFromOpenRouter(res: Response): number {
+  const retryAfter = Number(res.headers.get('retry-after') || '');
+  if (Number.isFinite(retryAfter) && retryAfter > 0) return Math.min(retryAfter * 1000, 2000);
+  return 600;
+}
+
+async function runOpenRouterAutoReply(job: any): Promise<HermesAutoReplyResult> {
+  const apiKey = String(process.env.OPENROUTER_API_KEY || '').trim();
+  if (!apiKey) throw new Error('OPENROUTER_API_KEY 없음');
+  const cfg = loadAutoReplyRuntimeConfig();
+  const cookies = loadSessionCookies();
+  const cookieStr = cookies ? buildCookieStr(cookies) : '';
+  const headers = cookieStr ? { Cookie: cookieStr, Referer: `https://graytag.co.kr/chat/${job.chatRoomUuid}` } : undefined;
+  const imageDataUrls = await imageDataUrlsForAi(job.imageUrls || [], headers);
+  const context = {
+    buyerMessage: job.buyerMessage,
+    buyerName: job.buyerName,
+    productType: job.productType,
+    productName: job.productName,
+    systemPrompt: cfg.systemPrompt,
+    threadMessages: job.threadMessages || [],
+    // Do not pass raw remote chat image URLs to OpenRouter. Some providers reject
+    // signed/blocked marketplace URLs as invalid image payloads; only include
+    // images that we successfully downloaded and validated as data URLs.
+    imageUrls: [],
+    imageDataUrls,
+    dashboardUrl: job.dashboardUrl || dashboardChatRoomUrl(job.chatRoomUuid),
+  };
+  const models = resolveOpenRouterAutoReplyModels();
+  let lastError = '';
+  for (const model of models) {
+    const request = buildOpenRouterAutoReplyRequest(context, process.env, model);
+    const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': publicDashboardOrigin(),
+        'X-Title': 'Graytag AIO Auto Reply',
+      },
+      body: JSON.stringify(request),
+      signal: AbortSignal.timeout(Number(process.env.AUTO_REPLY_OPENROUTER_TIMEOUT_MS || 45000)),
+    });
+    const data = await res.json().catch(() => ({} as any)) as any;
+    if (!res.ok) {
+      lastError = `OpenRouter 응답 실패: ${res.status} ${data?.error?.message || data?.message || ''}`.trim();
+      if (res.status === 429) {
+        console.warn(`[auto-reply] OpenRouter 429 on ${model}; trying fallback model if available`);
+        await sleepMs(retryDelayFromOpenRouter(res));
+        continue;
+      }
+      throw new Error(lastError);
+    }
+    const content = data?.choices?.[0]?.message?.content;
+    const text = Array.isArray(content) ? content.map((part: any) => part?.text || '').join('\n') : String(content || '');
+    const parsed = parseOpenRouterAutoReplyJson(text);
+    return { ...parsed, category: parsed.category || job.category || 'general' };
+  }
+  throw new Error(`${lastError || 'OpenRouter 응답 실패'}; fallback models exhausted`);
 }
 
 function partyAccessUrlFromToken(token: string): string {
   return `${publicDashboardOrigin()}/dashboard/access/${encodeURIComponent(token)}`;
 }
 
+async function enrichPartyAccessRecordForPersist(record: PartyAccessLinkRecord, store: PartyAccessLinkStore): Promise<PartyAccessLinkRecord> {
+  const checklistStore = loadPartyMaintenanceChecklistStore();
+  const generatedStore = readGeneratedAccountStore();
+  let enriched = enrichPartyAccessRecordWithKnownCredentials(record, store, checklistStore, generatedStore);
+  if (enriched.fallbackPin && enriched.emailAccessUrl && String(enriched.serviceType || '').trim() !== '티빙') return enriched;
+  try {
+    const aliases: any[] = [];
+    for (let page = 0; page < 10; page += 1) {
+      const res = await fetch(`${EMAIL_SERVER}/api/sl/aliases?page=${page}`, { signal: AbortSignal.timeout(2500) });
+      if (!res.ok) break;
+      const data = await res.json().catch(() => ({} as any)) as any;
+      const items = Array.isArray(data?.aliases) ? data.aliases : [];
+      aliases.push(...items);
+      if (items.length === 0) break;
+    }
+    const aliasResult = await resolveEmailAliasFill({ accountEmail: enriched.accountEmail, serviceType: enriched.serviceType, aliases });
+    const aliasEmailAccessUrl = aliasResult.emailId ? `https://email-verify.one/email/mail/${encodeURIComponent(String(aliasResult.emailId))}` : '';
+    if (aliasEmailAccessUrl || aliasResult.pin) {
+      enriched = enrichPartyAccessRecordWithKnownCredentials({
+        ...enriched,
+        fallbackPin: aliasResult.pin || enriched.fallbackPin || '',
+        emailAccessUrl: aliasEmailAccessUrl || enriched.emailAccessUrl || '',
+      }, store, checklistStore, generatedStore);
+    }
+  } catch {}
+  return enriched;
+}
+
 function autoReplyDailyGuideEnabled(): boolean {
   return envFlag('AUTO_REPLY_ACCOUNT_GUIDE_ENABLED', true) && process.env.AUTO_REPLY_ENABLE_SEND === 'true';
 }
 
-function createAutoReplyPartyAccessUrl(job: any, persist = true): string | null {
-  const accountEmail = String(job.keepAcct || '').trim();
+async function createAutoReplyPartyAccessUrl(job: any, persist = true): Promise<string | null> {
+  const rawAccountEmail = String(job.keepAcct || '').trim();
   const serviceType = String(job.productType || '').trim();
   const memberId = String(job.dealUsid || '').trim();
-  if (!accountEmail || !serviceType || !memberId) return null;
+  const productUsid = String(job.productUsid || '').trim();
+  if (!rawAccountEmail || !serviceType || !memberId) return null;
+  const store = loadPartyAccessLinkStore();
+  const existing = Object.values(store || {})
+    .filter((record) => record && !record.revokedAt)
+    .filter((record) => String(record.serviceType || '').trim() === serviceType)
+    .filter((record) => {
+      const existingMemberId = String(record.member?.memberId || '').trim();
+      return existingMemberId === memberId || (productUsid && existingMemberId === `fill:${productUsid}`);
+    })
+    .sort((a, b) => {
+      const aReal = isGraytagAccessNoticeCredential(a.accountEmail) ? 0 : 1;
+      const bReal = isGraytagAccessNoticeCredential(b.accountEmail) ? 0 : 1;
+      return bReal - aReal || String(b.createdAt || '').localeCompare(String(a.createdAt || ''));
+    })[0];
+
+  if (existing?.shareToken) {
+    const enriched = await enrichPartyAccessRecordForPersist(existing, store);
+    if (JSON.stringify(enriched) !== JSON.stringify(existing)) savePartyAccessLinkStore({ ...store, [enriched.tokenHash]: enriched });
+    return partyAccessUrlFromToken(existing.shareToken);
+  }
+
+  if (isGraytagAccessNoticeCredential(rawAccountEmail) || isGraytagAccessNoticeCredential(job.keepPasswd)) {
+    console.warn(`[auto-reply] skip party access link for placeholder credential deal=${memberId}`);
+    return null;
+  }
+
+  const accountEmail = rawAccountEmail;
   const token = createPartyAccessToken();
   if (!persist) return partyAccessUrlFromToken(token);
-  const record = createPartyAccessLinkRecord({
+  const record = await enrichPartyAccessRecordForPersist(createPartyAccessLinkRecord({
     token,
     serviceType,
     accountEmail,
@@ -1750,8 +2294,7 @@ function createAutoReplyPartyAccessUrl(job: any, persist = true): string | null 
       startDateTime: job.startDateTime || null,
       endDateTime: job.endDateTime || null,
     },
-  });
-  const store = loadPartyAccessLinkStore();
+  }), store);
   savePartyAccessLinkStore({ ...store, [record.tokenHash]: record });
   writeAudit({
     actor: 'system',
@@ -1769,29 +2312,52 @@ function createAutoReplyPartyAccessUrl(job: any, persist = true): string | null 
 async function processDailyAutomatedNotice(job: any, dryRun: boolean): Promise<{ status: 'drafted' | 'sent' | 'blocked' | 'error' | 'ignored' } | null> {
   if (!autoReplyDailyGuideEnabled()) return null;
   const now = process.env.AUTO_REPLY_TEST_NOW ? new Date(process.env.AUTO_REPLY_TEST_NOW) : new Date();
-  if (hasDailyAccountAccessNoticeToday(AUTO_REPLY_MEMORY_STORE, job.chatRoomUuid, now) && isSimpleAcknowledgement(job.buyerMessage)) {
-    updateAutoReplyJobPersisted(AUTO_REPLY_MEMORY_STORE, job.id, {
-      status: 'ignored',
-      category: 'acknowledgement',
-      risk: 'low',
-      draftReply: '',
-      blockReason: '일일 계정 안내 후 단순 확인/감사 응답이라 자동응답 생략',
-    });
-    return { status: 'ignored' };
+  if ((hasDailyAccountAccessNoticeToday(AUTO_REPLY_MEMORY_STORE, job.chatRoomUuid, now) || hasAnyDailyAccountAccessNoticeForRoom(job.chatRoomUuid)) && isSimpleAcknowledgement(job.buyerMessage)) {
+    const reply = shouldSendClosingAcknowledgement(AUTO_REPLY_MEMORY_STORE, job.chatRoomUuid, now) ? buildClosingAcknowledgementReply() : '';
+    if (!reply || dryRun || process.env.AUTO_REPLY_ENABLE_SEND !== 'true' || loadSafeModeConfig().enabled) {
+      updateAutoReplyJobPersisted(AUTO_REPLY_MEMORY_STORE, job.id, {
+        status: reply && !dryRun && process.env.AUTO_REPLY_ENABLE_SEND === 'true' ? 'blocked' : 'ignored',
+        category: reply ? CLOSING_ACKNOWLEDGEMENT_CATEGORY : 'acknowledgement',
+        risk: 'low',
+        draftReply: reply,
+        blockReason: reply
+          ? (dryRun ? 'dry-run closing acknowledgement' : (process.env.AUTO_REPLY_ENABLE_SEND !== 'true' ? 'AUTO_REPLY_ENABLE_SEND 꺼짐' : 'safe-mode enabled'))
+          : '일일 계정 안내 후 단순 확인/감사/해결 응답이라 추가 자동응답 생략',
+      });
+      return { status: reply && !dryRun && process.env.AUTO_REPLY_ENABLE_SEND === 'true' ? 'blocked' : 'ignored' };
+    }
+    try {
+      const sent = await sendGraytagChatMessage({ chatRoomUuid: job.chatRoomUuid, dealUsid: job.dealUsid, message: reply });
+      const ok = sent?.ok !== false;
+      updateAutoReplyJobPersisted(AUTO_REPLY_MEMORY_STORE, job.id, {
+        status: ok ? 'sent' : 'error',
+        category: CLOSING_ACKNOWLEDGEMENT_CATEGORY,
+        risk: 'low',
+        draftReply: reply,
+        blockReason: ok ? undefined : (sent.error || 'Graytag send failed'),
+      });
+      if (!ok) await notifyAutoReplyHuman(job, `종료 인사 자동발송 실패: ${sent.error || 'unknown'}`, 'warning');
+      return { status: ok ? 'sent' : 'error' };
+    } catch (e: any) {
+      const reason = e?.message || '종료 인사 자동발송 예외';
+      updateAutoReplyJobPersisted(AUTO_REPLY_MEMORY_STORE, job.id, { status: 'error', category: CLOSING_ACKNOWLEDGEMENT_CATEGORY, risk: 'low', draftReply: reply, blockReason: reason });
+      await notifyAutoReplyHuman(job, `종료 인사 자동발송 실패: ${reason}`, 'warning');
+      return { status: 'error' };
+    }
   }
 
   const parts: string[] = [];
   const categories: string[] = [];
+  if (shouldSendOffHoursNotice(AUTO_REPLY_MEMORY_STORE, job.chatRoomUuid, now)) {
+    parts.push(buildOffHoursNoticeReply());
+    categories.push(OFF_HOURS_NOTICE_CATEGORY);
+  }
   if (shouldSendDailyAccountAccessNotice(AUTO_REPLY_MEMORY_STORE, job.chatRoomUuid, now) && String(job.keepAcct || '').trim() && String(job.dealUsid || '').trim()) {
-    const accessUrl = createAutoReplyPartyAccessUrl(job);
+    const accessUrl = await createAutoReplyPartyAccessUrl(job);
     if (accessUrl) {
       parts.push(buildDailyAccountAccessNoticeReply(accessUrl));
       categories.push(DAILY_ACCOUNT_ACCESS_NOTICE_CATEGORY);
     }
-  }
-  if (shouldSendOffHoursNotice(AUTO_REPLY_MEMORY_STORE, job.chatRoomUuid, now)) {
-    parts.push(buildOffHoursNoticeReply());
-    categories.push(OFF_HOURS_NOTICE_CATEGORY);
   }
   const reply = combineNoticeReplies(parts);
   if (!reply) return null;
@@ -1850,10 +2416,12 @@ async function notifyAutoReplyHuman(job: any, reason: string, severity: 'warning
       `구매자: ${job.buyerName || '구매자'}`,
       `상품: ${job.productType || '기타'} ${job.productName || ''}`.trim(),
       `문의: ${String(job.buyerMessage || '').slice(0, 300)}`,
+      `바로가기: ${job.dashboardUrl || dashboardChatRoomUrl(job.chatRoomUuid)}`,
       `사유: ${reason}`,
       '대시보드: 채팅 > 자동응답 큐 확인',
     ].join('\n'),
     severity,
+    category: 'auto-reply',
     throttleMs: 10 * 60 * 1000,
   });
 }
@@ -1871,9 +2439,11 @@ ${String(job.buyerMessage || '').slice(0, 800)}`,
       draftReply ? `AI 초안:
 ${String(draftReply || '').slice(0, 1200)}` : '',
       `상태: ${reason}`,
+      `바로가기: ${job.dashboardUrl || dashboardChatRoomUrl(job.chatRoomUuid)}`,
       '대시보드: 채팅 > 자동응답 큐에서 보내기/수정하기',
     ].filter(Boolean).join('\n\n'),
     severity: job.risk === 'high' ? 'critical' : 'warning',
+    category: 'auto-reply',
     throttleMs: 0,
   });
   if (result.sent) {
@@ -1884,6 +2454,19 @@ ${String(draftReply || '').slice(0, 1200)}` : '',
 async function processAutoReplyJob(job: any, dryRun: boolean) {
   const dailyNotice = await processDailyAutomatedNotice(job, dryRun);
   if (dailyNotice) return dailyNotice;
+
+  const runtimeConfig = loadAutoReplyRuntimeConfig();
+  if (runtimeConfig.enabled === false) {
+    const updatedJob = updateAutoReplyJobPersisted(AUTO_REPLY_MEMORY_STORE, job.id, {
+      status: 'blocked',
+      draftReply: '',
+      blockReason: '자동응답이 꺼져 있음 · 텔레그램 알림만 전송',
+      category: 'disabled',
+      risk: 'low',
+    });
+    await notifyAutoReplyHuman(updatedJob, '자동응답 꺼짐 · 문의 알림만 전송', 'warning');
+    return { status: 'blocked' };
+  }
 
   const route = routeAutoReply(job.buyerMessage);
   updateAutoReplyJobPersisted(AUTO_REPLY_MEMORY_STORE, job.id, { category: route.category, risk: route.risk });
@@ -1920,13 +2503,13 @@ async function processAutoReplyJob(job: any, dryRun: boolean) {
   const finalHermes: HermesAutoReplyResult = {
     ...hermesResult,
     reply: autonomous.reply,
-    autoSendAllowed: autonomous.kind === 'auto_send' || autonomous.kind === 'clarifying_question' || autonomous.kind === 'receipt_and_alert',
+    autoSendAllowed: autonomous.kind === 'auto_send' || autonomous.kind === 'receipt_and_alert',
     needsHuman: false,
     risk: autonomous.notifyHuman ? 'high' : hermesResult.risk,
   };
   const safety = evaluateAutoReplySafety({
     policy,
-    route: autonomous.kind === 'receipt_and_alert' ? { ...route, risk: 'low', action: 'template' } : route,
+    route: autonomous.kind === 'receipt_and_alert' ? { ...route, category: 'safe_receipt', risk: 'low', action: 'template' } : route,
     hermes: finalHermes,
     recentRoomReplyTimes,
     now: new Date(),
@@ -2105,6 +2688,7 @@ async function scanAutoReplyCandidates(maxRooms = 10): Promise<any[]> {
   ];
   const manualMembers = loadManualMembers();
   const profileRefsByAccount = buildAutoReplyProfileRefsByAccount(allDeals, manualMembers);
+  const profileNameByMember = buildPartyAccessDeliverySnapshotByMember(loadPartyAccessLinkStore());
   const seen = new Set<string>();
   const candidates: any[] = [];
   for (const deal of allDeals) {
@@ -2121,16 +2705,26 @@ async function scanAutoReplyCandidates(maxRooms = 10): Promise<any[]> {
       if (!msgResp.ok) continue;
       const msgData = await safeJson(msgResp);
       const message = findLatestBuyerInquiryMessage(extractGraytagChats(msgData));
+      const buyerThread = findLatestBuyerInquiryThread(extractGraytagChats(msgData), 10);
       if (!message) continue;
       const serviceType = String(deal.productTypeString || '').trim();
       const accountEmail = String(deal.keepAcct || '').trim();
       const dealUsid = String(deal.dealUsid || '').trim();
       const partyRefs = profileRefsByAccount.get(autoReplyAccountKey(serviceType, accountEmail)) || [];
+      const assignedProfileNameFromHistory = resolvePartyAccessDeliverySnapshotForDeal(profileNameByMember, {
+        serviceType,
+        accountEmail,
+        dealUsid,
+        productUsid: String(deal.productUsid || ''),
+      })?.profileName || '';
       const assignedProfileName = serviceType && accountEmail && dealUsid
-        ? profileNicknameForPartyMember({ serviceType, accountEmail, partyRefs, kind: 'graytag', memberId: dealUsid })
+        ? (assignedProfileNameFromHistory || profileNicknameForPartyMember({ serviceType, accountEmail, partyRefs, kind: 'graytag', memberId: dealUsid }))
         : '';
       const candidate = {
-        message: message.message || '',
+        message: buyerThread.map((entry) => cleanChatTextForAi(entry.message || '')).filter(Boolean).join('\n') || message.message || '',
+        threadMessages: threadMessagesForAi(buyerThread),
+        imageUrls: Array.from(new Set(buyerThread.flatMap((entry) => extractImageUrlsFromHtml(entry.message || '')))),
+        dashboardUrl: dashboardChatRoomUrl(deal.chatRoomUuid),
         registeredDateTime: message.registeredDateTime,
         createdAt: message.createdAt,
         updatedAt: message.updatedAt,
@@ -2177,6 +2771,10 @@ const autoReplyTickHandler = async (c: any) => {
     if (!candidate.chatRoomUuid || !text) continue;
     const fingerprint = messageFingerprint({ ...candidate, message: text });
     const existingJobId = AUTO_REPLY_MEMORY_STORE.fingerprintToJobId[fingerprint];
+    if (!existingJobId && hasRecentAutoReplyJobForRoom(candidate.chatRoomUuid, messageTimestamp(candidate), 10) && !isSimpleAcknowledgement(text)) {
+      skipped += 1;
+      continue;
+    }
     const job = createAutoReplyJob(AUTO_REPLY_MEMORY_STORE, {
       fingerprint,
       chatRoomUuid: candidate.chatRoomUuid,
@@ -2195,6 +2793,9 @@ const autoReplyTickHandler = async (c: any) => {
       endDateTime: candidate.endDateTime ?? null,
       buyerMessage: text,
       messageTime: messageTimestamp(candidate),
+      threadMessages: Array.isArray(candidate.threadMessages) ? candidate.threadMessages : [{ role: 'buyer', content: text, time: messageTimestamp(candidate), imageUrls: Array.isArray(candidate.imageUrls) ? candidate.imageUrls : [] }],
+      imageUrls: Array.isArray(candidate.imageUrls) ? candidate.imageUrls : extractImageUrlsFromHtml(candidate.message || ''),
+      dashboardUrl: candidate.dashboardUrl || dashboardChatRoomUrl(candidate.chatRoomUuid),
     });
     const isNewJob = !existingJobId;
     if (isNewJob) {
@@ -2909,7 +3510,7 @@ app.post('/bulk-update-keepmemo', async (c) => {
   );
 
   const newTemplate = (emailId: string | number, pin: string) => {
-    return `✅ 아래 내용 꼭 읽어주세요! 로그인 관련 내용입니다!! ✅\n로그인 시도 간 필요한 이메일 코드는 아래 사이트에서 언제든지 셀프인증 가능합니다!\nhttps://email-verify.xyz/email/mail/${emailId}\n사이트에서 필요한 핀번호는 : ${pin}입니다!\n\n프로필을 만드실 때, 본명에서 가운데 글자를 별(*)로 가려주세요!\n만약, 특수기호 사용이 불가할 경우 본명으로 설정 부탁드립니다! 예)홍길동 또는 홍*동\n만약, 접속 시 기본 프로필 1개만  있거나 자리가 꽉 찼는데 기본 프로필이 있다면 그걸 먼저 수정하고 사용하시면 되겠습니다!\n\n🎬 성인인증 관련 🎬\n성인인증은 안된 상태로 계정이 전달되므로, 필요시에 인증이 안돼있는 경우, 인증 직접 하셔야 합니다!\n\n즐거운 시청되세요!`;
+    return `✅ 아래 내용 꼭 읽어주세요! 로그인 관련 내용입니다!! ✅\n로그인 시도 간 필요한 이메일 코드는 아래 사이트에서 언제든지 셀프인증 가능합니다!\nhttps://email-verify.one/email/mail/${emailId}\n사이트에서 필요한 핀번호는 : ${pin}입니다!\n\n프로필을 만드실 때, 본명에서 가운데 글자를 별(*)로 가려주세요!\n만약, 특수기호 사용이 불가할 경우 본명으로 설정 부탁드립니다! 예)홍길동 또는 홍*동\n만약, 접속 시 기본 프로필 1개만  있거나 자리가 꽉 찼는데 기본 프로필이 있다면 그걸 먼저 수정하고 사용하시면 되겠습니다!\n\n🎬 성인인증 관련 🎬\n성인인증은 안된 상태로 계정이 전달되므로, 필요시에 인증이 안돼있는 경우, 인증 직접 하셔야 합니다!\n\n즐거운 시청되세요!`;
   };
 
   const results: any[] = [];
@@ -2930,8 +3531,8 @@ app.post('/bulk-update-keepmemo', async (c) => {
     const memo = newTemplate(mapping.aliasId, mapping.pin || '(미설정)');
     const currentMemo = deal.keepMemo || '';
 
-    // 이미 새 템플릿인지 확인 (즐거운 시청 포함 여부)
-    if (currentMemo.includes('즐거운 시청되세요!')) {
+    // 이미 새 도메인 템플릿이면 스킵. 예전 도메인 템플릿은 반드시 새 도메인으로 갱신한다.
+    if (currentMemo.includes('email-verify.one') && currentMemo.includes('즐거운 시청되세요!')) {
       results.push({ usid: deal.productUsid, svc: deal.productTypeString, email: keepAcct, action: 'skip', reason: '이미 최신' });
       skipped++;
       continue;
@@ -3054,10 +3655,13 @@ async function runAutoUndercutter(dryRun = false): Promise<{ results: UndercutRe
   _undercutterRunning = true;
 
   const cookies = loadSessionCookies();
+  const state = loadUndercutterState();
+  const floorOverrides = state.floorDailyByCategory || {};
   const results: UndercutResult[] = [];
 
   try {
     for (const cat of UNDERCUTTER_CATEGORIES) {
+      const floor = Math.max(0, Math.floor(Number(floorOverrides[cat.key] ?? cat.floor) || cat.floor));
       try {
         // 1) 해당 카테고리 전체 게시물 조회 (가격 오름차순)
         const url = `https://graytag.co.kr/ws/product/findProducts?productAvailable=OnSale&sorting=PricePerDay&productCategory=${encodeURIComponent(cat.query)}&page=1&rows=50`;
@@ -3088,63 +3692,34 @@ async function runAutoUndercutter(dryRun = false): Promise<{ results: UndercutRe
           parseInt((p.pricePerDay || '0').replace(/[^0-9]/g, '') || '0')
         ));
 
-        // 4) 마지노선 초과인 경쟁자 vs 마지노선 이하 경쟁자
-        const rivalAboveFloor = rivalProducts.filter((p: any) => {
-          const daily = parseInt((p.pricePerDay || '0').replace(/[^0-9]/g, '') || '0');
-          return daily > cat.floor;
-        }).sort((a, b) => {
-          const aDaily = parseInt((a.pricePerDay || '0').replace(/[^0-9]/g, '') || '0');
-          const bDaily = parseInt((b.pricePerDay || '0').replace(/[^0-9]/g, '') || '0');
-          return aDaily - bDaily; // 오름차순: 싼 것부터 (1위)
+        // 4) 경쟁자 일당가 정렬
+        const rivalDailyRows = rivalProducts
+          .map((p: any) => ({
+            product: p,
+            name: p.lenderName || '경쟁자',
+            daily: parseInt((p.pricePerDay || '0').replace(/[^0-9]/g, '') || '0'),
+          }))
+          .filter((row) => row.daily > 0)
+          .sort((a, b) => a.daily - b.daily);
+
+        // 5) 목표 일당가 결정: 입력 마지노선을 하한선으로 두고 가능한 범위에서 1등 유지
+        const targetPlan = chooseUndercutterTargetDaily({
+          floorDaily: floor,
+          myDaily: myLowestDaily,
+          rivals: rivalDailyRows.map((row) => ({ name: row.name, daily: row.daily })),
         });
+        const targetDaily = targetPlan.targetDaily;
+        const rivalName = targetPlan.rivalName || '';
+        const rivalDaily = targetPlan.rivalDaily || 0;
 
-        const rivalBelowFloor = rivalProducts.filter((p: any) => {
-          const daily = parseInt((p.pricePerDay || '0').replace(/[^0-9]/g, '') || '0');
-          return daily > 0 && daily <= cat.floor;
-        }).sort((a, b) => {
-          const aDaily = parseInt((a.pricePerDay || '0').replace(/[^0-9]/g, '') || '0');
-          const bDaily = parseInt((b.pricePerDay || '0').replace(/[^0-9]/g, '') || '0');
-          return bDaily - aDaily; // 내림차순: 비싼 것부터 (최대 threat)
-        });
-
-        // 5) 목표 일당가 결정
-        let targetDaily: number;
-        let rivalName: string = '';
-        let rivalDaily: number = 0;
-
-        if (rivalBelowFloor.length > 0) {
-          // 마지노선 이하 경쟁자 존재
-          // → floor 이하 경쟁자 정보는 기록용
-          const belowRival = rivalBelowFloor[0];
-          const belowRivalDaily = parseInt((belowRival.pricePerDay || '0').replace(/[^0-9]/g, '') || '0');
-
-          if (rivalAboveFloor.length > 0) {
-            // floor 초과 경쟁자도 있으면 → 그 중 1위(최저가) 바로 밑으로 목표 설정
-            const rival = rivalAboveFloor[0];
-            rivalDaily = parseInt((rival.pricePerDay || '0').replace(/[^0-9]/g, '') || '0');
-            rivalName = rival.lenderName;
-            targetDaily = Math.max(rivalDaily - 1, cat.floor);
-          } else {
-            // floor 초과 경쟁자 없음 → 마지노선 고정
-            rivalDaily = belowRivalDaily;
-            rivalName = belowRival.lenderName;
-            targetDaily = cat.floor;
-
-            if (myLowestDaily === cat.floor) {
-              results.push({ category: cat.label, action: 'at_floor', reason: `마지노선 고정 (경쟁자 ${rivalName}: ${rivalDaily}원 이하)`, myDaily: myLowestDaily, floor: cat.floor });
-              continue;
-            }
-          }
-        } else if (rivalAboveFloor.length === 0) {
-          results.push({ category: cat.label, action: 'skip', reason: '마지노선 초과 경쟁자 없음', myDaily: myLowestDaily, floor: cat.floor });
+        if (targetPlan.action === 'no-rival') {
+          results.push({ category: cat.label, action: 'skip', reason: '경쟁자 없음', myDaily: myLowestDaily, floor });
           continue;
-        } else {
-          // 마지노선 초과 경쟁자 중 1위 가격 - 1원 = 목표 (공동 1위 포함)
-          const rival = rivalAboveFloor[0];
-          rivalDaily = parseInt((rival.pricePerDay || '0').replace(/[^0-9]/g, '') || '0');
-          rivalName = rival.lenderName;
-          // 1위 목표: 1위 경쟁자보다 1원 낮게 (마지노선 하한)
-          targetDaily = Math.max(rivalDaily - 1, cat.floor);
+        }
+
+        if (targetPlan.action === 'floor-blocked' && myLowestDaily === floor) {
+          results.push({ category: cat.label, action: 'at_floor', reason: targetPlan.reason, myDaily: myLowestDaily, rivalDaily, rivalName, targetDaily, floor });
+          continue;
         }
 
         // 6) 이미 목표와 같으면 skip, 낮으면 올리기 위해 통과
@@ -3152,7 +3727,7 @@ async function runAutoUndercutter(dryRun = false): Promise<{ results: UndercutRe
           results.push({
             category: cat.label, action: 'skip',
             reason: `이미 목표가 (내 ${myLowestDaily}원 = 목표 ${targetDaily}원)`,
-            myDaily: myLowestDaily, rivalDaily, rivalName, targetDaily, floor: cat.floor,
+            myDaily: myLowestDaily, rivalDaily, rivalName, targetDaily, floor,
           });
           continue;
         }
@@ -3163,7 +3738,7 @@ async function runAutoUndercutter(dryRun = false): Promise<{ results: UndercutRe
           results.push({
             category: cat.label, action: 'updated',
             reason: previewReason,
-            myDaily: myLowestDaily, rivalDaily, rivalName, targetDaily, floor: cat.floor, updatedCount: myProducts.length,
+            myDaily: myLowestDaily, rivalDaily, rivalName, targetDaily, floor, updatedCount: myProducts.length,
           });
           continue;
         }
@@ -3208,7 +3783,7 @@ async function runAutoUndercutter(dryRun = false): Promise<{ results: UndercutRe
               reason: `가격 안전장치 차단: ${safety.blockedReasons.join(', ')}`,
               myDaily: myPpd,
               targetDaily,
-              floor: cat.floor,
+              floor,
               productUsid: myProduct.usid,
               blockedReasons: safety.blockedReasons,
             });
@@ -3262,7 +3837,7 @@ async function runAutoUndercutter(dryRun = false): Promise<{ results: UndercutRe
         results.push({
           category: cat.label, action: summaryAction,
           reason: summaryReason,
-          myDaily: myLowestDaily, rivalDaily, rivalName, targetDaily, floor: cat.floor, updatedCount,
+          myDaily: myLowestDaily, rivalDaily, rivalName, targetDaily, floor, updatedCount,
         });
 
       } catch (e: any) {
@@ -3430,6 +4005,7 @@ interface UndercutterState {
   on: boolean;
   intervalMinutes: number;
   lastRun: string | null;
+  floorDailyByCategory?: Record<string, number>;
 }
 
 function loadUndercutterState(): UndercutterState {
@@ -3458,6 +4034,7 @@ app.post('/auto-undercutter/state', async (c) => {
     on: body.on !== undefined ? body.on : current.on,
     intervalMinutes: body.intervalMinutes !== undefined ? body.intervalMinutes : current.intervalMinutes,
     lastRun: current.lastRun,
+    floorDailyByCategory: body.floorDailyByCategory !== undefined ? body.floorDailyByCategory : current.floorDailyByCategory,
   };
   saveUndercutterState(newState);
   // 전역 스케줄러 재시작 신호 (process event)
@@ -3581,8 +4158,7 @@ function savePartyAccessLinkStore(store: PartyAccessLinkStore) {
 }
 
 function partyAccessShareUrl(c: any, token: string): string {
-  const url = new URL(c.req.url);
-  return `${url.origin}/dashboard/access/${encodeURIComponent(token)}`;
+  return partyAccessUrlFromToken(token);
 }
 
 function publicPartyAccessResponse(c: any, payload: ReturnType<typeof buildPartyAccessPublicPayload>) {
@@ -3620,6 +4196,41 @@ function saveProfileAssignments(items: ProfileAssignment[]) {
   const dir = PROFILE_ASSIGNMENTS_PATH.replace(/\/[^\/]+$/, '');
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
   writeFileSync(PROFILE_ASSIGNMENTS_PATH, JSON.stringify(items, null, 2), 'utf8');
+}
+
+function buildProfileNameByProductUsid(): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const assignment of loadProfileAssignments()) {
+    const nickname = String(assignment.profileNickname || '').trim();
+    if (!nickname || assignment.status === 'ended') continue;
+    for (const productUsid of assignment.productUsids || []) {
+      const key = String(productUsid || '').trim();
+      if (key && !map.has(key)) map.set(key, nickname);
+    }
+  }
+  for (const record of Object.values(loadPartyAccessLinkStore())) {
+    const productUsid = String(record?.member?.memberId || '').trim();
+    const nickname = String(record?.profileName || '').trim();
+    if (!productUsid || !nickname || record?.revokedAt) continue;
+    // 자동 메꾸기/자동전달은 판매글 productUsid로 접근 링크를 만들기 때문에
+    // 이 값을 계정관리/자동응답의 프로필명 원본으로 쓴다.
+    map.set(productUsid, nickname);
+  }
+  return map;
+}
+
+function buildProfileAssignmentByProductUsid(): Map<string, ProfileAssignment> {
+  const map = new Map<string, ProfileAssignment>();
+  for (const assignment of loadProfileAssignments()) {
+    if (assignment.status === 'ended') continue;
+    const accountEmail = String(assignment.accountEmail || '').trim();
+    if (!accountEmail || isGraytagAccessNoticeCredential(accountEmail)) continue;
+    for (const productUsid of assignment.productUsids || []) {
+      const key = String(productUsid || '').trim();
+      if (key && !map.has(key)) map.set(key, assignment);
+    }
+  }
+  return map;
 }
 
 const FB_PARTY_MAX: Record<string, number> = {
@@ -3833,7 +4444,8 @@ app.post('/party-access-links', async (c) => {
   if (!serviceType || !accountEmail || !member.memberId) {
     return c.json({ ok: false, error: 'serviceType, accountEmail, member.memberId required' }, 400);
   }
-  const record = createPartyAccessLinkRecord({
+  const store = loadPartyAccessLinkStore();
+  const record = await enrichPartyAccessRecordForPersist(createPartyAccessLinkRecord({
     token,
     serviceType,
     accountEmail,
@@ -3850,8 +4462,7 @@ app.post('/party-access-links', async (c) => {
       startDateTime: member.startDateTime || null,
       endDateTime: member.endDateTime || null,
     },
-  });
-  const store = loadPartyAccessLinkStore();
+  }), store);
   const next = { ...store, [record.tokenHash]: record };
   savePartyAccessLinkStore(next);
   writeAudit({
@@ -3873,7 +4484,10 @@ app.get('/party-access/:token', (c) => {
   const store = loadPartyAccessLinkStore();
   const record = store[partyAccessTokenHash(token)] || null;
   const viewedAt = new Date().toISOString();
-  const payload = buildPartyAccessPublicPayload(record, loadPartyMaintenanceChecklistStore(), readGeneratedAccountStore(), viewedAt);
+  const payload = buildPartyAccessPublicPayload(record, loadPartyMaintenanceChecklistStore(), readGeneratedAccountStore(), viewedAt, store, loadProfileAssignments());
+  const adminToken = configuredAdminToken();
+  const adminAccess = Boolean(adminToken && hasValidAdminToken(c, adminToken));
+  const responsePayload = adminAccess ? { ...payload, adminAccess: true } : payload;
   if (record) {
     const next = updatePartyAccessView(store, record, viewedAt, payload.ok === true);
     if (next !== store) savePartyAccessLinkStore(next);
@@ -3888,7 +4502,7 @@ app.get('/party-access/:token', (c) => {
       details: payload.audit,
     });
   }
-  return publicPartyAccessResponse(c, payload);
+  return publicPartyAccessResponse(c, responsePayload);
 });
 
 app.get('/profile-assignments', (c) => {

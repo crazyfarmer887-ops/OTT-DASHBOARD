@@ -101,7 +101,7 @@ describe('auto reply API', () => {
     expect(json.sent).toBe(0);
   });
 
-  test('auto-reply state drives tick policy and can disable drafting', async () => {
+  test('auto-reply state disables AI drafting and leaves Telegram notification only', async () => {
     await authed('/chat/auto-reply/state', {
       method: 'POST',
       body: JSON.stringify({ enabled: false, delaySeconds: 0 }),
@@ -112,11 +112,11 @@ describe('auto reply API', () => {
       body: JSON.stringify({ dryRun: false, candidates: [candidate(`api-disabled-room-${Date.now()}`)] }),
     });
     const json = await res.json() as any;
-    expect(json.drafted).toBe(1);
+    expect(json.blocked).toBe(1);
 
     const log = await authed('/chat/auto-reply-log?limit=1');
     const data = await log.json() as any;
-    expect(data.jobs[0].blockReason).toBe('자동응답이 꺼져 있음');
+    expect(data.jobs[0].blockReason).toBe('자동응답이 꺼져 있음 · 텔레그램 알림만 전송');
   });
 
   test('daily first buyer message drafts account access notice and later acknowledgement is ignored', async () => {
@@ -143,15 +143,26 @@ describe('auto reply API', () => {
     const log = await authed('/chat/auto-reply-log?limit=1');
     const data = await log.json() as any;
     expect(data.jobs[0].category).toContain('daily_account_access_notice');
-    expect(data.jobs[0].draftReply).toContain('로그인 관련 문의는 꼭');
+    expect(data.jobs[0].draftReply).toContain('우선 아래 계정 업데이트 주소');
     expect(data.jobs[0].draftReply).toContain('/dashboard/access/');
-    expect(data.jobs[0].draftReply).toContain('✅ 계정 접근 주소');
     const accessUrl = String(data.jobs[0].draftReply).match(/https?:\/\/[^\s]+\/dashboard\/access\/[^\s✅]+/)?.[0] || '';
     expect(accessUrl).toBeTruthy();
+    expect(accessUrl.startsWith('https://email-verify.one/dashboard/access/')).toBe(true);
     const accessToken = decodeURIComponent(accessUrl.split('/dashboard/access/')[1] || '');
     const publicRes = await apiApp.request(`/party-access/${encodeURIComponent(accessToken)}`);
     const publicData = await publicRes.json() as any;
     expect(publicData.profileName).toBe('고슴도치');
+
+    process.env.AUTO_REPLY_TEST_NOW = '2026-05-05T06:00:00Z';
+    const second = await authed('/chat/auto-reply/tick', {
+      method: 'POST',
+      body: JSON.stringify({ dryRun: true, candidates: [{ ...firstCandidate, message: '로그인 문의 다시', registeredDateTime: '2026-05-05T06:00:00Z' }] }),
+    });
+    expect((await second.json() as any).drafted).toBe(1);
+    const secondLog = await authed('/chat/auto-reply-log?limit=1');
+    const secondData = await secondLog.json() as any;
+    const secondAccessUrl = String(secondData.jobs[0].draftReply).match(/https?:\/\/[^\s]+\/dashboard\/access\/[^\s✅]+/)?.[0] || '';
+    expect(secondAccessUrl).toBe(accessUrl);
 
     const ack = await authed('/chat/auto-reply/tick', {
       method: 'POST',
@@ -174,7 +185,8 @@ describe('auto reply API', () => {
     const data = await log.json() as any;
     expect(data.jobs[0].category).toContain('daily_account_access_notice');
     expect(data.jobs[0].category).toContain('off_hours_notice');
-    expect(data.jobs[0].draftReply).toContain('문의 시간은 14:00 ~ 21:00');
+    expect(data.jobs[0].draftReply).toContain('문의 가능 시간은 14:00 ~ 21:00입니다');
+    expect(data.jobs[0].draftReply.trim().startsWith('문의 가능 시간은 14:00 ~ 21:00입니다')).toBe(true);
   });
 
   test('manual AI reply endpoint uses Hermes path or safe fallback, not OpenAI/PicoClaw', async () => {

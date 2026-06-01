@@ -18,6 +18,7 @@ import { startAutoReplyDaemon } from './src/scheduler/auto-reply-daemon.ts';
 import { buildPartyAccessHtml } from './src/lib/party-access-page-html.ts';
 
 const distDir = resolve(process.cwd(), 'dist/client');
+const accessNoticeAssetsDir = resolve(process.cwd(), 'access-notice-assets');
 
 const MIME_TYPES: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -106,6 +107,24 @@ function partyAccessHtmlResponse(token: string): Response {
 
 app.get('/dashboard/access/:token', (c) => partyAccessHtmlResponse(c.req.param('token')));
 app.get('/access/:token', (c) => partyAccessHtmlResponse(c.req.param('token')));
+
+async function accessNoticeAssetResponse(name: string) {
+  if (!/^[a-z0-9._-]+$/i.test(name)) return new Response('Forbidden', { status: 403 });
+  const filePath = resolve(accessNoticeAssetsDir, name);
+  if (!filePath.startsWith(accessNoticeAssetsDir) || !existsSync(filePath)) return new Response('Not found', { status: 404 });
+  const fileStat = await stat(filePath);
+  if (!fileStat.isFile()) return new Response('Not found', { status: 404 });
+  const content = await readFile(filePath);
+  return new Response(content, {
+    headers: {
+      'content-type': MIME_TYPES[extname(filePath)] ?? 'application/octet-stream',
+      'cache-control': 'public, max-age=31536000, immutable',
+    },
+  });
+}
+
+app.get('/access-notice-assets/:name', (c) => accessNoticeAssetResponse(c.req.param('name')));
+app.get('/dashboard/access-notice-assets/:name', (c) => accessNoticeAssetResponse(c.req.param('name')));
 
 function normalizeDashboardAssetPath(pathname: string): string {
   return pathname.startsWith('/dashboard/assets/') ? pathname.replace(/^\/dashboard(?=\/assets\/)/, '') : pathname;

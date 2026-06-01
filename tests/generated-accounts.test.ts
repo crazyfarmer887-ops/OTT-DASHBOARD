@@ -65,6 +65,18 @@ describe('generated accounts', () => {
     expect(result.summary.totalAccounts).toBe(2);
   });
 
+  test('uses corrected manual TVING login IDs for double-pass Wavve 4 generated rows', () => {
+    const wavve4 = {
+      ...buildGeneratedAccount({ serviceType: '티빙+웨이브', alias: { id: 104, email: 'gtwavve4.fastball266@aleeas.com' }, password: 'p4', pin: '444444', memo: 'memo', now: '2026-04-29T12:03:00.000Z' }),
+      paymentStatus: 'paid' as const,
+      paidAt: '2026-04-29T12:11:00.000Z',
+    };
+    const result = mergeGeneratedAccountsIntoManagement({ services: [], summary: { totalAccounts: 0 } }, { [wavve4.id]: wavve4 });
+    const tvingRows = result.services.find(s => s.serviceType === '티빙')?.accounts || [];
+    const tving4 = tvingRows.find((row) => row.email === 'gtwavve4');
+    expect(tving4?.generatedAccount.wavveEmail).toBe('gtwavve4.fastball266@aleeas.com');
+  });
+
   test('normalizes paid/pending payment checkbox patches', () => {
     expect(normalizeGeneratedAccountPatch({ paymentStatus: 'paid', paidAt: '2026-04-29T12:00:00.000Z' })).toEqual({ paymentStatus: 'paid', paidAt: '2026-04-29T12:00:00.000Z' });
     expect(normalizeGeneratedAccountPatch({ paymentStatus: 'pending' })).toEqual({ paymentStatus: 'pending', paidAt: null });

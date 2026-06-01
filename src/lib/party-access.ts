@@ -1,6 +1,9 @@
 import { createHash } from 'node:crypto';
 import type { GeneratedAccountStore } from './generated-accounts';
+import { isGraytagAccessNoticeCredential } from './graytag-fill';
 import type { PartyMaintenanceChecklistStore } from './party-maintenance-checklist';
+import type { ProfileAssignment } from './profile-nickname';
+import { DOUBLE_PASS_LABEL, TVING_SERVICE, WAVVE_SERVICE, resolveDoublePassBundleNo } from './tving-wavve-bundle';
 export { buildPartyAccessDeliveryTemplate } from './party-access-template';
 
 export type PartyAccessMemberKind = 'graytag' | 'manual';
@@ -17,6 +20,7 @@ export interface PartyAccessMemberRef {
 
 export interface PartyAccessLinkRecord {
   id: string;
+  shareToken?: string;
   tokenHash: string;
   serviceType: string;
   accountEmail: string;
@@ -40,18 +44,62 @@ export interface PartyAccessCredentials {
   updatedAt: string;
 }
 
-const ENDED_STATUS_PATTERNS = [
-  /^Finished/i,
-  /^Cancel/i,
-  /^Deleted$/i,
-  /^Expired$/i,
-  /^cancelled$/i,
-  /^expired$/i,
-  /종료/,
-  /취소/,
-  /만료/,
-  /삭제/,
+export interface PartyAccessProfileStatus {
+  profileName: string;
+  memberName: string;
+  status: string;
+  statusName: string;
+  startDateTime: string | null;
+  endDateTime: string | null;
+  isCurrentMember: boolean;
+}
+
+export interface PartyAccessDeliverySnapshot {
+  serviceType: string;
+  accountEmail: string;
+  memberKind: PartyAccessMemberKind;
+  memberId: string;
+  memberName: string;
+  password: string;
+  pin: string;
+  emailAccessUrl: string;
+  profileName: string;
+  deliveredAt: string;
+  revokedAt: string | null;
+}
+
+export interface PartyAccessMemberStatusLike {
+  kind?: PartyAccessMemberKind;
+  memberId: string;
+  memberName?: string | null;
+  status?: string | null;
+  statusName?: string | null;
+  startDateTime?: string | null;
+  endDateTime?: string | null;
+}
+
+const ACTIVE_PARTY_MEMBER_STATUS_CODES = new Set([
+  'active',
+  'current',
+  'delivered',
+  'deliveredandcheckprepaid',
+  'using',
+  'usingnearexpiration',
+]);
+
+const ACTIVE_PARTY_MEMBER_STATUS_NAMES = [
+  '계정확인중',
+  '사용중',
+  '이용중',
+  '종료임박',
 ];
+
+const MARKETPLACE_OR_INTERNAL_STATUS_CODES = new Set([
+  'onsale',
+  'sale',
+  'selling',
+  'waiting',
+]);
 
 export function normalizePartyAccessToken(token: string): string {
   return String(token || '').trim().replace(/[^A-Za-z0-9._~-]/g, '');
@@ -65,8 +113,24 @@ function normalizeKeyPart(value: string): string {
   return String(value || '').trim();
 }
 
+export function normalizeEmailVerifyUrl(value: string): string {
+  return normalizeKeyPart(value)
+    .replace(/^http:\/\/email-verify\.xyz(?=\/|$)/i, 'https://email-verify.one')
+    .replace(/^https?:\/\/email-verify\.xyz(?=\/|$)/i, 'https://email-verify.one')
+    .replace(/^http:\/\/email-verify\.one(?=\/|$)/i, 'https://email-verify.one');
+}
+
+export function isWavvePartyAccessService(serviceType: string): boolean {
+  const value = normalizeKeyPart(serviceType).toLowerCase().replace(/\s+/g, '');
+  return value === WAVVE_SERVICE || value === 'wavve' || value === '웨이브';
+}
+
 export function partyAccessAccountKey(serviceType: string, accountEmail: string): string {
   return `${normalizeKeyPart(serviceType)}:${normalizeKeyPart(accountEmail)}`;
+}
+
+export function partyAccessMemberHistoryKey(serviceType: string, accountEmail: string, kind: PartyAccessMemberKind, memberId: string): string {
+  return `${partyAccessAccountKey(serviceType, accountEmail)}:${kind}:${normalizeKeyPart(memberId)}`;
 }
 
 function parseDateEndOfDay(value: string | null | undefined): Date | null {
@@ -86,9 +150,38 @@ function parseDateEndOfDay(value: string | null | undefined): Date | null {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
+function compactStatusText(value: string | null | undefined): string {
+  return String(value || '').trim().replace(/\s+/g, '').toLowerCase();
+}
+
 function isEndedStatus(status: string, statusName = ''): boolean {
-  const text = `${status || ''} ${statusName || ''}`.trim();
-  return ENDED_STATUS_PATTERNS.some((pattern) => pattern.test(text));
+  const code = compactStatusText(status);
+  const name = compactStatusText(statusName);
+  const combined = `${code} ${name}`;
+
+  if (/^cancel/.test(code) || /^finished/.test(code)) return true;
+  if (/(normalfinished|finished|cancelled|canceled|deleted|expired|withdrawn|withdrawal|left|leave|ended|terminated|refund)/.test(code)) return true;
+  if (/(거래취소|취소|만료|삭제|탈퇴|이탈|나감|나간|환불|거래완료|중도종료)/.test(combined)) return true;
+  if (name === '종료' || name === '완료') return true;
+  return false;
+}
+
+function isCurrentPartyAccessProfileStatus(status: string, statusName = ''): boolean {
+  const code = compactStatusText(status);
+  const name = compactStatusText(statusName);
+  if (isEndedStatus(status, statusName)) return false;
+  if (MARKETPLACE_OR_INTERNAL_STATUS_CODES.has(code)) return false;
+  if (!code && !name) return true;
+  if (ACTIVE_PARTY_MEMBER_STATUS_CODES.has(code)) return true;
+  return ACTIVE_PARTY_MEMBER_STATUS_NAMES.some((activeName) => name.includes(compactStatusText(activeName)));
+}
+
+function partyAccessProfileLimit(serviceType: string): number {
+  const service = normalizeKeyPart(serviceType).toLowerCase().replace(/\s+/g, '');
+  if (service === '디즈니플러스' || service === 'disney+' || service === 'disneyplus') return 6;
+  if (service === '넷플릭스' || service === 'netflix') return 5;
+  if (service === '티빙' || service === 'tving' || service === '왓챠플레이' || service === 'watcha' || service === '웨이브' || service === 'wavve') return 4;
+  return 0;
 }
 
 export function createPartyAccessLinkRecord(input: {
@@ -107,13 +200,14 @@ export function createPartyAccessLinkRecord(input: {
   const memberId = normalizeKeyPart(input.member.memberId);
   return {
     id: `${partyAccessAccountKey(input.serviceType, input.accountEmail)}:${input.member.kind}:${memberId}:${tokenHash.slice(0, 12)}`,
+    shareToken: normalizePartyAccessToken(input.token),
     tokenHash,
     serviceType: normalizeKeyPart(input.serviceType),
     accountEmail: normalizeKeyPart(input.accountEmail),
     fallbackPassword: String(input.fallbackPassword || '').slice(0, 300),
     fallbackPin: String(input.fallbackPin || '').replace(/\D/g, '').slice(0, 6),
     profileName: normalizeKeyPart(input.profileName || input.member.memberName || '(미확인)').slice(0, 40),
-    emailAccessUrl: normalizeKeyPart(input.emailAccessUrl || '').slice(0, 500),
+    emailAccessUrl: normalizeEmailVerifyUrl(normalizeKeyPart(input.emailAccessUrl || '')).slice(0, 500),
     member: {
       kind: input.member.kind,
       memberId,
@@ -139,16 +233,212 @@ export function isPartyAccessAllowed(record: PartyAccessLinkRecord, now = new Da
   return { allowed: true, reason: 'active' };
 }
 
+export function buildPartyAccessDeliverySnapshotByMember(store: PartyAccessLinkStore = {}): Map<string, PartyAccessDeliverySnapshot> {
+  const snapshots = new Map<string, PartyAccessDeliverySnapshot>();
+  const records = Object.values(store || {})
+    .filter((record) => record && record.member?.memberId)
+    .sort((a, b) => String(a.createdAt || '').localeCompare(String(b.createdAt || '')));
+  for (const record of records) {
+    const key = partyAccessMemberHistoryKey(record.serviceType, record.accountEmail, record.member.kind, record.member.memberId);
+    snapshots.set(key, {
+      serviceType: record.serviceType,
+      accountEmail: record.accountEmail,
+      memberKind: record.member.kind,
+      memberId: record.member.memberId,
+      memberName: record.member.memberName,
+      password: normalizeKeyPart(record.fallbackPassword),
+      pin: normalizeKeyPart(record.fallbackPin).replace(/\D/g, '').slice(0, 6),
+      emailAccessUrl: normalizeKeyPart(record.emailAccessUrl),
+      profileName: normalizeKeyPart(record.profileName),
+      deliveredAt: normalizeKeyPart(record.createdAt),
+      revokedAt: record.revokedAt || null,
+    });
+  }
+  return snapshots;
+}
+
+export function resolvePartyAccessDeliverySnapshotByListing(
+  snapshots: Map<string, PartyAccessDeliverySnapshot>,
+  input: {
+    serviceType: string;
+    dealUsid?: string | null;
+    productUsid?: string | null;
+  },
+): PartyAccessDeliverySnapshot | undefined {
+  const serviceType = normalizeKeyPart(input.serviceType);
+  const productUsid = normalizeKeyPart(String(input.productUsid || ''));
+  const dealUsid = normalizeKeyPart(String(input.dealUsid || ''));
+  const values = Array.from(snapshots.values())
+    .filter((snapshot) => normalizeKeyPart(snapshot.serviceType) === serviceType)
+    .filter((snapshot) => !snapshot.revokedAt)
+    .sort((a, b) => String(b.deliveredAt || '').localeCompare(String(a.deliveredAt || '')));
+
+  // 판매중(fill:productUsid) 링크가 실제 계정 매핑의 원천이다. Graytag 공개 ID가
+  // "아래 메세지를 확인해주세요" 같은 안내 문구여도 /access 링크 기록으로 복원한다.
+  // 같은 productUsid로 링크가 여러 번 만들어졌다면 취소되지 않은 최신 링크를 신뢰한다.
+  if (productUsid) {
+    const fillSnapshot = values.find((snapshot) => normalizeKeyPart(snapshot.memberId) === `fill:${productUsid}`);
+    if (fillSnapshot) return fillSnapshot;
+  }
+  if (dealUsid) {
+    return values.find((snapshot) => normalizeKeyPart(snapshot.memberId) === dealUsid);
+  }
+  return undefined;
+}
+
+export function resolvePartyAccessDeliverySnapshotForDeal(
+  snapshots: Map<string, PartyAccessDeliverySnapshot>,
+  input: {
+    serviceType: string;
+    accountEmail: string;
+    dealUsid?: string | null;
+    productUsid?: string | null;
+  },
+): PartyAccessDeliverySnapshot | undefined {
+  const serviceType = normalizeKeyPart(input.serviceType);
+  const accountEmail = normalizeKeyPart(input.accountEmail);
+  const productUsid = normalizeKeyPart(String(input.productUsid || ''));
+  const dealUsid = normalizeKeyPart(String(input.dealUsid || ''));
+
+  // 판매중(fill:productUsid) 링크가 먼저 만들어지고, 구매 후 dealUsid가 새로 생긴다.
+  // 이때 기존 fill 링크의 프로필명이 원래 자리 배정이므로 dealUsid 히스토리보다 우선한다.
+  if (productUsid) {
+    const fillSnapshot = snapshots.get(partyAccessMemberHistoryKey(serviceType, accountEmail, 'graytag', `fill:${productUsid}`));
+    if (fillSnapshot && !fillSnapshot.revokedAt) return fillSnapshot;
+  }
+  if (dealUsid) {
+    const dealSnapshot = snapshots.get(partyAccessMemberHistoryKey(serviceType, accountEmail, 'graytag', dealUsid));
+    if (dealSnapshot && !dealSnapshot.revokedAt) return dealSnapshot;
+  }
+  return resolvePartyAccessDeliverySnapshotByListing(snapshots, { serviceType, dealUsid, productUsid });
+}
+
+export function syncPartyAccessStoreWithMembers(input: {
+  store: PartyAccessLinkStore;
+  members: PartyAccessMemberStatusLike[];
+  now?: string;
+}): { store: PartyAccessLinkStore; changed: boolean } {
+  const now = input.now || new Date().toISOString();
+  const statusByKey = new Map<string, PartyAccessMemberStatusLike>();
+  for (const member of input.members || []) {
+    const kind = member.kind === 'manual' ? 'manual' : 'graytag';
+    const memberId = normalizeKeyPart(member.memberId);
+    if (!memberId) continue;
+    statusByKey.set(`${kind}:${memberId}`, member);
+  }
+  let changed = false;
+  const next: PartyAccessLinkStore = { ...(input.store || {}) };
+  for (const [tokenHash, record] of Object.entries(input.store || {})) {
+    if (!record?.member?.memberId) continue;
+    const status = statusByKey.get(`${record.member.kind}:${record.member.memberId}`);
+    if (!status) continue;
+    const updatedMember = {
+      ...record.member,
+      memberName: normalizeKeyPart(String(status.memberName ?? record.member.memberName)) || record.member.memberName,
+      status: normalizeKeyPart(String(status.status ?? record.member.status)),
+      statusName: normalizeKeyPart(String(status.statusName ?? status.status ?? record.member.statusName ?? record.member.status)),
+      startDateTime: status.startDateTime !== undefined ? status.startDateTime || null : record.member.startDateTime || null,
+      endDateTime: status.endDateTime !== undefined ? status.endDateTime || null : record.member.endDateTime || null,
+    };
+    const shouldRevoke = isEndedStatus(updatedMember.status, updatedMember.statusName);
+    const updated: PartyAccessLinkRecord = {
+      ...record,
+      member: updatedMember,
+      revokedAt: shouldRevoke ? (record.revokedAt || now) : record.revokedAt,
+    };
+    if (JSON.stringify(updated) !== JSON.stringify(record)) {
+      next[tokenHash] = updated;
+      changed = true;
+    }
+  }
+  return { store: next, changed };
+}
+
 function findGeneratedAccount(store: GeneratedAccountStore, serviceType: string, accountEmail: string) {
   const exactKey = partyAccessAccountKey(serviceType, accountEmail);
   const lowerEmail = normalizeKeyPart(accountEmail).toLowerCase();
-  return Object.values(store || {}).find((account) => {
+  const normalizedService = normalizeKeyPart(serviceType);
+  const exact = Object.values(store || {}).find((account) => {
     const accountAny = account as any;
+    const accountService = normalizeKeyPart(accountAny.serviceType);
+    const accountEmail = normalizeKeyPart(accountAny.email).toLowerCase();
     if (partyAccessAccountKey(accountAny.serviceType, accountAny.email) === exactKey) return true;
-    if (normalizeKeyPart(accountAny.email).toLowerCase() === lowerEmail && normalizeKeyPart(accountAny.serviceType) === normalizeKeyPart(serviceType)) return true;
-    if (normalizeKeyPart(accountAny.email).toLowerCase() === lowerEmail && normalizeKeyPart(accountAny.sourceServiceType || '') === normalizeKeyPart(serviceType)) return true;
+    if (accountEmail === lowerEmail && accountService === normalizedService) return true;
+    if (accountEmail === lowerEmail && normalizeKeyPart(accountAny.sourceServiceType || '') === normalizedService) return true;
+    if (accountEmail === lowerEmail && normalizedService === WAVVE_SERVICE && accountService === DOUBLE_PASS_LABEL) return true;
     return false;
   });
+  if (exact) return exact;
+
+  if (normalizedService !== TVING_SERVICE) return undefined;
+  const tvingBundleNo = resolveDoublePassBundleNo({ serviceType: TVING_SERVICE, loginId: accountEmail });
+  if (!tvingBundleNo) return undefined;
+  return Object.values(store || {}).find((account) => {
+    const accountAny = account as any;
+    const accountService = normalizeKeyPart(accountAny.serviceType);
+    if (accountService !== DOUBLE_PASS_LABEL && accountService !== WAVVE_SERVICE) return false;
+    const wavveBundleNo = resolveDoublePassBundleNo({ serviceType: WAVVE_SERVICE, email: accountAny.email, accountId: accountAny.email });
+    return wavveBundleNo === tvingBundleNo;
+  });
+}
+
+function emailAccessUrlFromAliasId(aliasId: unknown): string {
+  const value = normalizeKeyPart(String(aliasId ?? ''));
+  return value ? `https://email-verify.one/email/mail/${encodeURIComponent(value)}` : '';
+}
+
+function findLatestSiblingWithValue(store: PartyAccessLinkStore, record: PartyAccessLinkRecord, field: 'fallbackPassword' | 'fallbackPin' | 'emailAccessUrl'): string {
+  const key = partyAccessAccountKey(record.serviceType, record.accountEmail);
+  return Object.values(store || {})
+    .filter((item) => item && item.tokenHash !== record.tokenHash)
+    .filter((item) => partyAccessAccountKey(item.serviceType, item.accountEmail) === key)
+    .filter((item) => normalizeKeyPart(String((item as any)[field] || '')))
+    .filter((item) => field !== 'fallbackPassword' || !isGraytagAccessNoticeCredential(String((item as any)[field] || '')))
+    .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))[0]?.[field] || '';
+}
+
+function usablePartyAccessCredential(value: string | null | undefined): string {
+  const trimmed = normalizeKeyPart(String(value || ''));
+  return isGraytagAccessNoticeCredential(trimmed) ? '' : trimmed;
+}
+
+export function resolvePartyAccessEmailAccessUrl(
+  record: PartyAccessLinkRecord,
+  checklistStore: PartyMaintenanceChecklistStore = {},
+  generatedStore: GeneratedAccountStore = {},
+): string {
+  if (isWavvePartyAccessService(record.serviceType)) return '';
+  const key = partyAccessAccountKey(record.serviceType, record.accountEmail);
+  const state = checklistStore[key];
+  const generated = findGeneratedAccount(generatedStore, record.serviceType, record.accountEmail) as any;
+  return normalizeEmailVerifyUrl(
+    normalizeKeyPart(record.emailAccessUrl)
+    || emailAccessUrlFromAliasId(state?.generatedPinAliasId)
+    || emailAccessUrlFromAliasId(generated?.emailId)
+  );
+}
+
+export function enrichPartyAccessRecordWithKnownCredentials(
+  record: PartyAccessLinkRecord,
+  store: PartyAccessLinkStore = {},
+  checklistStore: PartyMaintenanceChecklistStore = {},
+  generatedStore: GeneratedAccountStore = {},
+): PartyAccessLinkRecord {
+  const key = partyAccessAccountKey(record.serviceType, record.accountEmail);
+  const state = checklistStore[key];
+  const generated = findGeneratedAccount(generatedStore, record.serviceType, record.accountEmail) as any;
+  const fallbackPassword = usablePartyAccessCredential(record.fallbackPassword)
+    || findLatestSiblingWithValue(store, record, 'fallbackPassword')
+    || normalizeKeyPart(String(state?.changedPassword || generated?.password || ''));
+  const fallbackPin = normalizeKeyPart(record.fallbackPin)
+    || findLatestSiblingWithValue(store, record, 'fallbackPin')
+    || normalizeKeyPart(String(state?.generatedPin || generated?.pin || '')).replace(/\D/g, '').slice(0, 6);
+  const emailAccessUrl = resolvePartyAccessEmailAccessUrl({
+    ...record,
+    emailAccessUrl: normalizeKeyPart(record.emailAccessUrl) || findLatestSiblingWithValue(store, record, 'emailAccessUrl'),
+  }, checklistStore, generatedStore);
+  if (fallbackPassword === record.fallbackPassword && fallbackPin === record.fallbackPin && emailAccessUrl === normalizeEmailVerifyUrl(record.emailAccessUrl)) return record;
+  return { ...record, fallbackPassword, fallbackPin, emailAccessUrl };
 }
 
 export function resolvePartyAccessCredentials(
@@ -159,10 +449,69 @@ export function resolvePartyAccessCredentials(
   const key = partyAccessAccountKey(record.serviceType, record.accountEmail);
   const state = checklistStore[key];
   const generated = findGeneratedAccount(generatedStore, record.serviceType, record.accountEmail) as any;
-  const password = String(state?.changedPassword || record.fallbackPassword || generated?.password || '').trim();
-  const pin = String(state?.generatedPin || record.fallbackPin || generated?.pin || '').trim();
+  const password = usablePartyAccessCredential(String(state?.changedPassword || ''))
+    || usablePartyAccessCredential(record.fallbackPassword)
+    || usablePartyAccessCredential(String(generated?.password || ''));
+  const pin = isWavvePartyAccessService(record.serviceType) ? '' : String(state?.generatedPin || record.fallbackPin || generated?.pin || '').trim();
   const updatedAt = String(state?.updatedAt || generated?.createdAt || record.createdAt || '');
-  return { id: record.accountEmail, password, pin, updatedAt };
+  return { id: usablePartyAccessCredential(record.accountEmail), password, pin, updatedAt };
+}
+
+export function buildPartyAccessProfileStatuses(
+  record: PartyAccessLinkRecord,
+  store: PartyAccessLinkStore = {},
+  now = new Date().toISOString(),
+  _profileAssignments: ProfileAssignment[] = [],
+): PartyAccessProfileStatus[] {
+  const accountKey = partyAccessAccountKey(record.serviceType, record.accountEmail);
+  const latestByMember = new Map<string, PartyAccessLinkRecord>();
+  for (const sibling of Object.values(store || {})) {
+    if (!sibling?.member?.memberId) continue;
+    if (partyAccessAccountKey(sibling.serviceType, sibling.accountEmail) !== accountKey) continue;
+    const memberKey = `${sibling.member.kind}:${sibling.member.memberId}`;
+    const prev = latestByMember.get(memberKey);
+    if (!prev || String(prev.createdAt || '').localeCompare(String(sibling.createdAt || '')) < 0) {
+      latestByMember.set(memberKey, sibling);
+    }
+  }
+  if (!latestByMember.has(`${record.member.kind}:${record.member.memberId}`)) {
+    latestByMember.set(`${record.member.kind}:${record.member.memberId}`, record);
+  }
+
+  const latestSiblings = Array.from(latestByMember.values());
+  const seenProfiles = new Set<string>();
+  const rows = latestSiblings
+    .filter((sibling) => isPartyAccessAllowed(sibling, now).allowed)
+    .filter((sibling) => isCurrentPartyAccessProfileStatus(sibling.member.status, sibling.member.statusName || sibling.member.status))
+    .map((sibling) => ({
+      profileName: normalizeKeyPart(sibling.profileName || sibling.member.memberName || '(미확인)'),
+      memberName: normalizeKeyPart(sibling.member.memberName || '(미확인)'),
+      status: normalizeKeyPart(sibling.member.status),
+      statusName: normalizeKeyPart(sibling.member.statusName || sibling.member.status),
+      startDateTime: sibling.member.startDateTime || null,
+      endDateTime: sibling.member.endDateTime || null,
+      isCurrentMember: sibling.member.kind === record.member.kind && sibling.member.memberId === record.member.memberId,
+    }))
+    .sort((a, b) => {
+      if (a.isCurrentMember !== b.isCurrentMember) return a.isCurrentMember ? -1 : 1;
+      return String(a.endDateTime || '').localeCompare(String(b.endDateTime || '')) || a.profileName.localeCompare(b.profileName);
+    })
+    .filter((row) => {
+      const key = row.profileName.toLowerCase();
+      if (!key || seenProfiles.has(key)) return false;
+      seenProfiles.add(key);
+      return true;
+    });
+
+  const limit = partyAccessProfileLimit(record.serviceType);
+  const limitedRows = limit > 0 && rows.length > limit
+    ? [...rows.filter((row) => row.isCurrentMember), ...rows.filter((row) => !row.isCurrentMember).slice(0, Math.max(0, limit - rows.filter((row) => row.isCurrentMember).length))]
+    : rows;
+
+  return limitedRows.sort((a, b) => {
+    if (a.isCurrentMember !== b.isCurrentMember) return a.isCurrentMember ? -1 : 1;
+    return String(a.endDateTime || '').localeCompare(String(b.endDateTime || '')) || a.profileName.localeCompare(b.profileName);
+  });
 }
 
 export function buildPartyAccessPublicPayload(
@@ -170,6 +519,8 @@ export function buildPartyAccessPublicPayload(
   checklistStore: PartyMaintenanceChecklistStore = {},
   generatedStore: GeneratedAccountStore = {},
   now = new Date().toISOString(),
+  store: PartyAccessLinkStore = {},
+  profileAssignments: ProfileAssignment[] = [],
 ): {
   ok: boolean;
   reason?: string;
@@ -178,6 +529,7 @@ export function buildPartyAccessPublicPayload(
   memberName?: string;
   profileName?: string;
   emailAccessUrl?: string;
+  partyProfiles?: PartyAccessProfileStatus[];
   period?: { startDateTime: string | null; endDateTime: string | null };
   credentials?: PartyAccessCredentials;
   audit: { memberId: string; allowed: boolean; reason: string; viewedAt: string };
@@ -188,10 +540,11 @@ export function buildPartyAccessPublicPayload(
   const allowed = isPartyAccessAllowed(record, now);
   const base = {
     serviceType: record.serviceType,
-    accountEmail: record.accountEmail,
+    accountEmail: usablePartyAccessCredential(record.accountEmail),
     memberName: record.member.memberName,
     profileName: record.profileName || record.member.memberName,
-    emailAccessUrl: record.emailAccessUrl || '',
+    emailAccessUrl: resolvePartyAccessEmailAccessUrl(record, checklistStore, generatedStore),
+    partyProfiles: buildPartyAccessProfileStatuses(record, store, now, profileAssignments),
     period: { startDateTime: record.member.startDateTime || null, endDateTime: record.member.endDateTime || null },
     audit: { memberId: record.member.memberId, allowed: allowed.allowed, reason: allowed.reason, viewedAt: now },
   };

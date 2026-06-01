@@ -46,15 +46,15 @@ describe('auto reply autonomy decision', () => {
     expect(decision.reply).toContain('기본 프로필');
   });
 
-  test('asks a clarifying question for ambiguous messages without human alert', () => {
+  test('does not use generic numbered clarification when Gemma cannot infer intent', () => {
     const decision = decideAutonomousReply({
       buyerMessage: '안돼요',
       route: { category: 'unknown', risk: 'medium', action: 'hermes_draft', reason: 'ambiguous' },
       hermes: { category: 'unknown', risk: 'medium', confidence: 0.5, autoSendAllowed: false, reply: '', reason: 'ambiguous', needsHuman: false },
     });
-    expect(decision.kind).toBe('clarifying_question');
-    expect(decision.reply).toContain('어느 단계');
-    expect(decision.notifyHuman).toBe(false);
+    expect(decision.kind).toBe('receipt_and_alert');
+    expect(decision.reply).not.toContain('어느 단계');
+    expect(decision.notifyHuman).toBe(true);
   });
 
   test('keeps Hermes draft for short but clear acknowledgement messages', () => {

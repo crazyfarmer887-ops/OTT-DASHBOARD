@@ -29,6 +29,10 @@ export interface AutoReplyJob {
   blockReason?: string;
   telegramAlertSentAt?: string;
   hermesSessionId?: string;
+  threadMessages?: Array<{ role: 'buyer' | 'seller'; content: string; time?: string; imageUrls?: string[] }>;
+  imageUrls?: string[];
+  dashboardUrl?: string;
+  aiModel?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -56,6 +60,10 @@ export interface CreateAutoReplyJobInput {
   endDateTime?: string | null;
   buyerMessage: string;
   messageTime?: string;
+  threadMessages?: Array<{ role: 'buyer' | 'seller'; content: string; time?: string; imageUrls?: string[] }>;
+  imageUrls?: string[];
+  dashboardUrl?: string;
+  aiModel?: string;
   createdAt?: string;
 }
 
@@ -95,6 +103,10 @@ export function createAutoReplyJob(store: AutoReplyJobStore, input: CreateAutoRe
     endDateTime: input.endDateTime ?? null,
     buyerMessage: input.buyerMessage,
     messageTime: input.messageTime,
+    threadMessages: input.threadMessages,
+    imageUrls: input.imageUrls,
+    dashboardUrl: input.dashboardUrl,
+    aiModel: input.aiModel,
     status: 'queued',
     createdAt: now,
     updatedAt: now,

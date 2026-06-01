@@ -90,33 +90,42 @@ describe('dashboard stats', () => {
     expect(stats[0].fillRatio).toBeCloseTo(5 / 15);
   });
 
-  test('calculates monthly net profit from daily member prices, Graytag fee, and OTT subscription cost', () => {
-    const summary = buildMonthlyNetProfitSummary(data);
-    expect(summary.netProfit).toBe(-44754);
-    expect(summary.totalGrossIncome).toBe(6940);
-    expect(summary.graytagFee).toBe(694);
+  test('calculates 30-day net profit from Graytag daily rates, manual daily rates, and OTT subscription cost', () => {
+    const summary = buildMonthlyNetProfitSummary(data, [], { today: '2026-04-15' });
+    expect(summary.netProfit).toBe(-47951);
+    expect(summary.totalGrossIncome).toBe(3388);
+    expect(summary.graytagFee).toBe(339);
     expect(summary.subscriptionCost).toBe(51000);
     expect(summary.manualIncome).toBe(0);
-    expect(summary.fullPartyGrossIncome).toBe(26025);
-    expect(summary.fullPartyGraytagFee).toBe(2602);
-    expect(summary.fullPartyNetProfit).toBe(-27577);
-    expect(summary.fullPartyUpside).toBe(17177);
+    expect(summary.fullPartyGrossIncome).toBe(37051);
+    expect(summary.fullPartyGraytagFee).toBe(3705);
+    expect(summary.fullPartyNetProfit).toBe(-17654);
+    expect(summary.fullPartyUpside).toBe(30297);
     expect(summary.svcDetails).toEqual([
       {
         serviceType: '넷플릭스',
         accountCount: 3,
-        partyMemberCount: 4,
+        partyMemberCount: 2,
         maxSlots: 15,
-        grossIncome: 6940,
-        graytagFee: 694,
+        grossIncome: 3388,
+        graytagFee: 339,
         subscriptionCost: 51000,
-        netProfit: -44754,
-        fullPartyGrossIncome: 26025,
-        fullPartyGraytagFee: 2602,
-        fullPartyNetProfit: -27577,
-        fullPartyUpside: 17177,
+        netProfit: -47951,
+        fullPartyGrossIncome: 37051,
+        fullPartyGraytagFee: 3705,
+        fullPartyNetProfit: -17654,
+        fullPartyUpside: 30297,
       },
     ]);
+  });
+
+  test('updates 30-day profit when a same party member date range changes because daily rate changed', () => {
+    const shifted = JSON.parse(JSON.stringify(data));
+    shifted.services[0].accounts[2].members[0].startDateTime = '26. 04. 15';
+    shifted.services[0].accounts[2].members[0].endDateTime = '26. 05. 15';
+
+    expect(buildMonthlyNetProfitSummary(shifted, [], { today: '2026-04-15' }).netProfit).toBe(-46647);
+    expect(buildMonthlyNetProfitSummary(shifted, [], { today: '2026-04-15' }).fullPartyNetProfit).toBe(-18352);
   });
 
   test('adds active manual members as direct monthly income without Graytag fee', () => {
@@ -125,12 +134,12 @@ describe('dashboard stats', () => {
       { id: 'manual-expired', serviceType: '넷플릭스', accountEmail: 'netflix@example.com', memberName: 'manual expired', startDate: '2026-02-01', endDate: '2026-03-01', price: 9000, source: 'manual', memo: '', createdAt: '2026-02-01', status: 'expired' },
       { id: 'manual-cancelled', serviceType: '넷플릭스', accountEmail: 'netflix@example.com', memberName: 'manual cancelled', startDate: '2026-04-01', endDate: '2026-05-01', price: 6000, source: 'manual', memo: '', createdAt: '2026-04-01', status: 'cancelled' },
     ] as any, { today: '2026-04-15' });
-    expect(summary.manualIncome).toBe(6000);
-    expect(summary.totalGrossIncome).toBe(12940);
-    expect(summary.graytagFee).toBe(694);
-    expect(summary.netProfit).toBe(-38754);
-    expect(summary.fullPartyNetProfit).toBe(-21577);
-    expect(summary.fullPartyUpside).toBe(17177);
+    expect(summary.manualIncome).toBe(3200);
+    expect(summary.totalGrossIncome).toBe(6588);
+    expect(summary.graytagFee).toBe(339);
+    expect(summary.netProfit).toBe(-44751);
+    expect(summary.fullPartyNetProfit).toBe(-14454);
+    expect(summary.fullPartyUpside).toBe(30297);
   });
 
   test('excludes recruiting/generated-only rows from actual party counts and subscription costs', () => {
@@ -168,7 +177,7 @@ describe('dashboard stats', () => {
     const stats = buildServiceStats(partyData);
     expect(stats[0]).toMatchObject({ accountCount: 1, usingMembers: 1, maxSlots: 5 });
 
-    const summary = buildMonthlyNetProfitSummary(partyData);
+    const summary = buildMonthlyNetProfitSummary(partyData, [], { today: '2026-06-01' });
     expect(summary.subscriptionCost).toBe(17000);
     expect(summary.totalGrossIncome).toBe(5000);
     expect(summary.graytagFee).toBe(500);

@@ -72,7 +72,7 @@ export function createStaleWhileRevalidateCache<T>(options: StaleWhileRevalidate
   };
 }
 
-export const DEFAULT_MANAGEMENT_CACHE_TTL_MS = 30_000;
+export const DEFAULT_MANAGEMENT_CACHE_TTL_MS = 10_000;
 export const managementCache = createStaleWhileRevalidateCache<any>({ ttlMs: DEFAULT_MANAGEMENT_CACHE_TTL_MS });
 
 export function isAutoSessionManagementRequest(body: any): boolean {
@@ -80,5 +80,9 @@ export function isAutoSessionManagementRequest(body: any): boolean {
 }
 
 export function shouldForceManagementRefresh(body: any, queryRefresh?: string | null, cacheControl?: string | null): boolean {
-  return body?.forceRefresh === true || queryRefresh === '1' || cacheControl?.toLowerCase().includes('no-cache') === true;
+  const cacheControlValue = cacheControl?.toLowerCase() || '';
+  return body?.forceRefresh === true
+    || queryRefresh === '1'
+    || cacheControlValue.includes('no-cache')
+    || cacheControlValue.includes('no-store');
 }

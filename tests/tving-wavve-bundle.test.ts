@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { buildDoublePassBindings, resolveDoublePassBundleNo } from '../src/lib/tving-wavve-bundle';
+import { buildDoublePassBindings, resolveDoublePassBundleNo, tvingLoginIdForDoublePassBundleNo } from '../src/lib/tving-wavve-bundle';
 
 describe('TVING/Wavve double-pass binding', () => {
   test('matches TVING gtwavve IDs and Wavve accounts by numeric suffix', () => {
@@ -29,6 +29,27 @@ describe('TVING/Wavve double-pass binding', () => {
     expect(bindings).toHaveLength(1);
     expect(bindings[0].bundleNo).toBe(5);
     expect(bindings[0].source).toBe('manual-exception');
+  });
+
+  test('uses manual exceptions for gtwavve444/gtwavve4444 -> Wavve 4 and gtwavve44 -> Wavve 5', () => {
+    expect(resolveDoublePassBundleNo({ serviceType: '티빙', loginId: 'gtwavve4' })).toBe(4);
+    expect(resolveDoublePassBundleNo({ serviceType: '티빙', loginId: 'gtwavve444' })).toBe(4);
+    expect(resolveDoublePassBundleNo({ serviceType: '티빙', loginId: 'gtwavve4444' })).toBe(4);
+    expect(tvingLoginIdForDoublePassBundleNo(5)).toBe('gtwavve5');
+    expect(resolveDoublePassBundleNo({ serviceType: '웨이브', email: 'gtwavve4@example.com' })).toBe(4);
+
+    const bindings = buildDoublePassBindings([
+      { serviceType: '티빙', email: 'gtwavve444' },
+      { serviceType: '웨이브', email: 'wavve4.hyperlink631@aleeas.com' },
+      { serviceType: '티빙', email: 'gtwavve4444' },
+      { serviceType: '웨이브', email: 'wavve5@example.com' },
+    ]);
+
+    expect(bindings.map((binding) => binding.bundleNo)).toEqual([4, 5]);
+    expect(bindings[0].services.tving?.accountId).toBe('gtwavve444');
+    expect(bindings[0].services.wavve?.accountId).toBe('wavve4.hyperlink631@aleeas.com');
+    expect(bindings[1].services.tving).toBeUndefined();
+    expect(bindings[1].services.wavve?.accountId).toBe('wavve5@example.com');
   });
 
   test('keeps unpaired TVING/Wavve accounts visible without leaking secrets', () => {

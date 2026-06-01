@@ -248,28 +248,48 @@ function parseNormalizedDate(value: string | null | undefined): Date | null {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
-function activeMemberMonthlyGross(member: DashboardMember): number {
+function daysBetween(start: Date, end: Date): number {
+  return Math.max(1, Math.ceil((end.getTime() - start.getTime()) / 86400000));
+}
+
+function projectionWindow(today: string): { start: Date; end: Date } {
+  const start = parseNormalizedDate(today) || new Date(`${new Date().toISOString().slice(0, 10)}T00:00:00Z`);
+  const end = new Date(start.getTime() + 30 * 86400000);
+  return { start, end };
+}
+
+function overlapDays(periodStart: Date | null, periodEnd: Date | null, windowStart: Date, windowEnd: Date): number {
+  const start = periodStart && periodStart > windowStart ? periodStart : windowStart;
+  const end = periodEnd && periodEnd < windowEnd ? periodEnd : windowEnd;
+  return Math.max(0, Math.ceil((end.getTime() - start.getTime()) / 86400000));
+}
+
+function activeMemberDailyRate(member: DashboardMember): number {
   if (!isActualPartyMember(member) || member.purePrice <= 0) return 0;
   const start = parseNormalizedDate(member.startDateTime);
   const end = parseNormalizedDate(member.endDateTime);
-  const days = start && end
-    ? Math.max(1, Math.ceil((end.getTime() - start.getTime()) / 86400000))
-    : 30;
-  return member.purePrice / days * 30;
+  const days = start && end ? daysBetween(start, end) : 30;
+  return member.purePrice / days;
+}
+
+function activeMemberProjectedGross(member: DashboardMember, windowStart: Date, windowEnd: Date): number {
+  const dailyRate = activeMemberDailyRate(member);
+  if (dailyRate <= 0) return 0;
+  const start = parseNormalizedDate(member.startDateTime);
+  const end = parseNormalizedDate(member.endDateTime);
+  const days = overlapDays(start, end, windowStart, windowEnd);
+  return dailyRate * days;
 }
 
 function activeManualMemberMonthlyGross(member: DashboardManualMember, today = new Date().toISOString().slice(0, 10)): number {
   if (member.status === 'cancelled' || member.price <= 0) return 0;
-  const startIso = normalizeDate(member.startDate);
-  const endIso = normalizeDate(member.endDate);
-  if (!startIso || !endIso) return 0;
-  if (startIso > today || endIso < today) return 0;
-  const start = parseNormalizedDate(startIso);
-  const end = parseNormalizedDate(endIso);
-  const days = start && end
-    ? Math.max(1, Math.ceil((end.getTime() - start.getTime()) / 86400000))
-    : 30;
-  return Math.round(member.price / days * 30);
+  const start = parseNormalizedDate(member.startDate);
+  const end = parseNormalizedDate(member.endDate);
+  if (!start || !end) return 0;
+  const { start: windowStart, end: windowEnd } = projectionWindow(today);
+  const days = overlapDays(start, end, windowStart, windowEnd);
+  if (days <= 0) return 0;
+  return Math.round((member.price / daysBetween(start, end)) * days);
 }
 
 export function buildMonthlyNetProfitSummary(
@@ -296,26 +316,31 @@ export function buildMonthlyNetProfitSummary(
   }
 
   const svcDetails: MonthlyNetProfitServiceDetail[] = [];
+  const { start: windowStart, end: windowEnd } = projectionWindow(options.today || new Date().toISOString().slice(0, 10));
 
   for (const svc of data.services) {
     if (EXCLUDED_SERVICES.has(svc.serviceType)) continue;
     const accounts = svc.accounts.filter((account) => shouldCountAccount(account, manuals));
     if (accounts.length === 0) continue;
 
-    const rawGrossIncome = accounts.reduce((sum, account) => (
-      sum + account.members.reduce((memberSum, member) => memberSum + activeMemberMonthlyGross(member), 0)
-    ), 0);
+    const projectedGraytagMembers = accounts.flatMap((account) => account.members)
+      .map((member) => ({
+        member,
+        projectedGross: activeMemberProjectedGross(member, windowStart, windowEnd),
+        dailyRate: activeMemberDailyRate(member),
+      }))
+      .filter((entry) => entry.projectedGross > 0 && entry.dailyRate > 0);
+    const rawGrossIncome = projectedGraytagMembers.reduce((sum, entry) => sum + entry.projectedGross, 0);
     const grossIncome = Math.round(rawGrossIncome);
     const graytagFee = Math.round(grossIncome * (1 - GRAYTAG_NET_RATE));
     const subscriptionCost = (OTT_MONTHLY_SUBSCRIPTION_COST[svc.serviceType] || 0) * accounts.length;
     const netProfit = Math.round(grossIncome * GRAYTAG_NET_RATE) - subscriptionCost;
-    const partyMemberCount = accounts.reduce(
-      (sum, account) => sum + account.members.filter((member) => isActualPartyMember(member) && member.purePrice > 0).length,
-      0,
-    );
+    const partyMemberCount = projectedGraytagMembers.length;
     const maxSlots = accounts.reduce((sum, account) => sum + getDashboardPartyMax(account.serviceType), 0);
-    const avgGrossPerMember = partyMemberCount > 0 ? grossIncome / partyMemberCount : 0;
-    const fullPartyGrossIncome = Math.round(avgGrossPerMember * maxSlots);
+    const avgDailyGrossPerMember = partyMemberCount > 0
+      ? projectedGraytagMembers.reduce((sum, entry) => sum + entry.dailyRate, 0) / partyMemberCount
+      : 0;
+    const fullPartyGrossIncome = Math.round(avgDailyGrossPerMember * 30 * maxSlots);
     const fullPartyGraytagFee = Math.round(fullPartyGrossIncome * (1 - GRAYTAG_NET_RATE));
     const fullPartyNetProfit = Math.round(fullPartyGrossIncome * GRAYTAG_NET_RATE) - subscriptionCost;
     const fullPartyUpside = fullPartyNetProfit - netProfit;

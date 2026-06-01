@@ -3,6 +3,8 @@ import { KeyRound, PartyPopper, CheckCircle2, KeySquare, Loader2, AlertTriangle,
 import type { PartyMaintenanceChecklistStore } from "../../lib/party-maintenance-checklist";
 import { findMaintenanceCredentialForAlias } from "../../lib/write-maintenance-autofill";
 import { buildPartyAccessDeliveryTemplate, PARTY_ACCESS_URL_PLACEHOLDER } from "../../lib/party-access-template";
+import { GRAYTAG_ACCESS_NOTICE_ID, GRAYTAG_ACCESS_NOTICE_PW } from "../../lib/graytag-fill";
+import { makeDefaultProductDescription, makeDefaultProductTitle } from "../../lib/write-default-template";
 import { buildProfileAssignment, generateProfileNickname, isValidProfileNickname, normalizeProfileNickname } from "../../lib/profile-nickname";
 
 interface SlAlias { id: number; email: string; enabled: boolean; nb_forward: number; pin?: string | null; hasPin?: boolean; }
@@ -39,8 +41,8 @@ interface PriceRank {
   total: number;
 }
 
-const makeDefaultTitle = (svcLabel: string) => `✅ 이메일 코드 언제든지 셀프인증 가능! ✅ ${svcLabel} 프리미엄!`;
-const makeDefaultDesc = (svcLabel: string) => `✅ 이메일 코드 언제든지 셀프인증 가능! ✅ ${svcLabel} 프리미엄!\n구매 시 제공되는 "직접 운영하는" 이메일 코드 확인 사이트를 통해 언제든지 이메일을 확인하실 수 있으십니다!\n\n❤️ 1 1 1 원칙을 꼭 지켜주세요 ❤️\n1인 1기기 1계정 원칙이며 어길 시 약정에 의거 위약금 부과됩니다!`;
+const makeDefaultTitle = (svcLabel: string) => makeDefaultProductTitle(svcLabel);
+const makeDefaultDesc = (svcLabel: string) => makeDefaultProductDescription(svcLabel);
 
 const WRITE_PRODUCT_PRESET_KEY = 'graytag_write_product_presets_v1';
 interface WriteProductPreset { title: string; description: string; updatedAt: string; }
@@ -307,7 +309,7 @@ export default function WritePage() {
     const cs = cookies.find(c => c.id === selectedId);
     if (!cs) return;
     if (!keepAcct.trim() || !keepPasswd.trim()) { setError('아이디와 비밀번호를 입력해주세요'); return; }
-    if (!isValidProfileNickname(profileNickname)) { setError('프로필명은 한글 3~4글자로 입력해주세요'); return; }
+    if (!isValidProfileNickname(profileNickname)) { setError('프로필명은 한글 2~4글자로 입력해주세요'); return; }
 
     setSubmitting(true); setError(null);
     let successCount = 0;
@@ -319,7 +321,7 @@ export default function WritePage() {
         const res = await fetch('/api/post/keepAcct', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...(cs.id === AUTO_COOKIE_ID ? {} : { AWSALB: cs.AWSALB, AWSALBCORS: cs.AWSALBCORS, JSESSIONID: cs.JSESSIONID }), productUsid: usid, keepAcct, keepPasswd, keepMemo: usidMemo }),
+          body: JSON.stringify({ ...(cs.id === AUTO_COOKIE_ID ? {} : { AWSALB: cs.AWSALB, AWSALBCORS: cs.AWSALBCORS, JSESSIONID: cs.JSESSIONID }), productUsid: usid, keepAcct: GRAYTAG_ACCESS_NOTICE_ID, keepPasswd: GRAYTAG_ACCESS_NOTICE_PW, keepMemo: usidMemo }),
         });
         if (res.ok) {
           successCount++;

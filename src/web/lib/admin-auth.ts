@@ -16,6 +16,7 @@ const ADMIN_REQUIRED_GET_PREFIXES = [
   "/api/profile-assignments",
   "/api/generated-accounts",
   "/api/operations-center",
+  "/api/party-access",
 ];
 
 export type AdminAuthFailureDetail = {

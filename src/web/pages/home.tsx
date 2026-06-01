@@ -554,7 +554,7 @@ function PartyMaintenancePanel({ items, regeneratingPinKey, sendingNoticeKey, on
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginBottom: 6 }}>
                             <div style={{ fontSize: 11, color: '#9A3412', fontWeight: 900 }}>변경된 PIN: {item.generatedPin}</div>
                             <div style={{ fontSize: 10, color: '#059669', fontWeight: 900 }}>PIN 변경 확인됨 · Email #{item.generatedPinAliasId || '-'}</div>
-                            {item.generatedPinAliasId && <button onClick={() => window.open(`https://email-verify.xyz/email/mail/${item.generatedPinAliasId}`, '_blank', 'noopener,noreferrer')} style={{ alignSelf: 'flex-start', border: 'none', borderRadius: 8, padding: '5px 8px', background: '#FFEDD5', color: '#C2410C', fontSize: 10, fontWeight: 900, cursor: 'pointer', fontFamily: 'inherit' }}>이메일 새탭 열기</button>}
+                            {item.generatedPinAliasId && <button onClick={() => window.open(`https://email-verify.one/email/mail/${item.generatedPinAliasId}`, '_blank', 'noopener,noreferrer')} style={{ alignSelf: 'flex-start', border: 'none', borderRadius: 8, padding: '5px 8px', background: '#FFEDD5', color: '#C2410C', fontSize: 10, fontWeight: 900, cursor: 'pointer', fontFamily: 'inherit' }}>이메일 새탭 열기</button>}
                           </div>
                         )}
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, background: '#fff', borderRadius: 9, padding: '6px 7px' }}>
@@ -897,33 +897,41 @@ export default function HomePage() {
     }
   };
 
-  const fetchData = async () => {
-    setLoading(true); setError(null);
+  const fetchData = async (options: { forceRefresh?: boolean; silent?: boolean } = {}) => {
+    const { forceRefresh = false, silent = false } = options;
+    if (!silent) setLoading(true);
+    setError(null);
     try {
       const cookies = loadCookies();
       const cs = cookies[0];
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (forceRefresh) headers['Cache-Control'] = 'no-cache';
       const [manageRes, manualsRes] = await Promise.all([
-        fetch('/api/my/management', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
+        fetch(forceRefresh ? '/api/my/management?refresh=1' : '/api/my/management', {
+          method: 'POST', headers,
           body: JSON.stringify(cs.id === AUTO_COOKIE_ID
-            ? {}
+            ? (forceRefresh ? { forceRefresh: true } : {})
             : { AWSALB: cs.AWSALB, AWSALBCORS: cs.AWSALBCORS, JSESSIONID: cs.JSESSIONID }),
         }),
         fetch('/api/manual-members'),
       ]);
       const manageJson = await parseJsonResponse<any>(manageRes, '/api/my/management');
       const manualsJson = await parseJsonResponse<any>(manualsRes, '/api/manual-members');
-      if (!manageRes.ok) setError(manageJson.error || '조회 실패');
-      else {
+      if (!manageRes.ok) {
+        if (!silent) setError(manageJson.error || '조회 실패');
+      } else {
         setData(manageJson);
         setManuals(manualsJson.members || []);
       }
-    } catch (e: any) { setError(e.message); }
-    finally { setLoading(false); }
+    } catch (e: any) {
+      if (!silent) setError(e.message);
+      else console.warn('[home] silent dashboard data refresh failed:', e?.message || e);
+    }
+    finally { if (!silent) setLoading(false); }
   };
 
   useEffect(() => {
-    fetchData(); fetchSellerStatus(); fetchSafeMode(); fetchChatAlerts(); fetchPartyMaintenanceChecklists(); fetchOperationsCenter();
+    void fetchData({ silent: true }); fetchSellerStatus(); fetchSafeMode(); fetchChatAlerts(); fetchPartyMaintenanceChecklists(); fetchOperationsCenter();
     const timer = window.setInterval(() => fetchChatAlerts(true), 15000);
     return () => window.clearInterval(timer);
   }, []);
@@ -936,9 +944,18 @@ export default function HomePage() {
   const totalAccounts = stats.reduce((s, st) => s + st.accountCount, 0);
   const totalVacancy = totalMaxSlots - totalUsing;
 
-  // 수익 종합 계산: Σ(그레이태그 파티원 판매가 ÷ 이용일수 × 30) × 0.9 + Σ(활성 수동 파티원 판매가 ÷ 이용일수 × 30) - Σ(운영 계정별 월 구독료)
+  // 홈 수익 카드: 30일 예상치를 일 평균/월 환산으로 나눠서 보여준다.
   const summary = buildMonthlyNetProfitSummary(data, manuals);
   const realNetProfit = summary.netProfit;
+  const dailyGrossIncome = Math.round(summary.totalGrossIncome / 30);
+  const dailyGraytagFee = Math.round(summary.graytagFee / 30);
+  const dailySubscriptionCost = Math.round(summary.subscriptionCost / 30);
+  const dailyExtraIncome = Math.round(summary.manualIncome / 30);
+  const dailyNetProfit = Math.round(realNetProfit / 30);
+  const monthlyConversion = dailyNetProfit * 30;
+  const realizedIncome = data?.summary?.totalRealized || 0;
+  const currentMonthLabel = `${new Date().getMonth() + 1}월`;
+  const signedWon = (value: number) => `${value >= 0 ? '+' : '-'}${Math.abs(value).toLocaleString()}원`;
 
   const formatTime = (iso: string) => {
     const d = new Date(iso);
@@ -979,7 +996,7 @@ export default function HomePage() {
             <p style={{ fontSize: 12, color: '#9CA3AF', margin: '4px 0 0' }}>{formatTime(data.updatedAt)}{"최신화"}</p>
           )}
         </div>
-        <button onClick={() => { fetchData(); fetchSellerStatus(); fetchSafeMode(); fetchChatAlerts(); fetchPartyMaintenanceChecklists(); fetchOperationsCenter(); }} disabled={loading}
+        <button onClick={() => { void fetchData({ forceRefresh: true }); fetchSellerStatus(); fetchSafeMode(); fetchChatAlerts(); fetchPartyMaintenanceChecklists(); fetchOperationsCenter(); }} disabled={loading}
           style={{ background: '#EDE9FE', border: 'none', borderRadius: 12, padding: '8px 12px', cursor: loading ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#7C3AED', fontWeight: 600, fontFamily: 'inherit', opacity: loading ? 0.7 : 1 }}>
           {loading ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <RefreshCw size={14} strokeWidth={2.5} />}
           {loading ? '조회중' : '새로고침'}
@@ -1085,7 +1102,7 @@ export default function HomePage() {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <StatCard label="계정" value={`${totalAccounts}개`} helper="실제 유지중 파티 계정" tone="info" />
               <StatCard label="파티원" value={`${totalUsing}/${totalMaxSlots}`} helper={`빈자리 ${Math.max(0, totalVacancy)}개`} tone={totalVacancy > 0 ? 'warning' : 'success'} />
-              <StatCard label="예상 순수익" value={`${realNetProfit.toLocaleString()}원`} helper="그레이태그 월환산×0.9 + 수동 월환산 - 구독료" tone={realNetProfit >= 0 ? 'success' : 'danger'} />
+              <StatCard label="확정 수입" value={`${realizedIncome.toLocaleString()}원`} helper="정산완료 기준" tone={realizedIncome >= 0 ? 'success' : 'danger'} />
               <StatCard label="채움률" value={`${totalMaxSlots > 0 ? Math.round(totalUsing / totalMaxSlots * 100) : 0}%`} helper="서비스 전체 기준" tone={totalVacancy > 0 ? 'warning' : 'success'} />
             </div>
           </section>
@@ -1147,63 +1164,81 @@ export default function HomePage() {
             </div>
           </section>
 
-          {/* 배너 */}
-          <div style={{
-            background: realNetProfit >= 0
-              ? 'linear-gradient(135deg, #059669 0%, #10B981 100%)'
-              : 'linear-gradient(135deg, #DC2626 0%, #EF4444 100%)',
-            borderRadius: 20, padding: '20px', marginBottom: 20, color: '#fff',
-          }}>
-            <div style={{ background: 'rgba(0,0,0,0.15)', borderRadius: 12, padding: '12px', marginBottom: 14, textAlign: 'center' }}>
-              <p style={{ fontSize: 11, opacity: 0.75, margin: 0, fontWeight: 500 }}>{"월 순수익 · 그레이태그 월환산×0.9 + 수동 월환산 - 구독료"}</p>
-              <p style={{ fontSize: 32, fontWeight: 800, margin: '6px 0 0', lineHeight: 1 }}>{realNetProfit.toLocaleString()}{"원"}</p>
-              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 8, padding: '5px 10px', borderRadius: 999, background: 'rgba(255,255,255,0.14)', fontSize: 11, fontWeight: 800 }}>
-                <span>{"풀파티시 "}{summary.fullPartyNetProfit.toLocaleString()}{"원"}</span>
-                <span style={{ opacity: 0.8 }}>{summary.fullPartyUpside >= 0 ? `+${summary.fullPartyUpside.toLocaleString()}원` : `${summary.fullPartyUpside.toLocaleString()}원`}</span>
+          {/* 수익 컴포넌트 */}
+          <section style={{ marginBottom: 20 }}>
+            <div style={{ background: '#FFFFFF', border: '1px solid #EDE9FE', boxShadow: '0 10px 30px rgba(124,58,237,0.10)', borderRadius: 24, padding: '22px 18px', textAlign: 'center', marginBottom: 18 }}>
+              <p style={{ fontSize: 13, color: '#9CA3AF', fontWeight: 900, margin: 0 }}>오늘 일 순수익</p>
+              <p style={{ fontSize: 42, fontWeight: 950, letterSpacing: -1.5, lineHeight: 1, color: dailyNetProfit >= 0 ? '#059669' : '#DC2626', margin: '12px 0 8px' }}>{signedWon(dailyNetProfit)}</p>
+              <p style={{ fontSize: 12, color: '#9CA3AF', margin: 0, fontWeight: 700 }}>매일 고정비 차감 후 실제 손에 쥐는 금액</p>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginTop: 22 }}>
+                {[
+                  { label: '일 수입', value: dailyGrossIncome, tone: 'good' },
+                  { label: '수수료', value: -dailyGraytagFee, tone: 'bad' },
+                  { label: '구독료/일', value: -dailySubscriptionCost, tone: 'bad' },
+                  { label: '추가/일', value: dailyExtraIncome, tone: 'good' },
+                ].map(item => (
+                  <div key={item.label} style={{ background: item.tone === 'good' ? '#ECFDF5' : '#FEF2F2', borderRadius: 14, padding: '12px 6px' }}>
+                    <div style={{ fontSize: 15, fontWeight: 950, color: item.tone === 'good' ? '#059669' : '#DC2626', letterSpacing: -0.2 }}>{signedWon(item.value).replace('원', '')}</div>
+                    <div style={{ fontSize: 10, color: '#6B7280', fontWeight: 800, marginTop: 6 }}>{item.label}</div>
+                  </div>
+                ))}
               </div>
-              <p style={{ fontSize: 10, opacity: 0.75, margin: '4px 0 0' }}>
-                {"월 총수입 "}{summary.totalGrossIncome.toLocaleString()}{"원 · 수수료 -"}{summary.graytagFee.toLocaleString()}{"원 · 구독료 -"}{summary.subscriptionCost.toLocaleString()}{"원"}
-                {summary.manualIncome > 0 ? <> · {"수동 월환산 +"}{summary.manualIncome.toLocaleString()}{"원"}</> : null}
-              </p>
-              {/* 서비스별 순수익 상세 */}
-              {summary.svcDetails.length > 0 && (
-                <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 3 }}>
-                  {summary.svcDetails.map(d => (
-                    <div key={d.serviceType} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.12)', borderRadius: 7, padding: '4px 10px' }}>
-                      <span style={{ fontSize: 11, fontWeight: 600 }}>{d.serviceType} {d.accountCount}파티 · {d.partyMemberCount}명</span>
-                      <span style={{ fontSize: 11, fontWeight: 700 }}>{(d.netProfit / 10000).toFixed(1)}만원 · 풀 {(d.fullPartyNetProfit / 10000).toFixed(1)}만원</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 16 }}>
-              <div>
-                <p style={{ fontSize: 11, opacity: 0.7, margin: '0 0 8px' }}>
-                  {"채운 비율: "}
-                  {totalMaxSlots > 0 ? Math.round(totalUsing / totalMaxSlots * 100) : 0}
-                  {"% ("}
-                  {totalUsing}
-                  {"/"}
-                  {totalMaxSlots}
-                  {")"}
-                </p>
-                <div style={{ display: 'flex', gap: 12 }}>
-                  <span style={{ fontSize: 10, opacity: 0.8 }}>
-                    {"📊 "}{totalAccounts}{"계정 · 빈자리 "}{totalVacancy}
-                  </span>
-                </div>
+
+              <div style={{ marginTop: 16, background: '#F5F3FF', color: '#7C3AED', borderRadius: 12, padding: '12px 10px', fontSize: 14, fontWeight: 950 }}>
+                30일 환산 ≈ {signedWon(monthlyConversion)}/월
               </div>
-              <div style={{ background: 'rgba(255,255,255,0.18)', borderRadius: 12, padding: '10px 14px', textAlign: 'right', minWidth: 120 }}>
-                <p style={{ fontSize: 24, fontWeight: 800, margin: 0, lineHeight: 1 }}>
-                  {totalUsing}<span style={{ fontSize: 12, opacity: 0.8 }}>{"/"}{totalMaxSlots}</span>
-                </p>
-                <p style={{ fontSize: 9, opacity: 0.7, margin: '4px 0 0' }}>
-                  {totalMaxSlots - totalUsing > 0 ? `빈자리 ${totalVacancy}개` : '풀파티'}
-                </p>
+              <div style={{ marginTop: 12, background: '#ECFDF5', borderRadius: 12, padding: '12px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#047857', fontSize: 13, fontWeight: 950 }}>
+                <span>✓ 확정 수입 (정산완료)</span>
+                <span>{signedWon(realizedIncome)}</span>
               </div>
             </div>
-          </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 12 }}>
+              {['전체 기간', `${currentMonthLabel} 실발생`, '30일 환산'].map((label) => (
+                <div key={label} style={{ background: label === '전체 기간' ? '#7C3AED' : '#F5F3FF', color: label === '전체 기간' ? '#FFFFFF' : '#6B7280', borderRadius: 16, padding: '13px 8px', textAlign: 'center', fontSize: 13, fontWeight: 950 }}>
+                  {label}
+                </div>
+              ))}
+            </div>
+
+            <div style={{ border: '1px solid #E5E7EB', borderRadius: 14, background: '#FAFAFF', padding: '12px 14px', color: '#6B7280', fontSize: 12, fontWeight: 800, marginBottom: 18 }}>
+              <span style={{ color: '#7C3AED', fontWeight: 950 }}>ⓘ 전체 기간</span>{' '}
+              전체 기간의 총 손익. 수입은 계약 전액, 구독료는 기간 내 월 횟수만큼.
+            </div>
+
+            <div style={{ background: 'linear-gradient(135deg, #059669 0%, #10B981 100%)', borderRadius: 24, padding: '22px 18px', color: '#FFFFFF', boxShadow: '0 12px 26px rgba(5,150,105,0.18)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                <span style={{ fontSize: 14, fontWeight: 950 }}>월 예상 순수익</span>
+                <span style={{ background: 'rgba(255,255,255,0.22)', borderRadius: 9, padding: '4px 8px', fontSize: 12, fontWeight: 950 }}>전체 기간</span>
+              </div>
+              <div style={{ fontSize: 42, fontWeight: 950, lineHeight: 1, letterSpacing: -1.5, marginBottom: 20 }}>{signedWon(realNetProfit)}</div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
+                <div style={{ background: 'rgba(255,255,255,0.20)', border: '1px solid rgba(255,255,255,0.30)', borderRadius: 14, padding: '13px 10px', textAlign: 'center' }}>
+                  <div style={{ fontSize: 11, opacity: 0.82, fontWeight: 900 }}>전체 기간</div>
+                  <div style={{ fontSize: 17, fontWeight: 950, marginTop: 6 }}>{signedWon(realNetProfit)}</div>
+                </div>
+                <div style={{ background: 'rgba(255,255,255,0.20)', border: '1px solid rgba(255,255,255,0.30)', borderRadius: 14, padding: '13px 10px', textAlign: 'center' }}>
+                  <div style={{ fontSize: 11, opacity: 0.82, fontWeight: 900 }}>월 환산</div>
+                  <div style={{ fontSize: 17, fontWeight: 950, marginTop: 6 }}>{signedWon(monthlyConversion)}</div>
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+                {[
+                  { label: '총수익', value: summary.totalGrossIncome, prefix: '↗' },
+                  { label: '파티유지비용', value: summary.subscriptionCost, prefix: '↘' },
+                  { label: '수수료(10%)', value: summary.graytagFee, prefix: '−' },
+                ].map(item => (
+                  <div key={item.label} style={{ background: 'rgba(255,255,255,0.20)', borderRadius: 14, padding: '13px 8px', textAlign: 'center' }}>
+                    <div style={{ fontSize: 16, fontWeight: 950 }}>{item.prefix} {item.value.toLocaleString()}원</div>
+                    <div style={{ fontSize: 11, opacity: 0.82, fontWeight: 900, marginTop: 6 }}>{item.label}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
 
           <PartyMaintenancePanel
             items={partyMaintenanceChecklistItems}

@@ -1,17 +1,31 @@
 import { useEffect, useState } from "react";
-import { KeyRound, Loader2, Lock, Mail, ShieldCheck } from "lucide-react";
+import { AlertTriangle, CheckCircle2, KeyRound, Loader2, Lock, Mail, ShieldCheck } from "lucide-react";
 
 type AccessPayload = {
   ok: boolean;
   reason?: string;
+  adminAccess?: boolean;
   serviceType?: string;
   accountEmail?: string;
   memberName?: string;
   profileName?: string;
   emailAccessUrl?: string;
+  partyProfiles?: Array<{
+    profileName: string;
+    memberName: string;
+    status: string;
+    statusName: string;
+    startDateTime: string | null;
+    endDateTime: string | null;
+    isCurrentMember: boolean;
+  }>;
   period?: { startDateTime: string | null; endDateTime: string | null };
   credentials?: { id: string; password: string; pin: string; updatedAt: string };
 };
+
+const AGREEMENT_1 = '계정 정보를 절대 변경하지 않겠습니다.';
+const AGREEMENT_2 = '로그인 안 될 때 이 페이지를 먼저 확인하겠습니다.';
+const AGREEMENT_3 = '배정된 1개 프로필만 사용하겠습니다.';
 
 const fmtDate = (value?: string | null) => {
   if (!value) return '-';
@@ -21,22 +35,29 @@ const fmtDate = (value?: string | null) => {
   return `${m[1]}.${m[2].padStart(2, '0')}.${m[3].padStart(2, '0')}`;
 };
 
+const isWavveService = (value?: string) => {
+  const v = String(value || '').trim().toLowerCase().replace(/\s+/g, '');
+  return v === '웨이브' || v === 'wavve';
+};
+
 function credentialRows(payload: AccessPayload): Array<{ label: string; value: string; link?: string }> {
   const c = payload.credentials;
+  const showEmailAccess = Boolean(payload.emailAccessUrl) && !isWavveService(payload.serviceType);
   return [
     { label: 'ID', value: c?.id || '' },
     { label: 'PW', value: c?.password || '' },
-    { label: 'EMAIL', value: payload.emailAccessUrl || '', link: payload.emailAccessUrl || '' },
-    { label: '이메일 접근 PIN번호', value: c?.pin || '' },
-  ];
+    showEmailAccess ? { label: 'EMAIL', value: payload.emailAccessUrl || '', link: payload.emailAccessUrl || '' } : null,
+    showEmailAccess ? { label: '이메일 접근 PIN번호', value: c?.pin || '' } : null,
+  ].filter(Boolean) as Array<{ label: string; value: string; link?: string }>;
 }
 
 export default function PartyAccessPage() {
   const token = decodeURIComponent(window.location.pathname.split('/access/')[1] || '');
   const [payload, setPayload] = useState<AccessPayload | null>(null);
   const [loading, setLoading] = useState(true);
-  const [consentInput, setConsentInput] = useState('');
+  const [consentInputs, setConsentInputs] = useState({ a1:'', a2:'', a3:'' });
   const [consentOk, setConsentOk] = useState(false);
+  const [consentStep, setConsentStep] = useState(0);
 
   useEffect(() => {
     let alive = true;
@@ -51,7 +72,7 @@ export default function PartyAccessPage() {
   useEffect(() => {
     const profileName = payload?.profileName || payload?.memberName || '';
     if (!payload?.ok || !profileName) return;
-    try { setConsentOk(localStorage.getItem(`access-consent:${token}`) === profileName); } catch {}
+    try { setConsentOk(localStorage.getItem(`access-consent-v2:${token}`) === profileName); } catch {}
   }, [payload?.ok, payload?.profileName, payload?.memberName, token]);
 
   const copy = async (value: string) => {
@@ -60,12 +81,12 @@ export default function PartyAccessPage() {
   };
 
   if (loading) {
-    return <div style={{ minHeight:'100vh', display:'grid', placeItems:'center', background:'#F8F6FF', color:'#7C3AED', fontWeight:900 }}><Loader2 size={24} style={{ animation:'spin 1s linear infinite' }} /> 계정 정보 확인 중...</div>;
+    return <div style={{ minHeight:'100dvh', display:'grid', placeItems:'center', background:'#F8F6FF', color:'#7C3AED', fontWeight:900 }}><Loader2 size={24} style={{ animation:'spin 1s linear infinite' }} /> 계정 정보 확인 중...</div>;
   }
 
   if (!payload?.ok) {
     return (
-      <div style={{ minHeight:'100vh', background:'#F8F6FF', padding:'32px 18px', boxSizing:'border-box', display:'grid', placeItems:'center' }}>
+      <div style={{ minHeight:'100dvh', background:'#F8F6FF', padding:'max(24px, env(safe-area-inset-top)) 18px max(24px, env(safe-area-inset-bottom))', boxSizing:'border-box', display:'grid', placeItems:'center' }}>
         <div style={{ width:'100%', maxWidth:420, background:'#fff', borderRadius:24, padding:22, boxShadow:'0 16px 50px rgba(124,58,237,0.14)', textAlign:'center', border:'1px solid #EDE9FE' }}>
           <Lock size={34} color="#EF4444" />
           <h1 style={{ fontSize:20, color:'#1E1B4B', margin:'12px 0 6px' }}>계정 정보 접근이 종료됐어요</h1>
@@ -76,42 +97,91 @@ export default function PartyAccessPage() {
   }
 
   const profileName = payload.profileName || payload.memberName || '(미확인)';
-  const showConsent = Boolean(profileName && !consentOk);
+  const partyProfiles = payload.partyProfiles || [];
+  const isAdminAccess = payload.adminAccess === true;
+  const showConsent = Boolean(profileName && !consentOk && !isAdminAccess);
+  const completedConsentCount = [consentInputs.a1.trim() === AGREEMENT_1, consentInputs.a2.trim() === AGREEMENT_2, consentInputs.a3.trim() === AGREEMENT_3].filter(Boolean).length;
+  const allConsentOk = completedConsentCount === 3;
   const acceptConsent = () => {
-    if (consentInput.trim() !== profileName) return;
-    try { localStorage.setItem(`access-consent:${token}`, profileName); } catch {}
+    if (!allConsentOk) return;
+    try { localStorage.setItem(`access-consent-v2:${token}`, profileName); } catch {}
     setConsentOk(true);
+  };
+  const showEmailAccess = Boolean(payload.emailAccessUrl) && !isWavveService(payload.serviceType);
+
+  const consentCards = [
+    {
+      no: '01', tone:'#FEE2E2', border:'#FCA5A5', title:'계정 정보 수정 금지', image:'/dashboard/access-notice-assets/complaint-case.jpg', imageLabel:'고소장 실제사례 이미지', text:'비밀번호·이메일·프로필 잠금·결제 설정은 바꾸지 마세요.', required:AGREEMENT_1, key:'a1' as const,
+    },
+    {
+      no: '02', tone:'#EEF2FF', border:'#C7D2FE', title:'최신 정보 먼저 확인', image:'/dashboard/access-notice-assets/disney-profiles.jpg', imageLabel:'프로필 수정 화면 예시', text:'로그인이 안 되면 먼저 이 페이지를 새로고침해 확인하세요.', required:AGREEMENT_2, key:'a2' as const,
+    },
+    {
+      no: '03', tone:'#ECFDF5', border:'#A7F3D0', title:'1인 1프로필 사용', text:'배정된 프로필 1개만 쓰고, 현황에 없는 프로필만 삭제하세요.', required:AGREEMENT_3, key:'a3' as const,
+    },
+  ];
+  const currentConsentCard = consentCards[consentStep] || consentCards[0];
+  const currentConsentMatches = consentInputs[currentConsentCard.key].trim() === currentConsentCard.required;
+  const blockConsentPaste = (event: any) => {
+    event.preventDefault();
+  };
+  const goNextConsent = () => {
+    if (!currentConsentMatches) return;
+    if (consentStep < consentCards.length - 1) setConsentStep(consentStep + 1);
+    else acceptConsent();
   };
 
   return (
-    <div style={{ minHeight:'100vh', background:'linear-gradient(180deg,#F8F6FF,#FFFFFF)', padding:'28px 16px 40px', boxSizing:'border-box' }}>
+    <div style={{ minHeight:'100dvh', background:'linear-gradient(180deg,#F8F6FF,#FFFFFF)', padding:'max(20px, env(safe-area-inset-top)) 16px max(32px, env(safe-area-inset-bottom))', boxSizing:'border-box' }}>
       {showConsent && (
-        <div style={{ position:'fixed', inset:0, zIndex:100, background:'linear-gradient(180deg,#F8F6FF,#FFFFFF)', padding:'28px 16px', boxSizing:'border-box', display:'grid', placeItems:'center' }}>
-          <div style={{ width:'100%', maxWidth:460, background:'#fff', borderRadius:26, padding:22, boxShadow:'0 20px 70px rgba(124,58,237,0.18)', border:'1.5px solid #EDE9FE', textAlign:'center' }}>
-            <div style={{ fontSize:18, fontWeight:1000, color:'#EF4444', marginBottom:14 }}>⚠️ 1인 1프로필 원칙 안내 ⚠️</div>
-            <div style={{ fontSize:13, color:'#6B7280', fontWeight:800, marginBottom:6 }}>배정된 프로필 이름</div>
-            <div style={{ fontSize:32, color:'#1E1B4B', fontWeight:1000, lineHeight:1.15, marginBottom:16 }}>{profileName}</div>
-            <div style={{ fontSize:13, color:'#4B5563', lineHeight:1.7, textAlign:'left', background:'#FFFBEB', border:'1px solid #FDE68A', borderRadius:16, padding:14, fontWeight:700 }}>
-              프로필을 만드실 때(혹은 프로필을 만드셨을 경우) 해당 이름으로 꼭 만드신 뒤(혹은 변경하신 뒤) 사용하셔야 합니다. 그리고 반드시 위 프로필만 사용해주세요.<br /><br />
-              <span style={{ display:'block', margin:'10px 0', padding:'9px 10px', borderRadius:10, background:'linear-gradient(transparent 32%, #FDE047 32% 86%, transparent 86%)', color:'#92400E', fontSize:15, fontWeight:1000, lineHeight:1.55 }}>일주일 단위로 해당 닉네임이 아닌 프로필은 삭제될 예정이니 꼭 주의 바랍니다!</span>
-              다른 프로필을 사용하거나 새 프로필을 추가하면 다른 이용자와 충돌이 생겨 이용이 제한될 수 있습니다.
-              <span style={{ display:'block', margin:'10px 0', padding:'9px 10px', borderRadius:10, background:'#EEF2FF', border:'1px solid #C7D2FE', color:'#3730A3', fontWeight:1000 }}>이메일 인증 필요시, 동의 후 나오는 이메일 인증 열기를 눌러, 하단에 보이는 핀번호를 입력하면 접근 가능하니 참고 바랍니다.</span>
-              기타 문의 연락은 구매처에서 14:00 ~ 21:00 중으로 연락주시면 답변드리고 있으니 참고 바랍니다.
+        <div onCopy={e => e.preventDefault()} onCut={e => e.preventDefault()} onPaste={e => e.preventDefault()} onContextMenu={e => e.preventDefault()} style={{ position:'fixed', inset:0, zIndex:100, background:'linear-gradient(180deg,#F8F6FF,#FFFFFF)', padding:'max(10px, env(safe-area-inset-top)) 10px max(24px, env(safe-area-inset-bottom))', boxSizing:'border-box', display:'flex', alignItems:'flex-start', justifyContent:'center', overflowY:'auto', WebkitOverflowScrolling:'touch', height:'100vh', minHeight:'100dvh', overscrollBehavior:'contain' }}>
+          <div style={{ width:'100%', maxWidth:520, background:'#fff', borderRadius:26, padding:16, marginBottom:18, boxShadow:'0 20px 70px rgba(124,58,237,0.18)', border:'1.5px solid #EDE9FE', textAlign:'left', boxSizing:'border-box', display:'flex', flexDirection:'column', gap:12 }}>
+            <div style={{ textAlign:'center' }}>
+              <div style={{ fontSize:'clamp(18px, 5vw, 22px)', fontWeight:1000, color:'#EF4444', marginBottom:4 }}>⚠️ 이용 전 필수 동의</div>
+              <div style={{ fontSize:12, color:'#6B7280', fontWeight:900 }}>진행 상황: {completedConsentCount}/3 · 복사/붙여넣기 없이 직접 입력해주세요.</div>
+              <div style={{ display:'flex', gap:6, marginTop:10 }}>
+                {consentCards.map((card, index) => <button key={card.no} type="button" onClick={() => setConsentStep(index)} disabled={index > completedConsentCount} style={{ flex:1, height:8, border:0, borderRadius:999, background:index < completedConsentCount ? '#10B981' : index === consentStep ? '#7C3AED' : '#E5E7EB', cursor:index <= completedConsentCount ? 'pointer' : 'not-allowed' }} aria-label={`${card.no}번 동의`} />)}
+              </div>
             </div>
-            <div style={{ marginTop:16, fontSize:13, color:'#6B7280', fontWeight:900 }}>동의하신다면, 아래 입력 칸에 "{profileName}"을 입력해주세요.</div>
-            <input value={consentInput} onChange={e => setConsentInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') acceptConsent(); }} placeholder={profileName} autoFocus style={{ width:'100%', marginTop:10, padding:'13px 14px', borderRadius:14, border:'1.5px solid #C4B5FD', boxSizing:'border-box', fontSize:18, fontWeight:900, textAlign:'center', color:'#1E1B4B', outline:'none', fontFamily:'inherit' }} />
-            <button onClick={acceptConsent} disabled={consentInput.trim() !== profileName} style={{ width:'100%', marginTop:10, padding:14, border:'none', borderRadius:14, background:consentInput.trim() === profileName ? '#7C3AED' : '#C4B5FD', color:'#fff', fontSize:15, fontWeight:1000, cursor:consentInput.trim() === profileName ? 'pointer' : 'not-allowed', fontFamily:'inherit' }}>동의하고 계정 정보 보기</button>
+            <section style={{ background:currentConsentCard.tone, border:`1.5px solid ${currentConsentCard.border}`, borderRadius:20, padding:14 }}>
+              <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
+                <span style={{ width:34, height:34, borderRadius:12, background:'#fff', color:'#1E1B4B', display:'grid', placeItems:'center', fontSize:13, fontWeight:1000 }}>{currentConsentCard.no}</span>
+                <div style={{ fontSize:16, color:'#1E1B4B', fontWeight:1000 }}>{currentConsentCard.title}</div>
+              </div>
+              {'image' in currentConsentCard && currentConsentCard.image && (
+                <div style={{ margin:'8px 0 10px', background:'#fff', border:'1px solid rgba(17,24,39,.12)', borderRadius:16, padding:10 }}>
+                  <div style={{ fontSize:11, color:'#6B7280', fontWeight:1000, marginBottom:7 }}>{currentConsentCard.imageLabel}</div>
+                  <img src={currentConsentCard.image} alt={currentConsentCard.imageLabel} draggable={false} style={{ width:'100%', maxHeight:260, objectFit:'contain', borderRadius:12, display:'block', userSelect:'none', WebkitUserSelect:'none', pointerEvents:'none' }} />
+                </div>
+              )}
+              <div style={{ fontSize:13, color:'#374151', lineHeight:1.65, fontWeight:800, userSelect:'none', WebkitUserSelect:'none' }}>{currentConsentCard.text}</div>
+
+              <div style={{ marginTop:10, background:'#fff', borderRadius:14, border:'1px solid rgba(17,24,39,.1)', padding:10 }}>
+                <div style={{ fontSize:11, color:'#6B7280', fontWeight:1000, marginBottom:6 }}>아래 문장을 복붙 없이 그대로 입력</div>
+                <div style={{ fontSize:12, color:'#111827', lineHeight:1.55, fontWeight:900, marginBottom:8, userSelect:'none', WebkitUserSelect:'none' }}>{currentConsentCard.required}</div>
+                <textarea value={consentInputs[currentConsentCard.key]} onPaste={blockConsentPaste} onCopy={blockConsentPaste} onCut={blockConsentPaste} onDrop={e => e.preventDefault()} onChange={e => setConsentInputs(prev => ({ ...prev, [currentConsentCard.key]: e.target.value }))} onFocus={e => setTimeout(() => e.currentTarget.scrollIntoView({ block:'center', behavior:'smooth' }), 80)} placeholder="직접 입력해주세요. 붙여넣기는 막혀 있어요." rows={4} style={{ width:'100%', padding:'12px 13px', borderRadius:12, border:`1.5px solid ${currentConsentMatches ? '#10B981' : '#CBD5E1'}`, boxSizing:'border-box', fontSize:14, fontWeight:800, color:'#1E1B4B', outline:'none', fontFamily:'inherit', resize:'vertical', scrollMarginBottom:'150px', lineHeight:1.45 }} />
+              </div>
+            </section>
+            <div style={{ display:'grid', gridTemplateColumns:consentStep > 0 ? '1fr 2fr' : '1fr', gap:8, position:'sticky', bottom:8 }}>
+              {consentStep > 0 && <button type="button" onClick={() => setConsentStep(Math.max(0, consentStep - 1))} style={{ padding:14, border:'1.5px solid #DDD6FE', borderRadius:16, background:'#fff', color:'#6D28D9', fontSize:15, fontWeight:1000, fontFamily:'inherit' }}>이전</button>}
+              <button onClick={goNextConsent} disabled={!currentConsentMatches} style={{ width:'100%', padding:16, border:'none', borderRadius:16, background:currentConsentMatches ? '#7C3AED' : '#C4B5FD', color:'#fff', fontSize:16, fontWeight:1000, cursor:currentConsentMatches ? 'pointer' : 'not-allowed', fontFamily:'inherit', boxShadow:currentConsentMatches ? '0 12px 24px rgba(124,58,237,.24)' : 'none' }}>{consentStep < 2 ? `동의 완료하고 다음 (${completedConsentCount}/3)` : `3개 내용 모두 동의하고 계정정보 보기 (${completedConsentCount}/3)`}</button>
+            </div>
           </div>
         </div>
       )}
-      <div style={{ maxWidth:460, margin:'0 auto' }}>
+      {!showConsent && <div style={{ maxWidth:460, margin:'0 auto' }}>
         <div style={{ background:'#fff', borderRadius:24, padding:20, boxShadow:'0 16px 50px rgba(124,58,237,0.14)', border:'1px solid #EDE9FE' }}>
           <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:12 }}>
             <div style={{ width:42, height:42, borderRadius:14, background:'#F5F3FF', display:'grid', placeItems:'center' }}><ShieldCheck size={22} color="#7C3AED" /></div>
             <div>
-              <div style={{ fontSize:18, fontWeight:900, color:'#1E1B4B' }}>최신 ID · PW · PIN</div>
+              <div style={{ fontSize:18, fontWeight:900, color:'#1E1B4B' }}>{showEmailAccess ? '최신 ID · PW · PIN' : '최신 ID · PW'}</div>
               <div style={{ fontSize:12, color:'#9CA3AF', fontWeight:800 }}>이용기간 중에만 계정 정보를 확인할 수 있어요</div>
             </div>
+          </div>
+
+          <div style={{ background:'#FEF2F2', border:'1.5px solid #FECACA', borderRadius:16, padding:12, marginBottom:12, color:'#991B1B', fontSize:12, lineHeight:1.55, fontWeight:900, display:'flex', gap:8 }}>
+            <AlertTriangle size={18} style={{ flexShrink:0 }} />
+            <div>{isAdminAccess ? '관리자 인증으로 동의 절차를 건너뛰었습니다. 구매자 화면에서는 기존처럼 필수 동의 후 계정 정보가 표시됩니다.' : '계정 정보와 추가회원/자리 설정은 절대 변경하지 마세요. 로그인 안 될 때는 이 페이지를 새로고침해 최신 정보를 먼저 확인해주세요.'}</div>
           </div>
 
           <div style={{ background:'#F8F6FF', borderRadius:16, padding:12, marginBottom:12 }}>
@@ -124,7 +194,7 @@ export default function PartyAccessPage() {
             <div style={{ fontSize:24, color:'#1E1B4B', fontWeight:1000, marginTop:4 }}>{profileName}</div>
           </div>
 
-          <div style={{ display:'grid', gap:10 }}>
+          <div style={{ display:'grid', gap:10, marginBottom:10 }}>
             {credentialRows(payload).map((row) => (
               <div key={row.label} style={{ background:'#FFFFFF', border:'1.5px solid #EDE9FE', borderRadius:16, padding:'12px 14px' }}>
                 <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}>
@@ -136,11 +206,39 @@ export default function PartyAccessPage() {
             ))}
           </div>
 
-          <div style={{ marginTop:14, background:'#FFFBEB', border:'1px solid #FDE68A', borderRadius:14, padding:12, color:'#92400E', fontSize:12, lineHeight:1.55, fontWeight:700 }}>
-            비밀번호가 갑자기 안 되면 판매자에게 바로 알려주세요. 링크는 이용 종료 후 자동으로 막힙니다.
+          <div style={{ background:'#F9FAFB', border:'1.5px solid #E5E7EB', borderRadius:16, padding:'13px 14px', marginBottom:10 }}>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, marginBottom:8 }}>
+              <div>
+                <div style={{ fontSize:11, color:'#4B5563', fontWeight:1000 }}>현재 파티원 프로필 현황</div>
+                <div style={{ fontSize:10, color:'#9CA3AF', fontWeight:800, marginTop:2 }}>계정 접근 시점 기준으로 확인됩니다</div>
+              </div>
+              <button onClick={() => window.location.reload()} style={{ border:'none', borderRadius:999, background:'#EEF2FF', color:'#4F46E5', fontSize:10, fontWeight:1000, padding:'6px 9px', cursor:'pointer' }}>새로고침</button>
+            </div>
+            {partyProfiles.length > 0 ? (
+              <div style={{ display:'grid', gap:7 }}>
+                {partyProfiles.map((profile, idx) => (
+                  <div key={`${profile.profileName}-${idx}`} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:10, background:profile.isCurrentMember ? '#F5F3FF' : '#FFFFFF', border:profile.isCurrentMember ? '1.5px solid #C4B5FD' : '1px solid #E5E7EB', borderRadius:12, padding:'9px 10px' }}>
+                    <div style={{ minWidth:0 }}>
+                      <div style={{ fontSize:15, color:'#111827', fontWeight:1000, wordBreak:'break-all' }}>{profile.profileName}{profile.isCurrentMember ? ' · 내 프로필' : ''}</div>
+                      <div style={{ fontSize:10, color:'#6B7280', fontWeight:800, marginTop:3 }}>{profile.memberName || '파티원'} · {fmtDate(profile.endDateTime)}까지</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ fontSize:12, color:'#6B7280', lineHeight:1.55, fontWeight:800 }}>아직 표시할 파티원 프로필 현황이 없습니다. 배정된 프로필 이름을 우선 사용해주세요.</div>
+            )}
+            <div style={{ marginTop:9, fontSize:11, color:'#92400E', background:'#FFFBEB', border:'1px solid #FDE68A', borderRadius:10, padding:'8px 9px', lineHeight:1.5, fontWeight:800 }}>
+              프로필이 꽉 찼다면 위 현황에 없는 프로필을 삭제한 뒤, 배정된 이름으로 새로 만들어 사용해주세요.
+            </div>
+          </div>
+
+          <div style={{ marginTop:14, background:'#ECFDF5', border:'1px solid #A7F3D0', borderRadius:14, padding:12, color:'#065F46', fontSize:12, lineHeight:1.55, fontWeight:800, display:'flex', gap:7 }}>
+            <CheckCircle2 size={16} style={{ flexShrink:0 }} />
+            <div>이 페이지는 최신 로그인 정보를 실시간으로 보여줍니다. 비밀번호가 갑자기 안 되면 먼저 새로고침 후 다시 확인해주세요.</div>
           </div>
         </div>
-      </div>
+      </div>}
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
   );

@@ -8,8 +8,10 @@ import { join } from 'node:path';
 import { createAutoReplyJob, createEmptyAutoReplyJobStore, listAutoReplyJobs, loadAutoReplyJobStore, saveAutoReplyJobStore, updateAutoReplyJob } from '../src/api/auto-reply-jobs';
 import { routeAutoReply } from '../src/api/auto-reply-router';
 import { buildHermesAutoReplyPrompt, parseHermesAutoReplyJson } from '../src/api/hermes-auto-reply';
+import { buildOpenRouterAutoReplyRequest, parseOpenRouterAutoReplyJson, resolveOpenRouterAutoReplyModels } from '../src/api/openrouter-auto-reply';
 import { evaluateAutoReplySafety } from '../src/api/auto-reply-safety';
-import { DAILY_ACCOUNT_ACCESS_NOTICE_CATEGORY, OFF_HOURS_NOTICE_CATEGORY, buildDailyAccountAccessNoticeReply, buildOffHoursNoticeReply, isKoreanBusinessHours, isSimpleAcknowledgement, kstDayKey, shouldSendDailyAccountAccessNotice, shouldSendOffHoursNotice } from '../src/api/auto-reply-daily-notice';
+import { CLOSING_ACKNOWLEDGEMENT_CATEGORY, DAILY_ACCOUNT_ACCESS_NOTICE_CATEGORY, OFF_HOURS_NOTICE_CATEGORY, buildClosingAcknowledgementReply, buildDailyAccountAccessNoticeReply, buildOffHoursNoticeReply, isKoreanBusinessHours, isSimpleAcknowledgement, kstDayKey, shouldSendClosingAcknowledgement, shouldSendDailyAccountAccessNotice, shouldSendOffHoursNotice } from '../src/api/auto-reply-daily-notice';
+import { findLatestBuyerInquiryThread } from '../src/api/chat-message-summary';
 
 describe('auto reply core', () => {
   test('uses conservative defaults and detects risk keywords', () => {
@@ -90,16 +92,69 @@ describe('auto reply core', () => {
     expect(dispute.risk).toBe('high');
   });
 
+  test('groups latest buyer messages within a 10 minute reply window', () => {
+    const thread = findLatestBuyerInquiryThread([
+      { message: '너무 오래된 문의', registeredDateTime: '2026-05-07T01:00:00Z' },
+      { message: '첫 번째 문의', registeredDateTime: '2026-05-07T01:10:00Z' },
+      { message: '판매자 답변', registeredDateTime: '2026-05-07T01:11:00Z', isOwned: true },
+      { message: '<img src="/images/a.png">스크린샷도 보냈어요', registeredDateTime: '2026-05-07T01:18:00Z' },
+      { message: '시스템', registeredDateTime: '2026-05-07T01:19:00Z', messageType: 'Information' },
+    ], 10);
+    expect(thread.map((message) => message.message)).toEqual(['첫 번째 문의', '<img src="/images/a.png">스크린샷도 보냈어요']);
+  });
+
   test('builds strict Hermes prompt and parses JSON safely', () => {
     const prompt = buildHermesAutoReplyPrompt({
-      buyerMessage: '로그인이 안돼요', buyerName: '민수', productType: '넷플릭스', productName: '넷플릭스 프리미엄'
+      buyerMessage: '로그인이 안돼요', buyerName: '민수', productType: '넷플릭스', productName: '넷플릭스 프리미엄',
+      dashboardUrl: 'https://email-verify.one/dashboard/chat?room=room-1',
+      threadMessages: [
+        { role: 'buyer', content: '로그인이 안돼요', time: '2026-05-07T01:00:00Z' },
+        { role: 'seller', content: '계정 업데이트 주소 확인 부탁드립니다.', time: '2026-05-07T01:01:00Z' },
+      ],
     });
     expect(prompt).toContain('JSON only');
     expect(prompt).toContain('로그인이 안돼요');
+    expect(prompt).toContain('conversationSummary');
+    expect(prompt).toContain('threadMessages');
     expect(prompt).not.toContain('JSESSIONID');
 
     expect(parseHermesAutoReplyJson(' { "category":"login_issue", "risk":"low", "autoSendAllowed":false, "reply":"안내", "reason":"초안", "needsHuman":false } ').reply).toBe('안내');
     expect(() => parseHermesAutoReplyJson('not json')).toThrow(/Invalid Hermes auto-reply JSON/);
+  });
+
+  test('builds OpenRouter Gemma multimodal auto-reply request and parses strict JSON', () => {
+    const request = buildOpenRouterAutoReplyRequest({
+      buyerMessage: '로그인이 안돼요',
+      buyerName: '민수',
+      productType: '넷플릭스',
+      productName: '넷플릭스 프리미엄',
+      dashboardUrl: 'https://email-verify.one/dashboard/chat?room=room-1',
+      threadMessages: [
+        { role: 'buyer', content: '10분 안 첫 메시지', time: '2026-05-07T01:00:00Z' },
+        { role: 'buyer', content: '로그인이 안돼요', time: '2026-05-07T01:08:00Z', imageUrls: ['https://graytag.co.kr/images/a.png'] },
+      ],
+      imageDataUrls: ['data:image/png;base64,abc'],
+    }, { AUTO_REPLY_OPENROUTER_MODEL: 'nvidia/nemotron-3-super-120b-a12b:free' });
+    expect(request.model).toBe('nvidia/nemotron-3-super-120b-a12b:free');
+    expect(JSON.stringify(request.messages)).toContain('10분 안 첫 메시지');
+    expect(JSON.stringify(request.messages)).toContain('screenshots');
+    expect(JSON.stringify(request.messages)).toContain('Do not send a generic numbered clarification checklist');
+    expect(JSON.stringify(request.messages)).toContain('https://email-verify.one/dashboard/chat?room=room-1');
+    expect(JSON.stringify(request.messages)).toContain('image_url');
+
+    const parsed = parseOpenRouterAutoReplyJson('{"category":"login_issue","risk":"low","autoSendAllowed":true,"reply":"확인 도와드릴게요.","reason":"safe","needsHuman":false,"confidence":0.9}');
+    expect(parsed.autoSendAllowed).toBe(true);
+    expect(parsed.confidence).toBe(0.9);
+  });
+
+  test('resolves only the configured OpenRouter model by default and optional fallbacks when explicitly configured', () => {
+    expect(resolveOpenRouterAutoReplyModels({
+      AUTO_REPLY_OPENROUTER_MODEL: 'nvidia/nemotron-3-super-120b-a12b:free',
+    })).toEqual(['nvidia/nemotron-3-super-120b-a12b:free']);
+    expect(resolveOpenRouterAutoReplyModels({
+      AUTO_REPLY_OPENROUTER_MODEL: 'nvidia/nemotron-3-super-120b-a12b:free',
+      AUTO_REPLY_OPENROUTER_FALLBACK_MODELS: 'openai/gpt-4o-mini, google/gemini-2.0-flash-001, openai/gpt-4o-mini',
+    })).toEqual(['nvidia/nemotron-3-super-120b-a12b:free', 'openai/gpt-4o-mini', 'google/gemini-2.0-flash-001']);
   });
 
   test('builds daily account-link and off-hours notices with KST day reset', () => {
@@ -110,10 +165,10 @@ describe('auto reply core', () => {
     expect(isKoreanBusinessHours(kst1500)).toBe(true);
     expect(isKoreanBusinessHours(kst2130)).toBe(false);
     expect(shouldSendDailyAccountAccessNotice(store, 'room-daily', kst1500)).toBe(true);
-    expect(buildDailyAccountAccessNoticeReply('https://email-verify.xyz/dashboard/access/token')).toContain('업데이트된 정보로 로그인을 시도');
-    expect(buildDailyAccountAccessNoticeReply('https://email-verify.xyz/dashboard/access/token')).toContain('✅ 계정 접근 주소 : https://email-verify.xyz/dashboard/access/token ✅');
-    expect(buildDailyAccountAccessNoticeReply('https://email-verify.xyz/dashboard/access/token')).toContain('✅ 아래 내용 꼭 읽어주세요! 로그인 관련 내용입니다!! ✅');
-    expect(buildOffHoursNoticeReply()).toBe('문의 시간은 14:00 ~ 21:00 라서, 최대한 빨리 답변드리도록 하겠습니다.');
+    expect(buildDailyAccountAccessNoticeReply('https://email-verify.one/dashboard/access/token')).toContain('우선 아래 계정 업데이트 주소');
+    expect(buildDailyAccountAccessNoticeReply('https://email-verify.one/dashboard/access/token')).toContain('https://email-verify.one/dashboard/access/token');
+    expect(buildDailyAccountAccessNoticeReply('https://email-verify.one/dashboard/access/token')).toContain('파티원 프로필 현황에 없는 프로필을 삭제');
+    expect(buildOffHoursNoticeReply()).toBe('문의 가능 시간은 14:00 ~ 21:00입니다. 확인하는 대로 답변드리겠습니다.');
 
     const first = createAutoReplyJob(store, { fingerprint: 'daily-fp', chatRoomUuid: 'room-daily', buyerMessage: '로그인 문의', createdAt: '2026-05-04T06:00:00Z' });
     updateAutoReplyJob(store, first.id, { status: 'sent', category: DAILY_ACCOUNT_ACCESS_NOTICE_CATEGORY, draftReply: 'notice' }, '2026-05-04T06:00:01Z');
@@ -126,9 +181,19 @@ describe('auto reply core', () => {
   });
 
   test('recognizes short acknowledgement replies after the daily notice', () => {
+    const store = createEmptyAutoReplyJobStore();
+    const now = new Date('2026-05-04T06:00:00Z');
     expect(isSimpleAcknowledgement('네 감사합니다')).toBe(true);
     expect(isSimpleAcknowledgement('확인했습니다')).toBe(true);
+    expect(isSimpleAcknowledgement('해결했습니다')).toBe(true);
+    expect(isSimpleAcknowledgement('아 네 잘 등록했습니다 감사합니다')).toBe(true);
+    expect(isSimpleAcknowledgement('됐어요 감사합니다')).toBe(false);
     expect(isSimpleAcknowledgement('아직 로그인이 안돼요')).toBe(false);
+    expect(buildClosingAcknowledgementReply()).toBe('네~ 즐거운 사용 되세요!');
+    expect(shouldSendClosingAcknowledgement(store, 'room-close', now)).toBe(true);
+    const closing = createAutoReplyJob(store, { fingerprint: 'close-fp', chatRoomUuid: 'room-close', buyerMessage: '감사합니다', createdAt: '2026-05-04T06:00:00Z' });
+    updateAutoReplyJob(store, closing.id, { status: 'sent', category: CLOSING_ACKNOWLEDGEMENT_CATEGORY, draftReply: buildClosingAcknowledgementReply() }, '2026-05-04T06:00:01Z');
+    expect(shouldSendClosingAcknowledgement(store, 'room-close', now)).toBe(false);
   });
 
   test('safety gate blocks risky or draft-only sends', () => {
@@ -142,6 +207,7 @@ describe('auto reply core', () => {
     };
     expect(evaluateAutoReplySafety(base).allowed).toBe(false);
     expect(evaluateAutoReplySafety({ ...base, policy: resolveAutoReplyPolicy({ enabled: true, draftOnly: false, autoSendLowRisk: true }) }).allowed).toBe(true);
+    expect(evaluateAutoReplySafety({ ...base, policy: resolveAutoReplyPolicy({ enabled: true, draftOnly: false, autoSendLoginIssue: true }) }).allowed).toBe(true);
     expect(evaluateAutoReplySafety({ ...base, policy: resolveAutoReplyPolicy({ enabled: true, draftOnly: false, autoSendLowRisk: true }), safeModeEnabled: true }).allowed).toBe(false);
     expect(evaluateAutoReplySafety({ ...base, policy: resolveAutoReplyPolicy({ enabled: true, draftOnly: false, autoSendLowRisk: true }), hermes: { ...base.hermes, reply: '환불 해드릴게요' } }).allowed).toBe(false);
   });

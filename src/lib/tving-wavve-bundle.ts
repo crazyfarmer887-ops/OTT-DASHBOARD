@@ -34,6 +34,9 @@ export interface DoublePassBinding {
 }
 
 const MANUAL_TVING_LOGIN_TO_WAVVE_BUNDLE: Record<string, number> = {
+  gtwavve4: 4,
+  gtwavve444: 4,
+  gtwavve4444: 4,
   gtwavve44: 5,
 };
 
@@ -61,6 +64,7 @@ function aliasLocalPart(ref: DoublePassAccountLike): string | undefined {
 }
 
 function manualExceptionNo(ref: DoublePassAccountLike): number | null {
+  if (String(ref.serviceType || '').trim() !== TVING_SERVICE) return null;
   const candidates = [ref.loginId, ref.accountId, ref.email, ref.label]
     .map(value => localPart(String(value || '')))
     .filter(Boolean);
@@ -69,6 +73,13 @@ function manualExceptionNo(ref: DoublePassAccountLike): number | null {
     if (mapped) return mapped;
   }
   return null;
+}
+
+export function tvingLoginIdForDoublePassBundleNo(bundleNo: number | null | undefined): string {
+  if (!bundleNo) return '';
+  const preferred = Object.entries(MANUAL_TVING_LOGIN_TO_WAVVE_BUNDLE)
+    .find(([loginId, mappedNo]) => mappedNo === bundleNo && loginId !== 'gtwavve44' && loginId !== 'gtwavve4444');
+  return preferred?.[0] || `gtwavve${bundleNo}`;
 }
 
 export function extractAccountNumber(input: { serviceType?: string; email?: string; label?: string; loginId?: string; aliasLocalPart?: string; accountId?: string }): number | null {

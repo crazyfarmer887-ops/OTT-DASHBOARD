@@ -107,6 +107,8 @@ export default function EditPricePage() {
   const [undercutterInterval, setUndercutterInterval] = useState(() => {
     try { return parseInt(localStorage.getItem('undercutter_interval') || '5'); } catch { return 5; }
   });
+  const [undercutterFloors, setUndercutterFloors] = useState<Record<string, string>>({ netflix:'180', tving:'180', wavve:'110', disney:'110' });
+  const [floorSaveStatus, setFloorSaveStatus] = useState<string | null>(null);
   const [undercutterPreview, setUndercutterPreview] = useState<any>(null);
   const [undercutterResult, setUndercutterResult] = useState<any>(null);
   const [undercutterRunning, setUndercutterRunning] = useState(false);
@@ -146,6 +148,23 @@ export default function EditPricePage() {
     } catch {}
   };
 
+  const saveUndercutterFloors = async () => {
+    const floorDailyByCategory = Object.fromEntries(Object.entries(undercutterFloors).map(([key, value]) => [key, Math.max(0, Math.floor(Number(String(value).replace(/[^0-9]/g, '')) || 0))]));
+    setFloorSaveStatus('저장중');
+    try {
+      const res = await fetch('/api/auto-undercutter/state', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ on: undercutterOn, intervalMinutes: undercutterInterval, floorDailyByCategory }),
+      });
+      const json = await res.json() as any;
+      if (!res.ok || json.ok === false) throw new Error(json.error || '마지노선 저장 실패');
+      setFloorSaveStatus('마지노선 저장 완료');
+      runUndercutterPreview();
+    } catch (e: any) {
+      setFloorSaveStatus(e?.message || '마지노선 저장 실패');
+    }
+  };
+
   // 서버 상태 로드 (마운트 시)
   useEffect(() => {
     fetch('/api/auto-undercutter/state')
@@ -158,6 +177,9 @@ export default function EditPricePage() {
         if (s && s.intervalMinutes) {
           setUndercutterInterval(s.intervalMinutes);
           localStorage.setItem('undercutter_interval', String(s.intervalMinutes));
+        }
+        if (s && s.floorDailyByCategory) {
+          setUndercutterFloors((prev) => ({ ...prev, ...Object.fromEntries(Object.entries(s.floorDailyByCategory).map(([key, value]) => [key, String(value)])) }));
         }
       })
       .catch(() => {});
@@ -444,9 +466,25 @@ export default function EditPricePage() {
           <div style={{ padding: '0 16px 16px' }}>
             {/* 설명 */}
             <div style={{ fontSize: 11, color: '#9CA3AF', marginBottom: 12, lineHeight: 1.6 }}>
-              경쟁자가 내 가격보다 낮으면 <strong style={{ color: '#D97706' }}>1원씩</strong> 자동 인하.<br />
-              마지노선: 넷플릭스·티빙 <strong>180원</strong>/일 · 웨이브·디즈니 <strong>110원</strong>/일<br />
+              직접 입력한 가격을 <strong style={{ color: '#D97706' }}>마지노선</strong>으로 두고, 그 아래로는 내리지 않아요.<br />
+              211원이 1등이면 210원, 199원이 1등이고 2등이 231원이면 마지노선 안에서 230원처럼 맞춥니다.<br />
               내 게시물끼리는 경쟁하지 않음.
+            </div>
+
+            <div style={{ background:'#FFFBEB', border:'1px solid #FDE68A', borderRadius:12, padding:10, marginBottom:12 }}>
+              <div style={{ fontSize:12, fontWeight:800, color:'#92400E', marginBottom:8 }}>카테고리별 마지노선 직접 입력</div>
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:7 }}>
+                {[
+                  ['netflix','넷플릭스'], ['tving','티빙'], ['wavve','웨이브'], ['disney','디즈니플러스'],
+                ].map(([key, label]) => (
+                  <label key={key} style={{ display:'grid', gap:3, fontSize:10, color:'#92400E', fontWeight:800 }}>
+                    {label}
+                    <input inputMode="numeric" value={undercutterFloors[key] || ''} onChange={e => setUndercutterFloors(prev => ({ ...prev, [key]: e.target.value.replace(/[^0-9]/g, '') }))} placeholder="원/일" style={{ border:'1px solid #FDE68A', borderRadius:9, padding:'7px 8px', fontSize:12, fontFamily:'inherit', color:'#1E1B4B', fontWeight:800 }} />
+                  </label>
+                ))}
+              </div>
+              <button onClick={saveUndercutterFloors} style={{ marginTop:8, width:'100%', border:'none', borderRadius:10, padding:'8px', background:'#F59E0B', color:'#fff', fontSize:12, fontWeight:900, cursor:'pointer', fontFamily:'inherit' }}>마지노선 저장하고 미리보기</button>
+              {floorSaveStatus && <div style={{ marginTop:6, fontSize:10, color:floorSaveStatus.includes('실패')?'#EF4444':'#059669', fontWeight:800 }}>{floorSaveStatus}</div>}
             </div>
 
             {/* ON/OFF 토글 + 인터벌 */}

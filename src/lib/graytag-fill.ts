@@ -1,9 +1,23 @@
-import { buildPartyAccessDeliveryTemplate, PARTY_ACCESS_URL_PLACEHOLDER } from './party-access-template';
+import { PARTY_ACCESS_URL_PLACEHOLDER } from './party-access-template';
+import { makeDefaultProductDescription, makeDefaultProductTitle } from './write-default-template';
 
-export const DEFAULT_SELLING_GUIDE_SUFFIX = '구매 시 제공되는 "직접 운영하는" 이메일 코드 확인 사이트를 통해 언제든지 이메일을 확인하실 수 있으십니다!\n\n❤️ 1 1 1 원칙을 꼭 지켜주세요 ❤️\n1인 1기기 1계정 원칙이며 어길 시 약정에 의거 위약금 부과됩니다!';
+export const DEFAULT_SELLING_GUIDE_SUFFIX = makeDefaultProductDescription();
+export const GRAYTAG_ACCESS_NOTICE_ID = '아래 메세지를 꼭 확인해주세요';
+export const GRAYTAG_ACCESS_NOTICE_PW = '그래야 계정에 접근할 수 있습니다.';
+
+export function isGraytagAccessNoticeCredential(value: string | null | undefined): boolean {
+  const normalized = String(value || '').trim().replace(/\s+/g, '');
+  if (!normalized) return false;
+  return normalized === GRAYTAG_ACCESS_NOTICE_ID.replace(/\s+/g, '')
+    || normalized === GRAYTAG_ACCESS_NOTICE_PW.replace(/\s+/g, '')
+    || normalized.includes('아래메세지를')
+    || normalized.includes('아래메시지를')
+    || normalized.includes('확인해주세요')
+    || normalized.includes('계정에접근할수있습니다');
+}
 
 export function makeDefaultSellingGuide(serviceLabel: string): string {
-  return `✅ 이메일 코드 언제든지 셀프인증 가능! ✅ ${serviceLabel} 프리미엄!\n${DEFAULT_SELLING_GUIDE_SUFFIX}`;
+  return makeDefaultProductDescription(serviceLabel);
 }
 
 export interface FillProductModelInput {
@@ -21,7 +35,7 @@ export function buildFillProductModel(input: FillProductModelInput): Record<stri
     endDate: input.endDate,
     priceType: 'Normal',
     price: String(input.price),
-    name: input.productName,
+    name: makeDefaultProductTitle(input.serviceType),
     sellingGuide: input.sellingGuide?.trim() || makeDefaultSellingGuide(input.serviceType),
   };
   if (input.category === 'Netflix') {
@@ -31,8 +45,16 @@ export function buildFillProductModel(input: FillProductModelInput): Record<stri
   return productModel;
 }
 
-export function buildAutoFillDeliveryMemo(_profileNickname: string, accessUrl = PARTY_ACCESS_URL_PLACEHOLDER): string {
-  return buildPartyAccessDeliveryTemplate(accessUrl || PARTY_ACCESS_URL_PLACEHOLDER);
+export function buildAutoFillDeliveryMemo(profileNickname: string, accessUrl = PARTY_ACCESS_URL_PLACEHOLDER): string {
+  const url = String(accessUrl || PARTY_ACCESS_URL_PLACEHOLDER).trim() || PARTY_ACCESS_URL_PLACEHOLDER;
+  const profile = String(profileNickname || '').trim();
+  return [
+    `계정 업데이트 주소: ${url}`,
+    profile ? `배정 프로필: ${profile}` : '',
+    '위 링크에서 최신 ID/PW/PIN 확인 후 로그인해주세요.',
+    '프로필은 배정된 이름으로만 사용해주세요.',
+    '프로필이 꽉 찼다면 링크의 파티원 현황에 없는 프로필을 삭제 후 새로 만들어주세요.',
+  ].filter(Boolean).join('\n');
 }
 
 export function buildFillPartyAccessMember(input: { productUsid: string | number; profileNickname: string; endDateTime: string }) {

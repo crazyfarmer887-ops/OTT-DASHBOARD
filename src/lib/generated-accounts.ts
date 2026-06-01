@@ -1,3 +1,5 @@
+import { resolveDoublePassBundleNo, tvingLoginIdForDoublePassBundleNo, WAVVE_SERVICE } from './tving-wavve-bundle';
+
 export type GeneratedAccountPaymentStatus = 'pending' | 'paid';
 
 const DOUBLE_PASS_SERVICE = '티빙+웨이브';
@@ -252,7 +254,9 @@ function isPaidDoublePassGeneratedAccount(account: GeneratedAccount): boolean {
 
 function tvingLoginIdFromWavveEmail(email: string): string {
   const local = normalizeGeneratedAccountEmail(email).split('@')[0] || '';
-  return (local.split('.')[0] || local).trim();
+  const aliasLocal = (local.split('.')[0] || local).trim();
+  const bundleNo = resolveDoublePassBundleNo({ serviceType: WAVVE_SERVICE, email });
+  return tvingLoginIdForDoublePassBundleNo(bundleNo) || aliasLocal;
 }
 
 function generatedManagementRows(account: GeneratedAccount) {

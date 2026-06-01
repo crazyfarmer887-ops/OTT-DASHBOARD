@@ -45,7 +45,7 @@ describe('email alias fill lookup', () => {
       pin: '2468',
       missing: [],
     });
-    expect(result.memo).toContain('https://email-verify.xyz/email/mail/101');
+    expect(result.memo).toContain('https://email-verify.one/email/mail/101');
     expect(result.memo).toContain('2468');
   });
 

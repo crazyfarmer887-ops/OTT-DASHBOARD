@@ -1,20 +1,22 @@
 import { describe, expect, test } from 'vitest';
-import { assertAutoDeliveryInput, buildAutoFillDeliveryMemo, buildFillPartyAccessMember, buildFillProductModel, buildFinishedDealsUrl, findExactPasswordForAccount, makeDefaultSellingGuide, requireExactAliasMemoForAutoFill } from './src/lib/graytag-fill';
+import { assertAutoDeliveryInput, buildAutoFillDeliveryMemo, buildFillPartyAccessMember, buildFillProductModel, buildFinishedDealsUrl, findExactPasswordForAccount, GRAYTAG_ACCESS_NOTICE_ID, GRAYTAG_ACCESS_NOTICE_PW, isGraytagAccessNoticeCredential, makeDefaultSellingGuide, requireExactAliasMemoForAutoFill } from './src/lib/graytag-fill';
+import { makeDefaultProductDescription, makeDefaultProductTitle } from './src/lib/write-default-template';
 
 describe('graytag fill product helpers', () => {
-  test('fill-created listings include the same selling guide as normal listing registration', () => {
+  test('fill-created listings use the shared write default title and selling guide', () => {
     const model = buildFillProductModel({
       category: 'disney',
       endDate: '20260707T2359',
       price: 7970,
-      productName: '디즈니플러스 프리미엄',
+      productName: '이전 게시글 제목',
       serviceType: '디즈니플러스',
     });
 
-    expect(model.sellingGuide).toBe(makeDefaultSellingGuide('디즈니플러스'));
-    expect(model.sellingGuide).toContain('이메일 코드 언제든지 셀프인증 가능');
-    expect(model.sellingGuide).toContain('1인 1기기 1계정');
-    expect(model.sellingGuide).not.toBe('');
+    expect(model.name).toBe(makeDefaultProductTitle('디즈니플러스'));
+    expect(model.sellingGuide).toBe(makeDefaultProductDescription('디즈니플러스'));
+    expect(model.sellingGuide).toContain('TV ✅ 이메일 셀프인증 ✅ 프리미엄 ✅');
+    expect(model.sellingGuide).toContain('⚠️ 1 1 1 원칙을 꼭 지켜주세요 ⚠️');
+    expect(model.sellingGuide).not.toContain('직접 운영하는');
   });
 
   test('auto delivery requires account id, password, and delivery memo before counting as successful', () => {
@@ -23,13 +25,27 @@ describe('graytag fill product helpers', () => {
     expect(assertAutoDeliveryInput({ keepAcct: 'acct@example.com', keepPasswd: 'pw', keepMemo: '' })).toContain('전달 문구');
   });
 
-  test('auto-fill delivery memo uses the real generated access URL, not the placeholder text', () => {
+  test('auto-fill delivery memo uses a short access-link message with the generated URL', () => {
     const memo = buildAutoFillDeliveryMemo('수달이', 'https://example.com/dashboard/access/live-token');
 
-    expect(memo).toContain('✅ 계정 접근 주소 : https://example.com/dashboard/access/live-token ✅');
-    expect(memo).toContain('이메일 인증은 링크 안에 적힌 핀번호를 이용해서 접근');
+    expect(memo).toContain('계정 업데이트 주소: https://example.com/dashboard/access/live-token');
+    expect(memo).toContain('배정 프로필: 수달이');
+    expect(memo).toContain('최신 ID/PW/PIN 확인');
+    expect(memo).toContain('프로필은 배정된 이름으로만 사용');
+    expect(memo).toContain('파티원 현황에 없는 프로필을 삭제');
     expect(memo).not.toContain('{계정 접근 토큰 생성 주소}');
-    expect(memo).not.toContain('⚠️ 1인 1프로필 원칙 안내 ⚠️');
+    expect(memo).not.toContain('이용하시기 전 꼭 하셔야 하는 2 STEP');
+    expect(memo).not.toContain('이메일 접근 링크 버튼 누르고 핀번호 입력하고 인증 받기');
+    expect(memo).not.toContain('계정 업데이트 주소는 다른 파티원들이 파티 탈퇴');
+    expect(memo.split('\n').length).toBeLessThanOrEqual(5);
+  });
+
+  test('graytag public ID/PW placeholders point buyers back to the access message', () => {
+    expect(GRAYTAG_ACCESS_NOTICE_ID).toBe('아래 메세지를 꼭 확인해주세요');
+    expect(GRAYTAG_ACCESS_NOTICE_PW).toBe('그래야 계정에 접근할 수 있습니다.');
+    expect(isGraytagAccessNoticeCredential('아래 메세지를 꼭 확인해주세요')).toBe(true);
+    expect(isGraytagAccessNoticeCredential('아래 메시지를 확인해주세요')).toBe(true);
+    expect(isGraytagAccessNoticeCredential('acct@example.com')).toBe(false);
   });
 
   test('fill-created access links use the created listing id and the selected end date as expiry', () => {

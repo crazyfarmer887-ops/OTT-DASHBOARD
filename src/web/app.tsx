@@ -1,6 +1,7 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { Route, Switch, useLocation } from "wouter";
 import { Provider } from "./components/provider";
+import { dashboardPageTitleForPath } from "./lib/page-title";
 import { ErrorBoundary } from "./components/error-boundary";
 import { AgentFeedback } from "@runablehq/website-runtime";
 import BottomNav from "./components/bottom-nav";
@@ -39,6 +40,10 @@ function App() {
   const isChat = location === "/chat";
   const isAccess = location.startsWith("/access/") || location.startsWith("/dashboard/access/");
 
+  useEffect(() => {
+    document.title = dashboardPageTitleForPath(location);
+  }, [location]);
+
   return (
     <Provider>
       <div style={{ paddingTop: (isChat || isAccess) ? 0 : 52 }}>
@@ -58,7 +63,7 @@ function App() {
           </Switch>
         </Suspense>
       </div>
-      {!isAccess && <AdminTokenControl />}
+      {!isChat && <AdminTokenControl />}
       {!isChat && !isAccess && <BottomNav />}
       {import.meta.env.DEV && <AgentFeedback />}
     </Provider>

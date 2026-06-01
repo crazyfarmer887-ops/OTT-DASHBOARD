@@ -3,6 +3,8 @@ export interface AutoReplyPolicy {
   draftOnly: boolean;
   autoSendAuthCode: boolean;
   autoSendLowRisk: boolean;
+  autoSendLoginIssue: boolean;
+  autoSendSafeReceipts: boolean;
   maxAutoRepliesPerRoomPer10Min: number;
   minSecondsBetweenRepliesPerRoom: number;
   maxMessageCharsForAi: number;
@@ -19,6 +21,8 @@ export const AUTO_REPLY_DEFAULTS: AutoReplyPolicy = {
   draftOnly: true,
   autoSendAuthCode: false,
   autoSendLowRisk: false,
+  autoSendLoginIssue: false,
+  autoSendSafeReceipts: false,
   maxAutoRepliesPerRoomPer10Min: 2,
   minSecondsBetweenRepliesPerRoom: 60,
   maxMessageCharsForAi: 1000,

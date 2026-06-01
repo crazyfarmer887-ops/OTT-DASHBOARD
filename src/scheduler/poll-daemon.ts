@@ -285,8 +285,9 @@ async function sendNewChatMessageAlerts(deals: PollChatDeal[], headers: Record<s
       const dealLine = alert.dealUsid ? `\nUSID: ${alert.dealUsid}` : '';
       const result = await sendSellerAlert({
         key: `graytag-chat-${alert.fingerprint}`,
-        title: 'Graytag 새 문자',
-        body: `${alert.productType} · ${alert.borrowerName}${accountLine}${dealLine}\n시간: ${alert.timestamp}\n메시지: ${alert.text}`,
+        title: '새 문의 도착',
+        body: `${alert.productType} · ${alert.borrowerName}${accountLine}${dealLine}\n시간: ${alert.timestamp}\n메시지: ${alert.text}\n바로가기: https://email-verify.one/dashboard/chat?room=${encodeURIComponent(alert.chatRoomUuid)}`,
+        category: 'inquiry',
         throttleMs: 0,
       });
       if (result.sent) sent += 1;
@@ -352,8 +353,9 @@ async function pollGraytag() {
     for (const msg of alerts) {
       await sendSellerAlert({
         key: 'poll-daemon-deal-' + msg.slice(-80),
-        title: 'Graytag 판매 이벤트',
+        title: '계정 구매/판매 이벤트',
         body: msg.replace(/<[^>]+>/g, ''),
+        category: 'purchase',
       });
       console.log('[PollDaemon] 알림 전송:', msg.slice(0, 50));
     }

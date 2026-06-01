@@ -31,6 +31,14 @@ function normalizeEmail(value: string) {
   return value.trim().toLowerCase();
 }
 
+function forcedDoublePassAliasEmail(accountEmail: string, serviceType: string): string | null {
+  const local = normalizeEmail(accountEmail).split('@')[0] || '';
+  const service = String(serviceType || '').trim();
+  if (service === '티빙' && local === 'gtwavve444') return 'wavve4444.prozac789@aleeas.com';
+  if (service === '티빙' && local === 'gtwavve4444') return 'wavve4.hyperlink631@aleeas.com';
+  return null;
+}
+
 function serviceKeywords(serviceType: string): string[] {
   const normalized = serviceType.toLowerCase();
   const pairs: Array<[RegExp, string[]]> = [
@@ -117,7 +125,7 @@ export async function updateEmailAliasPin(input: {
 export function makeEmailVerifyMemo(emailId: string | number, pin: string): string {
   return `✅ 아래 내용 꼭 읽어주세요! 로그인 관련 내용입니다!! ✅
 로그인 시도 간 필요한 이메일 코드는 아래 사이트에서 언제든지 셀프인증 가능합니다!
-https://email-verify.xyz/email/mail/${emailId}
+https://email-verify.one/email/mail/${emailId}
 사이트에서 필요한 핀번호는 : ${pin}입니다!
 
 프로필을 만드실 때, 본명에서 가운데 글자를 별(*)로 가려주세요!
@@ -132,6 +140,13 @@ function chooseAlias(accountEmail: string, serviceType: string, aliases: EmailAl
   const enabledAliases = aliases.filter(a => a && a.id !== undefined && a.email && a.enabled !== false);
   const direct = enabledAliases.find(a => normalizeEmail(a.email) === targetEmail);
   if (direct) return direct;
+
+  const forcedAliasEmail = forcedDoublePassAliasEmail(accountEmail, serviceType);
+  if (forcedAliasEmail) {
+    const forced = enabledAliases.find(a => normalizeEmail(a.email) === forcedAliasEmail);
+    if (forced) return forced;
+    return { id: forcedAliasEmail, email: forcedAliasEmail, enabled: true };
+  }
 
   const keys = serviceKeywords(serviceType);
   const withPin = enabledAliases.filter(a => pinStore[String(a.id)]?.pin);

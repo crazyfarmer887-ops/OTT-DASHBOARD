@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from 'vitest';
-import { createStaleWhileRevalidateCache } from '../src/api/management-cache';
+import { createStaleWhileRevalidateCache, shouldForceManagementRefresh } from '../src/api/management-cache';
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -66,5 +66,10 @@ describe('createStaleWhileRevalidateCache', () => {
     expect(forced.cacheStatus).toBe('refresh');
     expect(forced.data).toEqual({ totalAccounts: 37 });
     expect(loadFresh).toHaveBeenCalledTimes(2);
+  });
+
+  test('treats no-store/no-cache browser refreshes as fresh management requests', () => {
+    expect(shouldForceManagementRefresh({}, null, 'no-store')).toBe(true);
+    expect(shouldForceManagementRefresh({}, null, 'max-age=0, no-cache')).toBe(true);
   });
 });

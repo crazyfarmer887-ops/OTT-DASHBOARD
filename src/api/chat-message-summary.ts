@@ -52,8 +52,25 @@ function isOwnedMessage(message: GraytagChatMessage): boolean {
   return Boolean(message.owned || message.isOwned);
 }
 
-export function findLatestBuyerInquiryMessage(messages: GraytagChatMessage[]): GraytagChatMessage | undefined {
+function buyerInquiryMessages(messages: GraytagChatMessage[]): GraytagChatMessage[] {
   return [...messages]
-    .filter((message) => Boolean(message.message) && !isInfoMessage(message) && !isOwnedMessage(message))
+    .filter((message) => Boolean(message.message) && !isInfoMessage(message) && !isOwnedMessage(message));
+}
+
+export function findLatestBuyerInquiryMessage(messages: GraytagChatMessage[]): GraytagChatMessage | undefined {
+  return buyerInquiryMessages(messages)
     .sort((a, b) => messageTime(b) - messageTime(a))[0];
+}
+
+export function findLatestBuyerInquiryThread(messages: GraytagChatMessage[], windowMinutes = 10): GraytagChatMessage[] {
+  const buyers = buyerInquiryMessages(messages)
+    .sort((a, b) => messageTime(a) - messageTime(b));
+  const latest = buyers[buyers.length - 1];
+  if (!latest) return [];
+  const latestTime = messageTime(latest);
+  const cutoff = latestTime > 0 ? latestTime - Math.max(1, windowMinutes) * 60 * 1000 : 0;
+  return buyers.filter((message) => {
+    const time = messageTime(message);
+    return latestTime <= 0 || time <= 0 || time >= cutoff;
+  });
 }

@@ -6,7 +6,7 @@ function setupBrowser() {
   const listeners: Record<string, Function[]> = {};
   const fetchMock = vi.fn(async () => new Response(JSON.stringify({ ok: true }), { status: 200 }));
   vi.stubGlobal('window', {
-    location: { origin: 'https://email-verify.xyz' },
+    location: { origin: 'https://email-verify.one' },
     localStorage: {
       getItem: (key: string) => store.get(key) ?? null,
       setItem: (key: string, value: string) => store.set(key, value),
@@ -39,6 +39,17 @@ describe('admin auth fetch patch', () => {
     installAdminAuthFetchPatch();
 
     await (window.fetch as any)('/api/profile-audit/results');
+
+    const [, init] = fetchMock.mock.calls[0];
+    expect(new Headers(init.headers).get('x-admin-token')).toBe('safe-token');
+  });
+
+  test('adds admin token to party access GET requests so admins can bypass consent', async () => {
+    const fetchMock = setupBrowser();
+    setAdminToken('safe-token');
+    installAdminAuthFetchPatch();
+
+    await (window.fetch as any)('/api/party-access/test-token');
 
     const [, init] = fetchMock.mock.calls[0];
     expect(new Headers(init.headers).get('x-admin-token')).toBe('safe-token');

@@ -1,7 +1,7 @@
 import type { AutoReplyRoute } from './auto-reply-router';
 import type { HermesAutoReplyResult } from './hermes-auto-reply';
 
-export type AutonomousReplyKind = 'auto_send' | 'clarifying_question' | 'receipt_and_alert' | 'draft_only';
+export type AutonomousReplyKind = 'auto_send' | 'receipt_and_alert' | 'draft_only';
 
 export interface AutonomousReplyDecision {
   kind: AutonomousReplyKind;
@@ -19,11 +19,11 @@ export interface AutonomousReplyInput {
 }
 
 export function defaultReceiptReply(): string {
-  return '불편드려 죄송합니다. 해당 내용은 정확한 확인이 필요해서 확인 후 안내드리겠습니다. 조금만 기다려주세요.';
+  return '확인 후 안내드릴게요~ 조금만 기다려주세요.';
 }
 
 export function defaultClarifyingQuestion(): string {
-  return '어느 단계에서 안 되는지 확인 도와드릴게요. 로그인 전, 인증코드 입력, 프로필 선택, 재생 오류 중 어떤 상황인지 알려주세요.';
+  return '어느 단계에서 안 되는지 알려주시면 확인해드릴게요~';
 }
 
 export function decideAutonomousReply(input: AutonomousReplyInput): AutonomousReplyDecision {
@@ -49,18 +49,16 @@ export function decideAutonomousReply(input: AutonomousReplyInput): AutonomousRe
   }
 
   const confidence = input.hermes?.confidence;
+  if (input.hermes?.needsHuman) {
+    return { kind: 'receipt_and_alert', reply: input.hermes.reply || defaultReceiptReply(), notifyHuman: true, humanReason: input.hermes.reason || 'AI가 사람 확인 필요로 판단' };
+  }
   if (input.hermes?.reply && input.hermes.autoSendAllowed && !input.hermes.needsHuman && input.hermes.risk === 'low' && (confidence ?? 0) >= 0.85) {
     return { kind: 'auto_send', reply: input.hermes.reply, notifyHuman: false };
   }
 
-  const shortMessage = input.buyerMessage.replace(/\s+/g, '').length <= 8;
-  if (route.category === 'unknown' || (shortMessage && !input.hermes?.reply)) {
-    return { kind: 'clarifying_question', reply: defaultClarifyingQuestion(), notifyHuman: false };
-  }
-
   if (input.hermes?.reply) {
-    return { kind: 'draft_only', reply: input.hermes.reply, notifyHuman: false, humanReason: confidence !== undefined && confidence < 0.65 ? '자동발송 신뢰도 부족' : 'Hermes 초안 검토 필요' };
+    return { kind: 'draft_only', reply: input.hermes.reply, notifyHuman: false, humanReason: confidence !== undefined && confidence < 0.65 ? '자동발송 신뢰도 부족' : 'Gemma 초안 검토 필요' };
   }
 
-  return { kind: 'clarifying_question', reply: defaultClarifyingQuestion(), notifyHuman: false };
+  return { kind: 'receipt_and_alert', reply: defaultReceiptReply(), notifyHuman: true, humanReason: input.failureReason || 'AI가 의도를 판단하지 못함' };
 }

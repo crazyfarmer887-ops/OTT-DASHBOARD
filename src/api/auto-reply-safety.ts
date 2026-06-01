@@ -38,6 +38,9 @@ export function evaluateAutoReplySafety(input: AutoReplySafetyInput): AutoReplyS
   if (latest && nowMs - latest < input.policy.minSecondsBetweenRepliesPerRoom * 1000) return { allowed: false, reason: '방별 자동응답 간격 제한' };
 
   if (input.route.category === 'auth_code_request' && !input.policy.autoSendAuthCode) return { allowed: false, reason: '인증코드 자동발송 꺼져 있음' };
-  if (input.route.category !== 'auth_code_request' && !input.policy.autoSendLowRisk) return { allowed: false, reason: '일반 문의 자동발송 꺼져 있음' };
+  if (input.route.category === 'pin_or_email_link' && !input.policy.autoSendAuthCode) return { allowed: false, reason: '이메일/PIN 자동발송 꺼져 있음' };
+  if (input.route.category === 'login_issue' && !input.policy.autoSendLoginIssue && !input.policy.autoSendLowRisk) return { allowed: false, reason: '로그인 1차 안내 자동발송 꺼져 있음' };
+  if (input.route.category === 'safe_receipt' && !input.policy.autoSendSafeReceipts) return { allowed: false, reason: '확인필요 접수 자동발송 꺼져 있음' };
+  if (!['auth_code_request', 'pin_or_email_link', 'login_issue', 'safe_receipt'].includes(input.route.category) && !input.policy.autoSendLowRisk) return { allowed: false, reason: '일반 문의 자동발송 꺼져 있음' };
   return { allowed: true, reason: '자동발송 허용' };
 }

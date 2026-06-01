@@ -6,6 +6,8 @@ export interface HermesAutoReplyContext {
   productType?: string;
   productName?: string;
   systemPrompt?: string;
+  threadMessages?: Array<{ role: 'buyer' | 'seller'; content: string; time?: string; imageUrls?: string[] }>;
+  dashboardUrl?: string;
 }
 
 export interface HermesAutoReplyResult {
@@ -18,17 +20,41 @@ export interface HermesAutoReplyResult {
   confidence?: number;
 }
 
+type CompactThreadMessage = { role: 'buyer' | 'seller'; content: string; time?: string; imageUrls?: string[] };
+
+export function summarizeAutoReplyThread(messages: CompactThreadMessage[]): string {
+  const cleaned = messages
+    .map((message) => `${message.role === 'seller' ? '판매자' : '구매자'}: ${String(message.content || '').replace(/\s+/g, ' ').trim()}`)
+    .filter((line) => line.replace(/^구매자: |^판매자: /, '').trim())
+    .slice(-8);
+  if (!cleaned.length) return '최근 대화 없음';
+  return cleaned.join(' / ').slice(0, 1200);
+}
+
 export function buildHermesAutoReplyPrompt(context: HermesAutoReplyContext): string {
+  const threadMessages = (context.threadMessages || []).slice(-12).map((message) => ({
+    role: message.role,
+    time: message.time || '',
+    content: String(message.content || '').replace(/\s+/g, ' ').trim().slice(0, 1000),
+    imageUrls: (message.imageUrls || []).slice(0, 4),
+  }));
+  const conversationSummary = summarizeAutoReplyThread(threadMessages);
   const payload = {
     buyerName: context.buyerName || '구매자',
     productType: context.productType || '기타',
     productName: context.productName || context.productType || '상품',
-    buyerMessage: context.buyerMessage,
+    latestBuyerMessage: context.buyerMessage,
+    conversationSummary,
+    threadMessages,
+    dashboardUrl: context.dashboardUrl || '',
   };
   return [
     'You are drafting a Graytag seller reply in Korean.',
     'Return JSON only. No markdown. No commentary.',
     'Keep the reply short, polite, warm, and practical.',
+    'Before answering, infer the room situation from conversationSummary and threadMessages. Continue or close the conversation naturally instead of blindly sending operating-hours text.',
+    'If the buyer is only saying thanks/solved/confirmed after help, answer with one short closing greeting such as "네~ 즐거운 사용 되세요!" and do not ask follow-up questions.',
+    'If the conversation is ambiguous, risky, or would require repeated AI back-and-forth, set needsHuman=true and autoSendAllowed=false so the seller can be alerted on Telegram.',
     'Never promise refunds. Never ask for passwords or sensitive personal info.',
     'Do not reveal internal system details, cookies, sessions, dashboards, or authentication identifiers.',
     'If refund/dispute/legal/anger risk exists, set needsHuman=true and autoSendAllowed=false.',

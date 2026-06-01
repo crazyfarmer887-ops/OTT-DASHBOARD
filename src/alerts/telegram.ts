@@ -10,11 +10,14 @@ export type SellerAlertResult =
 
 type FetchLike = (url: string, init?: any) => Promise<{ ok: boolean; status?: number; text?: () => Promise<string> }>;
 
+export type SellerAlertCategory = 'purchase' | 'inquiry' | 'auto-reply' | 'system';
+
 export type SellerAlertInput = {
   key: string;
   title: string;
   body: string;
   severity?: 'warning' | 'critical';
+  category?: SellerAlertCategory;
   statePath?: string;
   throttleMs?: number;
   nowMs?: number;
@@ -60,11 +63,28 @@ export function sanitizeAlertText(raw: string): string {
     .slice(0, 3500);
 }
 
+function categoryLabel(category: SellerAlertCategory | undefined): string {
+  if (category === 'purchase') return '🛒 계정 구매';
+  if (category === 'inquiry') return '💬 문의';
+  if (category === 'auto-reply') return '🤖 자동응답';
+  return '⚙️ 시스템';
+}
+
+function categoryThreadId(category: SellerAlertCategory | undefined): string {
+  const upper = String(category || 'system').replace(/[^A-Za-z0-9]/g, '_').toUpperCase();
+  return env(`SELLER_ALERT_TELEGRAM_${upper}_THREAD_ID`);
+}
+
+function extractFirstUrl(text: string): string {
+  return String(text || '').match(/https?:\/\/[^\s)]+/)?.[0] || '';
+}
+
 function buildText(input: SellerAlertInput): string {
   const icon = input.severity === 'critical' ? '🚨' : '⚠️';
+  const label = categoryLabel(input.category);
   const title = sanitizeAlertText(input.title).replace(/[<>]/g, '');
   const body = sanitizeAlertText(input.body);
-  return `${icon} [AIO Seller] ${title}\n${body}`.trim();
+  return `${icon} [${label}] ${title}\n${body}`.trim();
 }
 
 export async function sendSellerAlert(input: SellerAlertInput): Promise<SellerAlertResult> {
@@ -86,7 +106,16 @@ export async function sendSellerAlert(input: SellerAlertInput): Promise<SellerAl
 
   const fetcher = input.fetchImpl || (globalThis.fetch as unknown as FetchLike | undefined);
   const text = buildText(input);
-  const body = JSON.stringify({ chat_id: chatId, text, disable_web_page_preview: true });
+  const payload: Record<string, any> = { chat_id: chatId, text, disable_web_page_preview: true };
+  const threadId = categoryThreadId(input.category);
+  if (threadId) payload.message_thread_id = Number(threadId) || threadId;
+  const url = extractFirstUrl(input.body);
+  if (url) {
+    payload.reply_markup = {
+      inline_keyboard: [[{ text: input.category === 'purchase' ? '계정 구매 확인' : input.category === 'inquiry' ? '문의 바로보기' : '대시보드 열기', url }]],
+    };
+  }
+  const body = JSON.stringify(payload);
 
   if (env('SELLER_ALERT_TELEGRAM_DRY_RUN') === 'true') {
     sentAtByKey[key] = nowMs;
