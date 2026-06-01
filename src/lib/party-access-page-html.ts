@@ -84,18 +84,22 @@ export function buildPartyAccessHtml(token: string): string {
           if (step > 0) { const prev = el('button','primary','이전'); prev.type='button'; prev.style.background = '#fff'; prev.style.color = '#6d28d9'; prev.style.border = '1.5px solid #ddd6fe'; prev.onclick = () => { values[step] = ta.value; step -= 1; renderStep(); }; nav.appendChild(prev); }
           const next = el('button','primary', step < 2 ? '동의 완료하고 다음 (' + completed() + '/3)' : '3개 내용 모두 동의하고 계정정보 보기 (' + completed() + '/3)'); next.disabled = ta.value.trim() !== cfg.required;
           ta.addEventListener('input', () => { values[step] = ta.value; const ok = ta.value.trim() === cfg.required; ta.classList.toggle('ok', ok); next.disabled = !ok; next.textContent = step < 2 ? '동의 완료하고 다음 (' + completed() + '/3)' : '3개 내용 모두 동의하고 계정정보 보기 (' + completed() + '/3)'; });
-          next.onclick = () => { values[step] = ta.value; if (ta.value.trim() !== cfg.required) return; if (step < 2) { step += 1; renderStep(); } else { try { localStorage.setItem('access-consent-v2:' + token, profileName); } catch (_) {} overlay.remove(); if (typeof onDone === 'function') onDone(); } };
+          next.onclick = () => { values[step] = ta.value; if (ta.value.trim() !== cfg.required) return; if (step < 2) { step += 1; renderStep(); } else { try { localStorage.setItem('access-consent-v3:' + token, 'ok'); } catch (_) {} overlay.remove(); if (typeof onDone === 'function') onDone(); } };
           nav.appendChild(next); card.appendChild(nav);
           setTimeout(() => ta.focus(), 50);
         };
         overlay.appendChild(card); document.body.appendChild(overlay); renderStep();
       };
+      const revealAfterConsent = () => fetch('/api/party-access/' + encodeURIComponent(token) + '/consent', { method:'POST', cache:'no-store', headers:{ 'content-type':'application/json' }, body:JSON.stringify({ phrases:[AGREEMENT_1, AGREEMENT_2, AGREEMENT_3] }) }).then((res) => res.json().catch(() => ({}))).then(render).catch(blocked);
       const render = (payload) => {
         if (!payload || !payload.ok) return blocked();
         const c = payload.credentials || {}; const profileName = payload.profileName || payload.memberName || '(미확인)';
         const showEmailAccess = Boolean(payload.emailAccessUrl) && !isWavveService(payload.serviceType); const showPin = Boolean(c.pin) && showEmailAccess;
         const isAdminAccess = payload.adminAccess === true;
-        try { if (!isAdminAccess && localStorage.getItem('access-consent-v2:' + token) !== profileName) { root.innerHTML = ''; renderConsent(profileName, payload, () => render(payload)); return; } } catch (_) { if (!isAdminAccess) { root.innerHTML = ''; renderConsent(profileName, payload, () => render(payload)); return; } }
+        if (!isAdminAccess && payload.sensitiveRedacted) {
+          try { if (localStorage.getItem('access-consent-v3:' + token) === 'ok') return revealAfterConsent(); } catch (_) {}
+          root.innerHTML = ''; renderConsent(profileName, payload, revealAfterConsent); return;
+        }
         root.innerHTML = ''; const wrap = el('div','wrap'); const card = el('div','card');
         const header = el('div','header'); header.appendChild(el('div','icon','🛡️')); const ht = el('div'); ht.appendChild(el('div','title',showEmailAccess ? '최신 ID · PW · PIN' : '최신 ID · PW')); ht.appendChild(el('div','sub','이용기간 중에만 계정 정보를 확인할 수 있어요')); header.appendChild(ht); card.appendChild(header);
         card.appendChild(el('div','top-warning', isAdminAccess ? '⚠️ 관리자 인증으로 동의 절차를 건너뛰었습니다. 구매자 화면에서는 기존처럼 필수 동의 후 계정 정보가 표시됩니다.' : '⚠️ 계정 정보와 추가회원/자리 설정은 절대 변경하지 마세요. 로그인 안 될 때는 이 페이지를 새로고침해 최신 정보를 먼저 확인해주세요.'));

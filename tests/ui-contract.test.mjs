@@ -373,7 +373,8 @@ test('OTT home and navigation use the refreshed UI structure', () => {
   assert.match(partyAccessPage, /현재 파티원 프로필 현황/);
   assert.ok(partyAccessPage.indexOf('credentialRows(payload).map') < partyAccessPage.indexOf('현재 파티원 프로필 현황'));
   assert.match(partyAccessPage, /프로필이 꽉 찼다면 위 현황에 없는 프로필을 삭제/);
-  assert.match(partyAccessPage, /access-consent-v2:/);
+  assert.match(partyAccessPage, /access-consent-v3:/);
+  assert.match(partyAccessPage, /\/consent/);
   assert.match(partyAccessPage, /이메일 접근 PIN번호/);
   assert.match(partyAccessPage, /payload\.profileName/);
   assert.match(partyAccessPage, /이메일 인증 열기/);
@@ -387,7 +388,8 @@ test('OTT home and navigation use the refreshed UI structure', () => {
   assert.match(partyAccessShell, /complaint-case\.jpg/);
   assert.match(partyAccessShell, /disney-profiles\.jpg/);
   assert.match(partyAccessShell, /복사\/붙여넣기 없이 직접 입력/);
-  assert.match(partyAccessShell, /access-consent-v2:/);
+  assert.match(partyAccessShell, /access-consent-v3:/);
+  assert.match(partyAccessShell, /\/consent/);
   assert.match(partyAccessPage, /adminAccess/);
   assert.match(partyAccessPage, /관리자 인증으로 동의 절차를 건너뛰었습니다/);
   assert.match(partyAccessShell, /getAdminToken/);

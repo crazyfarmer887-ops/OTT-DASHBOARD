@@ -14,11 +14,39 @@ import {
   buildPartyAccessDeliveryTemplate,
   buildPartyAccessProfileStatuses,
   syncPartyAccessStoreWithMembers,
+  redactPartyAccessPayloadForConsent,
+  isValidPartyAccessConsent,
+  PARTY_ACCESS_CONSENT_PHRASES,
 } from '../src/lib/party-access';
 import { buildPartyAccessHtml } from '../src/lib/party-access-page-html';
 import { mergePartyMaintenanceChecklistState } from '../src/lib/party-maintenance-checklist';
 
 describe('party member account access links', () => {
+  test('public preview hides credentials/profile before server-side consent is completed', () => {
+    const record = createPartyAccessLinkRecord({
+      token: 'consent-token',
+      now: '2026-05-09T00:00:00.000Z',
+      serviceType: '넷플릭스',
+      accountEmail: 'nflx@example.com',
+      fallbackPassword: 'secret-password',
+      profileName: '사과',
+      member: { kind: 'graytag', memberId: 'deal-1', memberName: '구매자', status: 'Using', endDateTime: '2026-08-07' },
+    });
+    const fullPayload = buildPartyAccessPublicPayload(record, {}, {}, '2026-05-10T00:00:00.000Z', { [record.tokenHash]: record });
+    const preview = redactPartyAccessPayloadForConsent(fullPayload);
+
+    expect(preview.ok).toBe(true);
+    expect(preview.sensitiveRedacted).toBe(true);
+    expect(preview.consentRequired).toBe(true);
+    expect(preview.profileName).toBeUndefined();
+    expect(preview.accountEmail).toBeUndefined();
+    expect(preview.emailAccessUrl).toBeUndefined();
+    expect(preview.partyProfiles).toBeUndefined();
+    expect(preview.credentials).toBeUndefined();
+    expect(isValidPartyAccessConsent([...PARTY_ACCESS_CONSENT_PHRASES])).toBe(true);
+    expect(isValidPartyAccessConsent([PARTY_ACCESS_CONSENT_PHRASES[0]])).toBe(false);
+  });
+
   test('prefers fill product profile assignment when an OnSale product becomes a Using deal', () => {
     const fillRecord = createPartyAccessLinkRecord({
       token: 'fill-token',

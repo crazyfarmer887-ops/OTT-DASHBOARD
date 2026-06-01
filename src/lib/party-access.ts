@@ -441,6 +441,17 @@ export function enrichPartyAccessRecordWithKnownCredentials(
   return { ...record, fallbackPassword, fallbackPin, emailAccessUrl };
 }
 
+export const PARTY_ACCESS_CONSENT_PHRASES = [
+  '계정 정보를 절대 변경하지 않겠습니다.',
+  '로그인 안 될 때 이 페이지를 먼저 확인하겠습니다.',
+  '배정된 1개 프로필만 사용하겠습니다.',
+] as const;
+
+export function isValidPartyAccessConsent(value: unknown): boolean {
+  const phrases = Array.isArray(value) ? value.map((item) => String(item || '').trim()) : [];
+  return PARTY_ACCESS_CONSENT_PHRASES.every((phrase, index) => phrases[index] === phrase);
+}
+
 export function resolvePartyAccessCredentials(
   record: PartyAccessLinkRecord,
   checklistStore: PartyMaintenanceChecklistStore = {},
@@ -514,14 +525,7 @@ export function buildPartyAccessProfileStatuses(
   });
 }
 
-export function buildPartyAccessPublicPayload(
-  record: PartyAccessLinkRecord | null,
-  checklistStore: PartyMaintenanceChecklistStore = {},
-  generatedStore: GeneratedAccountStore = {},
-  now = new Date().toISOString(),
-  store: PartyAccessLinkStore = {},
-  profileAssignments: ProfileAssignment[] = [],
-): {
+export type PartyAccessPublicPayload = {
   ok: boolean;
   reason?: string;
   serviceType?: string;
@@ -532,8 +536,32 @@ export function buildPartyAccessPublicPayload(
   partyProfiles?: PartyAccessProfileStatus[];
   period?: { startDateTime: string | null; endDateTime: string | null };
   credentials?: PartyAccessCredentials;
+  consentRequired?: boolean;
+  sensitiveRedacted?: boolean;
   audit: { memberId: string; allowed: boolean; reason: string; viewedAt: string };
-} {
+};
+
+export function redactPartyAccessPayloadForConsent(payload: PartyAccessPublicPayload): PartyAccessPublicPayload {
+  return {
+    ok: payload.ok,
+    reason: payload.reason,
+    consentRequired: payload.ok ? true : undefined,
+    sensitiveRedacted: true,
+    serviceType: payload.serviceType,
+    memberName: payload.memberName,
+    period: payload.period,
+    audit: payload.audit,
+  };
+}
+
+export function buildPartyAccessPublicPayload(
+  record: PartyAccessLinkRecord | null,
+  checklistStore: PartyMaintenanceChecklistStore = {},
+  generatedStore: GeneratedAccountStore = {},
+  now = new Date().toISOString(),
+  store: PartyAccessLinkStore = {},
+  profileAssignments: ProfileAssignment[] = [],
+): PartyAccessPublicPayload {
   if (!record) {
     return { ok: false, reason: 'not-found', audit: { memberId: '', allowed: false, reason: 'missing-record', viewedAt: now } };
   }

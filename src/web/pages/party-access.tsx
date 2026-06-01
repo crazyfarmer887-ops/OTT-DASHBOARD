@@ -20,6 +20,8 @@ type AccessPayload = {
     isCurrentMember: boolean;
   }>;
   period?: { startDateTime: string | null; endDateTime: string | null };
+  consentRequired?: boolean;
+  sensitiveRedacted?: boolean;
   credentials?: { id: string; password: string; pin: string; updatedAt: string };
 };
 
@@ -59,6 +61,17 @@ export default function PartyAccessPage() {
   const [consentOk, setConsentOk] = useState(false);
   const [consentStep, setConsentStep] = useState(0);
 
+  const fetchFullPayloadAfterConsent = async () => {
+    const phrases = [AGREEMENT_1, AGREEMENT_2, AGREEMENT_3];
+    const res = await fetch(`/api/party-access/${encodeURIComponent(token)}/consent`, {
+      method: 'POST',
+      cache: 'no-store',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ phrases }),
+    });
+    return await res.json().catch(() => ({})) as AccessPayload;
+  };
+
   useEffect(() => {
     let alive = true;
     fetch(`/api/party-access/${encodeURIComponent(token)}`, { cache: 'no-store' })
@@ -66,14 +79,18 @@ export default function PartyAccessPage() {
       .then(({ json }) => { if (alive) setPayload(json as AccessPayload); })
       .catch(() => { if (alive) setPayload({ ok: false, reason: 'network-error' }); })
       .finally(() => { if (alive) setLoading(false); });
+    try { setConsentOk(localStorage.getItem(`access-consent-v3:${token}`) === 'ok'); } catch {}
     return () => { alive = false; };
   }, [token]);
 
   useEffect(() => {
-    const profileName = payload?.profileName || payload?.memberName || '';
-    if (!payload?.ok || !profileName) return;
-    try { setConsentOk(localStorage.getItem(`access-consent-v2:${token}`) === profileName); } catch {}
-  }, [payload?.ok, payload?.profileName, payload?.memberName, token]);
+    if (!payload?.ok || !payload.sensitiveRedacted || !consentOk) return;
+    let alive = true;
+    fetchFullPayloadAfterConsent()
+      .then((json) => { if (alive) setPayload(json); })
+      .catch(() => { if (alive) setConsentOk(false); });
+    return () => { alive = false; };
+  }, [payload?.ok, payload?.sensitiveRedacted, consentOk, token]);
 
   const copy = async (value: string) => {
     if (!value) return;
@@ -99,13 +116,19 @@ export default function PartyAccessPage() {
   const profileName = payload.profileName || payload.memberName || '(미확인)';
   const partyProfiles = payload.partyProfiles || [];
   const isAdminAccess = payload.adminAccess === true;
-  const showConsent = Boolean(profileName && !consentOk && !isAdminAccess);
+  const showConsent = Boolean(payload.consentRequired && !consentOk && !isAdminAccess);
   const completedConsentCount = [consentInputs.a1.trim() === AGREEMENT_1, consentInputs.a2.trim() === AGREEMENT_2, consentInputs.a3.trim() === AGREEMENT_3].filter(Boolean).length;
   const allConsentOk = completedConsentCount === 3;
-  const acceptConsent = () => {
+  const acceptConsent = async () => {
     if (!allConsentOk) return;
-    try { localStorage.setItem(`access-consent-v2:${token}`, profileName); } catch {}
-    setConsentOk(true);
+    try {
+      const fullPayload = await fetchFullPayloadAfterConsent();
+      setPayload(fullPayload);
+      if (fullPayload.ok && !fullPayload.sensitiveRedacted) {
+        localStorage.setItem(`access-consent-v3:${token}`, 'ok');
+        setConsentOk(true);
+      }
+    } catch {}
   };
   const showEmailAccess = Boolean(payload.emailAccessUrl) && !isWavveService(payload.serviceType);
 

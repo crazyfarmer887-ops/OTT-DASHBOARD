@@ -33,7 +33,7 @@ import { buildOpenRouterAutoReplyRequest, parseOpenRouterAutoReplyJson, resolveO
 import { evaluateAutoReplySafety } from './auto-reply-safety';
 import { decideAutonomousReply } from './auto-reply-autonomy';
 import { buildOperationsCenter, createManualResponseQueueItem, mergeManualResponseQueueItem, summarizeManualResponseQueue, type ManualResponseQueueItem } from '../lib/operations-center';
-import { buildPartyAccessDeliverySnapshotByMember, buildPartyAccessPublicPayload, createPartyAccessLinkRecord, enrichPartyAccessRecordWithKnownCredentials, normalizePartyAccessToken, partyAccessMemberHistoryKey, partyAccessTokenHash, resolvePartyAccessDeliverySnapshotByListing, resolvePartyAccessDeliverySnapshotForDeal, syncPartyAccessStoreWithMembers, type PartyAccessDeliverySnapshot, type PartyAccessLinkRecord, type PartyAccessLinkStore } from '../lib/party-access';
+import { buildPartyAccessDeliverySnapshotByMember, buildPartyAccessPublicPayload, createPartyAccessLinkRecord, enrichPartyAccessRecordWithKnownCredentials, isValidPartyAccessConsent, normalizePartyAccessToken, partyAccessMemberHistoryKey, partyAccessTokenHash, redactPartyAccessPayloadForConsent, resolvePartyAccessDeliverySnapshotByListing, resolvePartyAccessDeliverySnapshotForDeal, syncPartyAccessStoreWithMembers, type PartyAccessDeliverySnapshot, type PartyAccessLinkRecord, type PartyAccessLinkStore } from '../lib/party-access';
 import { CLOSING_ACKNOWLEDGEMENT_CATEGORY, DAILY_ACCOUNT_ACCESS_NOTICE_CATEGORY, OFF_HOURS_NOTICE_CATEGORY, buildClosingAcknowledgementReply, buildDailyAccountAccessNoticeReply, buildOffHoursNoticeReply, combineNoticeReplies, hasDailyAccountAccessNoticeToday, isSimpleAcknowledgement, shouldSendClosingAcknowledgement, shouldSendDailyAccountAccessNotice, shouldSendOffHoursNotice } from './auto-reply-daily-notice';
 
 const EMAIL_SERVER = "http://127.0.0.1:3001";
@@ -121,9 +121,10 @@ function normalizedApiPath(path: string): string {
 
 function requiresAdminAuth(method: string, path = ''): boolean {
   const upperMethod = method.toUpperCase();
-  if (upperMethod === 'OPTIONS') return false;
-  if (!PUBLIC_API_METHODS.has(upperMethod)) return true;
   const normalizedPath = normalizedApiPath(path);
+  if (upperMethod === 'OPTIONS') return false;
+  if (upperMethod === 'POST' && /^\/party-access\/[^/]+\/consent$/.test(normalizedPath)) return false;
+  if (!PUBLIC_API_METHODS.has(upperMethod)) return true;
   return ADMIN_REQUIRED_GET_PREFIXES.some((prefix) => normalizedPath === prefix || normalizedPath.startsWith(`${prefix}/`));
 }
 
@@ -4487,7 +4488,7 @@ app.get('/party-access/:token', (c) => {
   const payload = buildPartyAccessPublicPayload(record, loadPartyMaintenanceChecklistStore(), readGeneratedAccountStore(), viewedAt, store, loadProfileAssignments());
   const adminToken = configuredAdminToken();
   const adminAccess = Boolean(adminToken && hasValidAdminToken(c, adminToken));
-  const responsePayload = adminAccess ? { ...payload, adminAccess: true } : payload;
+  const responsePayload = adminAccess ? { ...payload, adminAccess: true } : redactPartyAccessPayloadForConsent(payload);
   if (record) {
     const next = updatePartyAccessView(store, record, viewedAt, payload.ok === true);
     if (next !== store) savePartyAccessLinkStore(next);
@@ -4496,13 +4497,41 @@ app.get('/party-access/:token', (c) => {
       action: 'party-access-link.view',
       targetType: 'party-access-link',
       targetId: record.id,
-      summary: payload.ok ? 'party member viewed account access page' : `party member blocked from account access: ${payload.reason}`,
+      summary: payload.ok ? 'party member opened account access consent page' : `party member blocked from account access: ${payload.reason}`,
+      result: payload.ok ? 'success' : 'blocked',
+      requestId: auditRequestId(c),
+      details: { ...payload.audit, sensitiveRedacted: !adminAccess },
+    });
+  }
+  return publicPartyAccessResponse(c, responsePayload);
+});
+
+app.post('/party-access/:token/consent', async (c) => {
+  const token = normalizePartyAccessToken(c.req.param('token'));
+  if (!token) return c.json({ ok: false, reason: 'not-found' }, 404);
+  const body = await c.req.json().catch(() => ({})) as any;
+  if (!isValidPartyAccessConsent(body?.phrases || body?.agreements)) {
+    return c.json({ ok: false, reason: 'consent-required' }, 400);
+  }
+  const store = loadPartyAccessLinkStore();
+  const record = store[partyAccessTokenHash(token)] || null;
+  const viewedAt = new Date().toISOString();
+  const payload = buildPartyAccessPublicPayload(record, loadPartyMaintenanceChecklistStore(), readGeneratedAccountStore(), viewedAt, store, loadProfileAssignments());
+  if (record) {
+    const next = updatePartyAccessView(store, record, viewedAt, payload.ok === true);
+    if (next !== store) savePartyAccessLinkStore(next);
+    writeAudit({
+      actor: 'system',
+      action: 'party-access-link.consent',
+      targetType: 'party-access-link',
+      targetId: record.id,
+      summary: payload.ok ? 'party member completed account access consent' : `party member blocked after consent: ${payload.reason}`,
       result: payload.ok ? 'success' : 'blocked',
       requestId: auditRequestId(c),
       details: payload.audit,
     });
   }
-  return publicPartyAccessResponse(c, responsePayload);
+  return publicPartyAccessResponse(c, payload);
 });
 
 app.get('/profile-assignments', (c) => {

@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import apiApp from '../src/api/index';
+import { PARTY_ACCESS_CONSENT_PHRASES } from '../src/lib/party-access';
 
 const token = 'test-admin-token';
 let tempDir = '';
@@ -131,7 +132,7 @@ describe('auto reply API', () => {
       dealStatus: 'Using',
       statusName: '이용 중',
       startDateTime: '2026-05-01T00:00:00Z',
-      endDateTime: '2026-05-31T00:00:00Z',
+      endDateTime: '2026-12-31T00:00:00Z',
     };
     const first = await authed('/chat/auto-reply/tick', {
       method: 'POST',
@@ -151,7 +152,19 @@ describe('auto reply API', () => {
     const accessToken = decodeURIComponent(accessUrl.split('/dashboard/access/')[1] || '');
     const publicRes = await apiApp.request(`/party-access/${encodeURIComponent(accessToken)}`);
     const publicData = await publicRes.json() as any;
-    expect(publicData.profileName).toBe('고슴도치');
+    expect(publicData.ok).toBe(true);
+    expect(publicData.sensitiveRedacted).toBe(true);
+    expect(publicData.profileName).toBeUndefined();
+    expect(publicData.credentials).toBeUndefined();
+
+    const consentRes = await apiApp.request(`/party-access/${encodeURIComponent(accessToken)}/consent`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ phrases: [...PARTY_ACCESS_CONSENT_PHRASES] }),
+    });
+    const consentData = await consentRes.json() as any;
+    expect(consentData.profileName).toBe('고슴도치');
+    expect(consentData.credentials.password).toBeTruthy();
 
     process.env.AUTO_REPLY_TEST_NOW = '2026-05-05T06:00:00Z';
     const second = await authed('/chat/auto-reply/tick', {
