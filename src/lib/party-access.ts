@@ -331,7 +331,14 @@ export function syncPartyAccessStoreWithMembers(input: {
   for (const [tokenHash, record] of Object.entries(input.store || {})) {
     if (!record?.member?.memberId) continue;
     const status = statusByKey.get(`${record.member.kind}:${record.member.memberId}`);
-    if (!status) continue;
+    const syntheticManagementRecord = !record.shareToken && String(record.id || '').endsWith(':management');
+    if (!status) {
+      if (syntheticManagementRecord && !record.revokedAt) {
+        next[tokenHash] = { ...record, revokedAt: now };
+        changed = true;
+      }
+      continue;
+    }
     const updatedMember = {
       ...record.member,
       memberName: normalizeKeyPart(String(status.memberName ?? record.member.memberName)) || record.member.memberName,

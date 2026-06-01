@@ -401,6 +401,41 @@ describe('party member account access links', () => {
     });
   });
 
+  test('sync revokes stale synthetic management siblings missing from fresh account management', () => {
+    const current = createPartyAccessLinkRecord({
+      token: 'current-real-token',
+      now: '2026-05-03T00:00:00.000Z',
+      serviceType: '넷플릭스',
+      accountEmail: 'n@example.com',
+      profileName: '사과',
+      member: { kind: 'graytag', memberId: 'deal-current', memberName: '현재회원', status: 'Using', statusName: '이용중', endDateTime: '2026-06-30' },
+    });
+    const staleBase = createPartyAccessLinkRecord({
+      token: 'stale-management-token',
+      now: '2026-05-03T00:00:00.000Z',
+      serviceType: '넷플릭스',
+      accountEmail: 'n@example.com',
+      profileName: '망고',
+      member: { kind: 'graytag', memberId: 'deal-stale', memberName: '이전회원', status: 'Using', statusName: '이용중', endDateTime: '2026-06-30' },
+    });
+    const staleSynthetic = {
+      ...staleBase,
+      id: '넷플릭스:n@example.com:graytag:deal-stale:management',
+      shareToken: undefined,
+      tokenHash: partyAccessTokenHash('management-넷플릭스-n@example.com-deal-stale'),
+    };
+
+    const { store, changed } = syncPartyAccessStoreWithMembers({
+      store: { [current.tokenHash]: current, [staleSynthetic.tokenHash]: staleSynthetic },
+      members: [{ kind: 'graytag', memberId: 'deal-current', memberName: '현재회원', status: 'Using', statusName: '이용중', endDateTime: '2026-06-30' }],
+      now: '2026-05-10T00:00:00.000Z',
+    });
+
+    expect(changed).toBe(true);
+    expect(store[staleSynthetic.tokenHash].revokedAt).toBe('2026-05-10T00:00:00.000Z');
+    expect(buildPartyAccessProfileStatuses(current, store, '2026-05-10T00:01:00.000Z').map((item) => item.profileName)).toEqual(['사과']);
+  });
+
   test('uses the newest delivery history snapshot for the same party member', () => {
     const older = createPartyAccessLinkRecord({
       token: 'history-old', now: '2026-05-01T00:00:00.000Z', serviceType: '티빙', accountEmail: 'gtwavve7',
