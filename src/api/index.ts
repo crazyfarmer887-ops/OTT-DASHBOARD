@@ -1432,14 +1432,19 @@ app.post('/post/keepAcct', async (c) => {
   if (!cookies) return c.json({ error: '필수 파라미터 누락 (JSESSIONID)' }, 400);
   const { productUsid, keepAcct, keepPasswd, keepMemo } = body;
   if (!productUsid) return c.json({ error: '필수 파라미터 누락 (productUsid)' }, 400);
+  const normalizedKeepAcct = String(keepAcct || '').trim();
+  const normalizedKeepPasswd = String(keepPasswd || '').trim();
+  if (isGraytagAccessNoticeCredential(normalizedKeepAcct) || isGraytagAccessNoticeCredential(normalizedKeepPasswd)) {
+    return c.json({ error: '안내 문구는 계정 ID/PW로 저장할 수 없습니다.' }, 400);
+  }
 
   const cookieStr = buildCookieStr(cookies);
 
   try {
     const payload = {
       productUsid,
-      keepAcct: keepAcct?.trim(),
-      keepPasswd: keepPasswd?.trim(),
+      keepAcct: normalizedKeepAcct,
+      keepPasswd: normalizedKeepPasswd,
       keepMemo: sanitizeForGraytag(keepMemo?.trim() || ''),
     };
 
