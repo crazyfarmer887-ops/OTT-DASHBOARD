@@ -15,6 +15,7 @@ const ADMIN_REQUIRED_GET_PREFIXES = [
   "/api/party-maintenance-checklists",
   "/api/profile-assignments",
   "/api/generated-accounts",
+  "/api/management-hidden-accounts",
   "/api/operations-center",
   "/api/party-access",
 ];

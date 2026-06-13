@@ -4,6 +4,7 @@ import {
   createPartyAccessLinkRecord,
   enrichPartyAccessRecordWithKnownCredentials,
   isPartyAccessAllowed,
+  mergeRecoverablePartyAccessBackupStores,
   normalizePartyAccessToken,
   normalizeEmailVerifyUrl,
   partyAccessTokenHash,
@@ -197,11 +198,77 @@ describe('party member account access links', () => {
     expect(isPartyAccessAllowed(active, '2026-05-03T12:00:00.000Z')).toMatchObject({ allowed: true });
     expect(isPartyAccessAllowed(nearExpiration, '2026-05-03T12:00:00.000Z')).toMatchObject({ allowed: true });
     expect(isPartyAccessAllowed(ended, '2026-05-03T12:00:00.000Z')).toMatchObject({ allowed: false, reason: 'expired' });
-    expect(isPartyAccessAllowed(cancelled, '2026-05-03T12:00:00.000Z')).toMatchObject({ allowed: false, reason: 'ended-status' });
-    expect(isPartyAccessAllowed(withdrawn, '2026-05-03T12:00:00.000Z')).toMatchObject({ allowed: false, reason: 'ended-status' });
-    expect(isPartyAccessAllowed(left, '2026-05-03T12:00:00.000Z')).toMatchObject({ allowed: false, reason: 'ended-status' });
-    expect(isPartyAccessAllowed(finished, '2026-05-03T12:00:00.000Z')).toMatchObject({ allowed: false, reason: 'ended-status' });
-    expect(isPartyAccessAllowed(revoked, '2026-05-03T12:00:00.000Z')).toMatchObject({ allowed: false, reason: 'revoked' });
+    expect(isPartyAccessAllowed(cancelled, '2026-05-03T12:00:00.000Z')).toMatchObject({ allowed: true, reason: 'active' });
+    expect(isPartyAccessAllowed(withdrawn, '2026-05-03T12:00:00.000Z')).toMatchObject({ allowed: true, reason: 'active' });
+    expect(isPartyAccessAllowed(left, '2026-05-03T12:00:00.000Z')).toMatchObject({ allowed: true, reason: 'active' });
+    expect(isPartyAccessAllowed(finished, '2026-05-03T12:00:00.000Z')).toMatchObject({ allowed: true, reason: 'active' });
+    expect(isPartyAccessAllowed(finished, '2026-06-03T12:00:00.000Z')).toMatchObject({ allowed: false, reason: 'expired' });
+    expect(isPartyAccessAllowed(revoked, '2026-05-03T12:00:00.000Z')).toMatchObject({ allowed: true, reason: 'active' });
+  });
+
+  test('keeps status-revoked buyer access links open until the paid end date', () => {
+    const statusEnded = createPartyAccessLinkRecord({
+      token: 'future-status-ended-token', now: '2026-05-23T00:00:00.000Z', serviceType: '넷플릭스', accountEmail: 'n@example.com',
+      member: { kind: 'graytag', memberId: 'deal-future-ended', memberName: '구매자', status: 'FinishedByBorrowerRequest', statusName: '거래중단', endDateTime: '26. 08. 12' },
+    });
+    const statusRevoked = { ...statusEnded, revokedAt: '2026-06-03T00:00:00.000Z' };
+
+    expect(isPartyAccessAllowed(statusRevoked, '2026-06-07T00:00:00.000Z')).toMatchObject({ allowed: true, reason: 'active' });
+    expect(isPartyAccessAllowed(statusRevoked, '2026-08-13T00:00:00.000Z')).toMatchObject({ allowed: false, reason: 'expired' });
+  });
+
+  test('live active member sync reopens an accidentally revoked buyer access link', () => {
+    const staleRevoked = {
+      ...createPartyAccessLinkRecord({
+        token: 'stale-revoked-active-token',
+        now: '2026-05-23T00:00:00.000Z',
+        serviceType: '넷플릭스',
+        accountEmail: 'n@example.com',
+        member: { kind: 'graytag', memberId: 'deal-active-again', memberName: '구매자', status: 'FinishedByBorrowerRequest', statusName: '거래중단', startDateTime: '26. 05. 23', endDateTime: '26. 08. 12' },
+      }),
+      revokedAt: '2026-06-03T00:00:00.000Z',
+    };
+
+    const result = syncPartyAccessStoreWithMembers({
+      store: { [staleRevoked.tokenHash]: staleRevoked },
+      members: [{ kind: 'graytag', memberId: 'deal-active-again', memberName: '구매자', status: 'Using', statusName: '사용중', startDateTime: '26. 05. 23', endDateTime: '26. 08. 12' }],
+      now: '2026-06-07T00:00:00.000Z',
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.store[staleRevoked.tokenHash].revokedAt).toBeNull();
+    expect(result.store[staleRevoked.tokenHash].member.status).toBe('Using');
+    expect(isPartyAccessAllowed(result.store[staleRevoked.tokenHash], '2026-06-07T00:00:00.000Z')).toMatchObject({ allowed: true, reason: 'active' });
+  });
+
+  test('recovers still-active share-token records from backup stores when the primary store lost them', () => {
+    const existing = createPartyAccessLinkRecord({
+      token: 'primary-token', now: '2026-05-03T00:00:00.000Z', serviceType: '티빙', accountEmail: 'primary@example.com',
+      member: { kind: 'manual', memberId: 'manual-primary', memberName: '기존', status: 'active', endDateTime: '2026-11-04' },
+    });
+    const recoverable = createPartyAccessLinkRecord({
+      token: 'backup-token', now: '2026-05-03T00:00:00.000Z', serviceType: '티빙', accountEmail: 'backup@example.com',
+      member: { kind: 'manual', memberId: 'manual-backup', memberName: '복구', status: 'active', endDateTime: '2026-11-04' },
+    });
+    const expired = createPartyAccessLinkRecord({
+      token: 'expired-token', now: '2026-05-03T00:00:00.000Z', serviceType: '티빙', accountEmail: 'expired@example.com',
+      member: { kind: 'manual', memberId: 'manual-expired', memberName: '만료', status: 'active', endDateTime: '2026-05-04' },
+    });
+    const revoked = { ...recoverable, tokenHash: partyAccessTokenHash('revoked-token'), shareToken: 'revoked-token', revokedAt: '2026-05-05T00:00:00.000Z' };
+    const noShareToken = { ...recoverable, tokenHash: partyAccessTokenHash('synthetic'), shareToken: undefined };
+
+    const result = mergeRecoverablePartyAccessBackupStores(
+      { [existing.tokenHash]: existing },
+      [{ [recoverable.tokenHash]: recoverable, [expired.tokenHash]: expired, [revoked.tokenHash]: revoked, [noShareToken.tokenHash]: noShareToken }],
+      '2026-06-03T00:00:00.000Z',
+    );
+
+    expect(result.recoveredCount).toBe(2);
+    expect(result.store[existing.tokenHash]).toBe(existing);
+    expect(result.store[recoverable.tokenHash]).toEqual(recoverable);
+    expect(result.store[expired.tokenHash]).toBeUndefined();
+    expect(result.store[revoked.tokenHash]).toEqual(revoked);
+    expect(result.store[noShareToken.tokenHash]).toBeUndefined();
   });
 
   test('returns latest checklist password and PIN over stale link fallback credentials', () => {
@@ -253,10 +320,10 @@ describe('party member account access links', () => {
     expect(allowed.emailAccessUrl).toBe('');
     expect(allowed.audit).toMatchObject({ memberId: 'deal-1', allowed: true });
 
-    const blocked = buildPartyAccessPublicPayload({ ...record, revokedAt: '2026-05-03T13:00:00.000Z' }, {}, {}, '2026-05-03T14:00:00.000Z');
+    const blocked = buildPartyAccessPublicPayload({ ...record, member: { ...record.member, endDateTime: '2026-05-02' } }, {}, {}, '2026-05-03T14:00:00.000Z');
     expect(blocked.ok).toBe(false);
     expect(blocked.credentials).toBeUndefined();
-    expect(blocked.audit).toMatchObject({ memberId: 'deal-1', allowed: false, reason: 'revoked' });
+    expect(blocked.audit).toMatchObject({ memberId: 'deal-1', allowed: false, reason: 'expired' });
   });
 
   test('public payload exposes profile name and email access link for buyer consent and email verification', () => {
@@ -270,6 +337,25 @@ describe('party member account access links', () => {
     expect(payload.ok).toBe(true);
     expect(payload.profileName).toBe('수달이');
     expect(payload.emailAccessUrl).toBe('https://email-verify.one/email/mail/42837058');
+  });
+
+  test('party profile status keeps every current account-management member even when the profile nickname is the same', () => {
+    const current = createPartyAccessLinkRecord({
+      token: 'gtwavve8-current', now: '2026-06-03T00:00:00.000Z', serviceType: '티빙', accountEmail: 'gtwavve8',
+      fallbackPassword: 'pw', fallbackPin: '607759', profileName: '여우비', emailAccessUrl: 'https://email-verify.one/email/mail/42948775',
+      member: { kind: 'graytag', memberId: '000000000CU05', memberName: '최현준', status: 'Using', statusName: '사용중', endDateTime: '26. 08. 01' },
+    });
+    const sibling = createPartyAccessLinkRecord({
+      token: 'gtwavve8-sibling', now: '2026-06-03T00:00:01.000Z', serviceType: '티빙', accountEmail: 'gtwavve8',
+      fallbackPassword: 'pw', fallbackPin: '607759', profileName: '여우비', emailAccessUrl: 'https://email-verify.one/email/mail/42948775',
+      member: { kind: 'graytag', memberId: '000000000CTX4', memberName: '김현규', status: 'Using', statusName: '사용중', endDateTime: '26. 08. 01' },
+    });
+    const store = { [current.tokenHash]: current, [sibling.tokenHash]: sibling };
+
+    const payload = buildPartyAccessPublicPayload(current, {}, {}, '2026-06-03T12:00:00.000Z', store);
+
+    expect(payload.partyProfiles?.map((row) => row.memberName)).toEqual(['최현준', '김현규']);
+    expect(payload.partyProfiles?.every((row) => row.profileName === '여우비')).toBe(true);
   });
 
   test('normalizes old email-verify.xyz links to the public email-verify.one domain', () => {
@@ -299,6 +385,32 @@ describe('party member account access links', () => {
     const payload = buildPartyAccessPublicPayload(record, checklist, {}, '2026-05-03T12:00:00.000Z');
     expect(payload.emailAccessUrl).toBe('https://email-verify.one/email/mail/98765');
     expect(payload.credentials?.pin).toBe('654321');
+  });
+
+  test('public access payload reflects account-management ID/PW edits in real time for existing links', () => {
+    const record = createPartyAccessLinkRecord({
+      token: 'edited-management-credential-token',
+      now: '2026-05-03T00:00:00.000Z',
+      serviceType: '디즈니플러스',
+      accountEmail: 'old-disney@example.com',
+      fallbackPassword: 'old-password',
+      fallbackPin: '111222',
+      member: { kind: 'graytag', memberId: 'deal-edited', memberName: '구매자', status: 'Using', endDateTime: '2026-08-20' },
+    });
+    const key = '디즈니플러스:old-disney@example.com';
+    const checklist = mergePartyMaintenanceChecklistState({}, key, {
+      recruitAgain: true,
+      passwordChanged: true,
+      changedAccountEmail: 'new-disney@example.com',
+      changedPassword: 'new-password',
+      pinStillUnchanged: false,
+      generatedPin: '333444',
+    }, 'tester');
+
+    const payload = buildPartyAccessPublicPayload(record, checklist, {}, '2026-05-03T12:00:00.000Z', { [record.tokenHash]: record });
+
+    expect(payload.accountEmail).toBe('new-disney@example.com');
+    expect(payload.credentials).toMatchObject({ id: 'new-disney@example.com', password: 'new-password', pin: '333444' });
   });
 
   test('웨이브 access payload suppresses email verification URL and PIN even when stored data has them', () => {
@@ -354,6 +466,25 @@ describe('party member account access links', () => {
     expect(payload.credentials).toMatchObject({ id: 'gtwavve13.gout658@aleeas.com', password: 'pass13', pin: '' });
   });
 
+  test('public payload backfills email URL and PIN from sibling delivery history for stale access links', () => {
+    const older = createPartyAccessLinkRecord({
+      token: 'older-public-history-token', now: '2026-05-01T00:00:00.000Z', serviceType: '넷플릭스', accountEmail: 'n@example.com',
+      fallbackPassword: 'old-pw', fallbackPin: '112233', emailAccessUrl: 'https://email-verify.one/email/mail/111',
+      member: { kind: 'graytag', memberId: 'deal-old', memberName: '기존', status: 'Using', endDateTime: '2026-05-20' },
+    });
+    const stalePublicLink = createPartyAccessLinkRecord({
+      token: 'stale-public-token', now: '2026-05-05T00:00:00.000Z', serviceType: '넷플릭스', accountEmail: 'n@example.com',
+      fallbackPassword: 'fresh-pw', fallbackPin: '', emailAccessUrl: '',
+      member: { kind: 'graytag', memberId: 'deal-new', memberName: '신규', status: 'Using', endDateTime: '2026-05-20' },
+    });
+    const store = { [older.tokenHash]: older, [stalePublicLink.tokenHash]: stalePublicLink };
+
+    const payload = buildPartyAccessPublicPayload(stalePublicLink, {}, {}, '2026-05-05T12:00:00.000Z', store);
+
+    expect(payload.emailAccessUrl).toBe('https://email-verify.one/email/mail/111');
+    expect(payload.credentials?.pin).toBe('112233');
+  });
+
   test('new access links inherit known email URL and PIN from older links for the same account', () => {
     const older = createPartyAccessLinkRecord({
       token: 'older-token', now: '2026-05-01T00:00:00.000Z', serviceType: '넷플릭스', accountEmail: 'n@example.com',
@@ -392,12 +523,12 @@ describe('party member account access links', () => {
 
     expect(changed).toBe(true);
     expect(synced.member.status).toBe('CancelByNoShow');
-    expect(synced.revokedAt).toBe('2026-05-06T00:00:00.000Z');
-    expect(buildPartyAccessPublicPayload(synced, {}, {}, '2026-05-06T00:01:00.000Z')).toMatchObject({ ok: false });
+    expect(synced.revokedAt).toBeNull();
+    expect(buildPartyAccessPublicPayload(synced, {}, {}, '2026-05-06T00:01:00.000Z')).toMatchObject({ ok: true });
     expect(buildPartyAccessDeliverySnapshotByMember(store).get('웨이브:wavve@example.com:graytag:deal-cancelled')).toMatchObject({
       password: 'delivered-pass',
       pin: '123456',
-      revokedAt: '2026-05-06T00:00:00.000Z',
+      revokedAt: null,
     });
   });
 
@@ -434,6 +565,52 @@ describe('party member account access links', () => {
     expect(changed).toBe(true);
     expect(store[staleSynthetic.tokenHash].revokedAt).toBe('2026-05-10T00:00:00.000Z');
     expect(buildPartyAccessProfileStatuses(current, store, '2026-05-10T00:01:00.000Z').map((item) => item.profileName)).toEqual(['사과']);
+  });
+
+  test('sync updates pre-sale fill access link when the product becomes a current party member', () => {
+    const presale = createPartyAccessLinkRecord({
+      token: 'presale-fill-token',
+      now: '2026-05-03T00:00:00.000Z',
+      serviceType: '디즈니플러스',
+      accountEmail: 'disney@example.com',
+      profileName: '고슴도치',
+      member: { kind: 'graytag', memberId: 'fill:product-1', memberName: '구매자', status: 'OnSale', statusName: '판매중', endDateTime: '2026-07-13' },
+    });
+
+    const { store, changed } = syncPartyAccessStoreWithMembers({
+      store: { [presale.tokenHash]: presale },
+      members: [{ kind: 'graytag', memberId: 'fill:product-1', memberName: '이승훈', status: 'Using', statusName: '이용중', startDateTime: '2026-04-29', endDateTime: '2026-07-13' }],
+      now: '2026-06-03T00:00:00.000Z',
+    });
+
+    expect(changed).toBe(true);
+    expect(store[presale.tokenHash].member.status).toBe('Using');
+    expect(buildPartyAccessProfileStatuses(store[presale.tokenHash], store, '2026-06-03T00:00:00.000Z')).toMatchObject([
+      { profileName: '고슴도치', memberName: '이승훈', isCurrentMember: true },
+    ]);
+  });
+
+  test('does not revoke seller-created fill access links from cancelled deposit/no-show statuses', () => {
+    const presale = createPartyAccessLinkRecord({
+      token: 'presale-cancelled-fill-token',
+      now: '2026-06-07T04:13:59.000Z',
+      serviceType: '디즈니플러스',
+      accountEmail: 'disney@example.com',
+      fallbackPassword: 'real-password',
+      profileName: '사과',
+      member: { kind: 'graytag', memberId: 'fill:product-cancelled', memberName: '구매자', status: 'OnSale', statusName: '판매중', endDateTime: '26. 07. 28' },
+    });
+
+    const { store, changed } = syncPartyAccessStoreWithMembers({
+      store: { [presale.tokenHash]: presale },
+      members: [{ kind: 'graytag', memberId: 'fill:product-cancelled', memberName: '취소구매자', status: 'CancelByDepositRejection', statusName: '거래취소', endDateTime: '26. 07. 28' }],
+      now: '2026-06-07T04:31:54.000Z',
+    });
+
+    expect(changed).toBe(true);
+    expect(store[presale.tokenHash].revokedAt).toBeNull();
+    expect(store[presale.tokenHash].member.status).toBe('CancelByDepositRejection');
+    expect(isPartyAccessAllowed(store[presale.tokenHash], '2026-06-07T06:00:00.000Z')).toMatchObject({ allowed: true, reason: 'active' });
   });
 
   test('uses the newest delivery history snapshot for the same party member', () => {
@@ -569,6 +746,7 @@ describe('party member account access links', () => {
     expect(html).not.toContain('card.appendChild(assigned)');
     expect(html).not.toContain('renderNoticeImage(profileName, payload.partyProfiles)');
     expect(html).not.toContain('const renderNoticeImage');
+    expect(html).toContain("new URLSearchParams(window.location.search).get('admin_token')");
     expect(html).toContain('이메일 접근 PIN번호');
     expect(html).toContain('이메일 인증/핀번호 확인 링크');
     expect(html).toContain('이메일 인증 열기');

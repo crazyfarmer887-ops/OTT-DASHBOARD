@@ -125,6 +125,10 @@ test('OTT home and navigation use the refreshed UI structure', () => {
   assert.match(chat, /계정별 정리/);
   assert.match(chat, /useState<ChatSortMode>\('latest'\)/);
   assert.match(chat, /읽음 처리/);
+  assert.match(chat, /window\.history\.replaceState\(null, '', `\/dashboard\/chat\?room=\$\{encodeURIComponent\(room\.chatRoomUuid\)\}`\)/);
+  assert.match(chat, /locallyReadRoomsRef/);
+  assert.match(chat, /markRoomRead\(room, \{ silent: true \}\)/);
+  assert.match(chat, /json\.ok === false/);
   assert.match(chat, /목록/);
   assert.match(chat, /mobileChatHidden/);
   assert.match(home, /buildServiceStats\(data, manuals\)/);
@@ -180,6 +184,8 @@ test('OTT home and navigation use the refreshed UI structure', () => {
   assert.match(manage, /expiringSoonMembers/);
   assert.match(manage, /weekEnd\.setDate\(weekEnd\.getDate\(\) \+ 7\)/);
   assert.match(manage, /최근 7일 거래 취소 명단/);
+  assert.match(manage, /cancelledRecentOpen/);
+  assert.match(manage, /setCancelledRecentOpen\(v => !v\)/);
   assert.match(manage, /cancellationDateTime/);
   assert.doesNotMatch(manage, /<ProfileAuditPanel/);
   assert.doesNotMatch(manage, /프로필 수 검증/);
@@ -224,6 +230,9 @@ test('OTT home and navigation use the refreshed UI structure', () => {
   assert.match(editPrice, /마지노선 저장하고 미리보기/);
   assert.match(editPrice, /floorDailyByCategory/);
   assert.match(editPrice, /211원이 1등이면 210원/);
+  assert.match(editPrice, /const priceForProduct = \(p: Product\)/);
+  assert.match(editPrice, /return inputDailyPrice \* p\.remainderDays/);
+  assert.match(editPrice, /price: String\(priceForProduct\(p\)\)/);
   const generatedAccounts = read('src/lib/generated-accounts.ts');
   assert.match(manage, /계정 생성/);
   assert.match(manage, /getGeneratedAccountCreationCopy\(accountCreateService\)/);
@@ -299,7 +308,7 @@ test('OTT home and navigation use the refreshed UI structure', () => {
   assert.match(manage, /generateMaintenancePassword/);
   assert.match(manage, /비밀번호 재설정/);
   assert.match(manage, /새 비밀번호를 입력했습니다/);
-  assert.match(manage, /최신 비밀번호를 저장했습니다/);
+  assert.match(manage, /최신 ID\/PW를 저장했습니다/);
   assert.match(manage, /PIN 번호를 재설정했습니다/);
   assert.match(manage, /showToast/);
   assert.match(manage, /toast\.message/);
@@ -315,7 +324,7 @@ test('OTT home and navigation use the refreshed UI structure', () => {
   assert.match(manage, /퇴장 정리 체크리스트/);
   assert.match(manage, /updateAccountExitChecklist/);
   assert.match(manage, /수동 전달 템플릿 복사/);
-  assert.match(manage, /copyMode: 'url' \| 'template'/);
+  assert.match(manage, /copyMode: 'url' \| 'admin-url' \| 'template'/);
   assert.match(manage, /manualTemplateKey/);
   assert.match(manage, /profileNameForMember/);
   assert.match(manage, /generateUniqueProfileNicknames/);
@@ -393,6 +402,7 @@ test('OTT home and navigation use the refreshed UI structure', () => {
   assert.match(partyAccessPage, /adminAccess/);
   assert.match(partyAccessPage, /관리자 인증으로 동의 절차를 건너뛰었습니다/);
   assert.match(partyAccessShell, /getAdminToken/);
+  assert.match(partyAccessShell, /admin_token/);
   assert.match(partyAccessShell, /x-admin-token/);
   assert.match(partyAccessShell, /adminAccess/);
   assert.match(partyAccessShell, /관리자 인증으로 동의 절차를 건너뛰었습니다/);
@@ -405,6 +415,10 @@ test('OTT home and navigation use the refreshed UI structure', () => {
   assert.match(server, /app\.get\('\/dashboard\/access-notice-assets\/:name'/);
   assert.match(server, /accessNoticeAssetsDir/);
   assert.match(server, /cache-control': 'public, max-age=31536000, immutable'/);
+  assert.match(manage, /수동 전달 템플릿 복사/);
+  assert.match(manage, /admin-url/);
+  assert.match(manage, /\(인증 무시\)바로 접근 링크 만들기/);
+  assert.match(manage, /admin_token/);
   assert.match(read('src/api/index.ts'), /emailAccessUrl/);
   assert.match(read('src/api/index.ts'), /profileName/);
   assert.match(read('src/api/index.ts'), /PARTY_ACCESS_LINKS_PATH/);

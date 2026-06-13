@@ -39,7 +39,13 @@ export function buildPartyAccessHtml(token: string): string {
       const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
       const copy = async (value) => { if (!value) return; try { await navigator.clipboard.writeText(value); } catch (_) {} };
       const isWavveService = (value) => { const v = String(value || '').trim().toLowerCase().replace(/\\s+/g, ''); return v === '웨이브' || v === 'wavve'; };
-      const getAdminToken = () => { try { return String(localStorage.getItem('aio.adminToken') || '').replace(/[^\x21-\x7E]+/g, '').trim(); } catch (_) { return ''; } };
+      const getAdminToken = () => {
+        try {
+          const queryToken = new URLSearchParams(window.location.search).get('admin_token') || '';
+          const storedToken = localStorage.getItem('aio.adminToken') || '';
+          return String(queryToken || storedToken).replace(/[^\x21-\x7E]+/g, '').trim();
+        } catch (_) { return ''; }
+      };
       const blocked = () => { root.innerHTML = '<div class="blocked"><div class="card"><div style="font-size:34px;color:#ef4444">🔒</div><h1>계정 정보 접근이 종료됐어요</h1><p>이용기간이 끝났거나 판매자가 접근을 막은 링크입니다. 문의가 필요하면 판매자에게 메시지 주세요.</p></div></div>'; };
       const addCredentialRow = (parent, label, value, link) => { if (!value) return; const row = el('div','row'); const top = el('div','row-top'); top.appendChild(el('div','row-label',label)); if (link) { const a = el('a','pill','이메일 인증 열기'); a.href = value; a.target = '_blank'; a.rel = 'noreferrer'; top.appendChild(a); } else { const b = el('button','pill','복사'); b.type='button'; b.onclick = () => copy(value); top.appendChild(b); } row.appendChild(top); row.appendChild(el('div','value', link ? '이메일 인증/핀번호 확인 링크' : value)); parent.appendChild(row); };
       const renderProfileStatuses = (payload) => {
@@ -91,6 +97,37 @@ export function buildPartyAccessHtml(token: string): string {
         overlay.appendChild(card); document.body.appendChild(overlay); renderStep();
       };
       const revealAfterConsent = () => fetch('/api/party-access/' + encodeURIComponent(token) + '/consent', { method:'POST', cache:'no-store', headers:{ 'content-type':'application/json' }, body:JSON.stringify({ phrases:[AGREEMENT_1, AGREEMENT_2, AGREEMENT_3] }) }).then((res) => res.json().catch(() => ({}))).then(render).catch(blocked);
+      const renderAdminCredentialEditor = (payload) => {
+        const c = payload.credentials || {};
+        const box = el('div', null);
+        box.style.cssText = 'background:#fffbeb;border:1.5px solid #fde68a;border-radius:16px;padding:14px;margin:10px 0';
+        box.appendChild(el('div', null, '🛡️ 관리자 전용 ID/PW 수정'));
+        box.lastChild.style.cssText = 'font-size:13px;color:#92400e;font-weight:1000;margin-bottom:8px';
+        const note = el('div', null, '이 access 링크가 구매자에게 보여주는 ID/PW만 즉시 수정합니다.');
+        note.style.cssText = 'font-size:10px;color:#a16207;font-weight:800;margin-bottom:8px';
+        box.appendChild(note);
+        const idInput = document.createElement('input'); idInput.value = c.id || ''; idInput.placeholder = 'ID';
+        const pwInput = document.createElement('input'); pwInput.value = c.password || ''; pwInput.placeholder = 'PW';
+        [idInput, pwInput].forEach((input) => { input.style.cssText = 'width:100%;margin-bottom:8px;padding:10px 11px;border-radius:12px;border:1.5px solid #fcd34d;font-size:13px;font-weight:800;color:#1e1b4b;font-family:inherit'; box.appendChild(input); });
+        const msg = el('div', null, ''); msg.style.cssText = 'font-size:11px;font-weight:900;line-height:1.45;margin-top:7px';
+        const save = el('button', null, 'ID/PW 저장'); save.type = 'button'; save.style.cssText = 'width:100%;border:0;border-radius:14px;background:#d97706;color:#fff;font-size:13px;font-weight:1000;padding:11px 12px;cursor:pointer;font-family:inherit';
+        save.onclick = async () => {
+          const id = idInput.value.trim(); const password = pwInput.value.trim();
+          if (!id || !password) { msg.style.color = '#b91c1c'; msg.textContent = 'ID와 PW를 모두 입력해주세요.'; return; }
+          save.disabled = true; save.textContent = '저장 중...'; msg.style.color = '#047857'; msg.textContent = '저장 중...';
+          try {
+            const adminToken = getAdminToken();
+            const res = await fetch('/api/party-access/' + encodeURIComponent(token) + '/credentials', { method:'PATCH', cache:'no-store', headers:{ 'content-type':'application/json', ...(adminToken ? { 'x-admin-token': adminToken } : {}) }, body:JSON.stringify({ accountEmail:id, password }) });
+            const json = await res.json().catch(() => ({}));
+            if (!res.ok || !json.ok) throw new Error(json.error || json.reason || '저장 실패');
+            payload.credentials = { ...(payload.credentials || {}), id, password };
+            payload.accountEmail = id;
+            msg.style.color = '#047857'; msg.textContent = '저장 완료 · 구매자 access 페이지에 바로 반영됐어요.';
+          } catch (e) { msg.style.color = '#b91c1c'; msg.textContent = '저장 실패 · ' + (e && e.message ? e.message : '관리자 토큰을 확인해주세요.'); }
+          finally { save.disabled = false; save.textContent = 'ID/PW 저장'; }
+        };
+        box.appendChild(save); box.appendChild(msg); return box;
+      };
       const render = (payload) => {
         if (!payload || !payload.ok) return blocked();
         const c = payload.credentials || {}; const profileName = payload.profileName || payload.memberName || '(미확인)';
@@ -106,6 +143,7 @@ export function buildPartyAccessHtml(token: string): string {
         const info = el('div','info'); info.appendChild(el('div','service',(payload.serviceType || '') + ' · ' + (payload.memberName || ''))); info.appendChild(el('div','period',fmtDate(payload.period && payload.period.startDateTime) + ' ~ ' + fmtDate(payload.period && payload.period.endDateTime))); card.appendChild(info);
         const profile = el('div','profile-box'); profile.appendChild(el('div','profile-label','구매자님이 만들어야 하는 프로필 이름')); profile.appendChild(el('div','profile-name',profileName)); card.appendChild(profile);
         const rows = el('div','rows'); addCredentialRow(rows,'ID',c.id || '',false); addCredentialRow(rows,'PW',c.password || '',false); if (showEmailAccess) addCredentialRow(rows,'EMAIL',payload.emailAccessUrl || '',true); if (showPin) addCredentialRow(rows,'이메일 접근 PIN번호',c.pin || '',false); card.appendChild(rows);
+        if (isAdminAccess) card.appendChild(renderAdminCredentialEditor(payload));
         card.appendChild(renderProfileStatuses(payload));
         card.appendChild(el('div','note','이 페이지는 최신 로그인 정보를 실시간으로 보여줍니다. 비밀번호가 갑자기 안 되면 먼저 새로고침 후 다시 확인해주세요.'));
         wrap.appendChild(card); root.appendChild(wrap);

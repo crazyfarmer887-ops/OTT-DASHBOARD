@@ -31,7 +31,21 @@ const stripHtml = (html: string) => {
 };
 
 const CHAT_ROOMS_CACHE_KEY = 'aio_chat_rooms_cache_v1';
+const CHAT_ROOM_LOCAL_READ_KEY = 'aio_chat_room_local_read_v1';
 const CHAT_ROOMS_CACHE_MAX_AGE_MS = 5 * 60 * 1000;
+
+const loadLocalReadRooms = (): Record<string, string> => {
+  try { return JSON.parse(localStorage.getItem(CHAT_ROOM_LOCAL_READ_KEY) || '{}') || {}; } catch { return {}; }
+};
+
+const saveLocalReadRooms = (value: Record<string, string>) => {
+  try { localStorage.setItem(CHAT_ROOM_LOCAL_READ_KEY, JSON.stringify(value)); } catch {}
+};
+
+const chatTimeValue = (value?: string) => {
+  const time = new Date(value || '').getTime();
+  return Number.isNaN(time) ? 0 : time;
+};
 
 export default function ChatPage() {
   const [rooms, setRooms] = useState<ChatRoom[]>([]);
@@ -55,6 +69,7 @@ export default function ChatPage() {
   const msgEndRef = useRef<HTMLDivElement>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const resizeRef = useRef<number>(400);
+  const locallyReadRoomsRef = useRef<Record<string, string>>(loadLocalReadRooms());
 
   // 자동응답 state
   const [arEnabled, setArEnabled] = useState<boolean>(true);
@@ -119,7 +134,12 @@ export default function ChatPage() {
       const res = await fetch(`/api/chat/rooms${options.force ? '?refresh=1' : ''}`);
       if (!res.ok) throw new Error(res.statusText);
       const data = await res.json();
-      const nextRooms = data.rooms || [];
+      const nextRooms = (data.rooms || []).map((room: ChatRoom) => {
+        const locallyReadMessageTime = locallyReadRoomsRef.current[room.chatRoomUuid] || '';
+        const shouldSuppressUnread = Boolean(locallyReadMessageTime)
+          && chatTimeValue(room.lastMessageTime) <= chatTimeValue(locallyReadMessageTime);
+        return shouldSuppressUnread ? { ...room, lenderChatUnread: false } : room;
+      });
       setRooms(nextRooms);
       localStorage.setItem(CHAT_ROOMS_CACHE_KEY, JSON.stringify({ savedAt: Date.now(), rooms: nextRooms }));
     } catch (e: any) { setError(e.message); }
@@ -186,11 +206,18 @@ export default function ChatPage() {
     return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
   }, [resizing]);
 
-  const selectRoom = (room: ChatRoom) => {
-    setSelectedRoom(room);
+  const selectRoom = (room: ChatRoom, options: { updateUrl?: boolean; markRead?: boolean } = {}) => {
+    const nextRoom = room.lenderChatUnread ? { ...room, lenderChatUnread: false } : room;
+    setSelectedRoom(nextRoom);
     setMessages([]);
     setPage(1);
     loadMessages(room.chatRoomUuid, 1);
+    if (options.updateUrl !== false) {
+      window.history.replaceState(null, '', `/dashboard/chat?room=${encodeURIComponent(room.chatRoomUuid)}`);
+    }
+    if (options.markRead !== false && room.lenderChatUnread) {
+      void markRoomRead(room, { silent: true });
+    }
   };
 
 
@@ -198,20 +225,24 @@ export default function ChatPage() {
     const targetRoom = new URLSearchParams(window.location.search).get('room');
     if (!targetRoom || rooms.length === 0 || selectedRoom?.chatRoomUuid === targetRoom) return;
     const room = rooms.find(r => r.chatRoomUuid === targetRoom);
-    if (room) selectRoom(room);
+    if (room) selectRoom(room, { updateUrl: false });
   }, [rooms, selectedRoom?.chatRoomUuid]);
 
-  const markRoomRead = async (room: ChatRoom) => {
-    const previous = rooms;
+  const markRoomRead = async (room: ChatRoom, options: { silent?: boolean } = {}) => {
+    locallyReadRoomsRef.current[room.chatRoomUuid] = room.lastMessageTime || new Date().toISOString();
+    saveLocalReadRooms(locallyReadRoomsRef.current);
     setRooms(prev => prev.map(r => r.chatRoomUuid === room.chatRoomUuid ? { ...r, lenderChatUnread: false } : r));
     if (selectedRoom?.chatRoomUuid === room.chatRoomUuid) setSelectedRoom({ ...room, lenderChatUnread: false });
     try {
       const res = await fetch('/api/chat/mark-read', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chatRoomUuid: room.chatRoomUuid }) });
-      if (!res.ok) throw new Error('읽음 처리 실패');
-      setTimeout(() => loadRooms({ force: true }), 400);
+      const json = await res.json().catch(() => ({})) as any;
+      if (!res.ok || json.ok === false) throw new Error(json.error || '읽음 처리 실패');
+      setTimeout(() => loadRooms({ force: true, quiet: true }), 1800);
     } catch (e: any) {
-      setRooms(previous);
-      alert(e.message || '읽음 처리 실패');
+      // Graytag's explicit mark-read endpoint is not reliable for every room/status.
+      // Keep the local read marker so the dashboard does not keep showing an old unread badge;
+      // a later buyer message has a newer lastMessageTime and will show as unread again.
+      console.warn(e.message || '읽음 처리 실패');
     }
   };
 
@@ -501,15 +532,20 @@ export default function ChatPage() {
           style={{flex:1,fontSize:12,fontWeight:700,padding:"7px 0",borderRadius:8,background:unreadOnly?"#FEF3C7":"#F3F4F6",border:"none",cursor:"pointer",color:unreadOnly?"#B45309":"#6B7280"}}>
           안읽음만 보기
         </button>
-        <button onClick={()=>{
+        <button onClick={async()=>{
           if(!confirm(`안읽음 ${rooms.filter(r=>r.lenderChatUnread).length}개를 모두 읽음 처리할까요?`)) return;
           const unreadRooms=rooms.filter(r=>r.lenderChatUnread);
+          unreadRooms.forEach(room => { locallyReadRoomsRef.current[room.chatRoomUuid] = room.lastMessageTime || new Date().toISOString(); });
+          saveLocalReadRooms(locallyReadRoomsRef.current);
           setRooms(prev=>prev.map(r=>r.lenderChatUnread?{...r,lenderChatUnread:false}:r));
-          unreadRooms.forEach(room=>{
-            fetch('/api/chat/mark-read',{method:'POST',headers:{'Content-Type':'application/json'},
-              body:JSON.stringify({chatRoomUuid:room.chatRoomUuid})}).catch(()=>{});
-          });
-          setTimeout(()=>loadRooms({ force: true }),500);
+          await Promise.allSettled(unreadRooms.map(async room => {
+            const res = await fetch('/api/chat/mark-read',{method:'POST',headers:{'Content-Type':'application/json'},
+              body:JSON.stringify({chatRoomUuid:room.chatRoomUuid})});
+            const json = await res.json().catch(() => ({})) as any;
+            if (!res.ok || json.ok === false) throw new Error(json.error || '읽음 처리 실패');
+            return room.chatRoomUuid;
+          }));
+          setTimeout(()=>loadRooms({ force: true, quiet: true }),1800);
         }} disabled={loading||rooms.filter(r=>r.lenderChatUnread).length===0}
           style={{flex:1,fontSize:12,fontWeight:600,padding:"7px 0",borderRadius:8,background:"#EDE9FE",border:"none",cursor:"pointer",color:"#7C3AED",
             opacity:rooms.filter(r=>r.lenderChatUnread).length===0?0.4:1}}>

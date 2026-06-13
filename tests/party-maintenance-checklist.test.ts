@@ -55,7 +55,7 @@ describe('party maintenance checklist', () => {
     });
   });
 
-  test('Y branch stores billing day, changed password, and PIN regeneration fields', () => {
+  test('Y branch stores billing day, changed ID/password, and PIN regeneration fields', () => {
     const key = partyMaintenanceChecklistKey(targets[0]);
     const store = mergePartyMaintenanceChecklistState({}, key, {
       recruitAgain: true,
@@ -64,6 +64,7 @@ describe('party maintenance checklist', () => {
       profileRemoved: true,
       devicesLoggedOut: true,
       passwordChanged: true,
+      changedAccountEmail: 'new-id@example.com',
       changedPassword: 'new-password-123',
       pinStillUnchanged: false,
       generatedPin: '123456',
@@ -75,6 +76,7 @@ describe('party maintenance checklist', () => {
     const [item] = buildPartyMaintenanceChecklistItems(targets, store);
     expect(item.subscriptionCancelled).toBeNull();
     expect(item.subscriptionBillingDay).toBe('15');
+    expect(item.changedAccountEmail).toBe('new-id@example.com');
     expect(item.changedPassword).toBe('new-password-123');
     expect(item.pinStillUnchanged).toBe(false);
     expect(item.generatedPin).toBe('123456');

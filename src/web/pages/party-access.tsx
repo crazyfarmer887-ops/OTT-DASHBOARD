@@ -60,6 +60,9 @@ export default function PartyAccessPage() {
   const [consentInputs, setConsentInputs] = useState({ a1:'', a2:'', a3:'' });
   const [consentOk, setConsentOk] = useState(false);
   const [consentStep, setConsentStep] = useState(0);
+  const [editCredentials, setEditCredentials] = useState({ id: '', password: '' });
+  const [savingCredentials, setSavingCredentials] = useState(false);
+  const [credentialEditMessage, setCredentialEditMessage] = useState('');
 
   const fetchFullPayloadAfterConsent = async () => {
     const phrases = [AGREEMENT_1, AGREEMENT_2, AGREEMENT_3];
@@ -91,6 +94,11 @@ export default function PartyAccessPage() {
       .catch(() => { if (alive) setConsentOk(false); });
     return () => { alive = false; };
   }, [payload?.ok, payload?.sensitiveRedacted, consentOk, token]);
+
+  useEffect(() => {
+    if (!payload?.credentials) return;
+    setEditCredentials({ id: payload.credentials.id || '', password: payload.credentials.password || '' });
+  }, [payload?.credentials?.id, payload?.credentials?.password]);
 
   const copy = async (value: string) => {
     if (!value) return;
@@ -131,6 +139,33 @@ export default function PartyAccessPage() {
     } catch {}
   };
   const showEmailAccess = Boolean(payload.emailAccessUrl) && !isWavveService(payload.serviceType);
+  const saveCredentialEdits = async () => {
+    if (!isAdminAccess) return;
+    const id = editCredentials.id.trim();
+    const password = editCredentials.password.trim();
+    if (!id || !password) {
+      setCredentialEditMessage('ID와 PW를 모두 입력해주세요.');
+      return;
+    }
+    setSavingCredentials(true);
+    setCredentialEditMessage('저장 중...');
+    try {
+      const res = await fetch(`/api/party-access/${encodeURIComponent(token)}/credentials`, {
+        method: 'PATCH',
+        cache: 'no-store',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ accountEmail: id, password }),
+      });
+      const json = await res.json().catch(() => ({})) as any;
+      if (!res.ok || !json?.ok) throw new Error(json?.error || json?.reason || '저장 실패');
+      setPayload((prev) => prev ? { ...prev, accountEmail: id, credentials: { ...(prev.credentials || { pin:'', updatedAt:'' }), id, password } } : prev);
+      setCredentialEditMessage('저장 완료 · 구매자 access 페이지에 바로 반영됐어요.');
+    } catch (error: any) {
+      setCredentialEditMessage(`저장 실패 · ${error?.message || '관리자 토큰을 확인해주세요.'}`);
+    } finally {
+      setSavingCredentials(false);
+    }
+  };
 
   const consentCards = [
     {
@@ -228,6 +263,30 @@ export default function PartyAccessPage() {
               </div>
             ))}
           </div>
+
+          {isAdminAccess && (
+            <div style={{ background:'#FFFBEB', border:'1.5px solid #FDE68A', borderRadius:16, padding:14, marginBottom:10 }}>
+              <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10 }}>
+                <ShieldCheck size={16} color="#B45309" />
+                <div>
+                  <div style={{ fontSize:13, color:'#92400E', fontWeight:1000 }}>관리자 전용 ID/PW 수정</div>
+                  <div style={{ fontSize:10, color:'#A16207', fontWeight:800, marginTop:2 }}>이 access 링크가 구매자에게 보여주는 ID/PW만 즉시 수정합니다.</div>
+                </div>
+              </div>
+              <div style={{ display:'grid', gap:8 }}>
+                <label style={{ display:'grid', gap:4, fontSize:11, color:'#92400E', fontWeight:1000 }}>
+                  ID
+                  <input value={editCredentials.id} onChange={e => setEditCredentials(prev => ({ ...prev, id:e.target.value }))} style={{ width:'100%', boxSizing:'border-box', padding:'10px 11px', borderRadius:12, border:'1.5px solid #FCD34D', fontSize:13, fontWeight:800, color:'#1E1B4B', fontFamily:'inherit' }} />
+                </label>
+                <label style={{ display:'grid', gap:4, fontSize:11, color:'#92400E', fontWeight:1000 }}>
+                  PW
+                  <input value={editCredentials.password} onChange={e => setEditCredentials(prev => ({ ...prev, password:e.target.value }))} style={{ width:'100%', boxSizing:'border-box', padding:'10px 11px', borderRadius:12, border:'1.5px solid #FCD34D', fontSize:13, fontWeight:800, color:'#1E1B4B', fontFamily:'inherit' }} />
+                </label>
+                <button type="button" onClick={saveCredentialEdits} disabled={savingCredentials} style={{ border:'none', borderRadius:14, background:savingCredentials ? '#FBBF24' : '#D97706', color:'#fff', fontSize:13, fontWeight:1000, padding:'11px 12px', cursor:savingCredentials ? 'wait' : 'pointer', fontFamily:'inherit' }}>{savingCredentials ? '저장 중...' : 'ID/PW 저장'}</button>
+                {credentialEditMessage && <div style={{ fontSize:11, color:credentialEditMessage.includes('실패') ? '#B91C1C' : '#047857', fontWeight:900, lineHeight:1.45 }}>{credentialEditMessage}</div>}
+              </div>
+            </div>
+          )}
 
           <div style={{ background:'#F9FAFB', border:'1.5px solid #E5E7EB', borderRadius:16, padding:'13px 14px', marginBottom:10 }}>
             <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, marginBottom:8 }}>

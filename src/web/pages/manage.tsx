@@ -11,7 +11,8 @@ import { buildPartyAccessDeliveryTemplate, PARTY_ACCESS_URL_PLACEHOLDER } from "
 import { makeDefaultProductDescription, makeDefaultProductTitle } from "../../lib/write-default-template";
 import { parseJsonResponse } from "../lib/fetch-json";
 import { buildWithdrawnPartyMembers, GRAYTAG_CANCEL_COUNTING_START_DATE } from "../lib/withdrawn-party-members";
-import { RefreshCw, KeyRound, Mail, ChevronDown, ChevronRight, TrendingUp, Loader2, AlertCircle, ExternalLink, Calendar, UserX, Megaphone, PlusCircle, X, UserPlus, Trash2, Wifi, WifiOff } from "lucide-react";
+import { getAdminToken } from "../lib/admin-auth";
+import { RefreshCw, KeyRound, Mail, ChevronDown, ChevronRight, TrendingUp, Loader2, AlertCircle, ExternalLink, Calendar, UserX, Megaphone, PlusCircle, X, UserPlus, Trash2, Wifi, WifiOff, Eye, EyeOff } from "lucide-react";
 
 interface OnSaleProduct {
   productUsid: string; productName: string; productType: string;
@@ -45,6 +46,7 @@ interface Account {
 }
 interface ServiceGroup { serviceType: string; accounts: Account[]; totalUsingMembers: number; totalActiveMembers: number; totalIncome: number; totalRealized: number; }
 interface EmailAlias { id: number | string; email: string; enabled?: boolean; }
+interface ManagementHiddenAccount { serviceType: string; accountEmail: string; reason?: string; hiddenAt?: string; updatedAt?: string; }
 interface ExistingPinCacheEntry { pin: string; emailId: number | string | null; loading: boolean; checked: boolean; message?: string; }
 interface ManageData {
   services: ServiceGroup[];
@@ -230,10 +232,13 @@ export default function ManagePage() {
   const [accountCreateResult, setAccountCreateResult] = useState<string | null>(null);
   const accountCreateCopy = getGeneratedAccountCreationCopy(accountCreateService);
   const [emailAliases, setEmailAliases] = useState<EmailAlias[]>([]);
+  const [hiddenAccounts, setHiddenAccounts] = useState<ManagementHiddenAccount[]>([]);
+  const [hiddenAccountLoadingKey, setHiddenAccountLoadingKey] = useState<string | null>(null);
   const [existingPinCache, setExistingPinCache] = useState<Record<string, ExistingPinCacheEntry>>({});
   const [maintenanceChecklistStore, setMaintenanceChecklistStore] = useState<PartyMaintenanceChecklistStore>({});
   const [pinResetLoadingKey, setPinResetLoadingKey] = useState<string | null>(null);
   const [pinResetNoticeKey, setPinResetNoticeKey] = useState<string | null>(null);
+  const [accountIdDrafts, setAccountIdDrafts] = useState<Record<string, string>>({});
   const [passwordDrafts, setPasswordDrafts] = useState<Record<string, string>>({});
   const [passwordSaveLoadingKey, setPasswordSaveLoadingKey] = useState<string | null>(null);
   const [accessLinkLoadingKey, setAccessLinkLoadingKey] = useState<string | null>(null);
@@ -247,11 +252,76 @@ export default function ManagePage() {
   const [noticeSending, setNoticeSending] = useState(false);
   const [noticeResult, setNoticeResult] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; tone: 'success' | 'error' | 'info'; id: number } | null>(null);
+  const [cancelledRecentOpen, setCancelledRecentOpen] = useState(false);
 
   const showToast = (message: string, tone: 'success' | 'error' | 'info' = 'success') => {
     const id = Date.now();
     setToast({ message, tone, id });
     window.setTimeout(() => setToast((current) => current?.id === id ? null : current), 2600);
+  };
+
+  const adminHeaders = (extra: Record<string, string> = {}) => {
+    const token = getAdminToken();
+    return token ? { ...extra, 'x-admin-token': token } : extra;
+  };
+
+  const hiddenAccountKey = (acct: Pick<Account, 'serviceType' | 'email'> | Pick<ManagementHiddenAccount, 'serviceType' | 'accountEmail'>) => {
+    const serviceType = 'email' in acct ? acct.serviceType : acct.serviceType;
+    const accountEmail = 'email' in acct ? acct.email : acct.accountEmail;
+    return `${serviceType}:${String(accountEmail || '').trim().toLowerCase()}`;
+  };
+
+  const fetchHiddenAccounts = async () => {
+    try {
+      const res = await fetch('/api/management-hidden-accounts', { headers: adminHeaders() });
+      if (!res.ok) return;
+      const json = await res.json() as { accounts?: ManagementHiddenAccount[] };
+      setHiddenAccounts(json.accounts || []);
+    } catch {}
+  };
+
+  const hideAccountFromManagement = async (acct: Account) => {
+    const key = hiddenAccountKey(acct);
+    if (!window.confirm(`${acct.serviceType} ${acct.email} 계정을 숨길까요?\n\n계정 관리, 전체 메꾸기, 수익 계산에서 제외됩니다. SimpleLogin alias나 계정 데이터는 삭제하지 않습니다.`)) return;
+    setHiddenAccountLoadingKey(key);
+    try {
+      const res = await fetch('/api/management-hidden-accounts', {
+        method: 'POST',
+        headers: adminHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ serviceType: acct.serviceType, accountEmail: acct.email, reason: 'hidden-from-management-ui' }),
+      });
+      const json = await res.json().catch(() => ({})) as any;
+      if (!res.ok || json?.ok === false) throw new Error(json?.error || '계정 숨김 실패');
+      setHiddenAccounts(json.accounts || []);
+      setOpenAccount(null);
+      await doFetch(undefined, { forceRefresh: true, silent: true });
+      showToast('계정을 숨겼어요. SimpleLogin alias는 그대로 유지됩니다.', 'info');
+    } catch (e: any) {
+      showToast(e?.message || '계정 숨김 실패', 'error');
+    } finally {
+      setHiddenAccountLoadingKey(null);
+    }
+  };
+
+  const restoreHiddenAccount = async (item: ManagementHiddenAccount) => {
+    const key = hiddenAccountKey(item);
+    setHiddenAccountLoadingKey(key);
+    try {
+      const res = await fetch('/api/management-hidden-accounts', {
+        method: 'DELETE',
+        headers: adminHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ serviceType: item.serviceType, accountEmail: item.accountEmail }),
+      });
+      const json = await res.json().catch(() => ({})) as any;
+      if (!res.ok || json?.ok === false) throw new Error(json?.error || '계정 복원 실패');
+      setHiddenAccounts(json.accounts || []);
+      await doFetch(undefined, { forceRefresh: true, silent: true });
+      showToast('숨긴 계정을 다시 표시했어요.');
+    } catch (e: any) {
+      showToast(e?.message || '계정 복원 실패', 'error');
+    } finally {
+      setHiddenAccountLoadingKey(null);
+    }
   };
 
   const fetchEmailAliases = async () => {
@@ -345,11 +415,12 @@ export default function ManagePage() {
     })?.lastPassword?.trim() || '';
     const latestMemberPin = accessDeliveredMembers.find(m => String(m.lastPin || '').trim())?.lastPin?.trim() || '';
     const graytagPassword = isAccessNoticeCredentialValue(acct.keepPasswd) ? '' : (acct.keepPasswd || '');
+    const id = state?.changedAccountEmail || acct.email;
     const password = state?.changedPassword || latestMemberPassword || graytagPassword;
     const pin = state?.generatedPin || acct.generatedAccount?.pin || latestMemberPin || existingPin?.pin || '';
     const emailId = state?.generatedPinAliasId || acct.generatedAccount?.emailId || existingPin?.emailId || findEmailAliasId(acct);
     if (!password && !pin) return null;
-    return { password, pin, emailId, source: state?.changedPassword || state?.generatedPin ? 'maintenance' : acct.generatedAccount ? 'generated' : (latestMemberPassword || latestMemberPin) ? 'access-history' : existingPin?.pin ? 'email-dashboard' : 'graytag' };
+    return { id, password, pin, emailId, source: state?.changedAccountEmail || state?.changedPassword || state?.generatedPin ? 'maintenance' : acct.generatedAccount ? 'generated' : (latestMemberPassword || latestMemberPin) ? 'access-history' : existingPin?.pin ? 'email-dashboard' : 'graytag' };
   };
 
   const copyText = async (value: string) => {
@@ -398,20 +469,23 @@ export default function ManagePage() {
 
   const handleSaveLatestPassword = async (acct: Account) => {
     const key = `${acct.serviceType}:${acct.email}`;
+    const nextAccountId = (accountIdDrafts[key] ?? findMaintenanceCredentialForAccount(acct)?.id ?? acct.email ?? '').trim();
     const nextPassword = (passwordDrafts[key] ?? findMaintenanceCredentialForAccount(acct)?.password ?? '').trim();
+    if (!nextAccountId) { showToast('저장할 ID를 입력해주세요.', 'error'); return; }
     if (!nextPassword) { showToast('저장할 비밀번호를 입력해주세요.', 'error'); return; }
     setPasswordSaveLoadingKey(key);
     try {
       const res = await fetch(`/api/party-maintenance-checklists/${encodeURIComponent(key)}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ recruitAgain: true, passwordChanged: true, changedPassword: nextPassword }),
+        body: JSON.stringify({ recruitAgain: true, passwordChanged: true, changedAccountEmail: nextAccountId, changedPassword: nextPassword }),
       });
       const json = await res.json() as any;
       if (!res.ok || !json.ok) throw new Error(json.error || '최신 비밀번호 저장 실패');
       setMaintenanceChecklistStore(json.store || { ...maintenanceChecklistStore, [key]: json.item });
+      setAccountIdDrafts(prev => ({ ...prev, [key]: nextAccountId }));
       setPasswordDrafts(prev => ({ ...prev, [key]: nextPassword }));
       setPinResetNoticeKey(key);
-      showToast('최신 비밀번호를 저장했습니다. 계정 정보 전달에 반영됩니다.');
+      showToast('최신 ID/PW를 저장했습니다. 계정 정보 전달에 반영됩니다.');
     } catch (e: any) {
       showToast(e.message || '최신 비밀번호 저장 실패', 'error');
     } finally {
@@ -512,7 +586,7 @@ export default function ManagePage() {
 
   const buildEmailAccessUrl = (emailId?: number | string | null) => emailId ? `https://email-verify.one/email/mail/${encodeURIComponent(String(emailId))}` : '';
 
-  const createPartyAccessLink = async (acct: Account, member: { kind: 'graytag' | 'manual'; memberId: string; memberName: string; profileName?: string; status: string; statusName?: string; startDateTime?: string | null; endDateTime?: string | null }, copyMode: 'url' | 'template' = 'url') => {
+  const createPartyAccessLink = async (acct: Account, member: { kind: 'graytag' | 'manual'; memberId: string; memberName: string; profileName?: string; status: string; statusName?: string; startDateTime?: string | null; endDateTime?: string | null }, copyMode: 'url' | 'admin-url' | 'template' = 'url') => {
     const key = `${acct.serviceType}:${acct.email}:${member.kind}:${member.memberId}:${copyMode}`;
     const credential = findMaintenanceCredentialForAccount(acct);
     setAccessLinkLoadingKey(key);
@@ -521,7 +595,7 @@ export default function ManagePage() {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           serviceType: acct.serviceType,
-          accountEmail: acct.email,
+          accountEmail: credential?.id || acct.email,
           fallbackPassword: credential?.password || acct.keepPasswd || '',
           fallbackPin: credential?.pin || acct.generatedAccount?.pin || '',
           profileName: member.profileName || member.memberName,
@@ -531,7 +605,19 @@ export default function ManagePage() {
       });
       const json = await res.json() as any;
       if (!res.ok || !json.ok || !json.url) throw new Error(json.error || '접근 링크 만들기 실패');
-      await copyText(copyMode === 'template' ? buildPartyAccessDeliveryTemplate(json.url) : json.url);
+      const adminAccessUrl = () => {
+        const adminToken = getAdminToken();
+        if (!adminToken) throw new Error('관리자 토큰이 저장되어 있어야 바로 접근 링크를 만들 수 있어요.');
+        const url = new URL(String(json.url), window.location.origin);
+        url.searchParams.set('admin_token', adminToken);
+        return url.toString();
+      };
+      const copyValue = copyMode === 'template'
+        ? buildPartyAccessDeliveryTemplate(json.url)
+        : copyMode === 'admin-url'
+          ? adminAccessUrl()
+          : json.url;
+      await copyText(copyValue);
       setAccessLinkResult({ key, url: json.url });
     } catch (e: any) {
       alert(e.message || '접근 링크 만들기 실패');
@@ -624,6 +710,7 @@ export default function ManagePage() {
     fetchSessionStatus();
     fetchEmailAliases();
     fetchMaintenanceChecklists();
+    fetchHiddenAccounts();
     // 30초마다 세션 상태 갱신
     const sessionInterval = setInterval(fetchSessionStatus, 30000);
     return () => clearInterval(sessionInterval);
@@ -1094,7 +1181,7 @@ export default function ManagePage() {
       modal: {
         email: acct.email,
         serviceType: acct.serviceType,
-        keepAcct: acct.email,
+        keepAcct: isAccessNoticeCredentialValue(acct.email) ? '' : acct.email,
         keepPasswd,
         keepMemo: fallbackDeliveryMemo,
         vacancy: vacancyInfo.unfilled,
@@ -1387,6 +1474,31 @@ export default function ManagePage() {
         </div>
       )}
 
+      {/* 숨긴 계정 관리 */}
+      {hiddenAccounts.length > 0 && (
+        <div style={{ background:'#F9FAFB', border:'1.5px solid #E5E7EB', borderRadius:14, padding:'10px 12px', marginBottom:12 }}>
+          <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:7 }}>
+            <EyeOff size={13} color="#6B7280" />
+            <span style={{ fontSize:12, color:'#374151', fontWeight:900 }}>숨긴 계정 {hiddenAccounts.length}개</span>
+            <span style={{ fontSize:10, color:'#9CA3AF', fontWeight:700 }}>계정 관리·메꾸기·수익에서 제외, alias는 유지</span>
+          </div>
+          <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
+            {hiddenAccounts.map(item => {
+              const key = hiddenAccountKey(item);
+              const busy = hiddenAccountLoadingKey === key;
+              return (
+                <button key={key} onClick={() => restoreHiddenAccount(item)} disabled={busy}
+                  title="다시 보이게 복원"
+                  style={{ border:'none', borderRadius:999, padding:'6px 9px', background:busy?'#D1D5DB':'#fff', color:'#4B5563', fontSize:10, fontWeight:900, cursor:busy?'not-allowed':'pointer', display:'flex', alignItems:'center', gap:5, boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
+                  {busy ? <Loader2 size={11} style={{ animation:'spin 1s linear infinite' }} /> : <Eye size={11} />}
+                  {item.serviceType} · {item.accountEmail} 복원
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* 초기 안내 */}
       {!data && !loading && !error && (
         <div style={{ background:'#EDE9FE', borderRadius:16, padding:20, textAlign:'center' }}>
@@ -1520,11 +1632,14 @@ export default function ManagePage() {
                 )}
               </div>
               <div style={{ background:'#FFF0F0', border:'1.5px solid #FCA5A5', borderRadius:16, padding:13 }}>
-                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, marginBottom:8 }}>
-                  <div style={{ fontSize:13, fontWeight:900, color:'#991B1B' }}>최근 7일 거래 취소 명단</div>
-                  <span style={{ fontSize:10, fontWeight:900, color:'#B91C1C', background:'#FEE2E2', borderRadius:999, padding:'3px 8px' }}>{cancelledRecentMembers.length}명</span>
-                </div>
-                {cancelledRecentMembers.length === 0 ? <div style={{ fontSize:11, color:'#B91C1C' }}>최근 7일 기준으로 표시할 취소 명단이 없어요.</div> : (
+                <button onClick={() => setCancelledRecentOpen(v => !v)} style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, marginBottom:cancelledRecentOpen ? 8 : 0, background:'none', border:'none', padding:0, cursor:'pointer', fontFamily:'inherit', textAlign:'left' }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:6, minWidth:0 }}>
+                    {cancelledRecentOpen ? <ChevronDown size={15} color="#991B1B" /> : <ChevronRight size={15} color="#991B1B" />}
+                    <div style={{ fontSize:13, fontWeight:900, color:'#991B1B' }}>최근 7일 거래 취소 명단</div>
+                  </div>
+                  <span style={{ fontSize:10, fontWeight:900, color:'#B91C1C', background:'#FEE2E2', borderRadius:999, padding:'3px 8px', flexShrink:0 }}>{cancelledRecentMembers.length}명</span>
+                </button>
+                {cancelledRecentOpen && (cancelledRecentMembers.length === 0 ? <div style={{ fontSize:11, color:'#B91C1C' }}>최근 7일 기준으로 표시할 취소 명단이 없어요.</div> : (
                   <div style={{ display:'grid', gap:6 }}>
                     {cancelledRecentMembers.map(row => (
                       <div key={row.id} style={{ display:'grid', gridTemplateColumns:'1fr auto', gap:8, background:'#fff', borderRadius:10, padding:'7px 9px', alignItems:'center' }}>
@@ -1533,7 +1648,7 @@ export default function ManagePage() {
                       </div>
                     ))}
                   </div>
-                )}
+                ))}
               </div>
             </div>
           )}
@@ -1645,7 +1760,7 @@ export default function ManagePage() {
                         const exitChecklist = maintenanceChecklistStore[credentialKey];
                         const displayAccountEmail = isAccessNoticeCredentialValue(acct.email) ? '계정 매핑 필요' : acct.email;
                         const credentialRows = [
-                          { label: 'ID', value: isAccessNoticeCredentialValue(acct.email) ? '' : acct.email },
+                          { label: 'ID', value: isAccessNoticeCredentialValue(credential?.id || acct.email) ? '' : (credential?.id || acct.email) },
                           { label: 'PW', value: isAccessNoticeCredentialValue(credential?.password || acct.keepPasswd || '') ? '' : (credential?.password || acct.keepPasswd || '') },
                           { label: 'PIN', value: credential?.pin || '' },
                         ];
@@ -1653,6 +1768,7 @@ export default function ManagePage() {
                           account: acct,
                         });
                         const withdrawnPartyKeys = Array.from(new Set(withdrawnPartyMembers.map(row => row.partyKey)));
+                        const currentAccountIdDraft = accountIdDrafts[credentialKey] ?? credentialRows[0].value;
                         const currentPasswordDraft = passwordDrafts[credentialKey] ?? credentialRows[1].value;
                         const slotStates = buildAccountSlotStates({
                           totalSlots,
@@ -1789,6 +1905,11 @@ export default function ManagePage() {
                                 <div style={{ fontSize:13, fontWeight:700, color:'#A78BFA' }}>{fmtMoney(acct.totalIncome)}</div>
                                 {acct.totalRealizedIncome > 0 && <div style={{ fontSize:10, color:'#059669', marginTop:1 }}>정산누적 {fmtMoney(acct.totalRealizedIncome)}</div>}
                               </div>
+                              <button type="button" onClick={(e) => { e.stopPropagation(); hideAccountFromManagement(acct); }} disabled={hiddenAccountLoadingKey === hiddenAccountKey(acct)} title="계정을 삭제하지 않고 계정 관리·메꾸기·수익에서 숨김"
+                                style={{ border:'none', borderRadius:999, padding:'6px 8px', background:hiddenAccountLoadingKey === hiddenAccountKey(acct)?'#D1D5DB':'#F3F4F6', color:'#6B7280', fontSize:10, fontWeight:900, cursor:hiddenAccountLoadingKey === hiddenAccountKey(acct)?'not-allowed':'pointer', display:'flex', alignItems:'center', gap:4, flexShrink:0 }}>
+                                {hiddenAccountLoadingKey === hiddenAccountKey(acct) ? <Loader2 size={11} style={{ animation:'spin 1s linear infinite' }} /> : <EyeOff size={11} />}
+                                숨김
+                              </button>
                               {isAcctOpen ? <ChevronDown size={13} color="#C4B5FD" /> : <ChevronRight size={13} color="#C4B5FD" />}
                             </button>
 
@@ -1835,16 +1956,19 @@ export default function ManagePage() {
                                   )}
                                   <div style={{ marginTop:9, background:'#F8F6FF', borderRadius:12, padding:9 }}>
                                     <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, marginBottom:7 }}>
-                                      <span style={{ fontSize:10, color:'#6B7280', fontWeight:900 }}>비밀번호 변경 준비</span>
+                                      <span style={{ fontSize:10, color:'#6B7280', fontWeight:900 }}>ID/PW 변경 준비</span>
                                       <button type="button" onClick={(e) => { e.stopPropagation(); handleGeneratePasswordDraft(acct); }} style={{ border:'none', borderRadius:999, padding:'5px 8px', background:'#EEF2FF', color:'#4F46E5', fontSize:9, fontWeight:900, cursor:'pointer' }}>
                                         비밀번호 재설정
                                       </button>
                                     </div>
-                                    <div style={{ display:'grid', gridTemplateColumns:'1fr auto', gap:7, alignItems:'center' }}>
-                                      <input value={currentPasswordDraft} onChange={(e) => setPasswordDrafts(prev => ({ ...prev, [credentialKey]: e.target.value }))} placeholder="최신 비밀번호 입력" style={{ border:'1px solid #EDE9FE', borderRadius:10, padding:'8px 10px', fontSize:11, fontWeight:800, color:'#1E1B4B', fontFamily:'inherit', minWidth:0 }} />
-                                      <button type="button" onClick={(e) => { e.stopPropagation(); handleSaveLatestPassword(acct); }} disabled={passwordSaveLoadingKey === credentialKey} style={{ border:'none', borderRadius:999, padding:'8px 10px', background:passwordSaveLoadingKey === credentialKey ? '#C4B5FD' : '#10B981', color:'#fff', fontSize:10, fontWeight:900, cursor:passwordSaveLoadingKey === credentialKey ? 'not-allowed' : 'pointer' }}>
-                                        {passwordSaveLoadingKey === credentialKey ? '저장중' : '최신 비밀번호 저장'}
-                                      </button>
+                                    <div style={{ display:'grid', gap:7, alignItems:'center' }}>
+                                      <input value={currentAccountIdDraft} onChange={(e) => setAccountIdDrafts(prev => ({ ...prev, [credentialKey]: e.target.value }))} placeholder="최신 ID 입력" style={{ border:'1px solid #EDE9FE', borderRadius:10, padding:'8px 10px', fontSize:11, fontWeight:800, color:'#1E1B4B', fontFamily:'inherit', minWidth:0 }} />
+                                      <div style={{ display:'grid', gridTemplateColumns:'1fr auto', gap:7, alignItems:'center' }}>
+                                        <input value={currentPasswordDraft} onChange={(e) => setPasswordDrafts(prev => ({ ...prev, [credentialKey]: e.target.value }))} placeholder="최신 비밀번호 입력" style={{ border:'1px solid #EDE9FE', borderRadius:10, padding:'8px 10px', fontSize:11, fontWeight:800, color:'#1E1B4B', fontFamily:'inherit', minWidth:0 }} />
+                                        <button type="button" onClick={(e) => { e.stopPropagation(); handleSaveLatestPassword(acct); }} disabled={passwordSaveLoadingKey === credentialKey} style={{ border:'none', borderRadius:999, padding:'8px 10px', background:passwordSaveLoadingKey === credentialKey ? '#C4B5FD' : '#10B981', color:'#fff', fontSize:10, fontWeight:900, cursor:passwordSaveLoadingKey === credentialKey ? 'not-allowed' : 'pointer' }}>
+                                          {passwordSaveLoadingKey === credentialKey ? '저장중' : '최신 ID/PW 저장'}
+                                        </button>
+                                      </div>
                                     </div>
                                   </div>
                                   {pinResetNoticeKey === credentialKey && (
@@ -1948,6 +2072,7 @@ export default function ManagePage() {
                                   const isVerifying = isAccountCheckingMember(m);
                                   const isUsing = USING_SET.has(m.status);
                                   const memberAccessKey = `${acct.serviceType}:${acct.email}:graytag:${m.dealUsid}:url`;
+                                  const memberAdminAccessKey = `${acct.serviceType}:${acct.email}:graytag:${m.dealUsid}:admin-url`;
                                   const memberTemplateKey = `${acct.serviceType}:${acct.email}:graytag:${m.dealUsid}:template`;
                                   const assignedProfileName = m.profileName || profileNameForMember('graytag', m.dealUsid);
                                   const circleBg = isVerifying ? '#2563EB' : isUsing ? '#A78BFA' : ACTIVE_SET.has(m.status) ? '#C4B5FD' : '#E9E4FF';
@@ -1966,10 +2091,14 @@ export default function ManagePage() {
                                           <button onClick={(e) => { e.stopPropagation(); createPartyAccessLink(acct, { kind:'graytag', memberId:m.dealUsid, memberName:m.name || '(미확인)', profileName:assignedProfileName, status:m.status, statusName:m.statusName, startDateTime:m.startDateTime, endDateTime:m.endDateTime }); }} disabled={accessLinkLoadingKey === memberAccessKey} style={{ border:'none', borderRadius:999, background:accessLinkLoadingKey === memberAccessKey ? '#C4B5FD' : '#EEF2FF', color:'#4F46E5', padding:'4px 8px', fontSize:9, fontWeight:900, cursor:accessLinkLoadingKey === memberAccessKey ? 'not-allowed' : 'pointer' }}>
                                             {accessLinkLoadingKey === memberAccessKey ? '생성중' : '접근 링크 만들기'}
                                           </button>
+                                          <button onClick={(e) => { e.stopPropagation(); createPartyAccessLink(acct, { kind:'graytag', memberId:m.dealUsid, memberName:m.name || '(미확인)', profileName:assignedProfileName, status:m.status, statusName:m.statusName, startDateTime:m.startDateTime, endDateTime:m.endDateTime }, 'admin-url'); }} disabled={accessLinkLoadingKey === memberAdminAccessKey} style={{ border:'none', borderRadius:999, background:accessLinkLoadingKey === memberAdminAccessKey ? '#FDBA74' : '#FFF7ED', color:'#C2410C', padding:'4px 8px', fontSize:9, fontWeight:900, cursor:accessLinkLoadingKey === memberAdminAccessKey ? 'not-allowed' : 'pointer' }}>
+                                            {accessLinkLoadingKey === memberAdminAccessKey ? '생성중' : '(인증 무시)바로 접근 링크 만들기'}
+                                          </button>
                                           <button onClick={(e) => { e.stopPropagation(); createPartyAccessLink(acct, { kind:'graytag', memberId:m.dealUsid, memberName:m.name || '(미확인)', profileName:assignedProfileName, status:m.status, statusName:m.statusName, startDateTime:m.startDateTime, endDateTime:m.endDateTime }, 'template'); }} disabled={accessLinkLoadingKey === memberTemplateKey} style={{ border:'none', borderRadius:999, background:accessLinkLoadingKey === memberTemplateKey ? '#C4B5FD' : '#F5F3FF', color:'#7C3AED', padding:'4px 8px', fontSize:9, fontWeight:900, cursor:accessLinkLoadingKey === memberTemplateKey ? 'not-allowed' : 'pointer' }}>
                                             {accessLinkLoadingKey === memberTemplateKey ? '복사중' : '수동 전달 템플릿 복사'}
                                           </button>
                                           {accessLinkResult?.key === memberAccessKey && <span style={{ fontSize:9, color:'#059669', fontWeight:900 }}>파티원 전용 계정정보 링크 복사됨</span>}
+                                          {accessLinkResult?.key === memberAdminAccessKey && <span style={{ fontSize:9, color:'#C2410C', fontWeight:900 }}>관리자 바로 접근 링크 복사됨</span>}
                                           {accessLinkResult?.key === memberTemplateKey && <span style={{ fontSize:9, color:'#059669', fontWeight:900 }}>수동 전달 템플릿 복사됨</span>}
                                         </div>
                                         {isUsing && m.progressRatio && m.progressRatio!=='0%' && (
@@ -2013,6 +2142,7 @@ export default function ManagePage() {
                                             const remainDays = Math.max(0, Math.ceil((e.getTime()-now.getTime())/86400000));
                                             const isExpired = mm.status === 'expired' || remainDays <= 0;
                                             const manualAccessKey = `${acct.serviceType}:${acct.email}:manual:${mm.id}:url`;
+                                            const manualAdminAccessKey = `${acct.serviceType}:${acct.email}:manual:${mm.id}:admin-url`;
                                             const manualTemplateKey = `${acct.serviceType}:${acct.email}:manual:${mm.id}:template`;
                                             const assignedProfileName = profileNameForMember('manual', mm.id);
                                             return (
@@ -2041,10 +2171,14 @@ export default function ManagePage() {
                                                     <button onClick={(ev) => { ev.stopPropagation(); createPartyAccessLink(acct, { kind:'manual', memberId:mm.id, memberName:mm.memberName, profileName:assignedProfileName, status:mm.status, statusName:mm.status, startDateTime:mm.startDate, endDateTime:mm.endDate }); }} disabled={accessLinkLoadingKey === manualAccessKey || isExpired} style={{ border:'none', borderRadius:999, background:(accessLinkLoadingKey === manualAccessKey || isExpired) ? '#F3F4F6' : '#EEF2FF', color:isExpired ? '#9CA3AF' : '#4F46E5', padding:'4px 8px', fontSize:9, fontWeight:900, cursor:(accessLinkLoadingKey === manualAccessKey || isExpired) ? 'not-allowed' : 'pointer' }}>
                                                       {accessLinkLoadingKey === manualAccessKey ? '생성중' : '접근 링크 만들기'}
                                                     </button>
+                                                    <button onClick={(ev) => { ev.stopPropagation(); createPartyAccessLink(acct, { kind:'manual', memberId:mm.id, memberName:mm.memberName, profileName:assignedProfileName, status:mm.status, statusName:mm.status, startDateTime:mm.startDate, endDateTime:mm.endDate }, 'admin-url'); }} disabled={accessLinkLoadingKey === manualAdminAccessKey || isExpired} style={{ border:'none', borderRadius:999, background:(accessLinkLoadingKey === manualAdminAccessKey || isExpired) ? '#F3F4F6' : '#FFF7ED', color:isExpired ? '#9CA3AF' : '#C2410C', padding:'4px 8px', fontSize:9, fontWeight:900, cursor:(accessLinkLoadingKey === manualAdminAccessKey || isExpired) ? 'not-allowed' : 'pointer' }}>
+                                                      {accessLinkLoadingKey === manualAdminAccessKey ? '생성중' : '(인증 무시)바로 접근 링크 만들기'}
+                                                    </button>
                                                     <button onClick={(ev) => { ev.stopPropagation(); createPartyAccessLink(acct, { kind:'manual', memberId:mm.id, memberName:mm.memberName, profileName:assignedProfileName, status:mm.status, statusName:mm.status, startDateTime:mm.startDate, endDateTime:mm.endDate }, 'template'); }} disabled={accessLinkLoadingKey === manualTemplateKey || isExpired} style={{ border:'none', borderRadius:999, background:(accessLinkLoadingKey === manualTemplateKey || isExpired) ? '#F3F4F6' : '#ECFDF5', color:isExpired ? '#9CA3AF' : '#059669', padding:'4px 8px', fontSize:9, fontWeight:900, cursor:(accessLinkLoadingKey === manualTemplateKey || isExpired) ? 'not-allowed' : 'pointer' }}>
                                                       {accessLinkLoadingKey === manualTemplateKey ? '복사중' : '수동 전달 템플릿 복사'}
                                                     </button>
                                                     {accessLinkResult?.key === manualAccessKey && <span style={{ fontSize:9, color:'#059669', fontWeight:900 }}>파티원 전용 계정정보 링크 복사됨</span>}
+                                                    {accessLinkResult?.key === manualAdminAccessKey && <span style={{ fontSize:9, color:'#C2410C', fontWeight:900 }}>관리자 바로 접근 링크 복사됨</span>}
                                                     {accessLinkResult?.key === manualTemplateKey && <span style={{ fontSize:9, color:'#059669', fontWeight:900 }}>수동 전달 템플릿 복사됨</span>}
                                                   </div>
                                                   {mm.memo && <div style={{ fontSize:10, color:'#C4B5FD', marginTop:2 }}>{mm.memo}</div>}

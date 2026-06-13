@@ -109,6 +109,20 @@ export function partyAccessTokenHash(token: string): string {
   return createHash('sha256').update(normalizePartyAccessToken(token)).digest('hex');
 }
 
+export function extractPartyAccessTokensFromText(text: string): string[] {
+  const tokens: string[] = [];
+  const seen = new Set<string>();
+  const pattern = /https?:\/\/email-verify\.(?:one|xyz)\/(?:dashboard\/)?access\/([^\s<>'\"]+)/gi;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(String(text || ''))) !== null) {
+    const token = normalizePartyAccessToken(String(match[1] || '').replace(/[),.;:!?，。、]+$/g, ''));
+    if (!token || seen.has(token)) continue;
+    seen.add(token);
+    tokens.push(token);
+  }
+  return tokens;
+}
+
 function normalizeKeyPart(value: string): string {
   return String(value || '').trim();
 }
@@ -165,6 +179,7 @@ function isEndedStatus(status: string, statusName = ''): boolean {
   if (name === '종료' || name === '완료') return true;
   return false;
 }
+
 
 function isCurrentPartyAccessProfileStatus(status: string, statusName = ''): boolean {
   const code = compactStatusText(status);
@@ -226,11 +241,37 @@ export function createPartyAccessLinkRecord(input: {
 
 export function isPartyAccessAllowed(record: PartyAccessLinkRecord, now = new Date().toISOString()): { allowed: boolean; reason: 'active' | 'revoked' | 'ended-status' | 'expired' | 'missing-record' } {
   if (!record) return { allowed: false, reason: 'missing-record' };
-  if (record.revokedAt) return { allowed: false, reason: 'revoked' };
-  if (isEndedStatus(record.member.status, record.member.statusName)) return { allowed: false, reason: 'ended-status' };
   const end = parseDateEndOfDay(record.member.endDateTime);
-  if (end && end.getTime() < new Date(now).getTime()) return { allowed: false, reason: 'expired' };
+  const isExpiredByDate = Boolean(end && end.getTime() < new Date(now).getTime());
+  if (isExpiredByDate) return { allowed: false, reason: 'expired' };
+
+  // Buyer-facing access URLs must remain usable until the paid end date.
+  // Graytag status/revokedAt can change because of internal cancellation/conflict flows,
+  // but customers were already given this URL; only an actually expired endDate blocks it.
   return { allowed: true, reason: 'active' };
+}
+
+export function mergeRecoverablePartyAccessBackupStores(
+  primary: PartyAccessLinkStore = {},
+  backups: PartyAccessLinkStore[] = [],
+  now = new Date().toISOString(),
+): { store: PartyAccessLinkStore; recoveredCount: number } {
+  const next: PartyAccessLinkStore = { ...(primary || {}) };
+  let recoveredCount = 0;
+
+  for (const backup of backups || []) {
+    for (const [tokenHash, record] of Object.entries(backup || {})) {
+      if (next[tokenHash]) continue;
+      if (!record?.shareToken) continue;
+      if (record.tokenHash !== tokenHash) continue;
+      if (partyAccessTokenHash(record.shareToken) !== tokenHash) continue;
+      if (!isPartyAccessAllowed(record, now).allowed) continue;
+      next[tokenHash] = record;
+      recoveredCount += 1;
+    }
+  }
+
+  return { store: next, recoveredCount };
 }
 
 export function buildPartyAccessDeliverySnapshotByMember(store: PartyAccessLinkStore = {}): Map<string, PartyAccessDeliverySnapshot> {
@@ -347,11 +388,21 @@ export function syncPartyAccessStoreWithMembers(input: {
       startDateTime: status.startDateTime !== undefined ? status.startDateTime || null : record.member.startDateTime || null,
       endDateTime: status.endDateTime !== undefined ? status.endDateTime || null : record.member.endDateTime || null,
     };
-    const shouldRevoke = isEndedStatus(updatedMember.status, updatedMember.statusName);
+    const end = parseDateEndOfDay(updatedMember.endDateTime);
+    const shouldRevoke = Boolean(end && end.getTime() < new Date(now).getTime()) && isEndedStatus(updatedMember.status, updatedMember.statusName);
+    const shareTokenFillRecord = Boolean(record.shareToken) && normalizeKeyPart(record.member.memberId).startsWith('fill:');
+    const effectiveMember = shareTokenFillRecord && shouldRevoke ? record.member : updatedMember;
     const updated: PartyAccessLinkRecord = {
       ...record,
-      member: updatedMember,
-      revokedAt: shouldRevoke ? (record.revokedAt || now) : record.revokedAt,
+      member: effectiveMember,
+      // Live/current member data is authoritative for accidental stale revocations.
+      // If Graytag now says the member is Using/current again, reopen the existing
+      // share token instead of leaving the buyer's access URL permanently blocked.
+      // Pre-sale fill links are seller-created listing memos. A cancelled/no-show
+      // deal can share the same productUsid while the listing/link still needs to
+      // stay usable for resend/repost until its own end date, so do not let ended
+      // deal statuses overwrite or revoke share-token fill records.
+      revokedAt: shouldRevoke ? (shareTokenFillRecord ? record.revokedAt : (record.revokedAt || now)) : null,
     };
     if (JSON.stringify(updated) !== JSON.stringify(record)) {
       next[tokenHash] = updated;
@@ -434,18 +485,22 @@ export function enrichPartyAccessRecordWithKnownCredentials(
   const key = partyAccessAccountKey(record.serviceType, record.accountEmail);
   const state = checklistStore[key];
   const generated = findGeneratedAccount(generatedStore, record.serviceType, record.accountEmail) as any;
-  const fallbackPassword = usablePartyAccessCredential(record.fallbackPassword)
+  const accountEmail = usablePartyAccessCredential(String(state?.changedAccountEmail || ''))
+    || usablePartyAccessCredential(record.accountEmail);
+  const fallbackPassword = usablePartyAccessCredential(String(state?.changedPassword || ''))
+    || usablePartyAccessCredential(record.fallbackPassword)
     || findLatestSiblingWithValue(store, record, 'fallbackPassword')
-    || normalizeKeyPart(String(state?.changedPassword || generated?.password || ''));
-  const fallbackPin = normalizeKeyPart(record.fallbackPin)
+    || normalizeKeyPart(String(generated?.password || ''));
+  const fallbackPin = normalizeKeyPart(String(state?.generatedPin || '')).replace(/\D/g, '').slice(0, 6)
+    || normalizeKeyPart(record.fallbackPin)
     || findLatestSiblingWithValue(store, record, 'fallbackPin')
-    || normalizeKeyPart(String(state?.generatedPin || generated?.pin || '')).replace(/\D/g, '').slice(0, 6);
+    || normalizeKeyPart(String(generated?.pin || '')).replace(/\D/g, '').slice(0, 6);
   const emailAccessUrl = resolvePartyAccessEmailAccessUrl({
     ...record,
     emailAccessUrl: normalizeKeyPart(record.emailAccessUrl) || findLatestSiblingWithValue(store, record, 'emailAccessUrl'),
   }, checklistStore, generatedStore);
-  if (fallbackPassword === record.fallbackPassword && fallbackPin === record.fallbackPin && emailAccessUrl === normalizeEmailVerifyUrl(record.emailAccessUrl)) return record;
-  return { ...record, fallbackPassword, fallbackPin, emailAccessUrl };
+  if (accountEmail === record.accountEmail && fallbackPassword === record.fallbackPassword && fallbackPin === record.fallbackPin && emailAccessUrl === normalizeEmailVerifyUrl(record.emailAccessUrl)) return record;
+  return { ...record, accountEmail, fallbackPassword, fallbackPin, emailAccessUrl };
 }
 
 export const PARTY_ACCESS_CONSENT_PHRASES = [
@@ -497,8 +552,8 @@ export function buildPartyAccessProfileStatuses(
   }
 
   const latestSiblings = Array.from(latestByMember.values());
-  const seenProfiles = new Set<string>();
   const rows = latestSiblings
+    .filter((sibling) => !sibling.revokedAt)
     .filter((sibling) => isPartyAccessAllowed(sibling, now).allowed)
     .filter((sibling) => isCurrentPartyAccessProfileStatus(sibling.member.status, sibling.member.statusName || sibling.member.status))
     .map((sibling) => ({
@@ -513,12 +568,6 @@ export function buildPartyAccessProfileStatuses(
     .sort((a, b) => {
       if (a.isCurrentMember !== b.isCurrentMember) return a.isCurrentMember ? -1 : 1;
       return String(a.endDateTime || '').localeCompare(String(b.endDateTime || '')) || a.profileName.localeCompare(b.profileName);
-    })
-    .filter((row) => {
-      const key = row.profileName.toLowerCase();
-      if (!key || seenProfiles.has(key)) return false;
-      seenProfiles.add(key);
-      return true;
     });
 
   const limit = partyAccessProfileLimit(record.serviceType);
@@ -573,16 +622,17 @@ export function buildPartyAccessPublicPayload(
     return { ok: false, reason: 'not-found', audit: { memberId: '', allowed: false, reason: 'missing-record', viewedAt: now } };
   }
   const allowed = isPartyAccessAllowed(record, now);
+  const credentialRecord = enrichPartyAccessRecordWithKnownCredentials(record, store, checklistStore, generatedStore);
   const base = {
     serviceType: record.serviceType,
-    accountEmail: usablePartyAccessCredential(record.accountEmail),
+    accountEmail: usablePartyAccessCredential(credentialRecord.accountEmail),
     memberName: record.member.memberName,
     profileName: record.profileName || record.member.memberName,
-    emailAccessUrl: resolvePartyAccessEmailAccessUrl(record, checklistStore, generatedStore),
+    emailAccessUrl: resolvePartyAccessEmailAccessUrl(credentialRecord, checklistStore, generatedStore),
     partyProfiles: buildPartyAccessProfileStatuses(record, store, now, profileAssignments),
     period: { startDateTime: record.member.startDateTime || null, endDateTime: record.member.endDateTime || null },
     audit: { memberId: record.member.memberId, allowed: allowed.allowed, reason: allowed.reason, viewedAt: now },
   };
   if (!allowed.allowed) return { ok: false, reason: allowed.reason, ...base };
-  return { ok: true, ...base, credentials: resolvePartyAccessCredentials(record, checklistStore, generatedStore) };
+  return { ok: true, ...base, credentials: resolvePartyAccessCredentials(credentialRecord, checklistStore, generatedStore) };
 }

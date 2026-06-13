@@ -4,15 +4,16 @@ import { randomBytes } from 'node:crypto';
 import { promisify } from 'node:util';
 const execFileAsync = promisify(execFile);
 import { cors } from "hono/cors"
-import { readFileSync, writeFileSync, existsSync, mkdirSync, statSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, statSync, readdirSync } from 'node:fs';
 import { Buffer } from 'node:buffer';
 import { sendSellerAlert } from '../alerts/telegram';
 import { appendAuditLog, auditRequestId, readAuditLog } from './audit-log';
 import { assertPriceChangeAllowed, loadPriceSafetyConfig, previewPriceChange, recordSuccessfulPriceDecrease, savePriceSafetyConfig } from './price-safety';
 import { loadSafeModeConfig, saveSafeModeConfig } from './safe-mode';
-import { generateSixDigitPin, makeEmailVerifyMemo, resolveEmailAliasFill, updateEmailAliasPin, verifyEmailAliasPinUpdate } from './email-alias-fill';
-import { buildFinishedDealsUrl, isGraytagAccessNoticeCredential } from '../lib/graytag-fill';
+import { generateSixDigitPin, makeEmailVerifyMemo, resolveEmailAliasFill, updateEmailAliasPin, verifyEmailAliasPinUpdate, type EmailAliasCandidate } from './email-alias-fill';
+import { buildFinishedDealsUrl, GRAYTAG_ACCESS_NOTICE_ID, GRAYTAG_ACCESS_NOTICE_PW, isGraytagAccessNoticeCredential } from '../lib/graytag-fill';
 import { extractDeliveredAccountFromChats, resolveDealChatRoomUuid, shouldHydrateDeliveredAccountFromChat } from '../lib/deal-delivered-account';
+import { planAutoSyncPrice } from '../lib/auto-sync-prices';
 import { chooseUndercutterTargetDaily, planUndercutterPriceChange } from '../lib/undercutter-price';
 import { DEFAULT_MANAGEMENT_CACHE_TTL_MS, isAutoSessionManagementRequest, managementCache, shouldForceManagementRefresh } from './management-cache';
 import { buildProfileAuditRows, profileAuditKey, runProfileCheckPlaceholder, summarizeProfileAudit, type ProfileAuditRow, type ProfileAuditStore } from '../lib/profile-audit';
@@ -23,6 +24,7 @@ import { mergePartyMaintenanceChecklistState, type PartyMaintenanceChecklistStor
 import { buildProfileAssignment, profileNicknameForPartyMember, type ProfileAssignment } from '../lib/profile-nickname';
 import { buildGeneratedAccount, deleteGeneratedAccountFromStore, extractSimpleLoginAliasRef, generateAccountPassword, mergeGeneratedAccountsIntoManagement, nextGeneratedAliasPrefix, normalizeGeneratedAccountPatch, normalizeManualAliasPrefix, type GeneratedAccountStore, type SimpleLoginAliasRef } from '../lib/generated-accounts';
 import { mergeOnSaleAccountsIntoManagement } from '../lib/on-sale-accounts';
+import { applyManagementHiddenAccounts, hideManagementAccount, loadManagementHiddenAccounts, unhideManagementAccount } from '../lib/management-hidden-accounts';
 import { buildAccountCheckInflowStore, isAccountCheckStatus, type AccountCheckInflowStore } from '../lib/account-check-inflow';
 import { resolveAutoReplyPolicy } from './auto-reply-policy';
 import { normalizeBuyerMessage, messageFingerprint, messageTimestamp, isBuyerTextMessage } from './auto-reply-message';
@@ -33,65 +35,11 @@ import { buildOpenRouterAutoReplyRequest, parseOpenRouterAutoReplyJson, resolveO
 import { evaluateAutoReplySafety } from './auto-reply-safety';
 import { decideAutonomousReply } from './auto-reply-autonomy';
 import { buildOperationsCenter, createManualResponseQueueItem, mergeManualResponseQueueItem, summarizeManualResponseQueue, type ManualResponseQueueItem } from '../lib/operations-center';
-import { buildPartyAccessDeliverySnapshotByMember, buildPartyAccessPublicPayload, createPartyAccessLinkRecord, enrichPartyAccessRecordWithKnownCredentials, isValidPartyAccessConsent, normalizePartyAccessToken, partyAccessMemberHistoryKey, partyAccessTokenHash, redactPartyAccessPayloadForConsent, resolvePartyAccessDeliverySnapshotByListing, resolvePartyAccessDeliverySnapshotForDeal, syncPartyAccessStoreWithMembers, type PartyAccessDeliverySnapshot, type PartyAccessLinkRecord, type PartyAccessLinkStore } from '../lib/party-access';
+import { buildPartyAccessDeliverySnapshotByMember, buildPartyAccessPublicPayload, createPartyAccessLinkRecord, enrichPartyAccessRecordWithKnownCredentials, extractPartyAccessTokensFromText, isPartyAccessAllowed, isValidPartyAccessConsent, mergeRecoverablePartyAccessBackupStores, normalizePartyAccessToken, partyAccessAccountKey, partyAccessMemberHistoryKey, partyAccessTokenHash, redactPartyAccessPayloadForConsent, resolvePartyAccessDeliverySnapshotByListing, resolvePartyAccessDeliverySnapshotForDeal, syncPartyAccessStoreWithMembers, type PartyAccessDeliverySnapshot, type PartyAccessLinkRecord, type PartyAccessLinkStore } from '../lib/party-access';
 import { CLOSING_ACKNOWLEDGEMENT_CATEGORY, DAILY_ACCOUNT_ACCESS_NOTICE_CATEGORY, OFF_HOURS_NOTICE_CATEGORY, buildClosingAcknowledgementReply, buildDailyAccountAccessNoticeReply, buildOffHoursNoticeReply, combineNoticeReplies, hasDailyAccountAccessNoticeToday, isSimpleAcknowledgement, shouldSendClosingAcknowledgement, shouldSendDailyAccountAccessNotice, shouldSendOffHoursNotice } from './auto-reply-daily-notice';
 
 const EMAIL_SERVER = "http://127.0.0.1:3001";
-const MANAGEMENT_HIDDEN_ACCOUNTS_PATH = '/home/ubuntu/.hermes/hermes-agent/graytag-aio-manager-0606/data/management-hidden-accounts.json';
-
-function loadManagementHiddenAccounts(): { serviceType: string; accountEmail: string; reason?: string }[] {
-  try {
-    if (!existsSync(MANAGEMENT_HIDDEN_ACCOUNTS_PATH)) return [];
-    const parsed = JSON.parse(readFileSync(MANAGEMENT_HIDDEN_ACCOUNTS_PATH, 'utf-8'));
-    return Array.isArray(parsed?.accounts) ? parsed.accounts : Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
-function applyManagementHiddenAccounts<T extends { services?: any[]; onSaleByKeepAcct?: Record<string, any[]>; summary?: any }>(management: T): T {
-  const normalizeHiddenService = (value: string) => String(value || '').trim().toLowerCase().replace(/\s+/g, '');
-  const normalizeHiddenAccount = (value: string) => String(value || '').trim().toLowerCase();
-  const hidden = loadManagementHiddenAccounts()
-    .map(item => ({ serviceType: normalizeHiddenService(item.serviceType), accountEmail: normalizeHiddenAccount(item.accountEmail) }))
-    .filter(item => item.serviceType && item.accountEmail);
-  if (hidden.length === 0 || !Array.isArray(management.services)) return management;
-  const isHidden = (serviceType: string, accountEmail: string) => hidden.some(item => item.serviceType === normalizeHiddenService(serviceType) && item.accountEmail === normalizeHiddenAccount(accountEmail));
-  const services = management.services
-    .map((svc: any) => {
-      const accounts = (svc.accounts || []).filter((acct: any) => !isHidden(String(acct.serviceType || svc.serviceType || ''), String(acct.email || '')));
-      return {
-        ...svc,
-        accounts,
-        totalUsingMembers: accounts.reduce((sum: number, acct: any) => sum + Number(acct.usingCount || 0), 0),
-        totalActiveMembers: accounts.reduce((sum: number, acct: any) => sum + Number(acct.activeCount || 0), 0),
-        totalIncome: accounts.reduce((sum: number, acct: any) => sum + Number(acct.totalIncome || 0), 0),
-        totalRealized: accounts.reduce((sum: number, acct: any) => sum + Number(acct.totalRealizedIncome || 0), 0),
-      };
-    })
-    .filter((svc: any) => (svc.accounts || []).length > 0);
-  const onSaleByKeepAcct: Record<string, any[]> = {};
-  for (const [accountEmail, items] of Object.entries(management.onSaleByKeepAcct || {})) {
-    const visibleItems = (Array.isArray(items) ? items : []).filter((item: any) => {
-      const serviceType = String(item?.productType || item?.serviceType || '').trim();
-      return !isHidden(serviceType, accountEmail);
-    });
-    if (visibleItems.length > 0) onSaleByKeepAcct[accountEmail] = visibleItems;
-  }
-  return {
-    ...management,
-    services,
-    onSaleByKeepAcct,
-    summary: management.summary ? {
-      ...management.summary,
-      totalUsingMembers: services.reduce((sum: number, svc: any) => sum + Number(svc.totalUsingMembers || 0), 0),
-      totalActiveMembers: services.reduce((sum: number, svc: any) => sum + Number(svc.totalActiveMembers || 0), 0),
-      totalIncome: services.reduce((sum: number, svc: any) => sum + Number(svc.totalIncome || 0), 0),
-      totalRealized: services.reduce((sum: number, svc: any) => sum + Number(svc.totalRealized || 0), 0),
-      totalAccounts: services.reduce((sum: number, svc: any) => sum + (svc.accounts || []).length, 0),
-    } : management.summary,
-  };
-}
+// MANAGEMENT_HIDDEN_ACCOUNTS_PATH is owned by src/lib/management-hidden-accounts.ts.
 
 const app = new Hono();
 app.use(cors({ origin: "*" }));
@@ -112,6 +60,7 @@ const ADMIN_REQUIRED_GET_PREFIXES = [
   '/party-maintenance-checklists',
   '/profile-assignments',
   '/generated-accounts',
+  '/management-hidden-accounts',
   '/operations-center',
 ];
 
@@ -237,8 +186,12 @@ function maskSecret(value: string): string {
 
 // ─── Session Keeper 쿠키 자동 로드 ─────────────────────────
 const SESSION_COOKIE_PATH = '/home/ubuntu/graytag-session/cookies.json';
-const GENERATED_ACCOUNTS_PATH = '/home/ubuntu/.hermes/hermes-agent/graytag-aio-manager-0606/data/generated-accounts.json';
+const DEFAULT_GENERATED_ACCOUNTS_PATH = '/home/ubuntu/.hermes/hermes-agent/graytag-aio-manager-0606/data/generated-accounts.json';
 const ACCOUNT_CHECK_INFLOW_PATH = '/home/ubuntu/.hermes/hermes-agent/graytag-aio-manager-0606/data/account-check-inflow.json';
+
+function generatedAccountsPath() {
+  return process.env.GENERATED_ACCOUNTS_PATH || DEFAULT_GENERATED_ACCOUNTS_PATH;
+}
 const EMAIL_DASHBOARD_ENV_PATH = '/home/ubuntu/.hermes/hermes-agent/graytag-email-verify-dashboard-5588/.env';
 const SIMPLELOGIN_API = 'https://app.simplelogin.io/api';
 
@@ -279,16 +232,18 @@ function dataDirFor(path: string) {
 
 function readGeneratedAccountStore(): GeneratedAccountStore {
   try {
-    if (!existsSync(GENERATED_ACCOUNTS_PATH)) return {};
-    const parsed = JSON.parse(readFileSync(GENERATED_ACCOUNTS_PATH, 'utf8')) as GeneratedAccountStore;
+    const path = generatedAccountsPath();
+    if (!existsSync(path)) return {};
+    const parsed = JSON.parse(readFileSync(path, 'utf8')) as GeneratedAccountStore;
     return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
   } catch { return {}; }
 }
 
 function writeGeneratedAccountStore(store: GeneratedAccountStore) {
-  const dir = dataDirFor(GENERATED_ACCOUNTS_PATH);
+  const path = generatedAccountsPath();
+  const dir = dataDirFor(path);
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-  writeFileSync(GENERATED_ACCOUNTS_PATH, JSON.stringify(store, null, 2), 'utf8');
+  writeFileSync(path, JSON.stringify(store, null, 2), 'utf8');
 }
 
 
@@ -328,7 +283,7 @@ function simpleLoginApiKey(): string {
     || readEnvValueFromFile(EMAIL_DASHBOARD_ENV_PATH, 'SIMPLELOGIN_API_KEY').trim();
 }
 
-async function listSimpleLoginAliases(key: string, maxPages = 10): Promise<SimpleLoginAliasRef[]> {
+async function listSimpleLoginAliases(key: string, maxPages = 50): Promise<SimpleLoginAliasRef[]> {
   const aliases: SimpleLoginAliasRef[] = [];
   for (let page = 0; page < maxPages; page += 1) {
     const res = await fetch(`${SIMPLELOGIN_API}/aliases?page_id=${page}`, { headers: { Authentication: key, 'Content-Type': 'application/json' } });
@@ -342,6 +297,48 @@ async function listSimpleLoginAliases(key: string, maxPages = 10): Promise<Simpl
     if (items.length === 0) break;
   }
   return aliases;
+}
+
+function mergeAliasRefsByEmailAndId(...groups: SimpleLoginAliasRef[][]): SimpleLoginAliasRef[] {
+  const byKey = new Map<string, SimpleLoginAliasRef>();
+  for (const aliases of groups) {
+    for (const alias of aliases) {
+      const normalized = extractSimpleLoginAliasRef(alias);
+      if (!normalized?.email) continue;
+      const key = normalized.id === undefined || normalized.id === null
+        ? `email:${normalized.email}`
+        : `id:${String(normalized.id)}`;
+      byKey.set(key, normalized);
+      byKey.set(`email:${normalized.email}`, normalized);
+    }
+  }
+  return Array.from(new Map(Array.from(byKey.values()).map(alias => [alias.id === undefined || alias.id === null ? `email:${alias.email}` : `id:${String(alias.id)}`, alias])).values());
+}
+
+function generatedAccountAliasRefs(store = readGeneratedAccountStore()): SimpleLoginAliasRef[] {
+  return Object.values(store)
+    .map(account => extractSimpleLoginAliasRef({ id: account.emailId, email: account.email }))
+    .filter((alias): alias is SimpleLoginAliasRef => Boolean(alias?.email && alias.id !== undefined && alias.id !== null));
+}
+
+async function listEmailDashboardAliases(maxPages = 50): Promise<EmailAliasCandidate[]> {
+  const aliases: SimpleLoginAliasRef[] = [];
+  for (let page = 0; page < maxPages; page += 1) {
+    const res = await fetch(`${EMAIL_SERVER}/api/sl/aliases?page=${page}`);
+    if (!res.ok) break;
+    const contentType = res.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) break;
+    const data = await res.json().catch(() => ({} as any)) as any;
+    const items = Array.isArray(data?.aliases) ? data.aliases : [];
+    for (const item of items) {
+      const alias = extractSimpleLoginAliasRef(item);
+      if (alias) aliases.push(alias);
+    }
+    if (items.length === 0) break;
+  }
+  return mergeAliasRefsByEmailAndId(aliases, generatedAccountAliasRefs())
+    .filter(alias => alias.id !== undefined && alias.id !== null)
+    .map(alias => ({ id: alias.id as string | number, email: alias.email, enabled: true }));
 }
 
 async function resolveSimpleLoginAliasIdByEmail(email: string, key: string): Promise<SimpleLoginAliasRef | null> {
@@ -636,6 +633,30 @@ function extractLenderDeals(payload: any): any[] {
   return Array.isArray(deals) ? deals : [];
 }
 
+function buildPartyAccessMemberStatusRefsFromDeals(deals: any[] = []) {
+  return (deals || []).flatMap((deal: any) => {
+    const base = {
+      kind: 'graytag' as const,
+      memberName: deal.borrowerName?.trim() || null,
+      status: deal.dealStatus,
+      statusName: deal.lenderDealStatusName || deal.dealStatus,
+      startDateTime: deal.startDateTime || null,
+      endDateTime: deal.endDateTime || null,
+    };
+    const refs: any[] = [];
+    const dealUsid = String(deal.dealUsid || '').trim();
+    if (dealUsid) refs.push({ ...base, memberId: dealUsid });
+
+    // Pre-sale buyer links are created as graytag:fill:{productUsid}. Once Graytag converts
+    // the listing into a real deal, the buyer keeps the same access URL while the live member
+    // state moves to dealUsid. Sync both identifiers so `/dashboard/access/{token}` uses the
+    // same current-member basis/count as account management.
+    const productUsid = String(deal.productUsid || '').trim();
+    if (productUsid) refs.push({ ...base, memberId: `fill:${productUsid}` });
+    return refs;
+  });
+}
+
 function isAccountCheckingDeal(deal: any): boolean {
   return isAccountCheckStatus(deal);
 }
@@ -723,6 +744,48 @@ app.post('/my/accounts', async (c) => {
     });
   } catch (e: any) { return c.json({ error: e.message }, 500); }
 });
+
+// ─── 계정 관리 숨김: UI/매꾸기/수익에서만 제외, SimpleLogin alias는 삭제하지 않음 ─────
+app.get('/management-hidden-accounts', (c) => {
+  return c.json({ accounts: loadManagementHiddenAccounts() });
+});
+app.get('/api/management-hidden-accounts', (c) => {
+  return c.json({ accounts: loadManagementHiddenAccounts() });
+});
+
+async function parseManagementHiddenAccountBody(c: any) {
+  const body = await c.req.json().catch(() => ({} as any)) as any;
+  return {
+    serviceType: String(body?.serviceType || '').trim(),
+    accountEmail: String(body?.accountEmail || '').trim(),
+    reason: typeof body?.reason === 'string' ? body.reason : undefined,
+  };
+}
+
+async function handleHideManagementAccount(c: any) {
+  const input = await parseManagementHiddenAccountBody(c);
+  if (!input.serviceType || !input.accountEmail) {
+    return c.json({ ok: false, error: 'serviceType/accountEmail required' }, 400);
+  }
+  const store = hideManagementAccount(input);
+  managementCache.clear('auto-session');
+  return c.json({ ok: true, hidden: true, accounts: store.accounts });
+}
+
+async function handleUnhideManagementAccount(c: any) {
+  const input = await parseManagementHiddenAccountBody(c);
+  if (!input.serviceType || !input.accountEmail) {
+    return c.json({ ok: false, error: 'serviceType/accountEmail required' }, 400);
+  }
+  const store = unhideManagementAccount(input);
+  managementCache.clear('auto-session');
+  return c.json({ ok: true, hidden: false, accounts: store.accounts });
+}
+
+app.post('/management-hidden-accounts', handleHideManagementAccount);
+app.post('/api/management-hidden-accounts', handleHideManagementAccount);
+app.delete('/management-hidden-accounts', handleUnhideManagementAccount);
+app.delete('/api/management-hidden-accounts', handleUnhideManagementAccount);
 
 // ─── 계정 생성기: SimpleLogin alias + 비밀번호 + PIN + 결제 체크 ─────
 app.get('/generated-accounts', (c) => {
@@ -948,18 +1011,11 @@ app.post('/my/management', async (c) => {
     const partyAccessStoreBeforeSync = loadPartyAccessLinkStore();
     const syncedPartyAccess = syncPartyAccessStoreWithMembers({
       store: partyAccessStoreBeforeSync,
-      members: allDeals.map((deal: any) => ({
-        kind: 'graytag',
-        memberId: String(deal.dealUsid || '').trim(),
-        memberName: deal.borrowerName?.trim() || null,
-        status: deal.dealStatus,
-        statusName: deal.lenderDealStatusName || deal.dealStatus,
-        startDateTime: deal.startDateTime || null,
-        endDateTime: deal.endDateTime || null,
-      })),
+      members: buildPartyAccessMemberStatusRefsFromDeals(allDeals),
     });
     if (syncedPartyAccess.changed) savePartyAccessLinkStore(syncedPartyAccess.store);
     const deliverySnapshotByMember = buildPartyAccessDeliverySnapshotByMember(syncedPartyAccess.store);
+    const currentProfileNameByMemberKey = buildCurrentPartyProfileNameByMemberKey(allDeals, syncedPartyAccess.store, profileAssignmentByProductUsid);
 
     const snapshotFromAccessRecord = (record: PartyAccessLinkRecord): PartyAccessDeliverySnapshot => ({
       serviceType: record.serviceType,
@@ -975,15 +1031,13 @@ app.post('/my/management', async (c) => {
       revokedAt: record.revokedAt || null,
     });
 
-    const accessTokenPattern = /https?:\/\/email-verify\.(?:one|xyz)\/(?:dashboard\/)?access\/([^\s<>'\"]+)/gi;
     const findPartyAccessSnapshotsFromText = (text: string, serviceType: string): PartyAccessDeliverySnapshot[] => {
       const records: PartyAccessLinkRecord[] = [];
-      let match: RegExpExecArray | null;
-      accessTokenPattern.lastIndex = 0;
-      while ((match = accessTokenPattern.exec(String(text || ''))) !== null) {
-        const token = normalizePartyAccessToken(String(match[1] || '').replace(/[),.;:!?，。、]+$/g, ''));
-        if (!token) continue;
-        const record = syncedPartyAccess.store[partyAccessTokenHash(token)];
+      for (const token of extractPartyAccessTokensFromText(text)) {
+        const tokenScopedStore = syncedPartyAccess.store[partyAccessTokenHash(token)]
+          ? syncedPartyAccess.store
+          : loadPartyAccessLinkStoreForToken(token);
+        const record = tokenScopedStore[partyAccessTokenHash(token)];
         if (record) records.push(record);
       }
       return records
@@ -1063,8 +1117,16 @@ app.post('/my/management', async (c) => {
     if (placeholderDealsNeedingChatLookup.length > 0) {
       await Promise.all(placeholderDealsNeedingChatLookup.map(async (deal: any) => {
         const dealUsid = String(deal.dealUsid || '').trim();
+        if (!dealUsid) return;
+        const serviceType = deal.productTypeString || '기타';
+        const localText = [deal.keepMemo, deal.keepPasswd, deal.memo, deal.description].map((v) => String(v || '')).join('\n');
+        const localSnapshot = findPartyAccessSnapshotsFromText(localText, serviceType)[0];
+        if (localSnapshot) {
+          snapshotByPlaceholderDealUsid.set(dealUsid, localSnapshot);
+          return;
+        }
         const chatRoomUuid = resolveDealChatRoomUuid(deal);
-        if (!dealUsid || !chatRoomUuid) return;
+        if (!chatRoomUuid) return;
         try {
           const snapshots: PartyAccessDeliverySnapshot[] = [];
           for (let page = 1; page <= 3; page++) {
@@ -1122,8 +1184,9 @@ app.post('/my/management', async (c) => {
         || String(checklistForEmail?.generatedPin || '').trim()
         || String(generatedAccountForEmail?.pin || '').trim()
         || extractLastPinFromDeal(deal);
-      const mappedProfileName = accessMappedSnapshot?.profileName
-        || String(profileAssignment?.profileNickname || '').trim()
+      const mappedProfileName = currentProfileNameByMemberKey.get(currentPartyProfileMemberKey(svc, email, String(deal.dealUsid || '')))
+        || accessMappedSnapshot?.profileName
+        || reliableProfileAssignmentName(profileAssignment)
         || profileNameByProductUsid.get(productUsid)
         || null;
       const key = `${email}__${svc}`; // 같은 이메일이라도 서비스가 다르면 분리
@@ -1217,8 +1280,8 @@ app.post('/my/management', async (c) => {
         const statusName = String(member.statusName || '').trim();
         return USING_STATUSES.has(status) || statusName.includes('계정확인중');
       };
-      const findExistingAccessRecord = (serviceType: string, accountEmail: string, memberId: string) => Object.values(nextPartyAccessStore)
-        .find((item) => item?.member?.kind === 'graytag'
+      const findExistingAccessRecords = (serviceType: string, accountEmail: string, memberId: string) => Object.values(nextPartyAccessStore)
+        .filter((item) => item?.member?.kind === 'graytag'
           && item.member.memberId === memberId
           && item.serviceType === serviceType
           && item.accountEmail === accountEmail);
@@ -1229,36 +1292,39 @@ app.post('/my/management', async (c) => {
           if (!isCurrentAccessMember(member)) continue;
           const memberId = String(member.dealUsid || '').trim();
           if (!memberId) continue;
-          const existing = findExistingAccessRecord(entry.serviceType, entry.email, memberId);
-          const tokenHash = existing?.tokenHash || partyAccessTokenHash(`management-${entry.serviceType}-${entry.email}-${memberId}`);
-          const profileName = String(member.profileName || existing?.profileName || member.name || '(미확인)').trim();
-          const nextRecord: PartyAccessLinkRecord = {
-            id: existing?.id || `${entry.serviceType}:${entry.email}:graytag:${memberId}:management`,
-            shareToken: existing?.shareToken,
-            tokenHash,
-            serviceType: entry.serviceType,
-            accountEmail: entry.email,
-            fallbackPassword: String(existing?.fallbackPassword || member.lastPassword || entry.keepPasswd || '').trim(),
-            fallbackPin: String(existing?.fallbackPin || member.lastPin || '').replace(/\D/g, '').slice(0, 6),
-            profileName,
-            emailAccessUrl: String(existing?.emailAccessUrl || '').trim(),
-            member: {
-              kind: 'graytag',
-              memberId,
-              memberName: String(member.name || existing?.member?.memberName || '(미확인)').trim(),
-              status: String(member.status || existing?.member?.status || '').trim(),
-              statusName: String(member.statusName || existing?.member?.statusName || member.status || '').trim(),
-              startDateTime: member.startDateTime || existing?.member?.startDateTime || null,
-              endDateTime: member.endDateTime || existing?.member?.endDateTime || null,
-            },
-            createdAt: existing?.createdAt || nowIso,
-            revokedAt: null,
-            lastViewedAt: existing?.lastViewedAt || null,
-            viewCount: existing?.viewCount || 0,
-          };
-          if (JSON.stringify(nextPartyAccessStore[tokenHash]) !== JSON.stringify(nextRecord)) {
-            nextPartyAccessStore[tokenHash] = nextRecord;
-            partyAccessStoreChanged = true;
+          const existingRecords = findExistingAccessRecords(entry.serviceType, entry.email, memberId);
+          const recordsToUpdate = existingRecords.length ? existingRecords : [undefined];
+          const profileName = String(member.profileName || member.name || '(미확인)').trim();
+          for (const existing of recordsToUpdate) {
+            const tokenHash = existing?.tokenHash || partyAccessTokenHash(`management-${entry.serviceType}-${entry.email}-${memberId}`);
+            const nextRecord: PartyAccessLinkRecord = {
+              id: existing?.id || `${entry.serviceType}:${entry.email}:graytag:${memberId}:management`,
+              shareToken: existing?.shareToken,
+              tokenHash,
+              serviceType: entry.serviceType,
+              accountEmail: entry.email,
+              fallbackPassword: String(existing?.fallbackPassword || member.lastPassword || entry.keepPasswd || '').trim(),
+              fallbackPin: String(existing?.fallbackPin || member.lastPin || '').replace(/\D/g, '').slice(0, 6),
+              profileName,
+              emailAccessUrl: String(existing?.emailAccessUrl || '').trim(),
+              member: {
+                kind: 'graytag',
+                memberId,
+                memberName: String(member.name || existing?.member?.memberName || '(미확인)').trim(),
+                status: String(member.status || existing?.member?.status || '').trim(),
+                statusName: String(member.statusName || existing?.member?.statusName || member.status || '').trim(),
+                startDateTime: member.startDateTime || existing?.member?.startDateTime || null,
+                endDateTime: member.endDateTime || existing?.member?.endDateTime || null,
+              },
+              createdAt: existing?.createdAt || nowIso,
+              revokedAt: null,
+              lastViewedAt: existing?.lastViewedAt || null,
+              viewCount: existing?.viewCount || 0,
+            };
+            if (JSON.stringify(nextPartyAccessStore[tokenHash]) !== JSON.stringify(nextRecord)) {
+              nextPartyAccessStore[tokenHash] = nextRecord;
+              partyAccessStoreChanged = true;
+            }
           }
         }
       }
@@ -1309,7 +1375,10 @@ app.post('/my/management', async (c) => {
             productUsid,
           }))
           : undefined;
-        const key = accessMappedSnapshot?.accountEmail || rawKeepAcct;
+        const mappedKey = accessMappedSnapshot?.accountEmail && !isGraytagAccessNoticeCredential(accessMappedSnapshot.accountEmail)
+          ? accessMappedSnapshot.accountEmail
+          : '';
+        const key = mappedKey || (isGraytagAccessNoticeCredential(rawKeepAcct) ? '계정 매핑 필요' : rawKeepAcct);
         // 중복 방지
         if (!onSaleByKeepAcct[key]) onSaleByKeepAcct[key] = [];
         if (onSaleByKeepAcct[key].some((p: any) => p.productUsid === deal.productUsid)) continue;
@@ -1425,6 +1494,34 @@ app.post('/post/create', async (c) => {
   }
 });
 
+function validatePlaceholderKeepAcctMapping(input: { productUsid: string; keepAcct: string; keepPasswd: string; keepMemo: string }): { ok: true } | { ok: false; error: string } {
+  const keepAcctIsNotice = isGraytagAccessNoticeCredential(input.keepAcct);
+  const keepPasswdIsNotice = isGraytagAccessNoticeCredential(input.keepPasswd);
+  if (!keepAcctIsNotice && !keepPasswdIsNotice) return { ok: true };
+
+  const exactNoticePair = input.keepAcct === GRAYTAG_ACCESS_NOTICE_ID && input.keepPasswd === GRAYTAG_ACCESS_NOTICE_PW;
+  if (!exactNoticePair) return { ok: false, error: '안내 문구는 계정 ID/PW로 저장할 수 없습니다.' };
+
+  const tokens = extractPartyAccessTokensFromText(input.keepMemo);
+  if (tokens.length === 0) return { ok: false, error: '계정 매핑 필요: 전달 메모에 access 링크가 없습니다.' };
+
+  const productUsid = String(input.productUsid || '').trim();
+  for (const token of tokens) {
+    const store = loadPartyAccessLinkStoreForToken(token);
+    const record = store[partyAccessTokenHash(token)];
+    if (!record) continue;
+    if (record.revokedAt) continue;
+    if (isGraytagAccessNoticeCredential(record.accountEmail)) continue;
+    const enriched = enrichPartyAccessRecordWithKnownCredentials(record, store, loadPartyMaintenanceChecklistStore(), readGeneratedAccountStore());
+    if (isGraytagAccessNoticeCredential(enriched.fallbackPassword) || !String(enriched.fallbackPassword || '').trim()) continue;
+    const memberId = String(record.member?.memberId || '').trim();
+    if (productUsid && memberId && memberId !== `fill:${productUsid}` && memberId !== productUsid) continue;
+    return { ok: true };
+  }
+
+  return { ok: false, error: '계정 매핑 필요: access 링크에서 실제 계정/PW를 찾지 못했습니다.' };
+}
+
 // 계정 자동 전달 설정
 app.post('/post/keepAcct', async (c) => {
   const body = await c.req.json() as any;
@@ -1434,9 +1531,8 @@ app.post('/post/keepAcct', async (c) => {
   if (!productUsid) return c.json({ error: '필수 파라미터 누락 (productUsid)' }, 400);
   const normalizedKeepAcct = String(keepAcct || '').trim();
   const normalizedKeepPasswd = String(keepPasswd || '').trim();
-  if (isGraytagAccessNoticeCredential(normalizedKeepAcct) || isGraytagAccessNoticeCredential(normalizedKeepPasswd)) {
-    return c.json({ error: '안내 문구는 계정 ID/PW로 저장할 수 없습니다.' }, 400);
-  }
+  const placeholderMapping = validatePlaceholderKeepAcctMapping({ productUsid: String(productUsid || ''), keepAcct: normalizedKeepAcct, keepPasswd: normalizedKeepPasswd, keepMemo: String(keepMemo || '') });
+  if (!placeholderMapping.ok) return c.json({ error: placeholderMapping.error }, 400);
 
   const cookieStr = buildCookieStr(cookies);
 
@@ -1471,46 +1567,30 @@ app.post('/post/keepAcct', async (c) => {
   }
 });
 
-// SimpleLogin aliases 프록시 (email 서버(3001)에 위임)
+// SimpleLogin aliases 프록시 (email 서버(3001)에 위임 + 생성 계정 로컬 백업 병합)
 app.get('/sl/aliases', async (c) => {
   try {
-    const res = await fetch(`${EMAIL_SERVER}/api/sl/aliases?page=0`);
-    const data = await res.json();
-    return c.json(data, res.status as any);
-  } catch (e: any) { return c.json({ error: e.message, aliases: [] }, 500); }
+    const aliases = await listEmailDashboardAliases();
+    return c.json({ aliases });
+  } catch (e: any) { return c.json({ error: e.message, aliases: generatedAccountAliasRefs() }, 500); }
 });
 
-app.get('/email-alias-fill', async (c) => {
+async function emailAliasFillHandler(c: any) {
   const accountEmail = c.req.query('email') || c.req.query('accountEmail') || '';
   const serviceType = c.req.query('serviceType') || '';
   if (!accountEmail) return c.json({ ok: false, found: false, error: 'email query is required', missing: ['email'] }, 400);
 
   try {
-    const res = await fetch(`${EMAIL_SERVER}/api/sl/aliases?page=0`);
-    const data = await res.json() as any;
-    const aliases = Array.isArray(data?.aliases) ? data.aliases : [];
+    const aliases = await listEmailDashboardAliases();
     const result = await resolveEmailAliasFill({ accountEmail, serviceType, aliases });
     return c.json(result);
   } catch (e: any) {
     return c.json({ ok: false, found: false, email: accountEmail, serviceType, emailId: null, pin: null, memo: '', missing: ['email', 'pin'], error: e.message }, 500);
   }
-});
+}
 
-app.get('/api/email-alias-fill', async (c) => {
-  const accountEmail = c.req.query('email') || c.req.query('accountEmail') || '';
-  const serviceType = c.req.query('serviceType') || '';
-  if (!accountEmail) return c.json({ ok: false, found: false, error: 'email query is required', missing: ['email'] }, 400);
-
-  try {
-    const res = await fetch(`${EMAIL_SERVER}/api/sl/aliases?page=0`);
-    const data = await res.json() as any;
-    const aliases = Array.isArray(data?.aliases) ? data.aliases : [];
-    const result = await resolveEmailAliasFill({ accountEmail, serviceType, aliases });
-    return c.json(result);
-  } catch (e: any) {
-    return c.json({ ok: false, found: false, email: accountEmail, serviceType, emailId: null, pin: null, memo: '', missing: ['email', 'pin'], error: e.message }, 500);
-  }
-});
+app.get('/email-alias-fill', emailAliasFillHandler);
+app.get('/api/email-alias-fill', emailAliasFillHandler);
 
 let profileAuditProgress: ProfileAuditProgress = createProfileAuditProgress(0);
 finishProfileAuditProgress(profileAuditProgress, 'completed', '아직 실행 중인 프로필 검증이 없어요.');
@@ -3364,35 +3444,28 @@ app.post('/auto-sync-prices', async (c) => {
 
   for (const deal of onSale) {
     const svcType = deal.productTypeString || '';
-    const remainDays = deal.remainderDays || 0;
-    const currentPrice = parseInt((deal.price || '0').replace(/[^0-9]/g, '') || '0');
+    const plan = planAutoSyncPrice({
+      price: deal.price,
+      pricePerDay: deal.pricePerDay,
+      remainderDays: deal.remainderDays,
+    });
+    const remainDays = plan.remainderDays;
+    const currentPrice = plan.currentPrice;
+    const dailyRate = plan.dailyRate;
+    const correctPrice = plan.correctPrice;
 
-    if (remainDays <= 0) {
-      results.push({ usid: deal.productUsid, svc: svcType, action: 'skip', reason: '잔여일 0' });
-      skipped++;
-      continue;
-    }
-
-    // 일당가는 graytag API에서 내려오는 pricePerDay 그대로 사용 (절대 역산하지 않음)
-    const pricePerDayStr = deal.pricePerDay || '';
-    const dailyRate = parseInt(pricePerDayStr.replace(/[^0-9]/g, '') || '0');
-    if (dailyRate <= 0) {
-      results.push({ usid: deal.productUsid, svc: svcType, action: 'skip', reason: '일당 정보 없음', current: currentPrice });
-      skipped++;
-      continue;
-    }
-
-    // 새 가격 = 기존 일당(고정) × 현재 잔여일
-    const correctPrice = dailyRate * remainDays;
-
-    if (correctPrice === currentPrice) {
-      results.push({ usid: deal.productUsid, svc: svcType, action: 'skip', reason: '이미 일치', current: currentPrice, correct: correctPrice, daily: dailyRate });
-      skipped++;
-      continue;
-    }
-
-    if (correctPrice < 1000) {
-      results.push({ usid: deal.productUsid, svc: svcType, action: 'skip', reason: '최소가격 미만', correct: correctPrice, daily: dailyRate });
+    if (plan.action === 'skip') {
+      results.push({
+        usid: deal.productUsid,
+        svc: svcType,
+        action: 'skip',
+        reason: plan.reason,
+        current: currentPrice,
+        correct: correctPrice,
+        daily: dailyRate,
+        dailySource: plan.dailyRateSource,
+        days: remainDays,
+      });
       skipped++;
       continue;
     }
@@ -3425,7 +3498,7 @@ app.post('/auto-sync-prices', async (c) => {
 
       const r = await safeJson(resp);
       if (r.ok && r.data?.succeeded) {
-        results.push({ usid: deal.productUsid, svc: svcType, action: 'updated', from: currentPrice, to: correctPrice, daily: dailyRate, days: remainDays });
+        results.push({ usid: deal.productUsid, svc: svcType, action: 'updated', from: currentPrice, to: correctPrice, daily: dailyRate, dailySource: plan.dailyRateSource, days: remainDays });
         updated++;
       } else {
         results.push({ usid: deal.productUsid, svc: svcType, action: 'error', error: r.data?.message || '수정 실패' });
@@ -4067,13 +4140,21 @@ app.post('/chat/mark-read', async (c) => {
       body: JSON.stringify({ chatRoomUuid }),
     });
 
-    if (resp.ok) {
-      const data = await safeJson(resp);
-      _chatRoomsCache = null;
-      return c.json({ ok: true, ...data });
-    } else {
+    if (resp.status === 301 || resp.status === 302) {
+      return c.json({ ok: false, error: 'Graytag 세션 쿠키가 만료됐습니다.', code: 'COOKIE_EXPIRED' }, 401);
+    }
+    if (!resp.ok) {
       return c.json({ ok: false, error: `HTTP ${resp.status}` }, 500);
     }
+
+    const parsed = await safeJson(resp);
+    if (!parsed.ok) return c.json({ ok: false, error: `읽음 처리 응답 파싱 실패 (${resp.status})` }, 502);
+    if (parsed.data?.succeeded === false) {
+      return c.json({ ok: false, error: parsed.data?.message || 'Graytag 읽음 처리 실패', detail: parsed.data }, 502);
+    }
+
+    _chatRoomsCache = null;
+    return c.json({ ok: true, data: parsed.data });
   } catch (e: any) {
     return c.json({ error: e.message }, 500);
   }
@@ -4085,6 +4166,8 @@ const PARTY_FEEDBACK_PATH = '/home/ubuntu/.hermes/hermes-agent/graytag-aio-manag
 const FEEDBACK_SETTINGS_PATH = '/home/ubuntu/.hermes/hermes-agent/graytag-aio-manager-0606/data/feedback-settings.json';
 const PARTY_MAINTENANCE_CHECKLIST_PATH = '/home/ubuntu/.hermes/hermes-agent/graytag-aio-manager-0606/data/party-maintenance-checklists.json';
 const PARTY_ACCESS_LINKS_PATH = '/home/ubuntu/.hermes/hermes-agent/graytag-aio-manager-0606/data/party-access-links.json';
+const PARTY_ACCESS_LIVE_REFRESH_TTL_MS = 60 * 1000;
+let partyAccessLiveStatusRefreshCache: { at: number; store: PartyAccessLinkStore } | null = null;
 const PROFILE_ASSIGNMENTS_PATH = '/home/ubuntu/.hermes/hermes-agent/graytag-aio-manager-0606/data/profile-assignments.json';
 
 interface FeedbackItem {
@@ -4147,13 +4230,157 @@ function partyAccessLinksPath(): string {
   return process.env.PARTY_ACCESS_LINKS_PATH || PARTY_ACCESS_LINKS_PATH;
 }
 
-function loadPartyAccessLinkStore(): PartyAccessLinkStore {
+function readPartyAccessLinkStoreFile(path: string): PartyAccessLinkStore {
   try {
-    const path = partyAccessLinksPath();
     if (!existsSync(path)) return {};
     const raw = JSON.parse(readFileSync(path, 'utf8'));
     return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
   } catch { return {}; }
+}
+
+function loadPartyAccessBackupStores(path: string): PartyAccessLinkStore[] {
+  try {
+    const dir = path.replace(/\/[^\/]+$/, '');
+    const current = path.split('/').pop() || '';
+    return readdirSync(dir)
+      .filter((name) => name !== current)
+      .filter((name) => /^party-access-links\.(?:json\.bak|backup)|^party-access-links\.backup|^party-access-links\.json\.bak|^party-access-links\.backup-/.test(name))
+      .map((name) => readPartyAccessLinkStoreFile(`${dir}/${name}`))
+      .filter((store) => Object.keys(store).length > 0);
+  } catch { return []; }
+}
+
+function buildPartyAccessRecoveryStoreFromAutoReplyJobs(primary: PartyAccessLinkStore): PartyAccessLinkStore {
+  const recovered: PartyAccessLinkStore = {};
+  try {
+    const jobs = loadAutoReplyJobStore(autoReplyJobsPath());
+    for (const job of Object.values(jobs.jobs || {})) {
+      const tokens = extractPartyAccessTokensFromText(String(job.draftReply || ''));
+      if (tokens.length === 0) continue;
+      const serviceType = String(job.productType || '').trim();
+      const rawAccountEmail = String(job.keepAcct || '').trim();
+      const rawPassword = String(job.keepPasswd || '').trim();
+      const memberId = String(job.dealUsid || '').trim();
+      if (!serviceType || !memberId) continue;
+      const sibling = Object.values(primary || {}).find((item) => item?.member?.kind === 'graytag'
+        && item.member.memberId === memberId
+        && item.serviceType === serviceType
+        && !isGraytagAccessNoticeCredential(item.accountEmail)
+        && (String(item.fallbackPassword || '').trim() || !isGraytagAccessNoticeCredential(item.fallbackPassword))) as PartyAccessLinkRecord | undefined;
+      const accountEmail = !isGraytagAccessNoticeCredential(rawAccountEmail) ? rawAccountEmail : String(sibling?.accountEmail || '').trim();
+      const fallbackPassword = !isGraytagAccessNoticeCredential(rawPassword) ? rawPassword : String(sibling?.fallbackPassword || '').trim();
+      if (!accountEmail || isGraytagAccessNoticeCredential(accountEmail)) continue;
+      if (!isPartyAccessAllowed({
+        id: 'probe', tokenHash: 'probe', serviceType, accountEmail, fallbackPassword: '', fallbackPin: '', profileName: '', createdAt: String(job.createdAt || ''), revokedAt: null, lastViewedAt: null, viewCount: 0,
+        emailAccessUrl: '',
+        member: { kind: 'graytag', memberId, memberName: String(job.buyerName || sibling?.member?.memberName || '파티원'), status: String(job.dealStatus || sibling?.member?.status || 'Using'), statusName: String(job.statusName || sibling?.member?.statusName || job.dealStatus || '이용중'), startDateTime: job.startDateTime || sibling?.member?.startDateTime || null, endDateTime: job.endDateTime || sibling?.member?.endDateTime || null },
+      }).allowed) continue;
+      for (const token of tokens) {
+        const tokenHash = partyAccessTokenHash(token);
+        if (primary[tokenHash] || recovered[tokenHash]) continue;
+        recovered[tokenHash] = createPartyAccessLinkRecord({
+          token,
+          now: String(job.createdAt || new Date().toISOString()),
+          serviceType,
+          accountEmail,
+          fallbackPassword,
+          fallbackPin: String(job.fallbackPin || sibling?.fallbackPin || ''),
+          profileName: String(job.profileName || sibling?.profileName || job.buyerName || '파티원'),
+          emailAccessUrl: String(job.emailAccessUrl || sibling?.emailAccessUrl || ''),
+          member: {
+            kind: 'graytag',
+            memberId,
+            memberName: String(job.buyerName || sibling?.member?.memberName || '파티원'),
+            status: String(job.dealStatus || sibling?.member?.status || 'Using'),
+            statusName: String(job.statusName || sibling?.member?.statusName || job.dealStatus || '이용중'),
+            startDateTime: job.startDateTime || sibling?.member?.startDateTime || null,
+            endDateTime: job.endDateTime || sibling?.member?.endDateTime || null,
+          },
+        });
+      }
+    }
+  } catch {}
+  return recovered;
+}
+
+function loadPartyAccessLinkStore(): PartyAccessLinkStore {
+  const path = partyAccessLinksPath();
+  const primary = readPartyAccessLinkStoreFile(path);
+  const backups = loadPartyAccessBackupStores(path);
+  const backupRecovered = backups.length === 0 ? primary : mergeRecoverablePartyAccessBackupStores(primary, backups).store;
+  const autoReplyRecovered = buildPartyAccessRecoveryStoreFromAutoReplyJobs(backupRecovered);
+  return Object.keys(autoReplyRecovered).length ? { ...backupRecovered, ...autoReplyRecovered } : backupRecovered;
+}
+
+function loadPartyAccessLinkStoreForToken(token: string): PartyAccessLinkStore {
+  const path = partyAccessLinksPath();
+  const primary = loadPartyAccessLinkStore();
+  const tokenHash = partyAccessTokenHash(token);
+  if (primary[tokenHash]) return primary;
+
+  for (const backup of loadPartyAccessBackupStores(path)) {
+    const record = backup[tokenHash];
+    if (!record) continue;
+    if (record.tokenHash !== tokenHash) continue;
+    if (!isPartyAccessAllowed(record).allowed) continue;
+    return {
+      ...primary,
+      [tokenHash]: {
+        ...record,
+        shareToken: normalizePartyAccessToken(token),
+      },
+    };
+  }
+
+  return primary;
+}
+
+async function refreshPartyAccessStoreWithLiveDealStatuses(store: PartyAccessLinkStore): Promise<PartyAccessLinkStore> {
+  const nowMs = Date.now();
+  if (partyAccessLiveStatusRefreshCache && nowMs - partyAccessLiveStatusRefreshCache.at < PARTY_ACCESS_LIVE_REFRESH_TTL_MS) {
+    return { ...store, ...partyAccessLiveStatusRefreshCache.store };
+  }
+  const cookies = loadSessionCookies();
+  if (!cookies) return store;
+  const cookieStr = buildCookieStr(cookies);
+  const headers = (referer: string) => ({ ...BASE_HEADERS, Cookie: cookieStr, Referer: referer });
+  const fetchPagedDeals = async (kind: 'after' | 'before', includeFinished: boolean, referer: string) => {
+    const collected: any[] = [];
+    for (let page = 1; page <= 10; page++) {
+      const resp = await rateLimitedFetch(buildFinishedDealsUrl(kind, page, 500, includeFinished), { headers: headers(referer), redirect: 'manual' });
+      if (resp.status === 302 || resp.status === 301) break;
+      const parsed = await safeJson(resp);
+      const deals = extractLenderDeals(parsed.data);
+      collected.push(...deals);
+      if (deals.length < 500) break;
+    }
+    return collected;
+  };
+
+  const [afterOpenDeals, afterFinishedDeals, beforeOpenDeals, beforeFinishedDeals] = await Promise.all([
+    fetchPagedDeals('after', false, 'https://graytag.co.kr/lender/deal/listAfterUsing'),
+    fetchPagedDeals('after', true, 'https://graytag.co.kr/lender/deal/listAfterUsing'),
+    fetchPagedDeals('before', false, 'https://graytag.co.kr/lender/deal/list'),
+    fetchPagedDeals('before', true, 'https://graytag.co.kr/lender/deal/list'),
+  ]);
+  const seen = new Set<string>();
+  const allDeals: any[] = [];
+  for (const deal of [...afterOpenDeals, ...afterFinishedDeals, ...beforeOpenDeals, ...beforeFinishedDeals]) {
+    const key = String(deal.dealUsid || deal.productUsid || '');
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    allDeals.push(deal);
+  }
+
+  const synced = syncPartyAccessStoreWithMembers({
+    store,
+    members: buildPartyAccessMemberStatusRefsFromDeals(allDeals),
+  });
+  const profiled = syncPartyAccessStoreWithCurrentDealProfiles(synced.store, allDeals);
+  const nextStore = profiled.store;
+  if (synced.changed || profiled.changed) savePartyAccessLinkStore(nextStore);
+  partyAccessLiveStatusRefreshCache = { at: Date.now(), store: nextStore };
+  return nextStore;
 }
 
 function savePartyAccessLinkStore(store: PartyAccessLinkStore) {
@@ -4237,6 +4464,135 @@ function buildProfileAssignmentByProductUsid(): Map<string, ProfileAssignment> {
     }
   }
   return map;
+}
+
+const CURRENT_PARTY_PROFILE_STATUSES = new Set(['Using', 'UsingNearExpiration', 'DeliveredAndCheckPrepaid']);
+function isCurrentPartyProfileDeal(deal: any): boolean {
+  const status = String(deal?.dealStatus || '').trim();
+  const statusName = String(deal?.lenderDealStatusName || deal?.statusName || '').trim();
+  return CURRENT_PARTY_PROFILE_STATUSES.has(status) || statusName.includes('계정확인중') || statusName.includes('계정 확인중');
+}
+
+function currentPartyProfileMemberKey(serviceType: string, accountEmail: string, memberId: string): string {
+  return `${String(serviceType || '').trim()}:${String(accountEmail || '').trim()}:graytag:${String(memberId || '').trim()}`;
+}
+
+function reliableProfileAssignmentName(assignment: ProfileAssignment | undefined): string {
+  if (!assignment || assignment.status === 'ended') return '';
+  const productUsids = Array.from(new Set((assignment.productUsids || []).map((item) => String(item || '').trim()).filter(Boolean)));
+  // A profile assignment that covers multiple productUsids is an account-level/group
+  // legacy record, not a per-member assignment. Using it for every current member
+  // makes access pages show the same profile name four times.
+  if (productUsids.length !== 1) return '';
+  return String(assignment.profileNickname || '').trim();
+}
+
+function buildCurrentPartyProfileNameByMemberKey(
+  deals: any[],
+  store: PartyAccessLinkStore = {},
+  profileAssignmentByProductUsid: Map<string, ProfileAssignment> = buildProfileAssignmentByProductUsid(),
+): Map<string, string> {
+  const deliverySnapshotByMember = buildPartyAccessDeliverySnapshotByMember(store);
+  const groups = new Map<string, Array<{ deal: any; memberId: string; productUsid: string; initialProfileName: string }>>();
+
+  for (const deal of deals || []) {
+    if (!isCurrentPartyProfileDeal(deal)) continue;
+    const serviceType = String(deal?.productTypeString || '').trim();
+    const accountEmail = String(deal?.keepAcct || '').trim();
+    const memberId = String(deal?.dealUsid || '').trim();
+    const productUsid = String(deal?.productUsid || '').trim();
+    if (!serviceType || !accountEmail || !memberId || isGraytagAccessNoticeCredential(accountEmail)) continue;
+    const snapshot = resolvePartyAccessDeliverySnapshotForDeal(deliverySnapshotByMember, { serviceType, accountEmail, dealUsid: memberId, productUsid });
+    const assignmentName = reliableProfileAssignmentName(productUsid ? profileAssignmentByProductUsid.get(productUsid) : undefined);
+    const initialProfileName = assignmentName || String(snapshot?.profileName || '').trim();
+    const key = `${serviceType}:${accountEmail}`;
+    const rows = groups.get(key) || [];
+    rows.push({ deal, memberId, productUsid, initialProfileName });
+    groups.set(key, rows);
+  }
+
+  const result = new Map<string, string>();
+  for (const [accountKey, rows] of groups.entries()) {
+    const [serviceType, ...emailParts] = accountKey.split(':');
+    const accountEmail = emailParts.join(':');
+    const partyRefs = rows.map((row) => `graytag:${row.memberId}`);
+    const profileCounts = new Map<string, number>();
+    for (const row of rows) {
+      const name = row.initialProfileName.trim();
+      if (!name) continue;
+      profileCounts.set(name, (profileCounts.get(name) || 0) + 1);
+    }
+    for (const row of rows) {
+      const initial = row.initialProfileName.trim();
+      const duplicate = initial && (profileCounts.get(initial) || 0) > 1;
+      const profileName = (!initial || duplicate)
+        ? profileNicknameForPartyMember({ serviceType, accountEmail, partyRefs, kind: 'graytag', memberId: row.memberId })
+        : initial;
+      result.set(currentPartyProfileMemberKey(serviceType, accountEmail, row.memberId), profileName);
+    }
+  }
+  return result;
+}
+
+function syncPartyAccessStoreWithCurrentDealProfiles(
+  store: PartyAccessLinkStore,
+  deals: any[],
+  profileAssignmentByProductUsid: Map<string, ProfileAssignment> = buildProfileAssignmentByProductUsid(),
+): { store: PartyAccessLinkStore; changed: boolean } {
+  const profileNameByMemberKey = buildCurrentPartyProfileNameByMemberKey(deals, store, profileAssignmentByProductUsid);
+  const next: PartyAccessLinkStore = { ...(store || {}) };
+  let changed = false;
+  const nowIso = new Date().toISOString();
+  const findExistingRecords = (serviceType: string, accountEmail: string, memberId: string) => Object.values(next)
+    .filter((item) => item?.member?.kind === 'graytag'
+      && item.member.memberId === memberId
+      && item.serviceType === serviceType
+      && item.accountEmail === accountEmail);
+
+  for (const deal of deals || []) {
+    if (!isCurrentPartyProfileDeal(deal)) continue;
+    const serviceType = String(deal?.productTypeString || '').trim();
+    const accountEmail = String(deal?.keepAcct || '').trim();
+    const memberId = String(deal?.dealUsid || '').trim();
+    if (!serviceType || !accountEmail || !memberId || isGraytagAccessNoticeCredential(accountEmail)) continue;
+    const profileName = profileNameByMemberKey.get(currentPartyProfileMemberKey(serviceType, accountEmail, memberId)) || String(deal?.borrowerName || '(미확인)').trim();
+    const existingRecords = findExistingRecords(serviceType, accountEmail, memberId);
+    const recordsToUpdate = existingRecords.length ? existingRecords : [undefined];
+    const rawPassword = String(deal?.keepPasswd || '').trim();
+
+    for (const existing of recordsToUpdate) {
+      const tokenHash = existing?.tokenHash || partyAccessTokenHash(`management-${serviceType}-${accountEmail}-${memberId}`);
+      const nextRecord: PartyAccessLinkRecord = {
+        id: existing?.id || `${serviceType}:${accountEmail}:graytag:${memberId}:management`,
+        shareToken: existing?.shareToken,
+        tokenHash,
+        serviceType,
+        accountEmail,
+        fallbackPassword: String(existing?.fallbackPassword || (!isGraytagAccessNoticeCredential(rawPassword) ? rawPassword : '') || '').trim(),
+        fallbackPin: String(existing?.fallbackPin || '').replace(/\D/g, '').slice(0, 6),
+        profileName,
+        emailAccessUrl: String(existing?.emailAccessUrl || '').trim(),
+        member: {
+          kind: 'graytag',
+          memberId,
+          memberName: String(deal?.borrowerName || existing?.member?.memberName || '(미확인)').trim(),
+          status: String(deal?.dealStatus || existing?.member?.status || '').trim(),
+          statusName: String(deal?.lenderDealStatusName || existing?.member?.statusName || deal?.dealStatus || '').trim(),
+          startDateTime: deal?.startDateTime || existing?.member?.startDateTime || null,
+          endDateTime: deal?.endDateTime || existing?.member?.endDateTime || null,
+        },
+        createdAt: existing?.createdAt || nowIso,
+        revokedAt: null,
+        lastViewedAt: existing?.lastViewedAt || null,
+        viewCount: existing?.viewCount || 0,
+      };
+      if (JSON.stringify(next[tokenHash]) !== JSON.stringify(nextRecord)) {
+        next[tokenHash] = nextRecord;
+        changed = true;
+      }
+    }
+  }
+  return { store: next, changed };
 }
 
 const FB_PARTY_MAX: Record<string, number> = {
@@ -4484,10 +4840,70 @@ app.post('/party-access-links', async (c) => {
   return c.json({ ok: true, token, url: partyAccessShareUrl(c, token), item: record });
 });
 
-app.get('/party-access/:token', (c) => {
+app.patch('/party-access/:token/credentials', async (c) => {
   const token = normalizePartyAccessToken(c.req.param('token'));
   if (!token) return c.json({ ok: false, reason: 'not-found' }, 404);
-  const store = loadPartyAccessLinkStore();
+  const body = await c.req.json().catch(() => ({})) as any;
+  const hasAccountEmail = Object.prototype.hasOwnProperty.call(body || {}, 'accountEmail') || Object.prototype.hasOwnProperty.call(body || {}, 'id');
+  const hasPassword = Object.prototype.hasOwnProperty.call(body || {}, 'password') || Object.prototype.hasOwnProperty.call(body || {}, 'fallbackPassword');
+  if (!hasAccountEmail && !hasPassword) return c.json({ ok: false, error: 'accountEmail or password required' }, 400);
+
+  const nextAccountEmail = String(body?.accountEmail ?? body?.id ?? '').trim();
+  const nextPassword = String(body?.password ?? body?.fallbackPassword ?? '').trim();
+  if (hasAccountEmail && (!nextAccountEmail || isGraytagAccessNoticeCredential(nextAccountEmail))) {
+    return c.json({ ok: false, error: 'valid accountEmail required' }, 400);
+  }
+  if (hasPassword && (!nextPassword || isGraytagAccessNoticeCredential(nextPassword))) {
+    return c.json({ ok: false, error: 'valid password required' }, 400);
+  }
+
+  const store = loadPartyAccessLinkStoreForToken(token);
+  const record = store[partyAccessTokenHash(token)] || null;
+  if (!record) return c.json({ ok: false, reason: 'not-found' }, 404);
+
+  const accountEmail = hasAccountEmail ? nextAccountEmail.slice(0, 300) : record.accountEmail;
+  const fallbackPassword = hasPassword ? nextPassword.slice(0, 300) : record.fallbackPassword;
+  const nextRecord: PartyAccessLinkRecord = {
+    ...record,
+    id: `${partyAccessAccountKey(record.serviceType, accountEmail)}:${record.member.kind}:${record.member.memberId}:${record.tokenHash.slice(0, 12)}`,
+    accountEmail,
+    fallbackPassword,
+  };
+  const nextStore = { ...store, [record.tokenHash]: nextRecord };
+  savePartyAccessLinkStore(nextStore);
+  const viewedAt = new Date().toISOString();
+  const payload = buildPartyAccessPublicPayload(nextRecord, loadPartyMaintenanceChecklistStore(), readGeneratedAccountStore(), viewedAt, nextStore, loadProfileAssignments());
+  writeAudit({
+    actor: 'admin',
+    action: 'party-access-link.credentials.update',
+    targetType: 'party-access-link',
+    targetId: nextRecord.id,
+    summary: `updated buyer access ID/PW for ${record.serviceType}`,
+    result: 'success',
+    requestId: auditRequestId(c),
+    details: { serviceType: record.serviceType, memberId: record.member.memberId, updatedAccountEmail: hasAccountEmail, updatedPassword: hasPassword },
+  });
+  return c.json({ ok: true, item: nextRecord, credentials: payload.credentials });
+});
+
+function isFillPartyAccessRecord(record: PartyAccessLinkRecord | null | undefined): boolean {
+  return String(record?.member?.memberId || '').trim().startsWith('fill:');
+}
+
+async function loadPartyAccessStoreForPublicView(token: string): Promise<PartyAccessLinkStore> {
+  const localStore = loadPartyAccessLinkStoreForToken(token);
+  const localRecord = localStore[partyAccessTokenHash(token)] || null;
+  if (isFillPartyAccessRecord(localRecord)) return localStore;
+  return refreshPartyAccessStoreWithLiveDealStatuses(localStore).catch((e) => {
+    console.warn(`[party-access] live status refresh failed: ${e?.message || e}`);
+    return loadPartyAccessLinkStoreForToken(token);
+  });
+}
+
+app.get('/party-access/:token', async (c) => {
+  const token = normalizePartyAccessToken(c.req.param('token'));
+  if (!token) return c.json({ ok: false, reason: 'not-found' }, 404);
+  const store = await loadPartyAccessStoreForPublicView(token);
   const record = store[partyAccessTokenHash(token)] || null;
   const viewedAt = new Date().toISOString();
   const payload = buildPartyAccessPublicPayload(record, loadPartyMaintenanceChecklistStore(), readGeneratedAccountStore(), viewedAt, store, loadProfileAssignments());
@@ -4518,7 +4934,7 @@ app.post('/party-access/:token/consent', async (c) => {
   if (!isValidPartyAccessConsent(body?.phrases || body?.agreements)) {
     return c.json({ ok: false, reason: 'consent-required' }, 400);
   }
-  const store = loadPartyAccessLinkStore();
+  const store = await loadPartyAccessStoreForPublicView(token);
   const record = store[partyAccessTokenHash(token)] || null;
   const viewedAt = new Date().toISOString();
   const payload = buildPartyAccessPublicPayload(record, loadPartyMaintenanceChecklistStore(), readGeneratedAccountStore(), viewedAt, store, loadProfileAssignments());

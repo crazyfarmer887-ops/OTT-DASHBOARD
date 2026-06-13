@@ -148,8 +148,12 @@ function chooseAlias(accountEmail: string, serviceType: string, aliases: EmailAl
     return { id: forcedAliasEmail, email: forcedAliasEmail, enabled: true };
   }
 
-  const keys = serviceKeywords(serviceType);
   const withPin = enabledAliases.filter(a => pinStore[String(a.id)]?.pin);
+
+  // For concrete SimpleLogin-style email addresses, fail closed when the exact alias
+  // is absent. A broad service fallback can otherwise map gtdny9.claim... to an
+  // unrelated Disney alias that merely has a PIN configured.
+  if (targetEmail.includes('@')) return null;
 
   const doublePassNo = resolveDoublePassBundleNo({ serviceType, email: accountEmail, loginId: accountEmail, accountId: accountEmail });
   if (doublePassNo) {
@@ -158,8 +162,16 @@ function chooseAlias(accountEmail: string, serviceType: string, aliases: EmailAl
       return new RegExp(`(?:gtwavve|wavve|tving)${doublePassNo}(?:\\D|$)`, 'i').test(local);
     });
     if (sameNumberMatches.length) return sameNumberMatches.sort((a, b) => Number(b.id) - Number(a.id))[0];
+
+    // Double-pass accounts are bundle-number sensitive. Falling through to the
+    // broad service keyword fallback can map e.g. TVING gtwavve8 to an unrelated
+    // newer Wavve alias such as gtwavve13 just because both contain "wavve".
+    // If the exact bundle alias is not present in the fetched/pinned aliases,
+    // fail closed instead of exposing another account's inbox.
+    return null;
   }
 
+  const keys = serviceKeywords(serviceType);
   const serviceMatches = withPin.filter(a => keys.some(key => normalizeEmail(a.email).includes(key)));
   if (serviceMatches.length) {
     return serviceMatches.sort((a, b) => Number(b.id) - Number(a.id))[0];

@@ -333,6 +333,19 @@ export default function EditPricePage() {
 
   const calcInfo = priceMode === 'total' ? calcDailyFromTotal() : calcTotalFromDaily();
   const finalPrice = priceMode === 'total' ? (parseInt(newPrice.replace(/,/g, '')) || 0) : (calcInfo?.total || 0);
+  const selectedProducts = products.filter(p => selected.has(p.productUsid));
+  const inputDailyPrice = parseInt(newDailyPrice.replace(/,/g, '')) || 0;
+  const priceForProduct = (p: Product) => {
+    if (priceMode === 'total') return finalPrice;
+    if (inputDailyPrice <= 0 || p.remainderDays <= 0) return 0;
+    return inputDailyPrice * p.remainderDays;
+  };
+  const selectedUpdatePrices = selectedProducts.map(priceForProduct).filter(n => n > 0);
+  const minUpdatePrice = selectedUpdatePrices.length ? Math.min(...selectedUpdatePrices) : 0;
+  const canUpdatePrice = selected.size > 0 && minUpdatePrice >= 1000;
+  const updateButtonLabel = priceMode === 'daily'
+    ? `일당 ${inputDailyPrice > 0 ? inputDailyPrice.toLocaleString() + '원' : ''}로 변경`
+    : `가격 변경 → ${finalPrice > 0 ? finalPrice.toLocaleString() + '원' : ''}`;
 
   // 선택된 상품들 대표 서비스 타입 (손익분기 계산용)
   const getSelProductType = (): string | null => {
@@ -366,7 +379,7 @@ export default function EditPricePage() {
   };
 
   const handleUpdate = async () => {
-    if (selected.size === 0 || finalPrice < 1000) return;
+    if (!canUpdatePrice) return;
     const cs = cookies.find(c => c.id === selectedId);
     if (!cs) return;
 
@@ -376,7 +389,7 @@ export default function EditPricePage() {
         .filter(p => selected.has(p.productUsid))
         .map(p => ({
           usid: p.productUsid,
-          price: String(finalPrice),
+          price: String(priceForProduct(p)),
           ...(useProductName && productNameEdit ? { name: productNameEdit } : {}),
         }));
 
@@ -392,7 +405,11 @@ export default function EditPricePage() {
         setResults(json.results || []);
         // 성공한 것들 가격 업데이트
         const successUsids = new Set((json.results || []).filter((r: UpdateResult) => r.ok).map((r: UpdateResult) => r.usid));
-        setProducts(prev => prev.map(p => successUsids.has(p.productUsid) ? { ...p, price: finalPrice.toLocaleString() + '원', priceNum: finalPrice } : p));
+        setProducts(prev => prev.map(p => {
+          if (!successUsids.has(p.productUsid)) return p;
+          const nextPrice = priceForProduct(p);
+          return { ...p, price: nextPrice.toLocaleString() + '원', priceNum: nextPrice };
+        }));
       }
     } catch (e: any) { setError(e.message); }
     finally { setUpdating(false); }
@@ -682,7 +699,9 @@ export default function EditPricePage() {
         }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: results.every(r => r.ok) ? '#059669' : '#D97706' }}>
             {results.filter(r => r.ok).length}/{results.length}개 변경 완료
-            {finalPrice > 0 && ` → ${finalPrice.toLocaleString()}원`}
+            {priceMode === 'daily' && inputDailyPrice > 0
+              ? ` → 일당 ${inputDailyPrice.toLocaleString()}원`
+              : finalPrice > 0 && ` → ${finalPrice.toLocaleString()}원`}
           </div>
           {results.filter(r => !r.ok).map(r => (
             <div key={r.usid} style={{ fontSize: 11, color: '#EF4444', marginTop: 4 }}>{r.usid}: {r.error}</div>
@@ -972,7 +991,7 @@ export default function EditPricePage() {
                 );
               })()}
 
-              {finalPrice > 0 && finalPrice < 1000 && (
+              {selectedUpdatePrices.length > 0 && minUpdatePrice < 1000 && (
                 <div style={{ fontSize: 11, color: '#EF4444', marginTop: 6 }}>최소 1,000원 이상이어야 합니다</div>
               )}
 
@@ -1066,7 +1085,7 @@ export default function EditPricePage() {
               </button>
 
               {/* 가격 변경 버튼 */}
-              <button onClick={handleUpdate} disabled={updating || finalPrice < 1000} style={{
+              <button onClick={handleUpdate} disabled={updating || !canUpdatePrice} style={{
                 flex: 2, background: updating ? '#C4B5FD' : '#A78BFA',
                 border: 'none', borderRadius: 12, padding: 14, fontSize: 15, color: '#fff',
                 fontWeight: 700, cursor: updating ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
@@ -1074,7 +1093,7 @@ export default function EditPricePage() {
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
               }}>
                 {updating ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> : <DollarSign size={16} />}
-                {updating ? `변경 중...` : `가격 변경 → ${finalPrice > 0 ? finalPrice.toLocaleString() + '원' : ''}`}
+                {updating ? `변경 중...` : updateButtonLabel}
               </button>
               </div>
             </div>

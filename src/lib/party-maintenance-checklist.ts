@@ -29,6 +29,7 @@ export interface PartyMaintenanceChecklistState {
   profileRemoved: MaintenanceChecklistAnswer;
   devicesLoggedOut: MaintenanceChecklistAnswer;
   passwordChanged: MaintenanceChecklistAnswer;
+  changedAccountEmail: string;
   changedPassword: string;
   pinStillUnchanged: MaintenanceChecklistAnswer;
   generatedPin: string;
@@ -59,6 +60,7 @@ const DEFAULT_STATE = {
   profileRemoved: null,
   devicesLoggedOut: null,
   passwordChanged: null,
+  changedAccountEmail: '',
   changedPassword: '',
   pinStillUnchanged: null,
   generatedPin: '',
@@ -119,6 +121,7 @@ export function mergePartyMaintenanceChecklistState(
   }
   const billingDay = normalizeBillingDay(patch.subscriptionBillingDay);
   if (billingDay !== undefined) next.subscriptionBillingDay = billingDay;
+  if (typeof patch.changedAccountEmail === 'string') next.changedAccountEmail = patch.changedAccountEmail.trim().slice(0, 300);
   if (typeof patch.changedPassword === 'string') next.changedPassword = patch.changedPassword.slice(0, 200);
   const generatedPin = normalizeSixDigitPin(patch.generatedPin);
   if (generatedPin !== undefined) next.generatedPin = generatedPin;
@@ -133,7 +136,10 @@ export function mergePartyMaintenanceChecklistState(
   if (next.recruitAgain === true) {
     next.subscriptionCancelled = null;
     if (next.subscriptionKept !== true) next.subscriptionBillingDay = '';
-    if (next.passwordChanged !== true) next.changedPassword = '';
+    if (next.passwordChanged !== true) {
+      next.changedAccountEmail = '';
+      next.changedPassword = '';
+    }
     if (next.pinStillUnchanged !== false && patch.generatedPin === undefined) {
       next.generatedPin = '';
       next.generatedPinAliasId = null;
@@ -144,6 +150,7 @@ export function mergePartyMaintenanceChecklistState(
     next.profileRemoved = null;
     next.devicesLoggedOut = null;
     next.passwordChanged = null;
+    next.changedAccountEmail = '';
     next.changedPassword = '';
     next.pinStillUnchanged = null;
     next.generatedPin = '';
