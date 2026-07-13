@@ -24,6 +24,8 @@ import { mergePartyMaintenanceChecklistState, type PartyMaintenanceChecklistStor
 import { buildProfileAssignment, profileNicknameForPartyMember, type ProfileAssignment } from '../lib/profile-nickname';
 import { buildGeneratedAccount, deleteGeneratedAccountFromStore, extractSimpleLoginAliasRef, generateAccountPassword, mergeGeneratedAccountsIntoManagement, nextGeneratedAliasPrefix, normalizeGeneratedAccountPatch, normalizeManualAliasPrefix, type GeneratedAccountStore, type SimpleLoginAliasRef } from '../lib/generated-accounts';
 import { mergeOnSaleAccountsIntoManagement } from '../lib/on-sale-accounts';
+import { mergeArchivedAccountsIntoManagement } from '../lib/management-archived-accounts';
+import { deleteManagementPaymentCard, isManagementPaymentCardAccountKeyKnown, loadManagementPaymentCards, managementPaymentCardKey, mergeManagementPaymentCards, replaceManagementPaymentCardAccountKeys, upsertManagementPaymentCard } from '../lib/management-payment-cards';
 import { applyManagementHiddenAccounts, hideManagementAccount, loadManagementHiddenAccounts, unhideManagementAccount } from '../lib/management-hidden-accounts';
 import { buildAccountCheckInflowStore, isAccountCheckStatus, type AccountCheckInflowStore } from '../lib/account-check-inflow';
 import { resolveAutoReplyPolicy } from './auto-reply-policy';
@@ -61,6 +63,7 @@ const ADMIN_REQUIRED_GET_PREFIXES = [
   '/profile-assignments',
   '/generated-accounts',
   '/management-hidden-accounts',
+  '/management-payment-cards',
   '/operations-center',
 ];
 
@@ -787,6 +790,55 @@ app.post('/api/management-hidden-accounts', handleHideManagementAccount);
 app.delete('/management-hidden-accounts', handleUnhideManagementAccount);
 app.delete('/api/management-hidden-accounts', handleUnhideManagementAccount);
 
+// ─── 계정별 결제 카드 표시 정보: 별칭/카드사/끝 4자리만 로컬 저장 ──────────
+function paymentCardListResponse() {
+  return Object.values(loadManagementPaymentCards()).sort((a, b) => (
+    `${a.serviceType}:${a.accountEmail}`.localeCompare(`${b.serviceType}:${b.accountEmail}`)
+  ));
+}
+
+function handleListManagementPaymentCards(c: any) {
+  return c.json({ cards: paymentCardListResponse() });
+}
+
+async function handleSaveManagementPaymentCard(c: any) {
+  const body = await c.req.json().catch(() => ({} as any)) as any;
+  if (!isManagementPaymentCardAccountKeyKnown(body?.serviceType, body?.accountEmail, loadManagementHiddenAccounts())) {
+    return c.json({ ok: false, error: 'management account not found' }, 404);
+  }
+  try {
+    const card = upsertManagementPaymentCard(body);
+    managementCache.clear('auto-session');
+    return c.json({ ok: true, card });
+  } catch (error: any) {
+    return c.json({ ok: false, error: error?.message || 'invalid payment card metadata' }, 400);
+  }
+}
+
+async function handleDeleteManagementPaymentCard(c: any) {
+  const body = await c.req.json().catch(() => ({} as any)) as any;
+  const serviceType = String(body?.serviceType || '').trim();
+  const accountEmail = String(body?.accountEmail || '').trim();
+  if (!serviceType || !accountEmail) return c.json({ ok: false, error: 'serviceType/accountEmail required' }, 400);
+  if (!isManagementPaymentCardAccountKeyKnown(serviceType, accountEmail, loadManagementHiddenAccounts())) {
+    return c.json({ ok: false, error: 'management account not found' }, 404);
+  }
+  const current = loadManagementPaymentCards();
+  if (!Object.prototype.hasOwnProperty.call(current, managementPaymentCardKey(serviceType, accountEmail))) {
+    return c.json({ ok: false, error: 'payment card not found' }, 404);
+  }
+  deleteManagementPaymentCard({ serviceType, accountEmail });
+  managementCache.clear('auto-session');
+  return c.json({ ok: true, deleted: true, cards: paymentCardListResponse() });
+}
+
+app.get('/management-payment-cards', handleListManagementPaymentCards);
+app.get('/api/management-payment-cards', handleListManagementPaymentCards);
+app.put('/management-payment-cards', handleSaveManagementPaymentCard);
+app.put('/api/management-payment-cards', handleSaveManagementPaymentCard);
+app.delete('/management-payment-cards', handleDeleteManagementPaymentCard);
+app.delete('/api/management-payment-cards', handleDeleteManagementPaymentCard);
+
 // ─── 계정 생성기: SimpleLogin alias + 비밀번호 + PIN + 결제 체크 ─────
 app.get('/generated-accounts', (c) => {
   const store = readGeneratedAccountStore();
@@ -1413,7 +1465,11 @@ app.post('/my/management', async (c) => {
       updatedAt: new Date().toISOString(),
     };
     const withGeneratedAccounts = mergeGeneratedAccountsIntoManagement(management, generatedStore);
-    return applyManagementHiddenAccounts(mergeOnSaleAccountsIntoManagement(withGeneratedAccounts, onSaleByKeepAcct));
+    const withOnSaleAccounts = mergeOnSaleAccountsIntoManagement(withGeneratedAccounts, onSaleByKeepAcct);
+    const withArchivedAccounts = mergeArchivedAccountsIntoManagement(withOnSaleAccounts, syncedPartyAccess.store, checklistStore);
+    replaceManagementPaymentCardAccountKeys(withArchivedAccounts);
+    const withPaymentCards = mergeManagementPaymentCards(withArchivedAccounts);
+    return applyManagementHiddenAccounts(withPaymentCards);
   };
 
   try {

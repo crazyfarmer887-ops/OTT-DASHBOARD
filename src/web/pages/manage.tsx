@@ -30,6 +30,10 @@ interface Member {
 interface Account {
   email: string; serviceType: string; members: Member[]; usingCount: number;
   activeCount: number; totalSlots: number; totalIncome: number; totalRealizedIncome: number; expiryDate: string | null; keepPasswd?: string;
+  archivedAccount?: boolean;
+  credentialSource?: 'maintenance' | 'party-access-history';
+  archivedCredential?: { id: string; password: string; pin: string };
+  paymentCard?: ManagementPaymentCard;
   generatedAccount?: {
     id: string;
     createdAt: string;
@@ -47,6 +51,8 @@ interface Account {
 interface ServiceGroup { serviceType: string; accounts: Account[]; totalUsingMembers: number; totalActiveMembers: number; totalIncome: number; totalRealized: number; }
 interface EmailAlias { id: number | string; email: string; enabled?: boolean; }
 interface ManagementHiddenAccount { serviceType: string; accountEmail: string; reason?: string; hiddenAt?: string; updatedAt?: string; }
+interface ManagementPaymentCard { serviceType: string; accountEmail: string; label?: string; cardIssuer?: string; last4?: string; updatedAt: string; }
+interface PaymentCardDraft { label: string; cardIssuer: string; last4: string; }
 interface ExistingPinCacheEntry { pin: string; emailId: number | string | null; loading: boolean; checked: boolean; message?: string; }
 interface ManageData {
   services: ServiceGroup[];
@@ -234,6 +240,8 @@ export default function ManagePage() {
   const [emailAliases, setEmailAliases] = useState<EmailAlias[]>([]);
   const [hiddenAccounts, setHiddenAccounts] = useState<ManagementHiddenAccount[]>([]);
   const [hiddenAccountLoadingKey, setHiddenAccountLoadingKey] = useState<string | null>(null);
+  const [paymentCardDrafts, setPaymentCardDrafts] = useState<Record<string, PaymentCardDraft>>({});
+  const [paymentCardLoadingKey, setPaymentCardLoadingKey] = useState<string | null>(null);
   const [existingPinCache, setExistingPinCache] = useState<Record<string, ExistingPinCacheEntry>>({});
   const [maintenanceChecklistStore, setMaintenanceChecklistStore] = useState<PartyMaintenanceChecklistStore>({});
   const [pinResetLoadingKey, setPinResetLoadingKey] = useState<string | null>(null);
@@ -334,6 +342,88 @@ export default function ManagePage() {
 
   const accountCredentialKey = (acct: Pick<Account, 'serviceType' | 'email'>) => `${acct.serviceType}:${acct.email}`;
 
+  const replaceAccountPaymentCard = (acct: Account, paymentCard?: ManagementPaymentCard) => {
+    setData((current) => current ? {
+      ...current,
+      services: current.services.map((service) => ({
+        ...service,
+        accounts: service.accounts.map((item) => (
+          accountCredentialKey(item) === accountCredentialKey(acct) ? { ...item, paymentCard } : item
+        )),
+      })),
+    } : current);
+  };
+
+  const updatePaymentCardDraft = (acct: Account, patch: Partial<PaymentCardDraft>) => {
+    const key = accountCredentialKey(acct);
+    setPaymentCardDrafts((current) => ({
+      ...current,
+      [key]: {
+        label: current[key]?.label ?? acct.paymentCard?.label ?? '',
+        cardIssuer: current[key]?.cardIssuer ?? acct.paymentCard?.cardIssuer ?? '',
+        last4: current[key]?.last4 ?? acct.paymentCard?.last4 ?? '',
+        ...patch,
+      },
+    }));
+  };
+
+  const savePaymentCard = async (acct: Account, draft: PaymentCardDraft) => {
+    const key = accountCredentialKey(acct);
+    if (draft.last4 && !/^\d{4}$/.test(draft.last4)) {
+      showToast('끝 4자리는 숫자 4자리로 입력해주세요.', 'error');
+      return;
+    }
+    if (!draft.label.trim() && !draft.cardIssuer.trim() && !draft.last4) {
+      showToast('저장할 카드 표시 정보를 하나 이상 입력해주세요.', 'error');
+      return;
+    }
+    setPaymentCardLoadingKey(key);
+    try {
+      const res = await fetch('/api/management-payment-cards', {
+        method: 'PUT',
+        headers: adminHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({
+          serviceType: acct.serviceType,
+          accountEmail: acct.email,
+          label: draft.label.trim(),
+          cardIssuer: draft.cardIssuer.trim(),
+          last4: draft.last4,
+        }),
+      });
+      const json = await res.json().catch(() => ({})) as any;
+      if (!res.ok || !json?.card) throw new Error(json?.error || '결제 카드 저장 실패');
+      replaceAccountPaymentCard(acct, json.card);
+      setPaymentCardDrafts((current) => ({ ...current, [key]: { label: json.card.label || '', cardIssuer: json.card.cardIssuer || '', last4: json.card.last4 || '' } }));
+      showToast('결제 카드 정보를 저장했어요.');
+    } catch (error: any) {
+      showToast(error?.message || '결제 카드 저장 실패', 'error');
+    } finally {
+      setPaymentCardLoadingKey(null);
+    }
+  };
+
+  const clearPaymentCard = async (acct: Account) => {
+    const key = accountCredentialKey(acct);
+    if (!window.confirm('이 계정의 결제 카드 표시 정보를 지울까요?')) return;
+    setPaymentCardLoadingKey(key);
+    try {
+      const res = await fetch('/api/management-payment-cards', {
+        method: 'DELETE',
+        headers: adminHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ serviceType: acct.serviceType, accountEmail: acct.email }),
+      });
+      const json = await res.json().catch(() => ({})) as any;
+      if (!res.ok || json?.ok === false) throw new Error(json?.error || '결제 카드 삭제 실패');
+      replaceAccountPaymentCard(acct, undefined);
+      setPaymentCardDrafts((current) => ({ ...current, [key]: { label: '', cardIssuer: '', last4: '' } }));
+      showToast('결제 카드 정보를 지웠어요.', 'info');
+    } catch (error: any) {
+      showToast(error?.message || '결제 카드 삭제 실패', 'error');
+    } finally {
+      setPaymentCardLoadingKey(null);
+    }
+  };
+
   const findEmailAliasId = (acct: Account): string | number | null => {
     if (acct.generatedAccount?.emailId) return acct.generatedAccount.emailId;
     const exact = emailAliases.find(alias => String(alias.email || '').toLowerCase() === acct.email.toLowerCase());
@@ -415,12 +505,12 @@ export default function ManagePage() {
     })?.lastPassword?.trim() || '';
     const latestMemberPin = accessDeliveredMembers.find(m => String(m.lastPin || '').trim())?.lastPin?.trim() || '';
     const graytagPassword = isAccessNoticeCredentialValue(acct.keepPasswd) ? '' : (acct.keepPasswd || '');
-    const id = state?.changedAccountEmail || acct.email;
-    const password = state?.changedPassword || latestMemberPassword || graytagPassword;
-    const pin = state?.generatedPin || acct.generatedAccount?.pin || latestMemberPin || existingPin?.pin || '';
+    const id = state?.changedAccountEmail || acct.archivedCredential?.id || acct.email;
+    const password = state?.changedPassword || latestMemberPassword || acct.archivedCredential?.password || graytagPassword;
+    const pin = state?.generatedPin || acct.generatedAccount?.pin || latestMemberPin || acct.archivedCredential?.pin || existingPin?.pin || '';
     const emailId = state?.generatedPinAliasId || acct.generatedAccount?.emailId || existingPin?.emailId || findEmailAliasId(acct);
     if (!password && !pin) return null;
-    return { id, password, pin, emailId, source: state?.changedAccountEmail || state?.changedPassword || state?.generatedPin ? 'maintenance' : acct.generatedAccount ? 'generated' : (latestMemberPassword || latestMemberPin) ? 'access-history' : existingPin?.pin ? 'email-dashboard' : 'graytag' };
+    return { id, password, pin, emailId, source: state?.changedAccountEmail || state?.changedPassword || state?.generatedPin ? 'maintenance' : acct.generatedAccount ? 'generated' : (latestMemberPassword || latestMemberPin || acct.archivedCredential) ? 'access-history' : existingPin?.pin ? 'email-dashboard' : 'graytag' };
   };
 
   const copyText = async (value: string) => {
@@ -890,9 +980,11 @@ export default function ManagePage() {
   // 빈자리 판단: 실제 이용/확인중 파티원 + 현재 유효한 판매/예약 모집글만 슬롯 점유로 계산
   const getVacancyInfo = (acct: Account) => {
     const manualCount = getManualForAccount(acct.email, acct.serviceType).filter(m => m.status === 'active').length;
+    // 만료 보관 카드는 credential 보존용이며 자동 메꾸기 대상으로 되살리지 않는다.
+    const maxSlots = acct.archivedAccount && manualCount === 0 ? 0 : acct.totalSlots;
     return calculateAccountVacancy<OnSaleProduct>({
       serviceType: acct.serviceType,
-      maxSlots: acct.totalSlots,
+      maxSlots,
       members: acct.members,
       manualCount,
       recruitingProducts: data?.onSaleByKeepAcct?.[acct.email] || [],
@@ -1741,9 +1833,9 @@ export default function ManagePage() {
                         });
                         const profileNameForMember = (kind: 'graytag' | 'manual', id: string) => profileNicknameByMember.get(`${kind}:${id}`) || generateProfileNickname(stableRandomFromSeed(`${acct.serviceType}:${acct.email}:${kind}:${id}`));
                         const vi = getVacancyInfo(acct);
-                        if (filter === 'using' && acct.usingCount === 0 && vi.manualCount === 0 && !acct.generatedAccount) return null;
-                        if (filter === 'active' && acct.usingCount === 0 && acct.activeCount === 0 && vi.manualCount === 0 && !hasOnSale && !acct.generatedAccount) return null;
-                        if (filter !== 'all' && acct.usingCount===0 && acct.activeCount===0 && vi.manualCount === 0 && !hasOnSale && !acct.generatedAccount) return null;
+                        if (filter === 'using' && acct.usingCount === 0 && vi.manualCount === 0 && !acct.generatedAccount && !acct.archivedAccount) return null;
+                        if (filter === 'active' && acct.usingCount === 0 && acct.activeCount === 0 && vi.manualCount === 0 && !hasOnSale && !acct.generatedAccount && !acct.archivedAccount) return null;
+                        if (filter !== 'all' && acct.usingCount===0 && acct.activeCount===0 && vi.manualCount === 0 && !hasOnSale && !acct.generatedAccount && !acct.archivedAccount) return null;
                         const filledSlots = vi.currentUsers + vi.manualCount;
                         const totalSlots = vi.maxSlots;
                         const fillPct = Math.round((filledSlots/Math.max(totalSlots, 1))*100);
@@ -1770,6 +1862,15 @@ export default function ManagePage() {
                         const withdrawnPartyKeys = Array.from(new Set(withdrawnPartyMembers.map(row => row.partyKey)));
                         const currentAccountIdDraft = accountIdDrafts[credentialKey] ?? credentialRows[0].value;
                         const currentPasswordDraft = passwordDrafts[credentialKey] ?? credentialRows[1].value;
+                        const paymentCardDraft = paymentCardDrafts[credentialKey] ?? {
+                          label: acct.paymentCard?.label || '',
+                          cardIssuer: acct.paymentCard?.cardIssuer || '',
+                          last4: acct.paymentCard?.last4 || '',
+                        };
+                        const paymentCardDisplayName = acct.paymentCard?.label || acct.paymentCard?.cardIssuer || '카드';
+                        const paymentCardSummary = acct.paymentCard
+                          ? `결제 카드: ${paymentCardDisplayName}${acct.paymentCard.last4 ? ` •••• ${acct.paymentCard.last4}` : ''}`
+                          : '결제 카드: 미등록';
                         const slotStates = buildAccountSlotStates({
                           totalSlots,
                           usingCount: vi.currentUsers,
@@ -1836,10 +1937,12 @@ export default function ManagePage() {
                                   <Mail size={12} color="#9CA3AF" />
                                   <span style={{ fontSize:12, fontWeight:700, color:'#1E1B4B', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{displayAccountEmail}</span>
                                 </div>
+                                <div style={{ fontSize:10, color:acct.paymentCard?'#4F46E5':'#9CA3AF', fontWeight:acct.paymentCard?800:600, marginTop:3 }}>{paymentCardSummary}</div>
                                 <div style={{ display:'flex', gap:6, alignItems:'center', marginTop:3, flexWrap:'wrap' }}>
                                   {acct.generatedAccount && <span style={{ fontSize:10, color:acct.generatedAccount.paymentStatus==='paid'?'#059669':'#C2410C', fontWeight:900, display:'flex', alignItems:'center', gap:3, background:acct.generatedAccount.paymentStatus==='paid'?'#ECFDF5':'#FFEDD5', borderRadius:6, padding:'1px 7px' }}>
                                     <KeyRound size={10} /> {acct.generatedAccount.paymentStatus==='paid'?'결제 완료':'생성만 완료'}
                                   </span>}
+                                  {acct.archivedAccount && <span style={{ fontSize:10, color:'#6B7280', fontWeight:900, background:'#F3F4F6', borderRadius:6, padding:'1px 7px' }}>만료 · 보관 계정</span>}
                                   {vi.vacancy === 0 && <span style={{ fontSize:10, color:'#059669', fontWeight:600, display:'flex', alignItems:'center', gap:3 }}><TrendingUp size={10} /> 만석</span>}
                                   {vi.vacancy > 0 && vi.unfilled > 0 && (
                                     <span style={{ fontSize:10, color:'#EF4444', fontWeight:700, display:'flex', alignItems:'center', gap:3, background:'#FFF0F0', borderRadius:6, padding:'1px 7px' }}>
@@ -1916,11 +2019,41 @@ export default function ManagePage() {
                             {isAcctOpen && (
                               <div style={{ borderTop:'1px solid #EDE9FE', padding:'8px 14px' }}>
 
+                                <div style={{ background:'#FFFFFF', border:'1.5px solid #C7D2FE', borderRadius:14, padding:12, marginBottom:10 }}>
+                                  <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, marginBottom:8 }}>
+                                    <div>
+                                      <div style={{ fontSize:13, fontWeight:900, color:'#1E1B4B' }}>결제 카드</div>
+                                      <div style={{ fontSize:10, color:'#9CA3AF', marginTop:2 }}>카드 전체번호 · CVV · 유효기간은 입력하거나 저장하지 않아요.</div>
+                                    </div>
+                                    <div style={{ fontSize:10, color:'#4F46E5', fontWeight:900 }}>{paymentCardSummary}</div>
+                                  </div>
+                                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 120px', gap:7 }}>
+                                    <label style={{ display:'grid', gap:4, fontSize:9, color:'#6B7280', fontWeight:900 }}>
+                                      카드 별칭
+                                      <input value={paymentCardDraft.label} maxLength={60} autoComplete="off" onChange={(e) => updatePaymentCardDraft(acct, { label: e.target.value })} placeholder="예: 현대카드" style={{ border:'1px solid #EDE9FE', borderRadius:10, padding:'8px 10px', fontSize:11, fontWeight:800, color:'#1E1B4B', fontFamily:'inherit', minWidth:0 }} />
+                                    </label>
+                                    <label style={{ display:'grid', gap:4, fontSize:9, color:'#6B7280', fontWeight:900 }}>
+                                      카드사
+                                      <input value={paymentCardDraft.cardIssuer} maxLength={60} autoComplete="off" onChange={(e) => updatePaymentCardDraft(acct, { cardIssuer: e.target.value })} placeholder="예: 현대" style={{ border:'1px solid #EDE9FE', borderRadius:10, padding:'8px 10px', fontSize:11, fontWeight:800, color:'#1E1B4B', fontFamily:'inherit', minWidth:0 }} />
+                                    </label>
+                                    <label style={{ display:'grid', gap:4, fontSize:9, color:'#6B7280', fontWeight:900 }}>
+                                      끝 4자리
+                                      <input value={paymentCardDraft.last4} maxLength={4} inputMode="numeric" pattern="[0-9]{4}" autoComplete="off" onChange={(e) => updatePaymentCardDraft(acct, { last4: e.target.value.replace(/\D/g, '').slice(0, 4) })} placeholder="1234" style={{ border:'1px solid #EDE9FE', borderRadius:10, padding:'8px 10px', fontSize:11, fontWeight:800, color:'#1E1B4B', fontFamily:'inherit', minWidth:0 }} />
+                                    </label>
+                                  </div>
+                                  <div style={{ display:'flex', justifyContent:'flex-end', gap:7, marginTop:9 }}>
+                                    <button type="button" onClick={() => clearPaymentCard(acct)} disabled={!acct.paymentCard || paymentCardLoadingKey === credentialKey} style={{ border:'none', borderRadius:999, padding:'7px 10px', background:'#F3F4F6', color:acct.paymentCard?'#B91C1C':'#9CA3AF', fontSize:10, fontWeight:900, cursor:acct.paymentCard?'pointer':'not-allowed' }}>지우기</button>
+                                    <button type="button" onClick={() => savePaymentCard(acct, paymentCardDraft)} disabled={paymentCardLoadingKey === credentialKey} style={{ border:'none', borderRadius:999, padding:'7px 12px', background:paymentCardLoadingKey === credentialKey?'#C4B5FD':'#4F46E5', color:'#fff', fontSize:10, fontWeight:900, cursor:paymentCardLoadingKey === credentialKey?'not-allowed':'pointer' }}>
+                                      {paymentCardLoadingKey === credentialKey ? '저장중' : '저장'}
+                                    </button>
+                                  </div>
+                                </div>
+
                                 <div style={{ background:'#FFFFFF', border:'1.5px solid #EDE9FE', borderRadius:14, padding:12, marginBottom:10 }}>
                                   <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, marginBottom:8 }}>
                                     <div>
                                       <div style={{ fontSize:13, fontWeight:900, color:'#1E1B4B' }}>관리자 전용 ID · PW · PIN</div>
-                                      <div style={{ fontSize:10, color:'#9CA3AF', marginTop:2 }}>계정 클릭 시에만 표시 · 복붙용</div>
+                                      <div style={{ fontSize:10, color:'#9CA3AF', marginTop:2 }}>{acct.archivedAccount ? '보관된 실제 ID/PW · 계정 클릭 시에만 표시' : '계정 클릭 시에만 표시 · 복붙용'}</div>
                                     </div>
                                     <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleRegeneratePin(acct); }} disabled={pinResetLoadingKey === credentialKey}
                                       style={{ border:'none', borderRadius:999, padding:'7px 10px', background:pinResetLoadingKey === credentialKey ? '#C4B5FD' : '#7C3AED', color:'#fff', fontSize:11, fontWeight:900, cursor:pinResetLoadingKey === credentialKey ? 'not-allowed' : 'pointer', display:'flex', alignItems:'center', gap:5 }}>
