@@ -1632,13 +1632,25 @@ app.get('/sl/aliases', async (c) => {
 });
 
 async function emailAliasFillHandler(c: any) {
+  c.header('Cache-Control', 'no-store');
   const accountEmail = c.req.query('email') || c.req.query('accountEmail') || '';
   const serviceType = c.req.query('serviceType') || '';
   if (!accountEmail) return c.json({ ok: false, found: false, error: 'email query is required', missing: ['email'] }, 400);
 
   try {
     const aliases = await listEmailDashboardAliases();
-    const result = await resolveEmailAliasFill({ accountEmail, serviceType, aliases });
+    const normalizedAccountEmail = accountEmail.trim().toLowerCase();
+    const generatedAccount = Object.values(readGeneratedAccountStore()).find((account) =>
+      account.email.trim().toLowerCase() === normalizedAccountEmail,
+    );
+    const result = await resolveEmailAliasFill({
+      accountEmail,
+      serviceType,
+      aliases,
+      fallbackPin: generatedAccount?.pin || null,
+      fallbackEmailId: generatedAccount?.emailId ?? null,
+      fallbackServiceType: generatedAccount?.serviceType || null,
+    });
     return c.json(result);
   } catch (e: any) {
     return c.json({ ok: false, found: false, email: accountEmail, serviceType, emailId: null, pin: null, memo: '', missing: ['email', 'pin'], error: e.message }, 500);

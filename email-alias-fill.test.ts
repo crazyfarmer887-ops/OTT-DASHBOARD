@@ -145,22 +145,77 @@ describe('email alias fill lookup', () => {
       headers: { 'x-admin-token': 'test-admin-token' },
     });
     expect(allowed.status).toBe(200);
+    expect(allowed.headers.get('cache-control')).toBe('no-store');
     const body = await allowed.json() as any;
     expect(body).toMatchObject({ ok: true, found: true, emailId: 202, pin: '1357' });
   });
 
-  it('falls back to locally generated account alias refs when the email dashboard page list misses a new alias', async () => {
+  it('rejects a generated-account PIN when the live exact alias id no longer matches the generated account', async () => {
+    writeFileSync(process.env.EMAIL_ALIAS_PIN_STORE_PATH!, JSON.stringify({
+      '999': { hash: 'scrypt:hashed-pin-only' },
+    }), 'utf8');
+    const { resolveEmailAliasFill } = await import('./src/api/email-alias-fill.ts');
+
+    const result = await resolveEmailAliasFill({
+      accountEmail: 'netflix-generated@example.com',
+      serviceType: '넷플릭스',
+      aliases: [{ id: 999, email: 'netflix-generated@example.com', enabled: true }],
+      fallbackPin: '074056',
+      fallbackEmailId: 44877806,
+    });
+
+    expect(result).toMatchObject({ ok: false, found: false, emailId: 999, pin: null, missing: ['pin'] });
+    expect(result.memo).toBe('');
+  });
+
+  it('rejects a generated-account PIN from a different service even when email and alias id match', async () => {
+    writeFileSync(process.env.EMAIL_ALIAS_PIN_STORE_PATH!, JSON.stringify({
+      '44877806': { hash: 'scrypt:hashed-pin-only' },
+    }), 'utf8');
+    const { resolveEmailAliasFill } = await import('./src/api/email-alias-fill.ts');
+
+    const result = await resolveEmailAliasFill({
+      accountEmail: 'netflix-generated@example.com',
+      serviceType: '넷플릭스',
+      aliases: [{ id: 44877806, email: 'netflix-generated@example.com', enabled: true }],
+      fallbackPin: '074056',
+      fallbackEmailId: 44877806,
+      fallbackServiceType: '디즈니플러스',
+    });
+
+    expect(result).toMatchObject({ ok: false, found: false, emailId: 44877806, pin: null, missing: ['pin'] });
+  });
+
+  it('rejects non-digit generated-account PIN text instead of silently normalizing it', async () => {
+    writeFileSync(process.env.EMAIL_ALIAS_PIN_STORE_PATH!, JSON.stringify({
+      '44877806': { hash: 'scrypt:hashed-pin-only' },
+    }), 'utf8');
+    const { resolveEmailAliasFill } = await import('./src/api/email-alias-fill.ts');
+
+    const result = await resolveEmailAliasFill({
+      accountEmail: 'netflix-generated@example.com',
+      serviceType: '넷플릭스',
+      aliases: [{ id: 44877806, email: 'netflix-generated@example.com', enabled: true }],
+      fallbackPin: 'abc074-056xyz',
+      fallbackEmailId: 44877806,
+      fallbackServiceType: '넷플릭스',
+    });
+
+    expect(result).toMatchObject({ ok: false, found: false, emailId: 44877806, pin: null, missing: ['pin'] });
+  });
+
+  it('falls back to the exact generated-account PIN after the email dashboard migrates PIN storage to hashes', async () => {
     process.env.AIO_ADMIN_TOKEN = 'test-admin-token';
     process.env.GENERATED_ACCOUNTS_PATH = join(tempDir, 'generated-accounts.json');
     writeFileSync(process.env.EMAIL_ALIAS_PIN_STORE_PATH!, JSON.stringify({
-      '44877806': { pin: '074056', updatedAt: '2026-06-11T11:52:30.454Z' },
+      '44877806': { hash: 'scrypt:hashed-pin-only', updatedAt: '2026-06-11T11:52:30.454Z' },
     }), 'utf8');
     writeFileSync(process.env.GENERATED_ACCOUNTS_PATH, JSON.stringify({
       '1781178750454-44877806': {
         id: '1781178750454-44877806',
-        serviceType: '티빙+웨이브',
-        email: 'gtwavve15.dig092@aleeas.com',
-        password: 'u2mhe1t!va',
+        serviceType: '넷플릭스',
+        email: 'netflix-generated@example.com',
+        password: 'test-password-not-a-secret',
         pin: '074056',
         emailId: 44877806,
         memo: '',
@@ -173,11 +228,11 @@ describe('email alias fill lookup', () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ aliases: [] }), { status: 200, headers: { 'content-type': 'application/json' } })));
     const app = (await import('./src/api/index.ts')).default;
 
-    const allowed = await app.request('/api/email-alias-fill?email=gtwavve15.dig092%40aleeas.com&serviceType=티빙%2B웨이브', {
+    const allowed = await app.request('/api/email-alias-fill?email=netflix-generated%40example.com&serviceType=넷플릭스', {
       headers: { 'x-admin-token': 'test-admin-token' },
     });
     expect(allowed.status).toBe(200);
     const body = await allowed.json() as any;
-    expect(body).toMatchObject({ ok: true, found: true, emailId: 44877806, email: 'gtwavve15.dig092@aleeas.com', pin: '074056' });
+    expect(body).toMatchObject({ ok: true, found: true, emailId: 44877806, email: 'netflix-generated@example.com', pin: '074056' });
   });
 });

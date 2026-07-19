@@ -77,8 +77,18 @@ function saveAliasPinStore(store: Record<string, PinRecord>) {
 }
 
 function normalizeSixDigitPin(pin: string) {
-  const digits = pin.replace(/\D/g, '');
-  return /^\d{6}$/.test(digits) ? digits : null;
+  const candidate = pin.trim();
+  return /^\d{6}$/.test(candidate) ? candidate : null;
+}
+
+function compatibleServiceType(requested: string, stored: string | null | undefined) {
+  const normalize = (value: string) => value.trim().toLowerCase().replace(/\s+/g, '');
+  const requestedService = normalize(requested);
+  const storedService = normalize(String(stored || ''));
+  if (!requestedService || !storedService) return false;
+  if (requestedService === storedService) return true;
+  const doublePassServices = new Set(['티빙', '티방', '웨이브', '티빙+웨이브', 'tving', 'wavve']);
+  return doublePassServices.has(requestedService) && doublePassServices.has(storedService);
 }
 
 export function generateSixDigitPin(random = Math.random): string {
@@ -190,12 +200,20 @@ export async function resolveEmailAliasFill(input: {
   accountEmail: string;
   serviceType: string;
   aliases: EmailAliasCandidate[];
+  fallbackPin?: string | null;
+  fallbackEmailId?: number | string | null;
+  fallbackServiceType?: string | null;
 }): Promise<EmailAliasFillResult> {
   const accountEmail = input.accountEmail.trim();
   const serviceType = input.serviceType.trim();
   const pinStore = loadAliasPinStore();
   const alias = chooseAlias(accountEmail, serviceType, input.aliases, pinStore);
-  const pin = alias ? pinStore[String(alias.id)]?.pin?.trim() || null : null;
+  const exactAlias = alias
+    && normalizeEmail(alias.email) === normalizeEmail(accountEmail)
+    && String(alias.id) === String(input.fallbackEmailId ?? '')
+    && compatibleServiceType(serviceType, input.fallbackServiceType);
+  const generatedPin = exactAlias ? normalizeSixDigitPin(String(input.fallbackPin || '')) : null;
+  const pin = alias ? pinStore[String(alias.id)]?.pin?.trim() || generatedPin : null;
   const missing: Array<'email' | 'pin'> = [];
   if (!alias) missing.push('email');
   if (!pin) missing.push('pin');
