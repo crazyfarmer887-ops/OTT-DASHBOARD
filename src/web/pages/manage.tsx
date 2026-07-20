@@ -51,8 +51,8 @@ interface Account {
 interface ServiceGroup { serviceType: string; accounts: Account[]; totalUsingMembers: number; totalActiveMembers: number; totalIncome: number; totalRealized: number; }
 interface EmailAlias { id: number | string; email: string; enabled?: boolean; }
 interface ManagementHiddenAccount { serviceType: string; accountEmail: string; reason?: string; hiddenAt?: string; updatedAt?: string; }
-interface ManagementPaymentCard { serviceType: string; accountEmail: string; label?: string; cardIssuer?: string; last4?: string; updatedAt: string; }
-interface PaymentCardDraft { label: string; cardIssuer: string; last4: string; }
+interface ManagementPaymentCard { serviceType: string; accountEmail: string; label?: string; cardIssuer?: string; last4?: string; renewalDay?: number; updatedAt: string; }
+interface PaymentCardDraft { label: string; cardIssuer: string; last4: string; renewalDay: string; }
 interface ExistingPinCacheEntry { pin: string; emailId: number | string | null; loading: boolean; checked: boolean; message?: string; }
 interface ManageData {
   services: ServiceGroup[];
@@ -115,6 +115,10 @@ const svcLogo = (s: string) => CATEGORIES.find(c => c.label===s || s.includes(c.
 const svcColors = (s: string) => { const c = CATEGORIES.find(c => c.label===s || s.includes(c.label.slice(0,3))); return { color: c?.color||'#6B7280', bg: c?.bg||'#F3F4F6' }; };
 const fmtMoney = (n: number) => n > 0 ? n.toLocaleString()+'원' : '-';
 const fmtDate = (s: string|null) => s ? s.replace(/\s/g,'').replace(/\.(?=\S)/g,'/').replace(/\.$/, '') : '-';
+const isNetflixManagementService = (serviceType: string) => {
+  const normalized = String(serviceType || '').trim().toLowerCase().replace(/\s+/g, '');
+  return normalized === '넷플릭스' || normalized === 'netflix';
+};
 
 // 파티 기간 계산 (startDateTime ~ endDateTime)
 const calcPartyDuration = (members: Member[]): { startDate: string | null; endDate: string | null; totalDays: number } => {
@@ -362,6 +366,7 @@ export default function ManagePage() {
         label: current[key]?.label ?? acct.paymentCard?.label ?? '',
         cardIssuer: current[key]?.cardIssuer ?? acct.paymentCard?.cardIssuer ?? '',
         last4: current[key]?.last4 ?? acct.paymentCard?.last4 ?? '',
+        renewalDay: current[key]?.renewalDay ?? (acct.paymentCard?.renewalDay ? String(acct.paymentCard.renewalDay) : ''),
         ...patch,
       },
     }));
@@ -373,8 +378,13 @@ export default function ManagePage() {
       showToast('끝 4자리는 숫자 4자리로 입력해주세요.', 'error');
       return;
     }
-    if (!draft.label.trim() && !draft.cardIssuer.trim() && !draft.last4) {
-      showToast('저장할 카드 표시 정보를 하나 이상 입력해주세요.', 'error');
+    const renewalDay = draft.renewalDay === '' ? undefined : Number(draft.renewalDay);
+    if (renewalDay !== undefined && (!Number.isInteger(renewalDay) || renewalDay < 1 || renewalDay > 31)) {
+      showToast('구독 갱신일은 1~31 사이의 숫자로 입력해주세요.', 'error');
+      return;
+    }
+    if (!draft.label.trim() && !draft.cardIssuer.trim() && !draft.last4 && renewalDay === undefined) {
+      showToast('저장할 결제 정보를 하나 이상 입력해주세요.', 'error');
       return;
     }
     setPaymentCardLoadingKey(key);
@@ -388,12 +398,13 @@ export default function ManagePage() {
           label: draft.label.trim(),
           cardIssuer: draft.cardIssuer.trim(),
           last4: draft.last4,
+          ...(isNetflixManagementService(acct.serviceType) && renewalDay !== undefined ? { renewalDay } : {}),
         }),
       });
       const json = await res.json().catch(() => ({})) as any;
       if (!res.ok || !json?.card) throw new Error(json?.error || '결제 카드 저장 실패');
       replaceAccountPaymentCard(acct, json.card);
-      setPaymentCardDrafts((current) => ({ ...current, [key]: { label: json.card.label || '', cardIssuer: json.card.cardIssuer || '', last4: json.card.last4 || '' } }));
+      setPaymentCardDrafts((current) => ({ ...current, [key]: { label: json.card.label || '', cardIssuer: json.card.cardIssuer || '', last4: json.card.last4 || '', renewalDay: json.card.renewalDay ? String(json.card.renewalDay) : '' } }));
       showToast('결제 카드 정보를 저장했어요.');
     } catch (error: any) {
       showToast(error?.message || '결제 카드 저장 실패', 'error');
@@ -404,7 +415,7 @@ export default function ManagePage() {
 
   const clearPaymentCard = async (acct: Account) => {
     const key = accountCredentialKey(acct);
-    if (!window.confirm('이 계정의 결제 카드 표시 정보를 지울까요?')) return;
+    if (!window.confirm('이 계정의 결제 카드와 구독 갱신일 정보를 지울까요?')) return;
     setPaymentCardLoadingKey(key);
     try {
       const res = await fetch('/api/management-payment-cards', {
@@ -415,7 +426,7 @@ export default function ManagePage() {
       const json = await res.json().catch(() => ({})) as any;
       if (!res.ok || json?.ok === false) throw new Error(json?.error || '결제 카드 삭제 실패');
       replaceAccountPaymentCard(acct, undefined);
-      setPaymentCardDrafts((current) => ({ ...current, [key]: { label: '', cardIssuer: '', last4: '' } }));
+      setPaymentCardDrafts((current) => ({ ...current, [key]: { label: '', cardIssuer: '', last4: '', renewalDay: '' } }));
       showToast('결제 카드 정보를 지웠어요.', 'info');
     } catch (error: any) {
       showToast(error?.message || '결제 카드 삭제 실패', 'error');
@@ -1514,7 +1525,7 @@ export default function ManagePage() {
   ])).filter((row) => row.date && row.date >= cancelCountingStart && row.date <= todayStart).sort((a, b) => (b.date!.getTime() - a.date!.getTime())).slice(0, 20) : [];
 
   return (
-    <div style={{ padding:'20px 16px 0' }}>
+    <div className="account-management-page">
       {toast && (
         <div style={{ position:'fixed', left:'50%', bottom:'calc(74px + env(safe-area-inset-bottom))', transform:'translateX(-50%)', zIndex:300, maxWidth:420, width:'calc(100% - 32px)', background:toast.tone === 'error' ? '#FFF0F0' : toast.tone === 'info' ? '#EEF2FF' : '#ECFDF5', color:toast.tone === 'error' ? '#EF4444' : toast.tone === 'info' ? '#4F46E5' : '#059669', border:`1.5px solid ${toast.tone === 'error' ? '#FCA5A5' : toast.tone === 'info' ? '#C7D2FE' : '#A7F3D0'}`, borderRadius:999, padding:'10px 14px', boxShadow:'0 8px 26px rgba(17,24,39,0.14)', fontSize:12, fontWeight:900, textAlign:'center' }}>
           {toast.message}
@@ -1766,42 +1777,43 @@ export default function ManagePage() {
               const serviceUsingWithManual = svc.totalUsingMembers + serviceManualUsingCount(svc);
               const serviceBulkUnfilled = countBulkFillTargets(svc.serviceType);
               const serviceBulkLoading = bulkFillLoading && bulkFillTarget === svc.serviceType;
+              const servicePanelId = `management-service-${encodeURIComponent(svc.serviceType)}`;
               const actualPartyAccountCount = svc.accounts.filter((acct) => (
                 acct.email !== '(직접전달)' &&
                 (acct.usingCount > 0 || getManualForAccount(acct.email, acct.serviceType).some((m) => m.status === 'active') || acct.generatedAccount?.paymentStatus === 'paid')
               )).length;
               return (
-                <div key={svc.serviceType} style={{ background:'#fff', borderRadius:16, overflow:'hidden', boxShadow:'0 2px 12px rgba(167,139,250,0.08)', border:`1.5px solid ${isOpen?'#A78BFA':'#F3F0FF'}` }}>
-                  <button onClick={() => setOpenService(isOpen ? null : svc.serviceType)} style={{ width:'100%', display:'flex', alignItems:'center', gap:12, padding:'14px 16px', background:'none', border:'none', cursor:'pointer', fontFamily:'inherit' }}>
-                    <div style={{ width:40, height:40, borderRadius:12, background:sc.bg, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-                      {logo ? <img src={logo} alt={svc.serviceType} style={{ width:26, height:26, objectFit:'contain' }} onError={e=>{(e.target as HTMLImageElement).style.display='none';}} /> : null}
-                    </div>
-                    <div style={{ flex:1, textAlign:'left' }}>
-                      <div style={{ fontSize:15, fontWeight:700, color:'#1E1B4B' }}>{svc.serviceType}</div>
-                      <div style={{ fontSize:11, color:'#9CA3AF', marginTop:2 }}>계정 {actualPartyAccountCount}개 · 이용중 {serviceUsingWithManual}명{serviceManualUsingCount(svc) > 0 ? ` (수동 포함 +${serviceManualUsingCount(svc)})` : ''}{serviceVerifyingCount > 0 ? ` · 확인중 ${serviceVerifyingCount}명` : ''}</div>
-                    </div>
-                    <div style={{ textAlign:'right', flexShrink:0 }}>
-                      <div style={{ fontSize:14, fontWeight:700, color:'#A78BFA' }}>{fmtMoney(svc.totalIncome)}</div>
-                      <div style={{ fontSize:10, color:'#059669', marginTop:1 }}>정산누적 {fmtMoney(svc.totalRealized)}</div>
-                    </div>
+                <section key={svc.serviceType} className="management-service-group" style={{ borderColor:isOpen?'#A78BFA':'#F3F0FF' }}>
+                  <div className="management-service-header">
+                    <button className="management-service-toggle management-touch-target" onClick={() => setOpenService(isOpen ? null : svc.serviceType)} aria-expanded={isOpen} aria-controls={servicePanelId}>
+                      <div style={{ width:40, height:40, borderRadius:12, background:sc.bg, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                        {logo ? <img src={logo} alt={svc.serviceType} style={{ width:26, height:26, objectFit:'contain' }} onError={e=>{(e.target as HTMLImageElement).style.display='none';}} /> : null}
+                      </div>
+                      <div style={{ flex:1, textAlign:'left' }}>
+                        <div style={{ fontSize:15, fontWeight:700, color:'#1E1B4B' }}>{svc.serviceType}</div>
+                        <div style={{ fontSize:11, color:'#9CA3AF', marginTop:2 }}>계정 {actualPartyAccountCount}개 · 이용중 {serviceUsingWithManual}명{serviceManualUsingCount(svc) > 0 ? ` (수동 포함 +${serviceManualUsingCount(svc)})` : ''}{serviceVerifyingCount > 0 ? ` · 확인중 ${serviceVerifyingCount}명` : ''}</div>
+                      </div>
+                      <div style={{ textAlign:'right', flexShrink:0 }}>
+                        <div style={{ fontSize:14, fontWeight:700, color:'#A78BFA' }}>{fmtMoney(svc.totalIncome)}</div>
+                        <div style={{ fontSize:10, color:'#059669', marginTop:1 }}>정산누적 {fmtMoney(svc.totalRealized)}</div>
+                      </div>
+                      {isOpen ? <ChevronDown size={16} color="#A78BFA" /> : <ChevronRight size={16} color="#A78BFA" />}
+                    </button>
                     {serviceBulkUnfilled > 0 && (
-                      <span
-                        role="button"
-                        tabIndex={bulkFillLoading ? -1 : 0}
-                        onClick={(e) => { e.stopPropagation(); if (!bulkFillLoading) void handleBulkFillAll(svc.serviceType); }}
-                        onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && !bulkFillLoading) { e.preventDefault(); e.stopPropagation(); void handleBulkFillAll(svc.serviceType); } }}
+                      <button
+                        type="button"
+                        className="management-service-fill management-touch-target"
+                        onClick={() => void handleBulkFillAll(svc.serviceType)}
                         title={`${svc.serviceType} 카테고리 빈자리를 모두 자동 등록합니다.`}
-                        aria-disabled={bulkFillLoading}
-                        style={{ flexShrink:0, borderRadius:999, padding:'7px 10px', background:serviceBulkLoading?'#FDBA74':'#FCA5A5', color:'#fff', fontSize:11, fontWeight:900, cursor:bulkFillLoading?'not-allowed':'pointer', display:'inline-flex', alignItems:'center', gap:5, opacity:bulkFillLoading && !serviceBulkLoading ? 0.45 : 1 }}>
+                        disabled={bulkFillLoading}>
                         {serviceBulkLoading ? <Loader2 size={12} style={{ animation:'spin 1s linear infinite' }} /> : <PlusCircle size={12} />}
                         {serviceBulkLoading ? '카테고리 메꾸기중' : `카테고리 메꾸기 ${serviceBulkUnfilled}`}
-                      </span>
+                      </button>
                     )}
-                    {isOpen ? <ChevronDown size={16} color="#A78BFA" /> : <ChevronRight size={16} color="#A78BFA" />}
-                  </button>
+                  </div>
 
                   {isOpen && (
-                    <div style={{ borderTop:'1px solid #F3F0FF', padding:'8px 12px 12px' }}>
+                    <div id={servicePanelId} role="region" aria-label={`${svc.serviceType} 계정 목록`} className="management-account-grid">
                       {svc.accounts.filter(a => a.email !== '(직접전달)').map(acct => {
                         const acctKey = `${acct.email}__${acct.serviceType}`;
                         const isAcctOpen = openAccount === acctKey;
@@ -1851,6 +1863,7 @@ export default function ManagePage() {
                         const existingPinRecord = findExistingPinRecordForAccount(acct);
                         const exitChecklist = maintenanceChecklistStore[credentialKey];
                         const displayAccountEmail = isAccessNoticeCredentialValue(acct.email) ? '계정 매핑 필요' : acct.email;
+                        const accountPanelId = `management-account-${encodeURIComponent(acctKey)}`;
                         const credentialRows = [
                           { label: 'ID', value: isAccessNoticeCredentialValue(credential?.id || acct.email) ? '' : (credential?.id || acct.email) },
                           { label: 'PW', value: isAccessNoticeCredentialValue(credential?.password || acct.keepPasswd || '') ? '' : (credential?.password || acct.keepPasswd || '') },
@@ -1866,11 +1879,16 @@ export default function ManagePage() {
                           label: acct.paymentCard?.label || '',
                           cardIssuer: acct.paymentCard?.cardIssuer || '',
                           last4: acct.paymentCard?.last4 || '',
+                          renewalDay: acct.paymentCard?.renewalDay ? String(acct.paymentCard.renewalDay) : '',
                         };
                         const paymentCardDisplayName = acct.paymentCard?.label || acct.paymentCard?.cardIssuer || '카드';
-                        const paymentCardSummary = acct.paymentCard
-                          ? `결제 카드: ${paymentCardDisplayName}${acct.paymentCard.last4 ? ` •••• ${acct.paymentCard.last4}` : ''}`
+                        const hasPaymentCardMetadata = Boolean(acct.paymentCard?.label || acct.paymentCard?.cardIssuer || acct.paymentCard?.last4);
+                        const paymentCardSummary = hasPaymentCardMetadata
+                          ? `결제 카드: ${paymentCardDisplayName}${acct.paymentCard?.last4 ? ` •••• ${acct.paymentCard.last4}` : ''}`
                           : '결제 카드: 미등록';
+                        const renewalDaySummary = acct.paymentCard?.renewalDay
+                          ? `매월 ${acct.paymentCard.renewalDay}일 갱신`
+                          : '';
                         const slotStates = buildAccountSlotStates({
                           totalSlots,
                           usingCount: vi.currentUsers,
@@ -1880,12 +1898,11 @@ export default function ManagePage() {
                           activeCount: acct.activeCount,
                         });
                         return (
-                          <div key={acctKey} style={{ marginBottom:8, background:'#F8F6FF', borderRadius:12, overflow:'hidden' }}>
-                            <button onClick={() => {
-                              setOpenAccount(isAcctOpen ? null : acctKey);
-                              if (!isAcctOpen) void loadExistingPinForAccount(acct);
-                            }} style={{ width:'100%', display:'flex', alignItems:'center', gap:10, padding:'12px 14px', background:'none', border:'none', cursor:'pointer', fontFamily:'inherit' }}>
-                              {/* 슬롯 게이지 */}
+                          <article key={acctKey} className="management-account-card">
+                            <div className="management-account-header">
+                              <div className="management-account-logo" style={{ background:sc.bg }} aria-hidden="true">
+                                {logo ? <img src={logo} alt="" onError={e=>{(e.target as HTMLImageElement).style.display='none';}} /> : <KeyRound size={18} color={sc.color} />}
+                              </div>
                               <div style={{ flexShrink:0, display:'flex', flexDirection:'column', alignItems:'center', gap:3, minWidth:36 }}>
                                 <div style={{ display:'flex', gap:3 }}>
                                   {slotStates.map((state: SlotState, i) => {
@@ -1911,33 +1928,17 @@ export default function ManagePage() {
                                 </div>
                                 <div style={{ fontSize:9, color:'#9CA3AF' }}>{acct.usingCount + vi.manualCount}/{totalSlots}</div>
                                 {verifyingCount > 0 && <div style={{ fontSize:8, color:'#2563EB', fontWeight:900, whiteSpace:'nowrap' }}>확인중 {verifyingCount}</div>}
-                                <span
-                                  role="button"
-                                  tabIndex={emailAliasId ? 0 : -1}
-                                  onClick={(e) => { e.stopPropagation(); openEmailDashboardForAccount(acct); }}
-                                  onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && emailAliasId) { e.preventDefault(); e.stopPropagation(); openEmailDashboardForAccount(acct); } }}
-                                  title={emailAliasId ? '이메일 대시보드 새 탭 열기' : '연결된 이메일 대시보드 alias를 찾지 못했어요'}
-                                  aria-disabled={!emailAliasId}
-                                  style={{ marginTop:2, border:'none', borderRadius:7, padding:'2px 5px', background:emailAliasId?'#EEF2FF':'#F3F4F6', color:emailAliasId?'#4F46E5':'#D1D5DB', fontSize:8, fontWeight:900, cursor:emailAliasId?'pointer':'not-allowed', fontFamily:'inherit', lineHeight:1.2, whiteSpace:'nowrap' }}>
-                                  이메일
-                                </span>
-                                <span
-                                  role="button"
-                                  tabIndex={noticeEligibleMembers(acct).length > 0 ? 0 : -1}
-                                  onClick={(e) => { e.stopPropagation(); if (noticeEligibleMembers(acct).length > 0) openNoticeModalForAccount(acct); }}
-                                  onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && noticeEligibleMembers(acct).length > 0) { e.preventDefault(); e.stopPropagation(); openNoticeModalForAccount(acct); } }}
-                                  title={noticeEligibleMembers(acct).length > 0 ? '계정별 파티원 공지 보내기' : '공지 보낼 이용중 파티원이 없어요'}
-                                  aria-disabled={noticeEligibleMembers(acct).length === 0}
-                                  style={{ marginTop:2, border:'none', borderRadius:7, padding:'2px 5px', background:noticeEligibleMembers(acct).length > 0?'#FFF7ED':'#F3F4F6', color:noticeEligibleMembers(acct).length > 0?'#C2410C':'#D1D5DB', fontSize:8, fontWeight:900, cursor:noticeEligibleMembers(acct).length > 0?'pointer':'not-allowed', fontFamily:'inherit', lineHeight:1.2, whiteSpace:'nowrap' }}>
-                                  공지
-                                </span>
+
                               </div>
                               <div style={{ flex:1, textAlign:'left', minWidth:0 }}>
                                 <div style={{ display:'flex', alignItems:'center', gap:6 }}>
                                   <Mail size={12} color="#9CA3AF" />
-                                  <span style={{ fontSize:12, fontWeight:700, color:'#1E1B4B', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{displayAccountEmail}</span>
+                                  <span className="management-account-email">{displayAccountEmail}</span>
                                 </div>
-                                <div style={{ fontSize:10, color:acct.paymentCard?'#4F46E5':'#9CA3AF', fontWeight:acct.paymentCard?800:600, marginTop:3 }}>{paymentCardSummary}</div>
+                                <div style={{ fontSize:10, color:acct.paymentCard?'#4F46E5':'#9CA3AF', fontWeight:acct.paymentCard?800:600, marginTop:3 }}>
+                                  {paymentCardSummary}
+                                  {isNetflixManagementService(acct.serviceType) && renewalDaySummary && <span style={{ color:'#059669' }}> · {renewalDaySummary}</span>}
+                                </div>
                                 <div style={{ display:'flex', gap:6, alignItems:'center', marginTop:3, flexWrap:'wrap' }}>
                                   {acct.generatedAccount && <span style={{ fontSize:10, color:acct.generatedAccount.paymentStatus==='paid'?'#059669':'#C2410C', fontWeight:900, display:'flex', alignItems:'center', gap:3, background:acct.generatedAccount.paymentStatus==='paid'?'#ECFDF5':'#FFEDD5', borderRadius:6, padding:'1px 7px' }}>
                                     <KeyRound size={10} /> {acct.generatedAccount.paymentStatus==='paid'?'결제 완료':'생성만 완료'}
@@ -2004,20 +2005,32 @@ export default function ManagePage() {
                                   </div>
                                 )}
                               </div>
-                              <div style={{ textAlign:'right', flexShrink:0 }}>
-                                <div style={{ fontSize:13, fontWeight:700, color:'#A78BFA' }}>{fmtMoney(acct.totalIncome)}</div>
-                                {acct.totalRealizedIncome > 0 && <div style={{ fontSize:10, color:'#059669', marginTop:1 }}>정산누적 {fmtMoney(acct.totalRealizedIncome)}</div>}
-                              </div>
-                              <button type="button" onClick={(e) => { e.stopPropagation(); hideAccountFromManagement(acct); }} disabled={hiddenAccountLoadingKey === hiddenAccountKey(acct)} title="계정을 삭제하지 않고 계정 관리·메꾸기·수익에서 숨김"
-                                style={{ border:'none', borderRadius:999, padding:'6px 8px', background:hiddenAccountLoadingKey === hiddenAccountKey(acct)?'#D1D5DB':'#F3F4F6', color:'#6B7280', fontSize:10, fontWeight:900, cursor:hiddenAccountLoadingKey === hiddenAccountKey(acct)?'not-allowed':'pointer', display:'flex', alignItems:'center', gap:4, flexShrink:0 }}>
-                                {hiddenAccountLoadingKey === hiddenAccountKey(acct) ? <Loader2 size={11} style={{ animation:'spin 1s linear infinite' }} /> : <EyeOff size={11} />}
-                                숨김
+                            </div>
+
+                            <dl className="management-account-metrics">
+                              <div><dt>사용 / 슬롯</dt><dd>{filledSlots} / {totalSlots}</dd></div>
+                              <div><dt>만료일</dt><dd>{acct.expiryDate ? fmtDate(acct.expiryDate) : '-'}</dd></div>
+                              <div><dt>예상 매출</dt><dd>{fmtMoney(acct.totalIncome)}</dd></div>
+                              <div><dt>카드 · 갱신일</dt><dd>{paymentCardSummary.replace('결제 카드: ', '')}{isNetflixManagementService(acct.serviceType) && renewalDaySummary ? ` · ${renewalDaySummary}` : ''}</dd></div>
+                            </dl>
+
+                            <div className="management-account-actions">
+                              <button type="button" className="management-touch-target management-primary-action" onClick={() => {
+                                setOpenAccount(isAcctOpen ? null : acctKey);
+                                if (!isAcctOpen) void loadExistingPinForAccount(acct);
+                              }} aria-expanded={isAcctOpen} aria-controls={accountPanelId}>
+                                {isAcctOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />} {isAcctOpen ? '상세 닫기' : '상세보기 · PIN'}
                               </button>
-                              {isAcctOpen ? <ChevronDown size={13} color="#C4B5FD" /> : <ChevronRight size={13} color="#C4B5FD" />}
-                            </button>
+                              {vi.unfilled > 0 && <button type="button" className="management-touch-target" disabled={isGeneratedPending} title={isGeneratedPending ? '티빙·웨이브 가입/결제 후 게시글 작성이 가능해요.' : fillActionLabel} onClick={() => void openFillModalForAccount(acct, vi)}><PlusCircle size={14} /> {fillActionLabel}</button>}
+                              <button type="button" className="management-touch-target" disabled={!emailAliasId} onClick={() => openEmailDashboardForAccount(acct)} title={emailAliasId ? '이메일 대시보드 새 탭 열기' : '연결된 이메일 alias 없음'}><Mail size={14} /> 이메일</button>
+                              <button type="button" className="management-touch-target" disabled={noticeEligibleMembers(acct).length === 0} onClick={() => openNoticeModalForAccount(acct)}><Megaphone size={14} /> 공지</button>
+                              <button type="button" className="management-touch-target" onClick={() => hideAccountFromManagement(acct)} disabled={hiddenAccountLoadingKey === hiddenAccountKey(acct)} title="계정을 삭제하지 않고 계정 관리·메꾸기·수익에서 숨김">
+                                {hiddenAccountLoadingKey === hiddenAccountKey(acct) ? <Loader2 size={14} style={{ animation:'spin 1s linear infinite' }} /> : <EyeOff size={14} />} 숨김
+                              </button>
+                            </div>
 
                             {isAcctOpen && (
-                              <div style={{ borderTop:'1px solid #EDE9FE', padding:'8px 14px' }}>
+                              <div id={accountPanelId} role="region" aria-label={`${displayAccountEmail} 상세 관리`} className="management-account-details">
 
                                 <div style={{ background:'#FFFFFF', border:'1.5px solid #C7D2FE', borderRadius:14, padding:12, marginBottom:10 }}>
                                   <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, marginBottom:8 }}>
@@ -2041,6 +2054,24 @@ export default function ManagePage() {
                                       <input value={paymentCardDraft.last4} maxLength={4} inputMode="numeric" pattern="[0-9]{4}" autoComplete="off" onChange={(e) => updatePaymentCardDraft(acct, { last4: e.target.value.replace(/\D/g, '').slice(0, 4) })} placeholder="1234" style={{ border:'1px solid #EDE9FE', borderRadius:10, padding:'8px 10px', fontSize:11, fontWeight:800, color:'#1E1B4B', fontFamily:'inherit', minWidth:0 }} />
                                     </label>
                                   </div>
+                                  {isNetflixManagementService(acct.serviceType) && (
+                                    <label style={{ display:'grid', gap:4, maxWidth:180, marginTop:9, fontSize:9, color:'#6B7280', fontWeight:900 }}>
+                                      구독 갱신일
+                                      <input
+                                        type="number"
+                                        min={1}
+                                        max={31}
+                                        step={1}
+                                        inputMode="numeric"
+                                        value={paymentCardDraft.renewalDay}
+                                        onChange={(e) => updatePaymentCardDraft(acct, { renewalDay: e.target.value })}
+                                        placeholder="1~31"
+                                        aria-label="구독 갱신일"
+                                        style={{ border:'1px solid #EDE9FE', borderRadius:10, padding:'8px 10px', fontSize:11, fontWeight:800, color:'#1E1B4B', fontFamily:'inherit', minWidth:0 }}
+                                      />
+                                      <span style={{ fontSize:9, color:'#9CA3AF', fontWeight:600 }}>넷플릭스 결제 기준일 (매월 1~31일)</span>
+                                    </label>
+                                  )}
                                   <div style={{ display:'flex', justifyContent:'flex-end', gap:7, marginTop:9 }}>
                                     <button type="button" onClick={() => clearPaymentCard(acct)} disabled={!acct.paymentCard || paymentCardLoadingKey === credentialKey} style={{ border:'none', borderRadius:999, padding:'7px 10px', background:'#F3F4F6', color:acct.paymentCard?'#B91C1C':'#9CA3AF', fontSize:10, fontWeight:900, cursor:acct.paymentCard?'pointer':'not-allowed' }}>지우기</button>
                                     <button type="button" onClick={() => savePaymentCard(acct, paymentCardDraft)} disabled={paymentCardLoadingKey === credentialKey} style={{ border:'none', borderRadius:999, padding:'7px 12px', background:paymentCardLoadingKey === credentialKey?'#C4B5FD':'#4F46E5', color:'#fff', fontSize:10, fontWeight:900, cursor:paymentCardLoadingKey === credentialKey?'not-allowed':'pointer' }}>
@@ -2347,28 +2378,15 @@ export default function ManagePage() {
                                   <UserPlus size={14} /> 수동 파티원 추가
                                 </button>
 
-                                {/* 메꾸기 버튼 — 빈자리 있고 모집 게시물 부족할 때 */}
-                                {vi.unfilled > 0 && (
-                                  <button disabled={isGeneratedPending} title={isGeneratedPending ? '티빙·웨이브 가입/결제 후 Y를 누르면 게시글 작성이 열려요.' : (acct.generatedAccount ? '생성계정 게시글 작성' : '빈자리 메꾸기')} onClick={async (e) => {
-                                    e.stopPropagation();
-                                    await openFillModalForAccount(acct, vi);
-                                  }} style={{
-                                    width: '100%', marginTop: 8, padding: '10px 14px', borderRadius: 10,
-                                    background: isGeneratedPending ? '#F3F4F6' : '#FFF0F0', border: `1.5px solid ${isGeneratedPending ? '#E5E7EB' : '#FCA5A5'}`,
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                                    cursor: isGeneratedPending ? 'not-allowed' : 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 700, color: isGeneratedPending ? '#9CA3AF' : '#EF4444',
-                                  }}>
-                                    <PlusCircle size={14} /> {fillActionLabel}
-                                  </button>
-                                )}
+
                               </div>
                             )}
-                          </div>
+                          </article>
                         );
                       })}
                     </div>
                   )}
-                </div>
+                </section>
               );
             })}
           </div>

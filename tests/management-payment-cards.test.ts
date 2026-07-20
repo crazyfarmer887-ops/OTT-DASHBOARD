@@ -60,6 +60,38 @@ describe('management payment-card metadata helper and store', () => {
     expect(() => normalizeManagementPaymentCardInput({ ...base, cardIssuer: '가'.repeat(61), last4: '1234' })).toThrow(/cardIssuer/);
   });
 
+  it('accepts an integer Netflix renewal day from 1 through 31 without requiring card metadata', async () => {
+    const { normalizeManagementPaymentCardInput } = await import('../src/lib/management-payment-cards.ts');
+
+    expect(normalizeManagementPaymentCardInput({
+      serviceType: ' 넷플릭스 ',
+      accountEmail: ' Owner@Example.COM ',
+      renewalDay: 17,
+    }, '2026-07-16T00:00:00.000Z')).toEqual({
+      serviceType: '넷플릭스',
+      accountEmail: 'owner@example.com',
+      renewalDay: 17,
+      updatedAt: '2026-07-16T00:00:00.000Z',
+    });
+  });
+
+  it('rejects unsafe renewal days and renewal metadata for non-Netflix services', async () => {
+    const { normalizeManagementPaymentCardInput } = await import('../src/lib/management-payment-cards.ts');
+    const netflix = { serviceType: '넷플릭스', accountEmail: 'owner@example.com', label: '업무카드' };
+
+    for (const renewalDay of [0, 32, 1.5, '17', true]) {
+      expect(() => normalizeManagementPaymentCardInput({ ...netflix, renewalDay })).toThrow(/renewalDay/);
+    }
+    expect(() => normalizeManagementPaymentCardInput({
+      serviceType: '디즈니 플러스', accountEmail: 'owner@example.com', label: '업무카드', renewalDay: 17,
+    })).toThrow(/Netflix|넷플릭스|serviceType/);
+
+    // Existing payment-card payloads for every service remain valid.
+    expect(normalizeManagementPaymentCardInput({
+      serviceType: '디즈니 플러스', accountEmail: 'owner@example.com', label: '업무카드', last4: '1234',
+    })).toMatchObject({ serviceType: '디즈니 플러스', label: '업무카드', last4: '1234' });
+  });
+
   it('atomically upserts and deletes a 0600 local JSON store without retaining sensitive fields', async () => {
     const { deleteManagementPaymentCard, loadManagementPaymentCards, upsertManagementPaymentCard } = await import('../src/lib/management-payment-cards.ts');
     const path = process.env.MANAGEMENT_PAYMENT_CARDS_PATH!;
@@ -131,6 +163,24 @@ describe('management payment-card metadata helper and store', () => {
     expect(result.services[0].accounts[0].paymentCard).toMatchObject({ label: '현대카드', last4: '1234' });
     expect(result.services[0].accounts[1]).toMatchObject({ archivedAccount: true, paymentCard: { serviceType: '넷플릭스', accountEmail: 'archived@example.com', label: '업무카드', cardIssuer: '신한', last4: '9876', updatedAt: 'now' } });
   });
+
+  it('round-trips and merges a Netflix renewal-only record while loading legacy card records', async () => {
+    const { loadManagementPaymentCards, mergeManagementPaymentCards, upsertManagementPaymentCard } = await import('../src/lib/management-payment-cards.ts');
+    const path = process.env.MANAGEMENT_PAYMENT_CARDS_PATH!;
+    writeFileSync(path, JSON.stringify({ cards: {
+      legacy: { serviceType: '넷플릭스', accountEmail: 'legacy@example.com', label: '기존 카드', updatedAt: 'before' },
+    } }), 'utf8');
+
+    upsertManagementPaymentCard({ serviceType: '넷플릭스', accountEmail: 'renewal@example.com', renewalDay: 31 }, '2026-07-16T00:00:00.000Z');
+    const cards = loadManagementPaymentCards();
+    expect(cards['넷플릭스:legacy@example.com']).toMatchObject({ label: '기존 카드' });
+    expect(cards['넷플릭스:renewal@example.com']).toMatchObject({ renewalDay: 31 });
+
+    const result = mergeManagementPaymentCards({ services: [{ serviceType: '넷플릭스', accounts: [
+      { email: 'renewal@example.com', serviceType: '넷플릭스' },
+    ] }] }, cards);
+    expect(result.services?.[0].accounts?.[0].paymentCard).toMatchObject({ renewalDay: 31 });
+  });
 });
 
 describe('management payment-card admin API', () => {
@@ -182,6 +232,34 @@ describe('management payment-card admin API', () => {
     });
     expect(remove.status).toBe(200);
     expect(await remove.json()).toMatchObject({ ok: true, deleted: true, cards: [] });
+  });
+
+  it('saves and lists a renewal-only Netflix record and rejects invalid service/range API payloads', async () => {
+    const app = (await import('../src/api/index.ts')).default;
+    await seedManagedAccounts([
+      { serviceType: '넷플릭스', email: 'netflix@example.com' },
+      { serviceType: '디즈니 플러스', email: 'disney@example.com' },
+    ]);
+    const headers = { 'content-type': 'application/json', 'x-admin-token': 'test-admin-token' };
+
+    const save = await app.request('/api/management-payment-cards', {
+      method: 'PUT', headers,
+      body: JSON.stringify({ serviceType: '넷플릭스', accountEmail: 'netflix@example.com', renewalDay: 23 }),
+    });
+    expect(save.status).toBe(200);
+    expect(await save.json()).toMatchObject({ ok: true, card: { renewalDay: 23 } });
+
+    const list = await app.request('/api/management-payment-cards', { headers: { 'x-admin-token': 'test-admin-token' } });
+    expect(await list.json()).toMatchObject({ cards: [expect.objectContaining({ renewalDay: 23 })] });
+
+    for (const payload of [
+      { serviceType: '넷플릭스', accountEmail: 'netflix@example.com', renewalDay: 0 },
+      { serviceType: '넷플릭스', accountEmail: 'netflix@example.com', renewalDay: 32 },
+      { serviceType: '디즈니 플러스', accountEmail: 'disney@example.com', label: '기존 카드', renewalDay: 10 },
+    ]) {
+      const response = await app.request('/api/management-payment-cards', { method: 'PUT', headers, body: JSON.stringify(payload) });
+      expect(response.status).toBe(400);
+    }
   });
 
   it('rejects unknown or typo account keys, empty metadata, and deletion of a missing card', async () => {

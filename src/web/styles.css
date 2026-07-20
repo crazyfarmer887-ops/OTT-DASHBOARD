@@ -97,3 +97,274 @@ body {
   max-width: 100% !important;
   margin: 0 !important;
 }
+
+/* 계정 관리: 넓은 화면에서도 카드 단위로 빠르게 훑을 수 있는 반응형 레이아웃 */
+#root:has(.account-management-page) {
+  max-width: 1440px;
+}
+
+.account-management-page {
+  width: 100%;
+  padding: 20px clamp(12px, 2vw, 28px) 0;
+  margin-inline: auto;
+}
+
+.account-management-page :focus-visible {
+  outline: 3px solid #2563EB;
+  outline-offset: 3px;
+  box-shadow: 0 0 0 5px #DBEAFE;
+}
+
+.management-service-group {
+  overflow: hidden;
+  background: var(--surface-raised);
+  border: 1.5px solid var(--border);
+  border-radius: 18px;
+  box-shadow: var(--shadow-card);
+}
+
+.management-service-toggle {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+.management-service-toggle:focus-visible {
+  outline-offset: -4px;
+  box-shadow: inset 0 0 0 3px #2563EB;
+}
+
+.management-service-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-right: 12px;
+}
+
+.management-service-fill {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 8px 11px;
+  border: 0;
+  border-radius: 999px;
+  background: #BE123C;
+  color: #fff;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.management-service-fill:disabled {
+  cursor: not-allowed;
+  opacity: .55;
+}
+
+.management-account-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  padding: 14px;
+  border-top: 1px solid var(--border);
+  align-items: start;
+}
+
+.management-account-card {
+  min-width: 0;
+  overflow: hidden;
+  background: var(--surface-raised);
+  border: 1px solid #DDD6FE;
+  border-radius: 16px;
+  box-shadow: 0 4px 16px rgba(30, 27, 75, 0.07);
+}
+
+.management-account-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 14px 14px 8px;
+  min-width: 0;
+}
+
+.management-account-logo {
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 11px;
+}
+
+.management-account-logo img {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+}
+
+.management-account-email {
+  min-width: 0;
+  color: var(--foreground);
+  font-size: 12px;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.management-account-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  margin: 4px 14px 12px;
+  padding: 1px;
+  overflow: hidden;
+  background: #EDE9FE;
+  border-radius: 12px;
+}
+
+.management-account-metrics > div {
+  min-width: 0;
+  padding: 9px 10px;
+  background: #F8F6FF;
+}
+
+.management-account-metrics dt {
+  margin-bottom: 3px;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.management-account-metrics dd {
+  margin: 0;
+  color: var(--foreground);
+  font-size: 12px;
+  font-weight: 900;
+  overflow-wrap: anywhere;
+}
+
+.management-account-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+  padding: 0 14px 14px;
+}
+
+.management-account-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid #DDD6FE;
+  border-radius: 10px;
+  background: #F8F6FF;
+  color: #4F46E5;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+.management-account-actions .management-primary-action {
+  grid-column: span 2;
+  background: #4F46E5;
+  border-color: #4F46E5;
+  color: #fff;
+}
+
+.management-account-actions button:disabled {
+  cursor: not-allowed;
+  opacity: .48;
+}
+
+.management-touch-target,
+.management-account-details button,
+.management-account-details input,
+.management-account-details select,
+.management-account-details textarea {
+  min-height: 44px;
+}
+
+.management-account-details {
+  min-width: 0;
+  padding: 12px 14px 14px;
+  overflow: hidden;
+  border-top: 1px solid #EDE9FE;
+  background: #F8F6FF;
+}
+
+.management-account-details input,
+.management-account-details select,
+.management-account-details textarea {
+  max-width: 100%;
+}
+
+@media (max-width: 1100px) {
+  .management-account-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .management-account-details [style*="grid-template-columns"] {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
+
+@media (max-width: 700px) {
+  .account-management-page {
+    padding-inline: 12px;
+  }
+
+  .management-account-grid {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 10px;
+  }
+
+  .management-service-header {
+    align-items: stretch;
+    flex-direction: column;
+    padding-right: 0;
+  }
+
+  .management-service-fill {
+    margin: 0 12px 12px;
+    border-radius: 10px;
+  }
+}
+
+/* 320px 폭은 브라우저 400% 확대 시의 대표적인 reflow 검증 폭이다. */
+@media (max-width: 320px) {
+  .account-management-page {
+    padding-inline: 8px;
+  }
+
+  .management-account-header {
+    flex-wrap: wrap;
+    padding-inline: 10px;
+  }
+
+  .management-account-metrics,
+  .management-account-actions {
+    grid-template-columns: minmax(0, 1fr);
+    margin-inline: 10px;
+    padding-inline: 0;
+  }
+
+  .management-account-actions .management-primary-action {
+    grid-column: auto;
+  }
+}

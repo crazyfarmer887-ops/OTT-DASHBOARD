@@ -10,6 +10,7 @@ export interface ManagementPaymentCard {
   label?: string;
   cardIssuer?: string;
   last4?: string;
+  renewalDay?: number;
   updatedAt: string;
 }
 
@@ -25,6 +26,11 @@ export function managementPaymentCardsPath(): string {
 
 export function normalizeManagementPaymentCardService(value: unknown): string {
   return String(value || '').trim().toLowerCase().replace(/\s+/g, '');
+}
+
+export function isNetflixManagementPaymentCardService(value: unknown): boolean {
+  const normalized = normalizeManagementPaymentCardService(value);
+  return normalized === '넷플릭스' || normalized === 'netflix';
 }
 
 export function normalizeManagementPaymentCardAccount(value: unknown): string {
@@ -76,7 +82,20 @@ export function normalizeManagementPaymentCardInput(input: Record<string, unknow
   const cardIssuer = normalizeLimitedText(input?.cardIssuer, 'cardIssuer');
   const rawLast4 = String(input?.last4 || '').trim();
   if (rawLast4 && !/^\d{4}$/.test(rawLast4)) throw new Error('last4 must be exactly 4 digits');
-  if (!label && !cardIssuer && !rawLast4) throw new Error('at least one of label/cardIssuer/last4 is required');
+  const hasRenewalDay = input?.renewalDay !== undefined && input?.renewalDay !== null && input?.renewalDay !== '';
+  let renewalDay: number | undefined;
+  if (hasRenewalDay) {
+    if (!Number.isInteger(input.renewalDay) || Number(input.renewalDay) < 1 || Number(input.renewalDay) > 31) {
+      throw new Error('renewalDay must be an integer from 1 through 31');
+    }
+    if (!isNetflixManagementPaymentCardService(serviceType)) {
+      throw new Error('renewalDay is supported only for Netflix serviceType');
+    }
+    renewalDay = Number(input.renewalDay);
+  }
+  if (!label && !cardIssuer && !rawLast4 && renewalDay === undefined) {
+    throw new Error('at least one of label/cardIssuer/last4/renewalDay is required');
+  }
 
   return {
     serviceType,
@@ -84,6 +103,7 @@ export function normalizeManagementPaymentCardInput(input: Record<string, unknow
     ...(label ? { label } : {}),
     ...(cardIssuer ? { cardIssuer } : {}),
     ...(rawLast4 ? { last4: rawLast4 } : {}),
+    ...(renewalDay !== undefined ? { renewalDay } : {}),
     updatedAt: String(now),
   };
 }

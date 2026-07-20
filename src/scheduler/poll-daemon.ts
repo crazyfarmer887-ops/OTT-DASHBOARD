@@ -1,5 +1,5 @@
 // ─── 구매 감지 폴링 데몬 ──────────────────────────────────────
-import { existsSync, readFileSync, writeFileSync, mkdirSync, statSync } from 'node:fs';
+import { closeSync, existsSync, openSync, readFileSync, writeFileSync, mkdirSync, statSync, renameSync, rmSync } from 'node:fs';
 import { sendSellerAlert } from '../alerts/telegram';
 import { extractGraytagChats, findLatestBuyerInquiryMessage, type GraytagChatMessage } from '../api/chat-message-summary';
 import { messageFingerprint, normalizeBuyerMessage, type AutoReplyCandidateMessage } from '../api/auto-reply-message';
@@ -11,6 +11,10 @@ const KNOWN_DEALS_PATH = '/home/ubuntu/.hermes/hermes-agent/graytag-aio-manager-
 const KNOWN_CHAT_MESSAGES_PATH = '/home/ubuntu/.hermes/hermes-agent/graytag-aio-manager-0606/data/known-chat-messages.json';
 const POLL_DAEMON_STATUS_PATH = '/home/ubuntu/.hermes/hermes-agent/graytag-aio-manager-0606/data/poll-daemon-status.json';
 const POLL_FAILURE_ALERT_THRESHOLD = Number(process.env.POLL_FAILURE_ALERT_THRESHOLD || 3);
+const DEFAULT_CHAT_ALERT_MAX_AGE_MS = 15 * 60 * 1000;
+const DEFAULT_PURCHASE_FIRST_SEEN_MAX_AGE_MS = 30 * 60 * 1000;
+const DEFAULT_FUTURE_CLOCK_SKEW_MS = 2 * 60 * 1000;
+const POLL_DAEMON_LOCK_PATH = '/home/ubuntu/.hermes/hermes-agent/graytag-aio-manager-0606/data/poll-daemon.lock';
 
 export function isPollSessionAlertEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
   return !['0', 'false', 'no', 'off'].includes(String(env.POLL_SESSION_ALERTS_ENABLED ?? 'true').trim().toLowerCase());
@@ -62,12 +66,26 @@ function loadKnownDeals(): Record<string, string> {
   } catch { return {}; }
 }
 
-function saveKnownDeals(d: Record<string, string>) {
+function saveRecordStateAtomically(path: string, d: Record<string, string>): boolean {
+  const tempPath = `${path}.${process.pid}.${Date.now()}.tmp`;
   try {
-    const dir = KNOWN_DEALS_PATH.replace(/\/[^/]+$/, '');
+    const dir = path.replace(/\/[^/]+$/, '');
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-    writeFileSync(KNOWN_DEALS_PATH, JSON.stringify(d, null, 2), 'utf8');
-  } catch {}
+    writeFileSync(tempPath, JSON.stringify(d, null, 2), { encoding: 'utf8', mode: 0o600 });
+    renameSync(tempPath, path);
+    return true;
+  } catch {
+    try { rmSync(tempPath, { force: true }); } catch {}
+    return false;
+  }
+}
+
+export function saveKnownDealsAtomically(path: string, d: Record<string, string>): boolean {
+  return saveRecordStateAtomically(path, d);
+}
+
+function saveKnownDeals(d: Record<string, string>): boolean {
+  return saveKnownDealsAtomically(KNOWN_DEALS_PATH, d);
 }
 
 function loadKnownChatMessages(): Record<string, string> {
@@ -78,12 +96,12 @@ function loadKnownChatMessages(): Record<string, string> {
   } catch { return {}; }
 }
 
-function saveKnownChatMessages(d: Record<string, string>) {
-  try {
-    const dir = KNOWN_CHAT_MESSAGES_PATH.replace(/\/[^/]+$/, '');
-    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-    writeFileSync(KNOWN_CHAT_MESSAGES_PATH, JSON.stringify(d, null, 2), 'utf8');
-  } catch {}
+export function saveKnownChatMessagesAtomically(path: string, d: Record<string, string>): boolean {
+  return saveRecordStateAtomically(path, d);
+}
+
+function saveKnownChatMessages(d: Record<string, string>): boolean {
+  return saveKnownChatMessagesAtomically(KNOWN_CHAT_MESSAGES_PATH, d);
 }
 
 export interface PollChatDeal {
@@ -96,6 +114,12 @@ export interface PollChatDeal {
   keepAcct?: string;
   productKeepAcctYn?: boolean;
   dealStatus?: string;
+  startDateTime?: string;
+  deliveredDateTime?: string;
+  createdDateTime?: string;
+  registeredDateTime?: string;
+  dealRegisteredDateTime?: string;
+  updatedAt?: string;
   lenderChatUnread?: boolean;
   dealDetail?: { lenderChatUnread?: boolean; chatRoomUuid?: string };
 }
@@ -112,29 +136,46 @@ function isFirstSeenPurchaseStatus(status: string): boolean {
   return ['Delivered', 'ExtensionWaiting', 'OccupationWaiting'].includes(status);
 }
 
-export function buildNewDealStatusAlerts(deals: PollChatDeal[], known: Record<string, string>): { updated: Record<string, string>; alerts: string[] } {
+export function buildNewDealStatusAlerts(
+  deals: PollChatDeal[],
+  known: Record<string, string>,
+  options: { nowMs?: number; firstSeenMaxAgeMs?: number; futureClockSkewMs?: number; env?: NodeJS.ProcessEnv } = {},
+): { updated: Record<string, string>; alerts: string[] } {
   const updated: Record<string, string> = { ...known };
   const alerts: string[] = [];
+  const nowMs = options.nowMs ?? Date.now();
+  const firstSeenMaxAgeMs = positiveAgeMs(
+    options.firstSeenMaxAgeMs ?? options.env?.POLL_PURCHASE_FIRST_SEEN_MAX_AGE_MS ?? process.env.POLL_PURCHASE_FIRST_SEEN_MAX_AGE_MS,
+    DEFAULT_PURCHASE_FIRST_SEEN_MAX_AGE_MS,
+  );
+  const futureClockSkewMs = nonNegativeMs(
+    options.futureClockSkewMs ?? options.env?.POLL_ALERT_FUTURE_CLOCK_SKEW_MS ?? process.env.POLL_ALERT_FUTURE_CLOCK_SKEW_MS,
+    DEFAULT_FUTURE_CLOCK_SKEW_MS,
+  );
 
   for (const deal of deals) {
     const usid = String(deal.productUsid || '');
     if (!usid) continue;
     const status = String(deal.dealStatus || '');
     const prev = known[usid];
+    const firstSeenEventTime = parseGraytagMessageTime(
+      deal.deliveredDateTime || deal.startDateTime || deal.createdDateTime || deal.registeredDateTime || deal.dealRegisteredDateTime,
+    );
+    const isFreshFirstSeen = isEventWithinWindow(firstSeenEventTime, nowMs, firstSeenMaxAgeMs, futureClockSkewMs);
 
     if (prev === undefined) {
       updated[usid] = status;
-      if (isFirstSeenPurchaseStatus(status) && String(deal.borrowerName || '').trim()) {
+      if (isFreshFirstSeen && isFirstSeenPurchaseStatus(status) && String(deal.borrowerName || '').trim()) {
         alerts.push(buildPurchaseAlertMessage(deal, status));
       }
     } else if (prev !== status) {
       updated[usid] = status;
-      if (prev === 'OnSale' && status !== 'OnSale') {
+      if (prev === 'OnSale' && status !== 'OnSale' && isFreshFirstSeen) {
         alerts.push(buildPurchaseAlertMessage(deal, status));
       }
     }
 
-    if (status === 'ExtensionWaiting' && deal.productKeepAcctYn === false) {
+    if (status === 'ExtensionWaiting' && deal.productKeepAcctYn === false && isFreshFirstSeen) {
       const warnKey = 'ext_warned_' + usid;
       if (!known[warnKey]) {
         updated[warnKey] = 'warned';
@@ -159,10 +200,64 @@ export interface PollChatAlertCandidate {
   timestamp: string;
 }
 
+export function parseGraytagMessageTime(value?: string): number | null {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) return null;
+
+  const dotted = trimmed.match(/^(\d{4})\.(\d{2})\.(\d{2})\s+(\d{2}):(\d{2})$/);
+  if (dotted) {
+    const [, rawYear, rawMonth, rawDay, rawHour, rawMinute] = dotted;
+    const year = Number(rawYear);
+    const month = Number(rawMonth);
+    const day = Number(rawDay);
+    const hour = Number(rawHour);
+    const minute = Number(rawMinute);
+    if (month < 1 || month > 12 || day < 1 || day > 31 || hour > 23 || minute > 59) return null;
+    const utcMs = Date.UTC(year, month - 1, day, hour - 9, minute);
+    const korea = new Date(utcMs + 9 * 60 * 60 * 1000);
+    if (
+      korea.getUTCFullYear() !== year || korea.getUTCMonth() !== month - 1 || korea.getUTCDate() !== day ||
+      korea.getUTCHours() !== hour || korea.getUTCMinutes() !== minute
+    ) return null;
+    return utcMs;
+  }
+
+  const iso = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/);
+  if (!iso) return null;
+  const [, rawYear, rawMonth, rawDay, rawHour, rawMinute, rawSecond] = iso;
+  const year = Number(rawYear);
+  const month = Number(rawMonth);
+  const day = Number(rawDay);
+  const hour = Number(rawHour);
+  const minute = Number(rawMinute);
+  const second = Number(rawSecond);
+  const daysInMonth = month >= 1 && month <= 12 ? new Date(Date.UTC(year, month, 0)).getUTCDate() : 0;
+  if (day < 1 || day > daysInMonth || hour > 23 || minute > 59 || second > 59) return null;
+  const parsed = Date.parse(trimmed);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function positiveAgeMs(value: unknown, fallback: number): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function nonNegativeMs(value: unknown, fallback: number): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
+function isEventWithinWindow(occurredAtMs: number | null, nowMs: number, maxAgeMs: number, futureClockSkewMs: number): boolean {
+  if (occurredAtMs === null) return false;
+  const ageMs = nowMs - occurredAtMs;
+  return ageMs >= -futureClockSkewMs && ageMs <= maxAgeMs;
+}
+
 export function buildNewChatAlertCandidate(
   deal: PollChatDeal,
   message: GraytagChatMessage | undefined,
   known: Record<string, string>,
+  options: { nowMs?: number; maxAgeMs?: number; futureClockSkewMs?: number; env?: NodeJS.ProcessEnv } = {},
 ): PollChatAlertCandidate | null {
   const chatRoomUuid = String(deal.chatRoomUuid || deal.dealDetail?.chatRoomUuid || '').trim();
   if (!chatRoomUuid || !message?.message) return null;
@@ -184,6 +279,19 @@ export function buildNewChatAlertCandidate(
   };
   const fp = messageFingerprint(candidate);
   if (!fp || known[fp]) return null;
+  const timestamp = candidate.registeredDateTime || candidate.createdAt || candidate.updatedAt || '';
+  const occurredAtMs = parseGraytagMessageTime(timestamp);
+  if (occurredAtMs === null) return null;
+  const nowMs = options.nowMs ?? Date.now();
+  const maxAgeMs = positiveAgeMs(
+    options.maxAgeMs ?? options.env?.POLL_CHAT_ALERT_MAX_AGE_MS ?? process.env.POLL_CHAT_ALERT_MAX_AGE_MS,
+    DEFAULT_CHAT_ALERT_MAX_AGE_MS,
+  );
+  const futureClockSkewMs = nonNegativeMs(
+    options.futureClockSkewMs ?? options.env?.POLL_ALERT_FUTURE_CLOCK_SKEW_MS ?? process.env.POLL_ALERT_FUTURE_CLOCK_SKEW_MS,
+    DEFAULT_FUTURE_CLOCK_SKEW_MS,
+  );
+  if (!isEventWithinWindow(occurredAtMs, nowMs, maxAgeMs, futureClockSkewMs)) return null;
   const text = normalizeBuyerMessage(message.message).slice(0, 800);
   if (!text) return null;
   return {
@@ -195,8 +303,37 @@ export function buildNewChatAlertCandidate(
     productName: deal.productName || '',
     keepAcct: deal.keepAcct || '',
     text,
-    timestamp: candidate.registeredDateTime || candidate.createdAt || candidate.updatedAt || new Date().toISOString(),
+    timestamp,
   };
+}
+
+export async function reserveAndSendChatAlert(
+  alert: Pick<PollChatAlertCandidate, 'fingerprint' | 'timestamp'>,
+  known: Record<string, string>,
+  persist: (state: Record<string, string>) => boolean,
+  send: () => Promise<{ sent: boolean }>,
+): Promise<boolean> {
+  known[alert.fingerprint] = alert.timestamp;
+  if (!persist(known)) {
+    delete known[alert.fingerprint];
+    return false;
+  }
+  const result = await send();
+  return result.sent;
+}
+
+export async function persistAndSendDealAlerts(
+  updated: Record<string, string>,
+  persist: (state: Record<string, string>) => boolean,
+  sends: Array<() => Promise<{ sent: boolean }>>,
+): Promise<number> {
+  if (!persist(updated)) throw new Error('failed to persist known deal state');
+  let sent = 0;
+  for (const send of sends) {
+    const result = await send();
+    if (result.sent) sent += 1;
+  }
+  return sent;
 }
 
 function loadPollStatus(): any {
@@ -280,17 +417,16 @@ async function sendNewChatMessageAlerts(deals: PollChatDeal[], headers: Record<s
       const msgJson = await msgResp.json() as any;
       const alert = buildNewChatAlertCandidate(deal, findLatestBuyerInquiryMessage(extractGraytagChats(msgJson)), updated);
       if (!alert) continue;
-      updated[alert.fingerprint] = alert.timestamp;
       const accountLine = alert.keepAcct ? `\n계정: ${alert.keepAcct}` : '';
       const dealLine = alert.dealUsid ? `\nUSID: ${alert.dealUsid}` : '';
-      const result = await sendSellerAlert({
+      const didSend = await reserveAndSendChatAlert(alert, updated, saveKnownChatMessages, () => sendSellerAlert({
         key: `graytag-chat-${alert.fingerprint}`,
         title: '새 문의 도착',
         body: `${alert.productType} · ${alert.borrowerName}${accountLine}${dealLine}\n시간: ${alert.timestamp}\n메시지: ${alert.text}\n바로가기: https://email-verify.one/dashboard/chat?room=${encodeURIComponent(alert.chatRoomUuid)}`,
         category: 'inquiry',
         throttleMs: 0,
-      });
-      if (result.sent) sent += 1;
+      }));
+      if (didSend) sent += 1;
     } catch (e: any) {
       console.warn('[PollDaemon] 채팅 알림 확인 실패:', e?.message || e);
     }
@@ -350,17 +486,17 @@ async function pollGraytag() {
     const known = loadKnownDeals();
     const { updated, alerts } = buildNewDealStatusAlerts(deals, known);
 
-    for (const msg of alerts) {
-      await sendSellerAlert({
+    await persistAndSendDealAlerts(updated, saveKnownDeals, alerts.map((msg) => async () => {
+      const result = await sendSellerAlert({
         key: 'poll-daemon-deal-' + msg.slice(-80),
         title: '계정 구매/판매 이벤트',
         body: msg.replace(/<[^>]+>/g, ''),
         category: 'purchase',
       });
-      console.log('[PollDaemon] 알림 전송:', msg.slice(0, 50));
-    }
+      if (result.sent) console.log('[PollDaemon] 알림 전송:', msg.slice(0, 50));
+      return result;
+    }));
 
-    saveKnownDeals(updated);
     const chatAlertCount = await sendNewChatMessageAlerts(allDealsForChatAlerts, headers);
     if (chatAlertCount > 0) console.log('[PollDaemon] 채팅 알림 전송:', chatAlertCount);
     recordPollSuccess();
@@ -370,11 +506,76 @@ async function pollGraytag() {
   }
 }
 
+export function createSingleFlightRunner(work: () => Promise<void>): () => Promise<boolean> {
+  let running = false;
+  return async () => {
+    if (running) return false;
+    running = true;
+    try {
+      await work();
+      return true;
+    } finally {
+      running = false;
+    }
+  };
+}
+
+export async function runWithExclusivePollLock(
+  lockPath: string,
+  work: () => Promise<void>,
+  options: { nowMs?: number; staleAfterMs?: number } = {},
+): Promise<boolean> {
+  const nowMs = options.nowMs ?? Date.now();
+  const staleAfterMs = positiveAgeMs(options.staleAfterMs, 5 * 60 * 1000);
+  const dir = lockPath.replace(/\/[^/]+$/, '');
+  if (dir && !existsSync(dir)) mkdirSync(dir, { recursive: true });
+
+  const acquire = (): boolean => {
+    try {
+      const fd = openSync(lockPath, 'wx', 0o600);
+      try { writeFileSync(fd, `${process.pid} ${nowMs}\n`, 'utf8'); } finally { closeSync(fd); }
+      return true;
+    } catch (error: any) {
+      if (error?.code !== 'EEXIST') return false;
+      try {
+        const ownerPid = Number.parseInt(readFileSync(lockPath, 'utf8').trim().split(/\s+/)[0] || '', 10);
+        if (Number.isInteger(ownerPid) && ownerPid > 0) {
+          try {
+            process.kill(ownerPid, 0);
+            return false;
+          } catch (ownerError: any) {
+            if (ownerError?.code !== 'ESRCH') return false;
+          }
+        }
+        if (nowMs - statSync(lockPath).mtimeMs <= staleAfterMs) return false;
+        rmSync(lockPath, { force: true });
+        const fd = openSync(lockPath, 'wx', 0o600);
+        try { writeFileSync(fd, `${process.pid} ${nowMs}\n`, 'utf8'); } finally { closeSync(fd); }
+        return true;
+      } catch {
+        return false;
+      }
+    }
+  };
+
+  if (!acquire()) return false;
+  try {
+    await work();
+    return true;
+  } finally {
+    try { rmSync(lockPath, { force: true }); } catch {}
+  }
+}
+
+const runPollGraytagSingleFlight = createSingleFlightRunner(async () => {
+  await runWithExclusivePollLock(POLL_DAEMON_LOCK_PATH, pollGraytag);
+});
+
 export function startPollDaemon(): void {
   setTimeout(async () => {
     console.log('[PollDaemon] 구매 감지 폴링 시작 (30초 간격)');
-    await pollGraytag();
-    setInterval(pollGraytag, POLL_INTERVAL_MS);
+    await runPollGraytagSingleFlight();
+    setInterval(() => { void runPollGraytagSingleFlight(); }, POLL_INTERVAL_MS);
   }, 5000);
   console.log('[PollDaemon] 초기화 완료');
 }
