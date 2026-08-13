@@ -65,8 +65,15 @@ describe('dashboard password session', () => {
     expect(isDashboardHtmlPath('/dashboard')).toBe(true);
     expect(isDashboardHtmlPath('/dashboard/')).toBe(true);
     expect(isDashboardHtmlPath('/dashboard/manage')).toBe(true);
+    expect(isDashboardHtmlPath('/')).toBe(true);
+    expect(isDashboardHtmlPath('/write')).toBe(true);
+    expect(isDashboardHtmlPath('/manage')).toBe(true);
+    expect(isDashboardHtmlPath('/youtube-invites')).toBe(true);
+    expect(isDashboardHtmlPath('/renewals')).toBe(true);
     expect(isDashboardHtmlPath('/dashboard/access/test-token')).toBe(false);
+    expect(isDashboardHtmlPath('/access/test-token')).toBe(false);
     expect(isDashboardHtmlPath('/dashboard/assets/index-abc123.js')).toBe(false);
+    expect(isDashboardHtmlPath('/assets/index-abc123.js')).toBe(false);
     expect(isDashboardHtmlPath('/api/ping')).toBe(false);
   });
 });

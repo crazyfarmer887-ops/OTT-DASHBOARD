@@ -100,7 +100,7 @@ function dashboardLoginHtml(error = ''): string {
 </html>`;
 }
 
-app.post('/dashboard/login', async (c) => {
+async function dashboardLoginHandler(c: any) {
   const configuration = dashboardAuthConfiguration();
   if (!configuration) return dashboardConfigurationErrorResponse();
   const body = await c.req.text();
@@ -119,7 +119,10 @@ app.post('/dashboard/login', async (c) => {
       'cache-control': 'no-store',
     },
   });
-});
+}
+
+app.post('/dashboard/login', dashboardLoginHandler);
+app.post('/login', dashboardLoginHandler);
 
 function partyAccessHtmlResponse(token: string): Response {
   return new Response(buildPartyAccessHtml(token), {

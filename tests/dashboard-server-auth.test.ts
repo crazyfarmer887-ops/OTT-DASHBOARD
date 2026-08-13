@@ -28,7 +28,7 @@ function unsetDashboardAuth() {
 }
 
 describe('dashboard server authentication configuration', () => {
-  test.each(['/dashboard', '/dashboard/manage'])('returns a safe 503 for protected HTML when auth is unconfigured: %s', async (path) => {
+  test.each(['/dashboard', '/dashboard/manage', '/', '/manage', '/youtube-invites', '/renewals'])('returns a safe 503 for protected HTML when auth is unconfigured: %s', async (path) => {
     unsetDashboardAuth();
 
     const response = await app.request(path);
@@ -39,10 +39,10 @@ describe('dashboard server authentication configuration', () => {
     expect(body).toBe('Dashboard authentication is not configured.');
   });
 
-  test('returns a safe 503 for login and does not accept any fallback password', async () => {
+  test.each(['/dashboard/login', '/login'])('returns a safe 503 for login and does not accept any fallback password: %s', async (path) => {
     unsetDashboardAuth();
 
-    const response = await app.request('/dashboard/login', {
+    const response = await app.request(path, {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
       body: 'password=any-fallback-attempt',

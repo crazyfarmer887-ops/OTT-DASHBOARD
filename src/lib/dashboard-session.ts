@@ -103,10 +103,15 @@ export function verifyDashboardSessionCookie(
 export function isDashboardHtmlPath(pathname: string): boolean {
   if (pathname === '/dashboard' || pathname === '/dashboard/') return true;
   if (pathname === '/dashboard/access' || pathname.startsWith('/dashboard/access/')) return false;
-  if (!pathname.startsWith('/dashboard/')) return false;
   if (pathname.startsWith('/dashboard/assets/')) return false;
-  const last = pathname.split('/').pop() || '';
-  return !last.includes('.');
+  if (pathname.startsWith('/dashboard/')) {
+    const last = pathname.split('/').pop() || '';
+    return !last.includes('.');
+  }
+  // Nginx proxies /dashboard/ with a trailing-slash proxy_pass, which strips
+  // the prefix before the request reaches this server. Keep these canonical
+  // SPA routes protected without capturing unrelated root services/assets.
+  return new Set(['/', '/write', '/manage', '/youtube-invites', '/renewals']).has(pathname);
 }
 
 export function dashboardSessionCookie(token: string, maxAgeSeconds = Math.floor(DASHBOARD_SESSION_TTL_MS / 1000), secure = false): string {
