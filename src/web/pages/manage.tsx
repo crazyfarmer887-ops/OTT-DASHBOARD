@@ -1,18 +1,23 @@
 import { useState, useEffect } from "react";
+import { useLocation } from "wouter";
+import QuickAccountCreatedModal from "../components/quick-account-created-modal";
+import { findQuickPostAccount, type QuickGeneratedAccount } from "../lib/quick-generated-account-flow";
 import { CATEGORIES } from "../lib/constants";
 import { buildAccountSlotStates, calculateAccountVacancy, canAccountReceiveAutoFill, mergeRecruitingProducts, type SlotState } from "../lib/account-slots";
 import { removeRecruitingProductFromManageData } from "../lib/manage-optimistic";
 import { assertAutoDeliveryInput, buildAutoFillDeliveryMemo, buildFillPartyAccessMember, buildFillProductModel, findExactPasswordForAccount, GRAYTAG_ACCESS_NOTICE_ID, GRAYTAG_ACCESS_NOTICE_PW, requireExactAliasMemoForAutoFill } from "../../lib/graytag-fill";
 import { generateProfileNickname, generateUniqueProfileNicknames, isValidProfileNickname, normalizeProfileNickname, stableRandomFromSeed } from "../../lib/profile-nickname";
 import { generateMaintenancePassword, type PartyMaintenanceChecklistStore } from "../../lib/party-maintenance-checklist";
-import { getGeneratedAccountCreationCopy } from "../../lib/generated-accounts";
+import { getGeneratedAccountCreationCopy, mergeGeneratedAccountsIntoManagement, reconcileGeneratedAccountInManagement, type GeneratedAccount } from "../../lib/generated-accounts";
 import { resolveDoublePassBundleNo } from "../../lib/tving-wavve-bundle";
 import { buildPartyAccessDeliveryTemplate, PARTY_ACCESS_URL_PLACEHOLDER } from "../../lib/party-access-template";
 import { makeDefaultProductDescription, makeDefaultProductTitle } from "../../lib/write-default-template";
 import { parseJsonResponse } from "../lib/fetch-json";
 import { buildWithdrawnPartyMembers, GRAYTAG_CANCEL_COUNTING_START_DATE } from "../lib/withdrawn-party-members";
 import { getAdminToken } from "../lib/admin-auth";
-import { RefreshCw, KeyRound, Mail, ChevronDown, ChevronRight, TrendingUp, Loader2, AlertCircle, ExternalLink, Calendar, UserX, Megaphone, PlusCircle, X, UserPlus, Trash2, Wifi, WifiOff, Eye, EyeOff } from "lucide-react";
+import { getVisibleManagementAccounts, type FilterMode } from "../lib/management-account-order";
+import { buildYouTubeFamilyGroupCreateBody, buildYouTubeFamilyGroupPatchBody, parseYouTubeFamilyGroupsResponse, partitionYouTubeManagementServices, validateYouTubeFamilyGroupDraft, type YouTubeFamilyGroupDraft, type YouTubeFamilyGroupDto } from "../lib/youtube-family-groups";
+import { RefreshCw, KeyRound, Mail, ChevronDown, ChevronRight, TrendingUp, Loader2, AlertCircle, ExternalLink, Calendar, UserX, Megaphone, PlusCircle, X, UserPlus, Trash2, Wifi, WifiOff, Eye, EyeOff, Youtube, Pencil, Users } from "lucide-react";
 
 interface OnSaleProduct {
   productUsid: string; productName: string; productType: string;
@@ -156,8 +161,6 @@ interface ManualMember {
 
 const SOURCE_PRESETS = ['당근마켓', '에브리타임', '지인소개', '번개장터', '카카오톡', '네이버카페', '인스타그램', '기타'];
 
-type FilterMode = 'using'|'active'|'all';
-
 type NoticeTemplate = { id: string; name: string; message: string; custom?: boolean };
 const GLOBAL_NOTICE_TEMPLATE_STORAGE_KEY = 'graytag_global_notice_templates_v1';
 const DEFAULT_NOTICE_TEMPLATES: NoticeTemplate[] = [
@@ -191,6 +194,7 @@ const saveCustomNoticeTemplates = (templates: NoticeTemplate[]) => {
 };
 
 export default function ManagePage() {
+  const [, navigate] = useLocation();
   const cookies = loadCookies();
   const [selectedId, setSelectedId] = useState(cookies[0]?.id||'');
   const [data, setData] = useState<ManageData|null>(null);
@@ -198,7 +202,7 @@ export default function ManagePage() {
   const [error, setError] = useState<string|null>(null);
   const [openService, setOpenService] = useState<string|null>(null);
   const [openAccount, setOpenAccount] = useState<string|null>(null);
-  const [filter, setFilter] = useState<FilterMode>('using');
+  const [filter, setFilter] = useState<FilterMode>('unpaid');
 
   // 메꾸기 모달
   const [fillModal, setFillModal] = useState<FillModalState | null>(null);
@@ -239,7 +243,11 @@ export default function ManagePage() {
   const [accountCreateService, setAccountCreateService] = useState('티빙+웨이브');
   const [accountCreatePrefix, setAccountCreatePrefix] = useState('');
   const [accountCreateLoading, setAccountCreateLoading] = useState(false);
+  const [accountCreateStage, setAccountCreateStage] = useState('');
   const [accountCreateResult, setAccountCreateResult] = useState<string | null>(null);
+  const [quickCreatedAccount, setQuickCreatedAccount] = useState<QuickGeneratedAccount | null>(null);
+  const [quickPaymentLoading, setQuickPaymentLoading] = useState(false);
+  const [quickPaymentError, setQuickPaymentError] = useState('');
   const accountCreateCopy = getGeneratedAccountCreationCopy(accountCreateService);
   const [emailAliases, setEmailAliases] = useState<EmailAlias[]>([]);
   const [hiddenAccounts, setHiddenAccounts] = useState<ManagementHiddenAccount[]>([]);
@@ -265,6 +273,14 @@ export default function ManagePage() {
   const [noticeResult, setNoticeResult] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; tone: 'success' | 'error' | 'info'; id: number } | null>(null);
   const [cancelledRecentOpen, setCancelledRecentOpen] = useState(false);
+  const [youtubeFamilyGroups, setYouTubeFamilyGroups] = useState<YouTubeFamilyGroupDto[]>([]);
+  const [youtubeGroupsLoading, setYouTubeGroupsLoading] = useState(true);
+  const [youtubeGroupsError, setYouTubeGroupsError] = useState<string | null>(null);
+  const [youtubeGroupsFeatureEnabled, setYouTubeGroupsFeatureEnabled] = useState<boolean | null>(null);
+  const [youtubeGroupForm, setYouTubeGroupForm] = useState<{ mode: 'create' | 'edit'; group?: YouTubeFamilyGroupDto } | null>(null);
+  const [youtubeGroupDraft, setYouTubeGroupDraft] = useState<YouTubeFamilyGroupDraft>({ label: '', managerEmail: '', subscriptionEndDate: '', sellableSeats: '5' });
+  const [youtubeGroupFormError, setYouTubeGroupFormError] = useState<string | null>(null);
+  const [youtubeGroupMutationLoading, setYouTubeGroupMutationLoading] = useState(false);
 
   const showToast = (message: string, tone: 'success' | 'error' | 'info' = 'success') => {
     const id = Date.now();
@@ -275,6 +291,101 @@ export default function ManagePage() {
   const adminHeaders = (extra: Record<string, string> = {}) => {
     const token = getAdminToken();
     return token ? { ...extra, 'x-admin-token': token } : extra;
+  };
+
+  const fetchYouTubeFamilyGroups = async () => {
+    setYouTubeGroupsLoading(true);
+    setYouTubeGroupsError(null);
+    try {
+      const response = await fetch('/api/youtube/family-groups', { headers: adminHeaders() });
+      if (!response.ok) throw new Error('request failed');
+      const parsed = parseYouTubeFamilyGroupsResponse(await response.json());
+      if (!parsed) throw new Error('invalid response');
+      setYouTubeFamilyGroups(parsed.familyGroups);
+      setYouTubeGroupsFeatureEnabled(parsed.enabled);
+    } catch {
+      setYouTubeGroupsError('가족 그룹 정보를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.');
+    } finally {
+      setYouTubeGroupsLoading(false);
+    }
+  };
+
+  const openYouTubeGroupCreateForm = () => {
+    setYouTubeGroupDraft({ label: '', managerEmail: '', subscriptionEndDate: '', sellableSeats: '5' });
+    setYouTubeGroupFormError(null);
+    setYouTubeGroupForm({ mode: 'create' });
+  };
+
+  const openYouTubeGroupEditForm = (group: YouTubeFamilyGroupDto) => {
+    setYouTubeGroupDraft({
+      label: group.label,
+      managerEmail: '',
+      subscriptionEndDate: group.subscriptionEndDate || '',
+      sellableSeats: String(group.sellableSeats),
+    });
+    setYouTubeGroupFormError(null);
+    setYouTubeGroupForm({ mode: 'edit', group });
+  };
+
+  const submitYouTubeGroupForm = async () => {
+    if (!youtubeGroupForm || youtubeGroupMutationLoading) return;
+    const original = youtubeGroupForm.group;
+    const occupiedSeats = original ? original.sellableSeats - original.availableSeats : 0;
+    const validationError = validateYouTubeFamilyGroupDraft(youtubeGroupDraft, {
+      allowBlankEmail: youtubeGroupForm.mode === 'edit',
+      occupiedSeats,
+    });
+    if (validationError) { setYouTubeGroupFormError(validationError); return; }
+    const isCreate = youtubeGroupForm.mode === 'create';
+    const body = isCreate
+      ? buildYouTubeFamilyGroupCreateBody(youtubeGroupDraft)
+      : buildYouTubeFamilyGroupPatchBody(original!, youtubeGroupDraft);
+    if (!isCreate && Object.keys(body).length === 0) {
+      setYouTubeGroupFormError('변경된 내용이 없습니다.');
+      return;
+    }
+    setYouTubeGroupMutationLoading(true);
+    setYouTubeGroupFormError(null);
+    try {
+      const response = await fetch(isCreate ? '/api/youtube/family-groups' : `/api/youtube/family-groups/${encodeURIComponent(original!.id)}`, {
+        method: isCreate ? 'POST' : 'PATCH',
+        headers: adminHeaders({
+          'Content-Type': 'application/json',
+          'x-audit-reason': isCreate ? 'operator family group create' : 'operator family group update',
+        }),
+        body: JSON.stringify(body),
+      });
+      if (!response.ok) throw new Error('request failed');
+      setYouTubeGroupDraft(current => ({ ...current, managerEmail: '' }));
+      setYouTubeGroupForm(null);
+      showToast(isCreate ? '유튜브 가족 그룹을 추가했습니다.' : '유튜브 가족 그룹을 수정했습니다.');
+      await fetchYouTubeFamilyGroups();
+    } catch {
+      setYouTubeGroupFormError(isCreate ? '가족 그룹을 추가하지 못했습니다.' : '가족 그룹을 수정하지 못했습니다.');
+    } finally {
+      setYouTubeGroupMutationLoading(false);
+    }
+  };
+
+  const disableYouTubeFamilyGroup = async (group: YouTubeFamilyGroupDto) => {
+    if (!window.confirm('이 가족 그룹을 비활성화할까요? 새 초대에 사용할 수 없게 됩니다.')) return;
+    setYouTubeGroupMutationLoading(true);
+    try {
+      const response = await fetch(`/api/youtube/family-groups/${encodeURIComponent(group.id)}`, {
+        method: 'DELETE',
+        headers: adminHeaders({
+          'Content-Type': 'application/json',
+          'x-audit-reason': 'operator family group disable',
+        }),
+      });
+      if (!response.ok) throw new Error('request failed');
+      showToast('유튜브 가족 그룹을 비활성화했습니다.', 'info');
+      await fetchYouTubeFamilyGroups();
+    } catch {
+      showToast('가족 그룹을 비활성화하지 못했습니다.', 'error');
+    } finally {
+      setYouTubeGroupMutationLoading(false);
+    }
   };
 
   const hiddenAccountKey = (acct: Pick<Account, 'serviceType' | 'email'> | Pick<ManagementHiddenAccount, 'serviceType' | 'accountEmail'>) => {
@@ -746,18 +857,86 @@ export default function ManagePage() {
 
   const handleCreateGeneratedAccount = async () => {
     if (!accountCreateService || accountCreateLoading) return;
-    setAccountCreateLoading(true); setAccountCreateResult(null);
+    setAccountCreateLoading(true); setAccountCreateStage('SimpleLogin 이메일 생성 중'); setAccountCreateResult(null);
+    const slowTimer = window.setTimeout(() => setAccountCreateStage('SimpleLogin 반영 확인 중 · 최대 약 16초'), 1500);
     try {
       const res = await fetch('/api/generated-accounts/create', {
         method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ serviceType: accountCreateService, aliasPrefix: accountCreatePrefix.trim() }),
       });
       const json = await res.json() as any;
       if (!res.ok || !json.account) throw new Error(json.error || '계정 생성 실패');
-      setAccountCreateResult(`${json.account.email} 생성 완료 · 계정 관리에 표시됨 · 결제 체크 대기`);
+      const account = json.account as GeneratedAccount;
+      setQuickCreatedAccount(account);
+      setQuickPaymentError('');
+      setData(prev => prev ? mergeGeneratedAccountsIntoManagement(prev, { [account.id]: account }) : prev);
+      setEmailAliases(prev => prev.some(alias => String(alias.id) === String(account.emailId) || alias.email.toLowerCase() === account.email.toLowerCase())
+        ? prev
+        : [{ id: account.emailId, email: account.email, enabled: true }, ...prev]);
+      setAccountCreateResult(`${account.email} 생성 완료 · 계정 관리에 바로 표시됨 · 결제 체크 대기`);
       setAccountCreatePrefix('');
-      await doFetch(undefined, { forceRefresh: true, silent: true });
+      setAccountCreateLoading(false); setAccountCreateStage('');
+      void doFetch(undefined, { forceRefresh: true, silent: true });
     } catch (e: any) { setAccountCreateResult(`오류: ${e.message}`); }
-    finally { setAccountCreateLoading(false); }
+    finally { window.clearTimeout(slowTimer); setAccountCreateLoading(false); setAccountCreateStage(''); }
+  };
+
+  const markQuickCreatedAccountPaid = async () => {
+    const account = quickCreatedAccount;
+    if (!account || account.paymentStatus === 'paid' || quickPaymentLoading) return;
+    setQuickPaymentLoading(true);
+    setQuickPaymentError('');
+    try {
+      const res = await fetch(`/api/generated-accounts/${encodeURIComponent(account.id)}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ paymentStatus: 'paid' }),
+      });
+      const json = await res.json() as any;
+      if (!res.ok || !json.account) throw new Error(json.error || '결제 완료 저장 실패');
+      const updated = json.account as GeneratedAccount;
+      setQuickCreatedAccount(updated);
+      setData(prev => prev ? reconcileGeneratedAccountInManagement(prev, updated) : prev);
+    } catch (error: any) {
+      const message = error?.message || '결제 완료 저장 실패';
+      setQuickPaymentError(message);
+      setAccountCreateResult(`오류: ${message}`);
+    } finally {
+      setQuickPaymentLoading(false);
+    }
+  };
+
+  const reopenQuickAccount = (acct: Account) => {
+    const generated = acct.generatedAccount;
+    if (!generated) return;
+    setQuickPaymentError('');
+    setQuickCreatedAccount({
+      id: generated.id,
+      serviceType: generated.sourceServiceType || acct.serviceType,
+      email: generated.wavveEmail || acct.email,
+      password: acct.keepPasswd || '',
+      pin: generated.pin,
+      emailId: generated.emailId,
+      paymentStatus: generated.paymentStatus,
+      paidAt: generated.paidAt,
+      createdAt: generated.createdAt,
+      memo: generated.memo,
+      source: 'account-generator',
+    });
+  };
+
+  const openQuickWrite = async () => {
+    const quick = quickCreatedAccount;
+    if (!quick || quick.paymentStatus !== 'paid') return;
+    const target = findQuickPostAccount(data?.services || [], quick.id, quick.serviceType) as Account | null;
+    if (!target) {
+      setQuickPaymentError('현재 계정 카드에서 게시글 작성 대상을 찾지 못했어요. 계정 목록을 새로고침한 뒤 다시 시도해주세요.');
+      return;
+    }
+    const vacancyInfo = getVacancyInfo(target);
+    if (vacancyInfo.unfilled <= 0) {
+      setQuickPaymentError('현재 계정에 작성할 빈자리가 없어요.');
+      return;
+    }
+    setQuickCreatedAccount(null);
+    await openFillModalForAccount(target, vacancyInfo);
   };
 
   const toggleGeneratedAccountPaid = async (acct: Account, paid: boolean) => {
@@ -812,6 +991,7 @@ export default function ManagePage() {
     fetchEmailAliases();
     fetchMaintenanceChecklists();
     fetchHiddenAccounts();
+    fetchYouTubeFamilyGroups();
     // 30초마다 세션 상태 갱신
     const sessionInterval = setInterval(fetchSessionStatus, 30000);
     return () => clearInterval(sessionInterval);
@@ -1422,7 +1602,7 @@ export default function ManagePage() {
 
   const buildBulkFillTargets = (serviceType?: string) => {
     if (!data) return [];
-    return data.services
+    return partitionYouTubeManagementServices(data.services).credentialServices
       .filter(svc => !serviceType || svc.serviceType === serviceType)
       .flatMap(svc => svc.accounts.map(acct => ({ acct, vi: getVacancyInfo(acct) })))
       .filter(({ acct, vi }) => canAccountReceiveAutoFill({
@@ -1496,7 +1676,6 @@ export default function ManagePage() {
   )).length, 0) ?? 0;
 
   const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
-  const weekEnd = new Date(todayStart); weekEnd.setDate(weekEnd.getDate() + 7);
   const weekAgo = new Date(todayStart); weekAgo.setDate(weekAgo.getDate() - 7);
   const dateFromAny = (value?: string | null) => {
     const iso = parseGraytagDate(value || '');
@@ -1504,14 +1683,6 @@ export default function ManagePage() {
   };
   const cancelCountingStart = dateFromAny(GRAYTAG_CANCEL_COUNTING_START_DATE) || weekAgo;
   const isCancelledStatus = (status?: string, statusName?: string) => /^Cancel/i.test(String(status || '')) || /취소|거래취소/.test(String(statusName || ''));
-  const expiringSoonMembers = data ? data.services.flatMap((svc) => svc.accounts.flatMap((acct) => [
-    ...acct.members
-      .filter((m) => (USING_SET.has(m.status) || isAccountCheckingMember(m)) && !isCancelledStatus(m.status, m.statusName))
-      .map((m) => ({ id:`graytag:${m.dealUsid}`, memberName:m.name || '(미확인)', serviceType:svc.serviceType, accountEmail:acct.email, date:dateFromAny(m.endDateTime), dateLabel:fmtDate(m.endDateTime), statusLabel:m.statusName || m.status })),
-    ...getManualForAccount(acct.email, acct.serviceType)
-      .filter((m) => m.status === 'active')
-      .map((m) => ({ id:`manual:${m.id}`, memberName:m.memberName, serviceType:svc.serviceType, accountEmail:acct.email, date:dateFromAny(m.endDate), dateLabel:m.endDate.replace(/-/g,'/'), statusLabel:'수동' })),
-  ])).filter((row) => row.date && row.date >= todayStart && row.date <= weekEnd).sort((a, b) => (a.date!.getTime() - b.date!.getTime())).slice(0, 20) : [];
   const cancelledRecentMembers = data ? data.services.flatMap((svc) => svc.accounts.flatMap((acct) => [
     ...acct.members
       .filter((m) => isCancelledStatus(m.status, m.statusName))
@@ -1523,6 +1694,7 @@ export default function ManagePage() {
       .filter((m) => m.status === 'cancelled')
       .map((m) => ({ id:`manual-cancel:${m.id}`, memberName:m.memberName, serviceType:svc.serviceType, accountEmail:acct.email, date:dateFromAny(m.endDate), dateLabel:m.endDate.replace(/-/g,'/'), statusLabel:'수동 취소' })),
   ])).filter((row) => row.date && row.date >= cancelCountingStart && row.date <= todayStart).sort((a, b) => (b.date!.getTime() - a.date!.getTime())).slice(0, 20) : [];
+  const { credentialServices, unmappedYouTubeServices } = partitionYouTubeManagementServices(data?.services || []);
 
   return (
     <div className="account-management-page">
@@ -1540,9 +1712,9 @@ export default function ManagePage() {
           </p>
         </div>
         <div style={{ display:'flex', gap:6 }}>
-          <button onClick={() => doFetch()} disabled={loading} style={{ background:'#A78BFA', border:'none', borderRadius:12, padding:'8px 14px', fontSize:13, color:'#fff', cursor:loading?'not-allowed':'pointer', fontWeight:600, fontFamily:'inherit', opacity:loading?0.7:1, display:'flex', alignItems:'center', gap:6 }}>
-            {loading ? <Loader2 size={14} style={{ animation:'spin 1s linear infinite' }} /> : <RefreshCw size={14} />}
-            {loading ? '조회중' : '조회'}
+          <button onClick={() => { void Promise.all([doFetch(), fetchYouTubeFamilyGroups()]); }} disabled={loading || youtubeGroupsLoading} style={{ background:'#A78BFA', border:'none', borderRadius:12, padding:'8px 14px', fontSize:13, color:'#fff', cursor:loading || youtubeGroupsLoading?'not-allowed':'pointer', fontWeight:600, fontFamily:'inherit', opacity:loading || youtubeGroupsLoading?0.7:1, display:'flex', alignItems:'center', gap:6 }}>
+            {loading || youtubeGroupsLoading ? <Loader2 size={14} style={{ animation:'spin 1s linear infinite' }} /> : <RefreshCw size={14} />}
+            {loading || youtubeGroupsLoading ? '조회중' : '조회'}
           </button>
           {data && !loading && (() => {
             const totalUnfilled = countBulkFillTargets();
@@ -1601,6 +1773,65 @@ export default function ManagePage() {
           </div>
         </div>
       )}
+
+      {/* 유튜브 가족 그룹 관리 */}
+      <section aria-labelledby="youtube-family-groups-title" style={{ background:'#fff', border:'1.5px solid #FCA5A5', borderRadius:18, padding:14, marginBottom:14, boxShadow:'0 5px 18px rgba(239,68,68,0.06)' }}>
+        <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:10, flexWrap:'wrap', marginBottom:12 }}>
+          <div style={{ minWidth:0 }}>
+            <h2 id="youtube-family-groups-title" style={{ display:'flex', alignItems:'center', gap:7, margin:0, color:'#991B1B', fontSize:15, fontWeight:900 }}><Youtube size={18} /> 유튜브 가족 그룹</h2>
+            <p style={{ margin:'4px 0 0', color:'#9CA3AF', fontSize:11 }}>관리자 계정과 판매 가능한 가족 좌석을 관리합니다.</p>
+          </div>
+          <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+            <button type="button" onClick={() => navigate('/youtube-invites')} style={{ border:'1px solid #FECACA', borderRadius:10, padding:'7px 10px', background:'#FFF7F7', color:'#B91C1C', fontSize:11, fontWeight:900, cursor:'pointer', display:'inline-flex', alignItems:'center', gap:5 }}>
+              초대 관리 <ExternalLink size={12} />
+            </button>
+            <button type="button" onClick={openYouTubeGroupCreateForm} disabled={youtubeGroupsFeatureEnabled !== true || youtubeGroupMutationLoading} style={{ border:'none', borderRadius:10, padding:'7px 10px', background:youtubeGroupsFeatureEnabled !== true?'#D1D5DB':'#EF4444', color:'#fff', fontSize:11, fontWeight:900, cursor:youtubeGroupsFeatureEnabled !== true?'not-allowed':'pointer', display:'inline-flex', alignItems:'center', gap:5 }}>
+              <PlusCircle size={12} /> 그룹 추가
+            </button>
+          </div>
+        </div>
+
+        {youtubeGroupsLoading && <div role="status" style={{ display:'flex', alignItems:'center', gap:7, borderRadius:12, padding:'11px 12px', background:'#FFF7F7', color:'#B91C1C', fontSize:12, fontWeight:800 }}><Loader2 size={14} style={{ animation:'spin 1s linear infinite' }} /> 가족 그룹을 불러오는 중...</div>}
+        {!youtubeGroupsLoading && youtubeGroupsError && (
+          <div role="alert" style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, borderRadius:12, padding:'10px 12px', background:'#FFF0F0', color:'#B91C1C', fontSize:11, fontWeight:800 }}>
+            <span>{youtubeGroupsError}</span>
+            <button type="button" onClick={fetchYouTubeFamilyGroups} style={{ border:'none', borderRadius:8, padding:'6px 8px', background:'#fff', color:'#B91C1C', fontWeight:900, cursor:'pointer' }}>다시 시도</button>
+          </div>
+        )}
+        {!youtubeGroupsLoading && !youtubeGroupsError && youtubeGroupsFeatureEnabled !== true && (
+          <div style={{ borderRadius:12, padding:'9px 11px', marginBottom:10, background:'#FFFBEB', color:'#92400E', fontSize:11, fontWeight:900 }}>유튜브 초대 판매 기능이 비활성화되어 있습니다. 조회만 가능합니다.</div>
+        )}
+        {!youtubeGroupsLoading && !youtubeGroupsError && youtubeFamilyGroups.length === 0 && (
+          <div style={{ borderRadius:12, padding:'12px', background:'#F9FAFB', color:'#6B7280', fontSize:11, textAlign:'center' }}>등록된 가족 그룹이 없습니다.</div>
+        )}
+        {!youtubeGroupsLoading && !youtubeGroupsError && youtubeFamilyGroups.length > 0 && (
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(min(100%,280px),1fr))', gap:10 }}>
+            {youtubeFamilyGroups.map(group => {
+              const occupiedSeats = group.sellableSeats - group.availableSeats;
+              return (
+                <article key={group.id} style={{ minWidth:0, border:'1px solid #FEE2E2', borderRadius:14, padding:12, background:group.enabled?'#fff':'#F9FAFB' }}>
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:8 }}>
+                    <div style={{ minWidth:0 }}>
+                      <div style={{ color:'#1E1B4B', fontSize:13, fontWeight:900, overflowWrap:'anywhere' }}>{group.label}</div>
+                      <div style={{ color:'#6B7280', fontSize:11, marginTop:3, overflowWrap:'anywhere' }}>{group.managerEmailMasked}</div>
+                    </div>
+                    <span style={{ flexShrink:0, borderRadius:999, padding:'3px 7px', background:group.enabled?'#ECFDF5':'#E5E7EB', color:group.enabled?'#047857':'#6B7280', fontSize:9, fontWeight:900 }}>{group.enabled?'활성':'비활성'}</span>
+                  </div>
+                  <div style={{ display:'grid', gridTemplateColumns:'repeat(2,minmax(0,1fr))', gap:7, marginTop:10 }}>
+                    <div style={{ borderRadius:9, background:'#FFF7F7', padding:'7px 8px' }}><div style={{ color:'#9CA3AF', fontSize:9, fontWeight:800 }}>구독 종료일</div><div style={{ color:'#991B1B', fontSize:11, fontWeight:900, marginTop:2 }}>{group.subscriptionEndDate || '미설정'}</div></div>
+                    <div style={{ borderRadius:9, background:'#FFF7F7', padding:'7px 8px' }}><div style={{ color:'#9CA3AF', fontSize:9, fontWeight:800 }}>판매 가능 좌석</div><div style={{ color:'#991B1B', fontSize:11, fontWeight:900, marginTop:2 }}>{group.availableSeats}/{group.sellableSeats}석</div></div>
+                  </div>
+                  <div style={{ color:'#9CA3AF', fontSize:9, marginTop:6 }}><Users size={10} style={{ verticalAlign:'-2px', marginRight:3 }} />사용 중인 좌석 {occupiedSeats}석</div>
+                  <div style={{ display:'flex', gap:6, marginTop:10 }}>
+                    <button type="button" onClick={() => openYouTubeGroupEditForm(group)} disabled={youtubeGroupsFeatureEnabled !== true || youtubeGroupMutationLoading} style={{ flex:1, border:'none', borderRadius:9, padding:'7px 8px', background:'#FEF2F2', color:'#B91C1C', fontSize:10, fontWeight:900, cursor:youtubeGroupsFeatureEnabled !== true?'not-allowed':'pointer' }}><Pencil size={11} style={{ verticalAlign:'-2px', marginRight:4 }} />수정</button>
+                    {group.enabled && <button type="button" onClick={() => disableYouTubeFamilyGroup(group)} disabled={youtubeGroupsFeatureEnabled !== true || youtubeGroupMutationLoading} style={{ flex:1, border:'none', borderRadius:9, padding:'7px 8px', background:'#F3F4F6', color:'#6B7280', fontSize:10, fontWeight:900, cursor:youtubeGroupsFeatureEnabled !== true?'not-allowed':'pointer' }}>비활성화</button>}
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </section>
 
       {/* 초기 안내 */}
       {!data && !loading && !error && (
@@ -1683,57 +1914,36 @@ export default function ManagePage() {
             </div>
           </div>
 
-          {/* 계정 생성 컴포넌트 */}
-          <div style={{ background:'linear-gradient(135deg,#FFF7ED 0%,#FDF2F8 45%,#EEF2FF 100%)', border:'1.5px solid #FED7AA', borderRadius:20, padding:16, marginBottom:14, boxShadow:'0 8px 24px rgba(251,146,60,0.10)' }}>
-            <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:10, marginBottom:12 }}>
+          {/* 빠른 계정 생성 */}
+          <section className="quick-account-generator" aria-labelledby="quick-account-generator-title">
+            <div className="quick-account-generator-head">
               <div>
-                <div style={{ display:'flex', alignItems:'center', gap:7, fontSize:15, fontWeight:900, color:'#1E1B4B' }}><KeyRound size={16} color="#F97316" /> 계정 생성</div>
-                <div style={{ fontSize:11, color:'#9CA3AF', marginTop:4, lineHeight:1.35 }}>{accountCreateCopy.description}</div>
+                <h2 id="quick-account-generator-title"><KeyRound size={17} /> 빠른 계정 생성</h2>
+                <p>서비스와 prefix만 선택하면 이메일·비밀번호·PIN이 한 번에 만들어집니다.</p>
               </div>
-              <span style={{ flexShrink:0, fontSize:10, fontWeight:900, color:'#C2410C', background:'#FFEDD5', borderRadius:999, padding:'4px 9px' }}>생성 전용</span>
+              <span>1단계</span>
             </div>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr auto', gap:8 }}>
-              <select value={accountCreateService} onChange={e => setAccountCreateService(e.target.value)} disabled={accountCreateLoading}
-                style={{ border:'1.5px solid #FED7AA', borderRadius:12, padding:'10px 12px', fontFamily:'inherit', fontSize:13, fontWeight:800, color:'#1E1B4B', background:'#fff' }}>
-                {[{ label:accountCreateCopy.serviceLabel, value:'티빙+웨이브' }, ...CATEGORIES.filter(cat => cat.label !== '티빙' && cat.label !== '웨이브').map(cat => ({ label: cat.label, value: cat.label }))].map(cat => <option key={cat.value} value={cat.value}>{cat.label}</option>)}
-              </select>
-              <button onClick={handleCreateGeneratedAccount} disabled={accountCreateLoading}
-                style={{ border:'none', borderRadius:12, padding:'10px 14px', background:accountCreateLoading?'#FDBA74':'#F97316', color:'#fff', fontSize:12, fontWeight:900, cursor:accountCreateLoading?'not-allowed':'pointer', display:'flex', alignItems:'center', gap:6 }}>
-                {accountCreateLoading ? <Loader2 size={14} style={{ animation:'spin 1s linear infinite' }} /> : <PlusCircle size={14} />}
-                {accountCreateLoading ? '생성중' : '새 계정 생성'}
+            <div className="quick-account-generator-form">
+              <label>서비스
+                <select value={accountCreateService} onChange={e => setAccountCreateService(e.target.value)} disabled={accountCreateLoading}>
+                  {[{ label:accountCreateCopy.serviceLabel, value:'티빙+웨이브' }, ...CATEGORIES.filter(cat => cat.label !== '티빙' && cat.label !== '웨이브' && cat.label !== '유튜브').map(cat => ({ label: cat.label, value: cat.label }))].map(cat => <option key={cat.value} value={cat.value}>{cat.label}</option>)}
+                </select>
+              </label>
+              <label>Prefix <small>선택</small>
+                <input value={accountCreatePrefix} onChange={e => setAccountCreatePrefix(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ''))} disabled={accountCreateLoading} placeholder={accountCreateCopy.prefixPlaceholder} />
+              </label>
+              <button type="button" onClick={handleCreateGeneratedAccount} disabled={accountCreateLoading}>
+                {accountCreateLoading ? <Loader2 size={15} style={{ animation:'spin 1s linear infinite' }} /> : <PlusCircle size={15} />}
+                {accountCreateLoading ? '확인 중' : '바로 생성'}
               </button>
             </div>
-            <div style={{ marginTop:8 }}>
-              <label style={{ display:'block', fontSize:10, fontWeight:900, color:'#C2410C', marginBottom:4 }}>{accountCreateCopy.prefixLabel}</label>
-              <input value={accountCreatePrefix} onChange={e => setAccountCreatePrefix(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ''))} disabled={accountCreateLoading}
-                placeholder={accountCreateCopy.prefixPlaceholder}
-                style={{ width:'100%', boxSizing:'border-box', border:'1.5px solid #FED7AA', borderRadius:12, padding:'10px 12px', fontFamily:'inherit', fontSize:13, fontWeight:800, color:'#1E1B4B', background:'#fff' }} />
-              <div style={{ fontSize:10, color:'#9CA3AF', marginTop:4 }}>{accountCreateCopy.prefixHelp}</div>
-            </div>
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:6, marginTop:10 }}>
-              {accountCreateCopy.featureLabels.map(label => <div key={label} style={{ background:'rgba(255,255,255,0.72)', borderRadius:10, padding:'7px 6px', fontSize:10, color:'#9A3412', fontWeight:800, textAlign:'center' }}>✓ {label}</div>)}
-            </div>
-            {accountCreateResult && <div style={{ marginTop:10, borderRadius:12, padding:'9px 10px', fontSize:12, fontWeight:800, background:accountCreateResult.startsWith('오류')?'#FFF0F0':'#ECFDF5', color:accountCreateResult.startsWith('오류')?'#EF4444':'#059669' }}>{accountCreateResult}</div>}
-          </div>
+            <div className="quick-account-generator-hint">Prefix를 비워두면 다음 번호를 자동으로 선택합니다.</div>
+            {accountCreateLoading && accountCreateStage && <div className="quick-account-generator-status" role="status">{accountCreateStage}</div>}
+            {accountCreateResult && <div className={`quick-account-generator-result ${accountCreateResult.startsWith('오류') ? 'is-error' : ''}`}>{accountCreateResult}</div>}
+          </section>
 
-          {(expiringSoonMembers.length > 0 || cancelledRecentMembers.length > 0) && (
+          {cancelledRecentMembers.length > 0 && (
             <div style={{ display:'grid', gridTemplateColumns:'1fr', gap:10, marginBottom:14 }}>
-              <div style={{ background:'#FFFBEB', border:'1.5px solid #FDE68A', borderRadius:16, padding:13 }}>
-                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, marginBottom:8 }}>
-                  <div style={{ fontSize:13, fontWeight:900, color:'#92400E' }}>일주일 이내 만료되는 파티원 명단</div>
-                  <span style={{ fontSize:10, fontWeight:900, color:'#B45309', background:'#FEF3C7', borderRadius:999, padding:'3px 8px' }}>{expiringSoonMembers.length}명</span>
-                </div>
-                {expiringSoonMembers.length === 0 ? <div style={{ fontSize:11, color:'#A16207' }}>7일 안에 만료되는 파티원이 없어요.</div> : (
-                  <div style={{ display:'grid', gap:6 }}>
-                    {expiringSoonMembers.map(row => (
-                      <div key={row.id} style={{ display:'grid', gridTemplateColumns:'1fr auto', gap:8, background:'#fff', borderRadius:10, padding:'7px 9px', alignItems:'center' }}>
-                        <div style={{ minWidth:0 }}><span style={{ fontSize:12, color:'#1E1B4B', fontWeight:900 }}>{row.memberName}</span><span style={{ marginLeft:6, fontSize:10, color:'#92400E', fontWeight:800 }}>{row.serviceType}</span><div style={{ fontSize:9, color:'#9CA3AF', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{row.accountEmail}</div></div>
-                        <div style={{ textAlign:'right', fontSize:10, color:'#B45309', fontWeight:900 }}>{row.dateLabel}<div style={{ color:'#9CA3AF' }}>{row.statusLabel}</div></div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
               <div style={{ background:'#FFF0F0', border:'1.5px solid #FCA5A5', borderRadius:16, padding:13 }}>
                 <button onClick={() => setCancelledRecentOpen(v => !v)} style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, marginBottom:cancelledRecentOpen ? 8 : 0, background:'none', border:'none', padding:0, cursor:'pointer', fontFamily:'inherit', textAlign:'left' }}>
                   <div style={{ display:'flex', alignItems:'center', gap:6, minWidth:0 }}>
@@ -1759,17 +1969,29 @@ export default function ManagePage() {
           {/* 필터 */}
           <div style={{ display:'flex', gap:6, marginBottom:14 }}>
             {([
-              { key:'using',  label:'이용 중' },
-              { key:'active', label:'전체 활성' },
-              { key:'all',    label:'전체 내역' },
+              { key:'unpaid', label:'미결제 계정' },
+              { key:'paid',   label:'결제 계정' },
             ] as { key: FilterMode; label: string }[]).map(f => (
               <button key={f.key} onClick={() => setFilter(f.key)} style={{ flex:1, padding:'7px 4px', borderRadius:10, border:'none', fontFamily:'inherit', fontSize:11, fontWeight:600, cursor:'pointer', background: filter===f.key ? '#A78BFA' : '#F3F0FF', color: filter===f.key ? '#fff' : '#6B7280' }}>{f.label}</button>
             ))}
           </div>
 
           {/* 서비스별 */}
+          {unmappedYouTubeServices.length > 0 && (
+            <section aria-labelledby="unmapped-youtube-transactions" style={{ background:'#FFF7ED', border:'1.5px solid #FED7AA', borderRadius:16, padding:14, marginBottom:12 }}>
+              <h2 id="unmapped-youtube-transactions" style={{ margin:0, color:'#9A3412', fontSize:14 }}>그룹 매핑 필요 · 기존 유튜브 거래</h2>
+              <p style={{ margin:'5px 0 10px', color:'#C2410C', fontSize:11, lineHeight:1.5 }}>기존 거래를 가족 그룹에 추측 연결하지 않습니다. 초대 관리에서 확인해 수동 매핑하세요. 이 안전 섹션은 ID/PW · PIN · 프로필 · 접근 링크 작업을 제공하지 않습니다.</p>
+              {unmappedYouTubeServices.map(service => (
+                <div key={service.serviceType} style={{ background:'#fff', borderRadius:10, padding:'8px 10px', color:'#7C2D12', fontSize:11, fontWeight:800 }}>
+                  {service.serviceType} · 거래 {service.accounts.reduce((count, account) => count + account.members.length, 0)}건 · 계정 후보 {service.accounts.length}개
+                </div>
+              ))}
+            </section>
+          )}
           <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-            {data.services.map(svc => {
+            {credentialServices.map(svc => {
+              const visibleAccounts = getVisibleManagementAccounts(svc.accounts, filter);
+              if (visibleAccounts.length === 0) return null;
               const sc = svcColors(svc.serviceType);
               const logo = svcLogo(svc.serviceType);
               const isOpen = openService === svc.serviceType;
@@ -1778,10 +2000,6 @@ export default function ManagePage() {
               const serviceBulkUnfilled = countBulkFillTargets(svc.serviceType);
               const serviceBulkLoading = bulkFillLoading && bulkFillTarget === svc.serviceType;
               const servicePanelId = `management-service-${encodeURIComponent(svc.serviceType)}`;
-              const actualPartyAccountCount = svc.accounts.filter((acct) => (
-                acct.email !== '(직접전달)' &&
-                (acct.usingCount > 0 || getManualForAccount(acct.email, acct.serviceType).some((m) => m.status === 'active') || acct.generatedAccount?.paymentStatus === 'paid')
-              )).length;
               return (
                 <section key={svc.serviceType} className="management-service-group" style={{ borderColor:isOpen?'#A78BFA':'#F3F0FF' }}>
                   <div className="management-service-header">
@@ -1791,7 +2009,7 @@ export default function ManagePage() {
                       </div>
                       <div style={{ flex:1, textAlign:'left' }}>
                         <div style={{ fontSize:15, fontWeight:700, color:'#1E1B4B' }}>{svc.serviceType}</div>
-                        <div style={{ fontSize:11, color:'#9CA3AF', marginTop:2 }}>계정 {actualPartyAccountCount}개 · 이용중 {serviceUsingWithManual}명{serviceManualUsingCount(svc) > 0 ? ` (수동 포함 +${serviceManualUsingCount(svc)})` : ''}{serviceVerifyingCount > 0 ? ` · 확인중 ${serviceVerifyingCount}명` : ''}</div>
+                        <div style={{ fontSize:11, color:'#9CA3AF', marginTop:2 }}>계정 {visibleAccounts.length}개 · 이용중 {serviceUsingWithManual}명{serviceManualUsingCount(svc) > 0 ? ` (수동 포함 +${serviceManualUsingCount(svc)})` : ''}{serviceVerifyingCount > 0 ? ` · 확인중 ${serviceVerifyingCount}명` : ''}</div>
                       </div>
                       <div style={{ textAlign:'right', flexShrink:0 }}>
                         <div style={{ fontSize:14, fontWeight:700, color:'#A78BFA' }}>{fmtMoney(svc.totalIncome)}</div>
@@ -1814,15 +2032,10 @@ export default function ManagePage() {
 
                   {isOpen && (
                     <div id={servicePanelId} role="region" aria-label={`${svc.serviceType} 계정 목록`} className="management-account-grid">
-                      {svc.accounts.filter(a => a.email !== '(직접전달)').map(acct => {
+                      {visibleAccounts.map(acct => {
                         const acctKey = `${acct.email}__${acct.serviceType}`;
                         const isAcctOpen = openAccount === acctKey;
-                        const filteredMembers = acct.members.filter(m => {
-                          if (filter==='using') return USING_SET.has(m.status) || isAccountCheckingMember(m);
-                          if (filter==='active') return ACTIVE_SET.has(m.status);
-                          return true;
-                        });
-                        const hasOnSale = (data?.onSaleByKeepAcct?.[acct.email]?.length ?? 0) > 0;
+                        const filteredMembers = acct.members;
                         const manualForAccount = getManualForAccount(acct.email, acct.serviceType);
                         const visiblePartyRefs = [
                           ...filteredMembers.map(m => `graytag:${m.dealUsid}`),
@@ -1845,9 +2058,6 @@ export default function ManagePage() {
                         });
                         const profileNameForMember = (kind: 'graytag' | 'manual', id: string) => profileNicknameByMember.get(`${kind}:${id}`) || generateProfileNickname(stableRandomFromSeed(`${acct.serviceType}:${acct.email}:${kind}:${id}`));
                         const vi = getVacancyInfo(acct);
-                        if (filter === 'using' && acct.usingCount === 0 && vi.manualCount === 0 && !acct.generatedAccount && !acct.archivedAccount) return null;
-                        if (filter === 'active' && acct.usingCount === 0 && acct.activeCount === 0 && vi.manualCount === 0 && !hasOnSale && !acct.generatedAccount && !acct.archivedAccount) return null;
-                        if (filter !== 'all' && acct.usingCount===0 && acct.activeCount===0 && vi.manualCount === 0 && !hasOnSale && !acct.generatedAccount && !acct.archivedAccount) return null;
                         const filledSlots = vi.currentUsers + vi.manualCount;
                         const totalSlots = vi.maxSlots;
                         const fillPct = Math.round((filledSlots/Math.max(totalSlots, 1))*100);
@@ -2214,13 +2424,16 @@ export default function ManagePage() {
                                             <button key={label} onClick={() => toggleGeneratedAccountPaid(acct, paid)} style={{ border:'none', borderRadius:999, padding:'4px 8px', fontSize:10, fontWeight:900, cursor:'pointer', fontFamily:'inherit', background:(acct.generatedAccount!.paymentStatus === 'paid') === paid ? (paid ? '#10B981' : '#F97316') : '#F3F4F6', color:(acct.generatedAccount!.paymentStatus === 'paid') === paid ? '#fff' : '#9CA3AF' }}>{label}</button>
                                           ))}
                                         </div>
+                                        <button onClick={e => { e.stopPropagation(); reopenQuickAccount(acct); }} title="복사·결제·글쓰기 빠른 작업 다시 열기" style={{ border:'none', background:'#EEF2FF', color:'#4338CA', borderRadius:999, padding:'6px 9px', fontSize:11, fontWeight:900, cursor:'pointer' }}>
+                                          빠른 작업
+                                        </button>
                                         <button onClick={e => { e.stopPropagation(); handleDeleteGeneratedAccount(acct); }} title="방금 생성한 계정 삭제" style={{ border:'none', background:'#FFF0F0', color:'#EF4444', borderRadius:999, padding:'6px 9px', fontSize:11, fontWeight:900, cursor:'pointer', display:'flex', alignItems:'center', gap:4 }}>
                                           <Trash2 size={12} /> 삭제
                                         </button>
                                       </div>
                                     </div>
                                     <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:7 }}>
-                                      <div style={{ background:'#fff', borderRadius:10, padding:'8px 9px' }}><div style={{ fontSize:9, color:'#9CA3AF', fontWeight:800 }}>ID</div><div style={{ fontSize:12, color:'#1E1B4B', fontWeight:900, marginTop:2, wordBreak:'break-all' }}>{acct.generatedAccount.id}</div></div>
+                                      <div style={{ background:'#fff', borderRadius:10, padding:'8px 9px' }}><div style={{ fontSize:9, color:'#9CA3AF', fontWeight:800 }}>로그인 ID</div><div style={{ fontSize:12, color:'#1E1B4B', fontWeight:900, marginTop:2, wordBreak:'break-all' }}>{acct.email}</div></div>
                                       <div style={{ background:'#fff', borderRadius:10, padding:'8px 9px' }}><div style={{ fontSize:9, color:'#9CA3AF', fontWeight:800 }}>비밀번호</div><div style={{ fontSize:12, color:'#1E1B4B', fontWeight:900, marginTop:2 }}>{acct.keepPasswd || '-'}</div></div>
                                       <div style={{ background:'#fff', borderRadius:10, padding:'8px 9px' }}><div style={{ fontSize:9, color:'#9CA3AF', fontWeight:800 }}>PIN</div><div style={{ fontSize:12, color:'#1E1B4B', fontWeight:900, marginTop:2 }}>{acct.generatedAccount.pin}</div></div>
                                       <div style={{ background:'#fff', borderRadius:10, padding:'8px 9px' }}><div style={{ fontSize:9, color:'#9CA3AF', fontWeight:800 }}>상태</div><div style={{ fontSize:12, color:acct.generatedAccount.paymentStatus==='paid'?'#059669':'#C2410C', fontWeight:900, marginTop:2 }}>{acct.generatedAccount.paymentStatus==='paid'?'결제/가입 완료':'결제/가입 대기'}</div></div>
@@ -2289,7 +2502,6 @@ export default function ManagePage() {
                                 {/* ─── 수동 파티원 목록 ────────────────────── */}
                                 {(() => {
                                   const manuals = manualForAccount;
-                                  if (manuals.length === 0 && filter === 'using') return null;
                                   return (
                                     <>
                                       {manuals.length > 0 && (
@@ -2727,6 +2939,53 @@ export default function ManagePage() {
             </button>
           </div>
         </div>
+      )}
+
+      {youtubeGroupForm && (
+        <div role="presentation" onClick={() => !youtubeGroupMutationLoading && setYouTubeGroupForm(null)} style={{ position:'fixed', inset:0, zIndex:240, background:'rgba(17,24,39,0.48)', display:'flex', alignItems:'flex-end', justifyContent:'center' }}>
+          <form role="dialog" aria-modal="true" aria-labelledby="youtube-group-form-title" onClick={event => event.stopPropagation()} onSubmit={event => { event.preventDefault(); void submitYouTubeGroupForm(); }} style={{ width:'100%', maxWidth:480, maxHeight:'88vh', overflowY:'auto', boxSizing:'border-box', borderRadius:'24px 24px 0 0', background:'#fff', padding:'20px 20px calc(20px + env(safe-area-inset-bottom))' }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:10, marginBottom:16 }}>
+              <div>
+                <h2 id="youtube-group-form-title" style={{ margin:0, color:'#991B1B', fontSize:17, fontWeight:900 }}>{youtubeGroupForm.mode === 'create' ? '유튜브 가족 그룹 추가' : '유튜브 가족 그룹 수정'}</h2>
+                {youtubeGroupForm.group && <div style={{ color:'#6B7280', fontSize:11, marginTop:4 }}>{youtubeGroupForm.group.managerEmailMasked}</div>}
+              </div>
+              <button type="button" aria-label="닫기" onClick={() => setYouTubeGroupForm(null)} disabled={youtubeGroupMutationLoading} style={{ border:'none', background:'transparent', padding:3, cursor:'pointer' }}><X size={20} color="#9CA3AF" /></button>
+            </div>
+
+            <label style={{ display:'block', color:'#4B5563', fontSize:12, fontWeight:900, marginBottom:5 }}>그룹 이름 *</label>
+            <input value={youtubeGroupDraft.label} maxLength={120} onChange={event => setYouTubeGroupDraft(current => ({ ...current, label:event.target.value }))} placeholder="예: 유튜브 가족 그룹 A" style={{ width:'100%', boxSizing:'border-box', border:'1.5px solid #FECACA', borderRadius:11, padding:'10px 12px', color:'#1E1B4B', background:'#FFF7F7', fontFamily:'inherit', marginBottom:12 }} />
+
+            <label style={{ display:'block', color:'#4B5563', fontSize:12, fontWeight:900, marginBottom:5 }}>관리자 이메일 {youtubeGroupForm.mode === 'create' ? '*' : ''}</label>
+            <input type="email" value={youtubeGroupDraft.managerEmail} maxLength={254} onChange={event => setYouTubeGroupDraft(current => ({ ...current, managerEmail:event.target.value }))} placeholder={youtubeGroupForm.mode === 'edit' ? '변경할 때만 입력' : 'manager@example.com'} style={{ width:'100%', boxSizing:'border-box', border:'1.5px solid #FECACA', borderRadius:11, padding:'10px 12px', color:'#1E1B4B', background:'#FFF7F7', fontFamily:'inherit', marginBottom:12 }} />
+
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(2,minmax(0,1fr))', gap:9 }}>
+              <label style={{ display:'block', color:'#4B5563', fontSize:12, fontWeight:900 }}>구독 종료일
+                <input type="date" value={youtubeGroupDraft.subscriptionEndDate} onChange={event => setYouTubeGroupDraft(current => ({ ...current, subscriptionEndDate:event.target.value }))} style={{ display:'block', width:'100%', boxSizing:'border-box', border:'1.5px solid #FECACA', borderRadius:11, padding:'9px 8px', color:'#1E1B4B', background:'#FFF7F7', fontFamily:'inherit', marginTop:5 }} />
+              </label>
+              <label style={{ display:'block', color:'#4B5563', fontSize:12, fontWeight:900 }}>판매 좌석 *
+                <input type="number" inputMode="numeric" min={youtubeGroupForm.group ? Math.max(1, youtubeGroupForm.group.sellableSeats - youtubeGroupForm.group.availableSeats) : 1} max={20} step={1} value={youtubeGroupDraft.sellableSeats} onChange={event => setYouTubeGroupDraft(current => ({ ...current, sellableSeats:event.target.value }))} style={{ display:'block', width:'100%', boxSizing:'border-box', border:'1.5px solid #FECACA', borderRadius:11, padding:'9px 10px', color:'#1E1B4B', background:'#FFF7F7', fontFamily:'inherit', marginTop:5 }} />
+              </label>
+            </div>
+            {youtubeGroupForm.group && <div style={{ color:'#9CA3AF', fontSize:10, marginTop:7 }}>사용 중인 좌석 {youtubeGroupForm.group.sellableSeats - youtubeGroupForm.group.availableSeats}석 미만으로 줄일 수 없습니다.</div>}
+
+            {youtubeGroupFormError && <div role="alert" style={{ borderRadius:10, padding:'8px 10px', marginTop:12, background:'#FFF0F0', color:'#B91C1C', fontSize:11, fontWeight:900 }}>{youtubeGroupFormError}</div>}
+            <button type="submit" disabled={youtubeGroupMutationLoading} style={{ width:'100%', border:'none', borderRadius:12, padding:13, marginTop:14, background:youtubeGroupMutationLoading?'#FCA5A5':'#EF4444', color:'#fff', fontSize:14, fontWeight:900, cursor:youtubeGroupMutationLoading?'not-allowed':'pointer', display:'flex', justifyContent:'center', alignItems:'center', gap:6 }}>
+              {youtubeGroupMutationLoading && <Loader2 size={15} style={{ animation:'spin 1s linear infinite' }} />}
+              {youtubeGroupMutationLoading ? '저장 중...' : '저장'}
+            </button>
+          </form>
+        </div>
+      )}
+
+      {quickCreatedAccount && (
+        <QuickAccountCreatedModal
+          account={quickCreatedAccount}
+          paymentLoading={quickPaymentLoading}
+          paymentError={quickPaymentError}
+          onMarkPaid={markQuickCreatedAccountPaid}
+          onWrite={openQuickWrite}
+          onClose={() => setQuickCreatedAccount(null)}
+        />
       )}
 
       <div style={{ height:20 }} />

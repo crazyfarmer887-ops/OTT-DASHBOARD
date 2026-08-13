@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import { buildProfileAuditRows, compareProfileCounts, summarizeProfileAudit } from '../src/lib/profile-audit';
 
 const account = {
@@ -32,19 +32,25 @@ describe('profile audit', () => {
   });
 
   test('builds rows using Graytag using count plus active manual members as expected profiles', () => {
-    const rows = buildProfileAuditRows(data, manuals, {
-      '넷플릭스::netflix@example.com': { actualProfileCount: 4, checkedAt: '2026-04-27T00:00:00.000Z', checker: 'mock' },
-    });
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-04-27T00:00:00.000Z'));
+    try {
+      const rows = buildProfileAuditRows(data, manuals, {
+        '넷플릭스::netflix@example.com': { actualProfileCount: 4, checkedAt: '2026-04-27T00:00:00.000Z', checker: 'mock' },
+      });
 
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({
-      serviceType: '넷플릭스',
-      accountEmail: 'netflix@example.com',
-      expectedPartyCount: 4,
-      actualProfileCount: 4,
-      status: 'match',
-      checker: 'mock',
-    });
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({
+        serviceType: '넷플릭스',
+        accountEmail: 'netflix@example.com',
+        expectedPartyCount: 4,
+        actualProfileCount: 4,
+        status: 'match',
+        checker: 'mock',
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   test('summarizes profile audit statuses for the UI', () => {

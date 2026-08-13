@@ -55,6 +55,30 @@ describe('admin auth fetch patch', () => {
     expect(new Headers(init.headers).get('x-admin-token')).toBe('safe-token');
   });
 
+  test('adds admin token to YouTube invitation GET requests', async () => {
+    const fetchMock = setupBrowser();
+    setAdminToken('safe-token');
+    installAdminAuthFetchPatch();
+
+    await (window.fetch as any)('/api/youtube/invitations?status=active');
+
+    const [, init] = fetchMock.mock.calls[0];
+    expect(new Headers(init.headers).get('x-admin-token')).toBe('safe-token');
+  });
+
+  test('adds admin token to the realtime chat notification stream', async () => {
+    const fetchMock = setupBrowser();
+    setAdminToken('safe-token');
+    installAdminAuthFetchPatch();
+
+    await (window.fetch as any)('/api/chat/notifications/stream', { headers: { Accept: 'text/event-stream' } });
+
+    const [, init] = fetchMock.mock.calls[0];
+    const headers = new Headers(init.headers);
+    expect(headers.get('x-admin-token')).toBe('safe-token');
+    expect(headers.get('accept')).toBe('text/event-stream');
+  });
+
   test('normalizes pasted admin token before using it as a request header', async () => {
     const fetchMock = setupBrowser();
     setAdminToken(' safe\n-token\r ');

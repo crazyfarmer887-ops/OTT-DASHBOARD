@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { execFile } from 'node:child_process';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { promisify } from 'node:util';
 const execFileAsync = promisify(execFile);
 import { cors } from "hono/cors"
@@ -11,7 +11,7 @@ import { appendAuditLog, auditRequestId, readAuditLog } from './audit-log';
 import { assertPriceChangeAllowed, loadPriceSafetyConfig, previewPriceChange, recordSuccessfulPriceDecrease, savePriceSafetyConfig } from './price-safety';
 import { loadSafeModeConfig, saveSafeModeConfig } from './safe-mode';
 import { generateSixDigitPin, makeEmailVerifyMemo, resolveEmailAliasFill, updateEmailAliasPin, verifyEmailAliasPinUpdate, type EmailAliasCandidate } from './email-alias-fill';
-import { buildFinishedDealsUrl, GRAYTAG_ACCESS_NOTICE_ID, GRAYTAG_ACCESS_NOTICE_PW, isGraytagAccessNoticeCredential } from '../lib/graytag-fill';
+import { buildFinishedDealsUrl, GRAYTAG_ACCESS_NOTICE_ID, GRAYTAG_ACCESS_NOTICE_PW, isGraytagAccessNoticeCredential, type YouTubeSharingNoKeepProductModel } from '../lib/graytag-fill';
 import { extractDeliveredAccountFromChats, resolveDealChatRoomUuid, shouldHydrateDeliveredAccountFromChat } from '../lib/deal-delivered-account';
 import { planAutoSyncPrice } from '../lib/auto-sync-prices';
 import { chooseUndercutterTargetDaily, planUndercutterPriceChange } from '../lib/undercutter-price';
@@ -22,12 +22,15 @@ import { checkNetflixProfiles, fetchNetflixEmailCodeViaEmailServer } from './net
 import { extractGraytagChats, findLatestBuyerInquiryMessage, findLatestBuyerInquiryThread, type GraytagChatMessage } from './chat-message-summary';
 import { mergePartyMaintenanceChecklistState, type PartyMaintenanceChecklistStore } from '../lib/party-maintenance-checklist';
 import { buildProfileAssignment, profileNicknameForPartyMember, type ProfileAssignment } from '../lib/profile-nickname';
-import { buildGeneratedAccount, deleteGeneratedAccountFromStore, extractSimpleLoginAliasRef, generateAccountPassword, mergeGeneratedAccountsIntoManagement, nextGeneratedAliasPrefix, normalizeGeneratedAccountPatch, normalizeManualAliasPrefix, type GeneratedAccountStore, type SimpleLoginAliasRef } from '../lib/generated-accounts';
+import { buildGeneratedAccount, deleteGeneratedAccountFromStore, extractSimpleLoginAliasRef, findRecoverableGeneratedAlias, generateAccountPassword, mergeGeneratedAccountsIntoManagement, nextGeneratedAliasPrefix, normalizeGeneratedAccountPatch, normalizeManualAliasPrefix, type GeneratedAccountStore, type SimpleLoginAliasRef } from '../lib/generated-accounts';
 import { mergeOnSaleAccountsIntoManagement } from '../lib/on-sale-accounts';
 import { mergeArchivedAccountsIntoManagement } from '../lib/management-archived-accounts';
 import { deleteManagementPaymentCard, isManagementPaymentCardAccountKeyKnown, loadManagementPaymentCards, managementPaymentCardKey, mergeManagementPaymentCards, replaceManagementPaymentCardAccountKeys, upsertManagementPaymentCard } from '../lib/management-payment-cards';
 import { applyManagementHiddenAccounts, hideManagementAccount, loadManagementHiddenAccounts, unhideManagementAccount } from '../lib/management-hidden-accounts';
 import { buildAccountCheckInflowStore, isAccountCheckStatus, type AccountCheckInflowStore } from '../lib/account-check-inflow';
+import { resolveManagementAccount } from '../lib/management-account-resolution';
+import { resolveCreatedSimpleLoginAliasId } from '../lib/simplelogin-alias-id';
+import { SimpleLoginAliasInventory, SimpleLoginAliasInventoryError, type CachedSimpleLoginAlias } from '../lib/simplelogin-alias-inventory';
 import { resolveAutoReplyPolicy } from './auto-reply-policy';
 import { normalizeBuyerMessage, messageFingerprint, messageTimestamp, isBuyerTextMessage } from './auto-reply-message';
 import { createAutoReplyJob, listAutoReplyJobs, loadAutoReplyJobStore, saveAutoReplyJobStore, updateAutoReplyJob, type AutoReplyJobStore } from './auto-reply-jobs';
@@ -39,6 +42,15 @@ import { decideAutonomousReply } from './auto-reply-autonomy';
 import { buildOperationsCenter, createManualResponseQueueItem, mergeManualResponseQueueItem, summarizeManualResponseQueue, type ManualResponseQueueItem } from '../lib/operations-center';
 import { buildPartyAccessDeliverySnapshotByMember, buildPartyAccessPublicPayload, createPartyAccessLinkRecord, enrichPartyAccessRecordWithKnownCredentials, extractPartyAccessTokensFromText, isPartyAccessAllowed, isValidPartyAccessConsent, mergeRecoverablePartyAccessBackupStores, normalizePartyAccessToken, partyAccessAccountKey, partyAccessMemberHistoryKey, partyAccessTokenHash, redactPartyAccessPayloadForConsent, resolvePartyAccessDeliverySnapshotByListing, resolvePartyAccessDeliverySnapshotForDeal, syncPartyAccessStoreWithMembers, type PartyAccessDeliverySnapshot, type PartyAccessLinkRecord, type PartyAccessLinkStore } from '../lib/party-access';
 import { CLOSING_ACKNOWLEDGEMENT_CATEGORY, DAILY_ACCOUNT_ACCESS_NOTICE_CATEGORY, OFF_HOURS_NOTICE_CATEGORY, buildClosingAcknowledgementReply, buildDailyAccountAccessNoticeReply, buildOffHoursNoticeReply, combineNoticeReplies, hasDailyAccountAccessNoticeToday, isSimpleAcknowledgement, shouldSendClosingAcknowledgement, shouldSendDailyAccountAccessNotice, shouldSendOffHoursNotice } from './auto-reply-daily-notice';
+import { JsonRenewalJobStore, type RenewalJob, type RenewalReviewAction } from '../renewal/job-store';
+import { buildRenewalMessage, buildRenewalPreviewRows, type ExtensionProductModel } from '../renewal/core';
+import { reconcileRenewalRegistration, retryRenewalMessage, retryRenewalRegistration, runRenewalAutomation, runSelectedRenewalBatch } from '../renewal/orchestrator';
+import { buildRegistrationEvidenceSnapshot } from '../renewal/graytag-registration-verifier';
+import { buildMultipartJsonBody, curlFetch } from './http-transport';
+import chatNotificationStreamApp from './chat-notification-stream';
+import { createYouTubeInvitationsApp } from './youtube-invitations';
+import { normalizeYouTubeAuditReason } from '../lib/youtube-audit-reason';
+import { readAuthoritativeYouTubeSellerProducts, reconcileYouTubeProductRegistration, type YouTubeProductRegistrationReconciliationClaim } from '../lib/youtube-product-registration-reconciliation';
 
 const EMAIL_SERVER = "http://127.0.0.1:3001";
 // MANAGEMENT_HIDDEN_ACCOUNTS_PATH is owned by src/lib/management-hidden-accounts.ts.
@@ -53,6 +65,7 @@ const ADMIN_REQUIRED_GET_PREFIXES = [
   '/chat/rooms',
   '/chat/messages',
   '/chat/poll',
+  '/chat/notifications',
   '/chat/auto-reply-log',
   '/price-safety',
   '/audit-log',
@@ -65,6 +78,8 @@ const ADMIN_REQUIRED_GET_PREFIXES = [
   '/management-hidden-accounts',
   '/management-payment-cards',
   '/operations-center',
+  '/renewal-automation',
+  '/youtube',
 ];
 
 function normalizedApiPath(path: string): string {
@@ -95,7 +110,21 @@ function hasValidAdminToken(c: any, token: string): boolean {
   return provided === token;
 }
 
+function authenticatedAdminActor(c: any): string {
+  const configured = String(process.env.AIO_ADMIN_ACTOR || '').trim().replace(/[^\p{L}\p{N}._:@-]+/gu, '-').slice(0, 80);
+  if (configured) return configured;
+  const provided = bearerToken(c.req.header('authorization')) || c.req.header('x-admin-token')?.trim() || '';
+  if (!provided) return 'admin:unknown';
+  return `admin-token:${createHash('sha256').update(provided).digest('hex').slice(0, 12)}`;
+}
+
+function privacySafeAuditId(scope: string, value: string): string {
+  return `sha256:${createHash('sha256').update(`${scope}:${value}`).digest('hex').slice(0, 16)}`;
+}
+
 app.use('*', async (c, next) => {
+  const normalizedPath = normalizedApiPath(c.req.path);
+  if (/^\/(?:api\/)?youtube(?:\/|$)/.test(normalizedPath)) c.header('Cache-Control', 'no-store');
   if (!requiresAdminAuth(c.req.method, c.req.path)) return next();
 
   const token = configuredAdminToken();
@@ -110,8 +139,78 @@ app.use('*', async (c, next) => {
   return next();
 });
 
+app.route('/chat/notifications', chatNotificationStreamApp);
+
+app.use('*', async (c, next) => {
+  const normalizedPath = normalizedApiPath(c.req.path);
+  if (!/^\/youtube\/family-groups(?:\/|$)/.test(normalizedPath)) return next();
+  const method = c.req.method.toUpperCase();
+  const action = method === 'POST'
+    ? 'youtube.family-group.create'
+    : method === 'PATCH'
+      ? 'youtube.family-group.update'
+      : method === 'DELETE'
+        ? 'youtube.family-group.disable'
+        : null;
+  if (!action) return next();
+  const reason = normalizeYouTubeAuditReason(c.req.header('x-audit-reason'));
+  if (!reason) {
+    return c.json({ ok: false, error: 'invalid audit reason' }, 400);
+  }
+  await next();
+  if (c.res.status < 200 || c.res.status >= 300) return;
+  const payload = await c.res.clone().json().catch(() => null) as { familyGroup?: { id?: unknown } } | null;
+  const targetId = typeof payload?.familyGroup?.id === 'string' ? payload.familyGroup.id : '';
+  if (!targetId) return;
+  writeAudit({
+    actor: authenticatedAdminActor(c),
+    action,
+    targetType: 'youtubeFamilyGroup',
+    targetId: privacySafeAuditId('youtube-family-group', targetId),
+    summary: `YouTube family group ${method === 'POST' ? 'created' : method === 'PATCH' ? 'updated' : 'disabled'}`,
+    result: 'success',
+    requestId: auditRequestId(c),
+    details: { reason },
+  });
+});
+
+const youtubeInvitationsApp = createYouTubeInvitationsApp({
+  actor: authenticatedAdminActor,
+  registerProduct: registerYouTubeSharingNoKeepProduct,
+  reconcileProductRegistration: reconcileYouTubeProductRegistrationFromSeller,
+  finishDelivery: finishYouTubeInvitationDelivery,
+  fetchProviderStatus: fetchYouTubeInvitationProviderStatus,
+  audit: (event) => writeAudit({
+    actor: event.actor,
+    action: `youtube.product-registration.${event.outcome}`,
+    targetType: 'youtubeProductRegistration',
+    targetId: privacySafeAuditId(
+      event.productUsid ? 'youtube-product' : 'youtube-family-group',
+      event.productUsid || event.familyGroupId,
+    ),
+    summary: `YouTube product registration ${event.outcome}`,
+    result: event.outcome === 'registered' ? 'success' : 'error',
+    requestId: `youtube-product-${Date.now()}`,
+    details: {
+      reason: event.reason,
+      familyGroupId: privacySafeAuditId('youtube-family-group', event.familyGroupId),
+      status: event.outcome,
+    },
+  }),
+  invitationAudit: (event) => writeAudit({
+    actor: event.actor,
+    action: `youtube.invitation.${event.action}.${event.outcome}`,
+    targetType: 'youtubeInvitation',
+    targetId: privacySafeAuditId('youtube-invitation', event.jobId),
+    summary: `YouTube invitation ${event.action} ${event.outcome}`,
+    result: event.outcome === 'success' ? 'success' : 'error',
+    requestId: `youtube-invitation-${Date.now()}`,
+    details: { reason: event.reason, status: event.outcome },
+  }),
+});
+
 function writeAudit(entry: Parameters<typeof appendAuditLog>[0]) {
-  try { appendAuditLog(entry); } catch (e: any) { console.warn('[AuditLog] append failed:', e?.message || e); }
+  try { appendAuditLog(entry); } catch { console.warn('[AuditLog] append failed'); }
 }
 
 const SAFE_MODE_RISKY_PATHS = new Set([
@@ -125,13 +224,21 @@ const SAFE_MODE_RISKY_PATHS = new Set([
   '/post/create',
   '/post/keepAcct',
   '/bulk-update-keepmemo',
+  '/youtube/products',
+  '/renewal-automation/tick',
+  '/renewal-automation/batch',
+  '/renewal-automation/reviews/action',
+  '/renewal-automation/message-policy',
 ]);
 
 function isSafeModeRiskyOperation(method: string, path: string): boolean {
   const upperMethod = method.toUpperCase();
   if (upperMethod === 'GET' || upperMethod === 'HEAD' || upperMethod === 'OPTIONS') return false;
   const normalizedPath = normalizedApiPath(path);
-  return SAFE_MODE_RISKY_PATHS.has(normalizedPath);
+  return SAFE_MODE_RISKY_PATHS.has(normalizedPath)
+    || /^\/youtube\/invitations\/[^/]+\/finish-delivery$/.test(normalizedPath)
+    || /^\/renewal-automation\/(?:batch|reviews\/action)$/.test(normalizedPath)
+    || /^\/renewal-automation\/jobs\/[^/]+\/(?:retry-message|retry-registration|reconcile-registration)$/.test(normalizedPath);
 }
 
 app.use('*', async (c, next) => {
@@ -160,6 +267,8 @@ app.use('*', async (c, next) => {
     safeMode,
   }, 423);
 });
+
+app.route('/youtube', youtubeInvitationsApp);
 
 function auditResultFromResults(results: any[]): 'success' | 'blocked' | 'error' {
   if (results.some((r) => r?.error === 'PRICE_SAFETY_BLOCKED' || r?.action === 'blocked')) return 'blocked';
@@ -190,11 +299,15 @@ function maskSecret(value: string): string {
 // ─── Session Keeper 쿠키 자동 로드 ─────────────────────────
 const SESSION_COOKIE_PATH = '/home/ubuntu/graytag-session/cookies.json';
 const DEFAULT_GENERATED_ACCOUNTS_PATH = '/home/ubuntu/.hermes/hermes-agent/graytag-aio-manager-0606/data/generated-accounts.json';
+const DEFAULT_SIMPLELOGIN_ALIAS_INVENTORY_PATH = '/home/ubuntu/.hermes/hermes-agent/graytag-aio-manager-0606/data/simplelogin-alias-inventory.json';
 const ACCOUNT_CHECK_INFLOW_PATH = '/home/ubuntu/.hermes/hermes-agent/graytag-aio-manager-0606/data/account-check-inflow.json';
 
 function generatedAccountsPath() {
   return process.env.GENERATED_ACCOUNTS_PATH || DEFAULT_GENERATED_ACCOUNTS_PATH;
 }
+const simpleLoginAliasInventory = new SimpleLoginAliasInventory({
+  path: process.env.SIMPLELOGIN_ALIAS_INVENTORY_PATH || DEFAULT_SIMPLELOGIN_ALIAS_INVENTORY_PATH,
+});
 const EMAIL_DASHBOARD_ENV_PATH = '/home/ubuntu/.hermes/hermes-agent/graytag-email-verify-dashboard-5588/.env';
 const SIMPLELOGIN_API = 'https://app.simplelogin.io/api';
 
@@ -227,6 +340,81 @@ function buildCookieStr(cookies: { AWSALB: string; AWSALBCORS: string; JSESSIONI
     cookies.AWSALBCORS ? `AWSALBCORS=${cookies.AWSALBCORS}` : '',
     `JSESSIONID=${cookies.JSESSIONID}`,
   ].filter(Boolean).join('; ');
+}
+
+async function registerYouTubeSharingNoKeepProduct(model: YouTubeSharingNoKeepProductModel): Promise<Response> {
+  const cookies = resolveCookies({});
+  if (!cookies) throw new Error('saved session unavailable');
+  const multipart = buildMultipartJsonBody(model);
+  return rateLimitedFetch('https://graytag.co.kr/ws/lender/registerProduct', {
+    method: 'POST',
+    headers: {
+      ...BASE_HEADERS,
+      Cookie: buildCookieStr(cookies),
+      'Content-Type': multipart.contentType,
+      Referer: 'https://graytag.co.kr/lender/product/register/input',
+    },
+    body: multipart.body,
+    redirect: 'manual',
+    signal: AbortSignal.timeout(30_000),
+  }, true);
+}
+
+async function reconcileYouTubeProductRegistrationFromSeller(claim: YouTubeProductRegistrationReconciliationClaim) {
+  const cookies = resolveCookies({});
+  if (!cookies) return { status: 'uncertain' as const };
+  const observation = await readAuthoritativeYouTubeSellerProducts(
+    (url, options) => rateLimitedFetch(url, options, true),
+    {
+      ...BASE_HEADERS,
+      Cookie: buildCookieStr(cookies),
+      Referer: 'https://graytag.co.kr/lender/deal/list',
+    },
+  );
+  return reconcileYouTubeProductRegistration(claim, observation);
+}
+
+async function finishYouTubeInvitationDelivery(dealUsid: string): Promise<Response> {
+  const cookies = resolveCookies({});
+  if (!cookies) throw new Error('saved session unavailable');
+  const multipart = buildMultipartJsonBody({ dealUsid });
+  return rateLimitedFetch('https://graytag.co.kr/ws/lender/finishProductDelivery', {
+    method: 'POST',
+    headers: {
+      ...BASE_HEADERS,
+      Cookie: buildCookieStr(cookies),
+      'Content-Type': multipart.contentType,
+      Referer: 'https://graytag.co.kr/lender/deal/list',
+    },
+    body: multipart.body,
+    redirect: 'manual',
+    signal: AbortSignal.timeout(30_000),
+  }, true);
+}
+
+async function fetchYouTubeInvitationProviderStatus(dealUsid: string): Promise<string | null> {
+  const cookies = resolveCookies({});
+  if (!cookies) return null;
+  const headers = (referer: string) => ({ ...BASE_HEADERS, Cookie: buildCookieStr(cookies), Referer: referer });
+  const observations: any[] = [];
+  for (const [kind, referer] of [
+    ['before', 'https://graytag.co.kr/lender/deal/list'],
+    ['after', 'https://graytag.co.kr/lender/deal/listAfterUsing'],
+  ] as const) {
+    let response: Response;
+    try {
+      response = await rateLimitedFetch(
+        buildFinishedDealsUrl(kind, 1, 500, true),
+        { headers: headers(referer), redirect: 'manual', signal: AbortSignal.timeout(30_000) },
+      );
+      if (!response.ok || response.redirected || (response.status >= 300 && response.status < 400)) return null;
+      const payload = await response.json();
+      if (!payload || typeof payload !== 'object') return null;
+      observations.push(...extractLenderDeals(payload));
+    } catch { return null; }
+  }
+  const exact = observations.find((deal) => deal && typeof deal === 'object' && deal.dealUsid === dealUsid);
+  return exact && typeof exact.dealStatus === 'string' && exact.dealStatus ? exact.dealStatus : null;
 }
 
 function dataDirFor(path: string) {
@@ -286,20 +474,50 @@ function simpleLoginApiKey(): string {
     || readEnvValueFromFile(EMAIL_DASHBOARD_ENV_PATH, 'SIMPLELOGIN_API_KEY').trim();
 }
 
-async function listSimpleLoginAliases(key: string, maxPages = 50): Promise<SimpleLoginAliasRef[]> {
-  const aliases: SimpleLoginAliasRef[] = [];
+function simpleLoginRetryAfterMs(response: Response): number {
+  const raw = response.headers.get('retry-after')?.trim() || '';
+  const seconds = Number(raw);
+  if (raw && Number.isFinite(seconds) && seconds >= 0) return Math.max(1_000, Math.ceil(seconds * 1_000));
+  const at = Date.parse(raw);
+  if (Number.isFinite(at)) return Math.max(1_000, at - Date.now());
+  return 30_000;
+}
+
+async function fetchFullSimpleLoginAliasInventory(key: string, maxPages = 50): Promise<CachedSimpleLoginAlias[]> {
+  const aliases: CachedSimpleLoginAlias[] = [];
   for (let page = 0; page < maxPages; page += 1) {
     const res = await fetch(`${SIMPLELOGIN_API}/aliases?page_id=${page}`, { headers: { Authentication: key, 'Content-Type': 'application/json' } });
-    if (!res.ok) break;
+    if (!res.ok) {
+      const message = `SimpleLogin 별칭 목록 조회 실패 (${res.status})`;
+      if (res.status === 429) {
+        throw new SimpleLoginAliasInventoryError({
+          code: 'SIMPLELOGIN_ALIAS_INVENTORY_RATE_LIMITED',
+          status: 503,
+          retryAfterMs: simpleLoginRetryAfterMs(res),
+          message,
+        });
+      }
+      throw new Error(message);
+    }
     const data = await res.json().catch(() => ({} as any)) as any;
     const items = Array.isArray(data?.aliases) ? data.aliases : [];
     for (const item of items) {
       const alias = extractSimpleLoginAliasRef(item);
-      if (alias) aliases.push(alias);
+      if (!alias) continue;
+      if (alias.id === undefined || alias.id === null || alias.id === '') {
+        throw new Error('SimpleLogin 별칭 목록 응답에 alias id가 없어 안전하게 생성할 수 없어요.');
+      }
+      aliases.push(alias.note
+        ? { id: alias.id, email: alias.email, note: alias.note }
+        : { id: alias.id, email: alias.email });
     }
     if (items.length === 0) break;
   }
   return aliases;
+}
+
+async function listSimpleLoginAliases(key: string): Promise<CachedSimpleLoginAlias[]> {
+  return simpleLoginAliasInventory.getForCreate(() => fetchFullSimpleLoginAliasInventory(key));
 }
 
 function mergeAliasRefsByEmailAndId(...groups: SimpleLoginAliasRef[][]): SimpleLoginAliasRef[] {
@@ -344,10 +562,18 @@ async function listEmailDashboardAliases(maxPages = 50): Promise<EmailAliasCandi
     .map(alias => ({ id: alias.id as string | number, email: alias.email, enabled: true }));
 }
 
-async function resolveSimpleLoginAliasIdByEmail(email: string, key: string): Promise<SimpleLoginAliasRef | null> {
+async function resolveSimpleLoginAliasIdByEmailFromNewestPage(email: string, key: string): Promise<SimpleLoginAliasRef | null> {
   const target = email.trim().toLowerCase();
   if (!target) return null;
-  return (await listSimpleLoginAliases(key)).find(alias => alias.id !== undefined && alias.email === target) || null;
+  const res = await fetch(`${SIMPLELOGIN_API}/aliases?page_id=0`, { headers: { Authentication: key, 'Content-Type': 'application/json' } });
+  if (!res.ok) throw new Error(`SimpleLogin 최신 별칭 조회 실패 (${res.status})`);
+  const data = await res.json().catch(() => ({} as any)) as any;
+  const items = Array.isArray(data?.aliases) ? data.aliases : [];
+  for (const item of items) {
+    const alias = extractSimpleLoginAliasRef(item);
+    if (alias?.email === target && alias.id !== undefined && alias.id !== null && alias.id !== '') return alias;
+  }
+  return null;
 }
 
 async function createSimpleLoginCustomAlias(input: { serviceType: string; note: string; existingEmails: string[]; manualPrefix?: string }) {
@@ -355,6 +581,15 @@ async function createSimpleLoginCustomAlias(input: { serviceType: string; note: 
   if (!key) throw new Error('SIMPLELOGIN_API_KEY가 AIO 또는 이메일 대시보드 환경에 없어요.');
 
   const existingAliases = await listSimpleLoginAliases(key);
+  const manualPrefix = normalizeManualAliasPrefix(input.manualPrefix || '');
+  const recoveredAlias = findRecoverableGeneratedAlias({
+    aliases: existingAliases,
+    serviceType: input.serviceType,
+    manualPrefix,
+    existingEmails: input.existingEmails,
+  });
+  if (recoveredAlias) return recoveredAlias;
+
   const baseExistingEmails = [...input.existingEmails, ...existingAliases.map(alias => alias.email)];
   const optionsRes = await fetch(`${SIMPLELOGIN_API}/v5/alias/options`, { headers: { Authentication: key, 'Content-Type': 'application/json' } });
   const options = await optionsRes.json().catch(() => ({} as any)) as any;
@@ -364,7 +599,6 @@ async function createSimpleLoginCustomAlias(input: { serviceType: string; note: 
   if (!signedSuffix) throw new Error('SimpleLogin alias suffix 옵션을 찾지 못했어요.');
 
   // POST https://app.simplelogin.io/api/v2/alias/custom/new
-  const manualPrefix = normalizeManualAliasPrefix(input.manualPrefix || '');
   for (let attempt = 0; attempt < (manualPrefix ? 1 : 6); attempt += 1) {
     const aliasPrefix = nextGeneratedAliasPrefix(input.serviceType, baseExistingEmails, manualPrefix);
     const res = await fetch(`${SIMPLELOGIN_API}/v2/alias/custom/new?hostname=${encodeURIComponent(aliasPrefix)}`, {
@@ -381,11 +615,19 @@ async function createSimpleLoginCustomAlias(input: { serviceType: string; note: 
     if (!res.ok) throw new Error(data?.error || data?.message || `SimpleLogin alias 생성 실패 (${res.status})`);
     const alias = extractSimpleLoginAliasRef(data);
     if (!alias?.email) throw new Error('SimpleLogin 응답에 alias email이 없어요.');
-    if (alias.id !== undefined && alias.id !== null && alias.id !== '') return { id: alias.id, email: alias.email };
+    if (alias.id !== undefined && alias.id !== null && alias.id !== '') {
+      const created = { id: alias.id, email: alias.email };
+      simpleLoginAliasInventory.appendCreated({ ...created, note: input.note });
+      return created;
+    }
 
-    const resolved = await resolveSimpleLoginAliasIdByEmail(alias.email, key);
-    if (!resolved?.id) throw new Error('SimpleLogin 별칭은 생성됐지만 alias id를 목록에서 찾지 못했어요. 잠시 후 새로고침해 주세요.');
-    return { id: resolved.id, email: resolved.email };
+    const created = await resolveCreatedSimpleLoginAliasId({
+      createdEmail: alias.email,
+      lookup: (normalizedEmail) => resolveSimpleLoginAliasIdByEmailFromNewestPage(normalizedEmail, key),
+      sleep: (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
+    });
+    simpleLoginAliasInventory.appendCreated({ ...created, note: input.note });
+    return created;
   }
 
   throw new Error('사용 가능한 서비스명+숫자 alias prefix를 찾지 못했어요.');
@@ -531,40 +773,6 @@ function rotateProxy(reason: string) {
   console.log(`[ProxyRotator] ${reason} → 회전: ${prev} → ${next} (${_proxyIndex + 1}/${_proxyList.length})`);
 }
 
-/** curl로 프록시 경유 fetch (tsx 환경 호환) */
-async function curlFetch(url: string, options: RequestInit = {}, proxyUrl: string): Promise<Response> {
-  const method = (options.method || 'GET').toUpperCase();
-  const headers = options.headers as Record<string, string> || {};
-
-  const args = [
-    '-s', '-S',
-    '-x', proxyUrl,
-    '-X', method,
-    '--max-time', '15',
-    '-w', '\n__STATUS__%{http_code}',
-  ];
-
-  for (const [k, v] of Object.entries(headers)) {
-    args.push('-H', `${k}: ${v}`);
-  }
-
-  if (options.body && typeof options.body === 'string') {
-    args.push('-d', options.body);
-  }
-
-  args.push(url);
-
-  const { stdout } = await execFileAsync('curl', args, { maxBuffer: 10 * 1024 * 1024 });
-  const statusMatch = stdout.match(/__STATUS__(\d+)$/);
-  const status = statusMatch ? parseInt(statusMatch[1]) : 0;
-  const body = stdout.replace(/__STATUS__\d+$/, '');
-
-  return new Response(body, {
-    status,
-    headers: { 'Content-Type': 'application/json' },
-  });
-}
-
 /** 직접 호출 (프록시 없음) */
 async function directFetch(url: string, options?: RequestInit): Promise<Response> {
   return fetch(url, options);
@@ -576,6 +784,14 @@ async function directFetch(url: string, options?: RequestInit): Promise<Response
  * - 프록시 없으면: 기존 방식 (30초 백오프)
  */
 async function rateLimitedFetch(url: string, options?: RequestInit, bypass = false): Promise<Response> {
+  // Side effects with durable idempotency claims must make exactly one transport attempt.
+  if (bypass) {
+    const elapsed = Date.now() - _lastGraytagRequest;
+    if (elapsed < 1500) await new Promise(r => setTimeout(r, 1500 - elapsed));
+    _lastGraytagRequest = Date.now();
+    const proxyUrl = _proxyList.length > 0 ? proxyToUrl(_proxyList[_proxyIndex]) : null;
+    return proxyUrl ? curlFetch(url, options, proxyUrl) : fetch(url, options);
+  }
   // 프록시 없으면 기존 방식
   if (_proxyList.length === 0) {
     const elapsed = Date.now() - _lastGraytagRequest;
@@ -871,6 +1087,16 @@ app.post('/generated-accounts/create', async (c) => {
     writeGeneratedAccountStore(store);
     return c.json({ ok: true, account });
   } catch (e: any) {
+    if (e instanceof SimpleLoginAliasInventoryError) {
+      const retryAfterMs = e.retryAfterMs ?? 30_000;
+      c.header('Retry-After', String(Math.max(1, Math.ceil(retryAfterMs / 1_000))));
+      return c.json({
+        error: e.message,
+        code: e.code,
+        retryAfterMs,
+        retriable: true,
+      }, e.status as 429 | 503);
+    }
     return c.json({ error: e?.message || '계정 생성 실패' }, 500);
   }
 });
@@ -1066,7 +1292,10 @@ app.post('/my/management', async (c) => {
       members: buildPartyAccessMemberStatusRefsFromDeals(allDeals),
     });
     if (syncedPartyAccess.changed) savePartyAccessLinkStore(syncedPartyAccess.store);
-    const deliverySnapshotByMember = buildPartyAccessDeliverySnapshotByMember(syncedPartyAccess.store);
+    const deliverySnapshotByMember = buildPartyAccessDeliverySnapshotByMember(
+      syncedPartyAccess.store,
+      { includeManagementSynthetic: false },
+    );
     const currentProfileNameByMemberKey = buildCurrentPartyProfileNameByMemberKey(allDeals, syncedPartyAccess.store, profileAssignmentByProductUsid);
 
     const snapshotFromAccessRecord = (record: PartyAccessLinkRecord): PartyAccessDeliverySnapshot => ({
@@ -1211,20 +1440,27 @@ app.post('/my/management', async (c) => {
       const assignmentAccountEmail = profileAssignment && !isGraytagAccessNoticeCredential(profileAssignment.accountEmail)
         ? String(profileAssignment.accountEmail || '').trim()
         : '';
-      const accessMappedSnapshot = isGraytagAccessNoticeCredential(rawKeepAcct)
-        ? (snapshotByPlaceholderDealUsid.get(String(deal.dealUsid || '').trim())
-          || snapshotByOnSaleProductUsid.get(productUsid)
-          || uniqueOnSaleSnapshotForService(svc)
-          || resolvePartyAccessDeliverySnapshotByListing(deliverySnapshotByMember, {
-            serviceType: svc,
-            dealUsid: String(deal.dealUsid || ''),
-            productUsid,
-          }))
-        : undefined;
-      const mappedAccountEmail = accessMappedSnapshot?.accountEmail && !isGraytagAccessNoticeCredential(accessMappedSnapshot.accountEmail)
-        ? accessMappedSnapshot.accountEmail
-        : assignmentAccountEmail;
-      const email = mappedAccountEmail || rawKeepAcct || '(직접전달)';
+      const directListingSnapshot = resolvePartyAccessDeliverySnapshotByListing(deliverySnapshotByMember, {
+        serviceType: svc,
+        dealUsid: String(deal.dealUsid || ''),
+        productUsid,
+      });
+      const accountResolution = resolveManagementAccount({
+        serviceType: svc,
+        rawKeepAcct,
+        dealStatus: String(deal.dealStatus || ''),
+        dealUsid: String(deal.dealUsid || ''),
+        productUsid,
+        placeholderSnapshotByDealUsid: snapshotByPlaceholderDealUsid,
+        onSaleSnapshotByProductUsid: snapshotByOnSaleProductUsid,
+        uniqueOnSaleSnapshotForService: deal.dealStatus === 'OnSale'
+          ? uniqueOnSaleSnapshotForService(svc)
+          : undefined,
+        directListingSnapshot,
+        assignmentAccountEmail,
+      });
+      const accessMappedSnapshot = accountResolution.snapshot;
+      const email = accountResolution.accountEmail;
       const generatedAccountForEmail = findGeneratedAccountForManagement(svc, email);
       const checklistForEmail = checklistStore[`${svc}:${email}`];
       const mappedPassword = accessMappedSnapshot?.password
@@ -2014,6 +2250,369 @@ async function sendGraytagChatMessage(input: { chatRoomUuid: string; dealUsid?: 
   const { stdout } = await execFileAsync('node', args, { timeout: 20000, maxBuffer: 1024 * 1024 });
   return JSON.parse(stdout.trim());
 }
+
+const RENEWAL_AUTOMATION_JOBS_PATH = process.env.RENEWAL_AUTOMATION_JOBS_PATH
+  || '/home/ubuntu/.hermes/hermes-agent/graytag-aio-manager-0606/data/renewal-automation-jobs.json';
+
+function renewalAutomationStore() {
+  return new JsonRenewalJobStore(RENEWAL_AUTOMATION_JOBS_PATH);
+}
+
+function renewalAutomationRuntimeFlags() {
+  const enabled = process.env.RENEWAL_AUTOMATION_ENABLED === 'true';
+  const live = enabled && process.env.RENEWAL_AUTOMATION_LIVE === 'true';
+  return { enabled, live, dryRun: !live };
+}
+
+async function fetchGraytagRenewalCandidates(): Promise<unknown[]> {
+  const cookies = resolveCookies({});
+  if (!cookies) throw new Error('Graytag session unavailable');
+  const response = await rateLimitedFetch(
+    'https://graytag.co.kr/ws/lender/findNearExpirationDeals?sorting=Latest&page=1&rows=100',
+    {
+      headers: { ...BASE_HEADERS, Cookie: buildCookieStr(cookies), Referer: 'https://graytag.co.kr/lender/deal/listNearExpiration' },
+      redirect: 'manual',
+      signal: AbortSignal.timeout(15_000),
+    },
+  );
+  if (!response.ok) throw new Error(`Graytag renewal candidates HTTP ${response.status}`);
+  const wrapped = await safeJson(response);
+  if (!wrapped?.ok) throw new Error('Graytag renewal candidates invalid response');
+  const payload: any = (wrapped as any).data;
+  const candidates = [payload?.data?.lenderDeals, payload?.lenderDeals, payload?.data?.data, payload?.data]
+    .find(Array.isArray);
+  return Array.isArray(candidates) ? candidates : [];
+}
+
+interface FreshRenewalRows {
+  rows: unknown[];
+  authoritative: boolean;
+}
+
+function strictLenderDeals(payload: any): unknown[] | null {
+  if (!payload || typeof payload !== 'object' || payload.succeeded === false) return null;
+  const candidates = [payload?.data?.lenderDeals, payload?.lenderDeals, payload?.data?.data?.lenderDeals];
+  const rows = candidates.find(Array.isArray);
+  return Array.isArray(rows) ? rows : null;
+}
+
+async function fetchFreshRenewalEndpoint(endpoint: 'findNearExpirationDeals' | 'findBeforeUsingLenderDeals', referer: string): Promise<FreshRenewalRows> {
+  const cookies = resolveCookies({});
+  if (!cookies) return { rows: [], authoritative: false };
+  const rowsPerPage = 500;
+  const collected: unknown[] = [];
+  try {
+    for (let page = 1; page <= 20; page += 1) {
+      const response = await rateLimitedFetch(
+        `https://graytag.co.kr/ws/lender/${endpoint}?finishedDealIncluded=false&sorting=Latest&page=${page}&rows=${rowsPerPage}`,
+        {
+          headers: { ...BASE_HEADERS, Cookie: buildCookieStr(cookies), Referer: referer },
+          redirect: 'manual', signal: AbortSignal.timeout(15_000),
+        },
+      );
+      if (!response.ok) return { rows: collected, authoritative: false };
+      const wrapped = await safeJson(response);
+      if (!wrapped.ok) return { rows: collected, authoritative: false };
+      const pageRows = strictLenderDeals((wrapped as any).data);
+      if (!pageRows) return { rows: collected, authoritative: false };
+      collected.push(...pageRows);
+      if (pageRows.length < rowsPerPage) return { rows: collected, authoritative: true };
+    }
+  } catch {
+    return { rows: collected, authoritative: false };
+  }
+  // A capped fetch cannot prove an absent row or an absent seller listing.
+  return { rows: collected, authoritative: false };
+}
+
+async function fetchGraytagRenewalRegistrationEvidence(job: RenewalJob) {
+  const capturedAt = new Date().toISOString();
+  const [near, seller] = await Promise.all([
+    fetchFreshRenewalEndpoint('findNearExpirationDeals', 'https://graytag.co.kr/lender/deal/listNearExpiration'),
+    fetchFreshRenewalEndpoint('findBeforeUsingLenderDeals', 'https://graytag.co.kr/lender/deal/list'),
+  ]);
+  const sellerOnSaleProducts = seller.rows.filter((row: any) => row?.dealStatus === 'OnSale');
+  return buildRegistrationEvidenceSnapshot(job, {
+    capturedAt,
+    nearExpirationDeals: near.rows,
+    sellerOnSaleProducts,
+    oldDealAuthoritative: near.authoritative,
+    sellerListingAuthoritative: seller.authoritative,
+  });
+}
+
+async function registerGraytagExtensionProduct(model: ExtensionProductModel) {
+  const cookies = resolveCookies({});
+  if (!cookies) throw new Error('Graytag session unavailable');
+  const multipart = buildMultipartJsonBody(model);
+  const response = await rateLimitedFetch('https://graytag.co.kr/ws/lender/registerProduct', {
+    method: 'POST',
+    headers: {
+      ...BASE_HEADERS,
+      Cookie: buildCookieStr(cookies),
+      Referer: `https://graytag.co.kr/lender/product/regist/extension?dealUsid=${encodeURIComponent(model.dealUsid)}`,
+      'X-Requested-With': 'XMLHttpRequest',
+      'Content-Type': multipart.contentType,
+    },
+    body: multipart.body,
+    redirect: 'manual',
+    signal: AbortSignal.timeout(30_000),
+  }, true);
+  if (!response.ok) throw new Error(`Graytag renewal registration HTTP ${response.status}`);
+  const wrapped = await safeJson(response);
+  if (!wrapped?.ok) throw new Error('Graytag renewal registration invalid response');
+  const payload: any = (wrapped as any).data;
+  return { succeeded: payload?.succeeded === true, data: payload?.data, message: payload?.message };
+}
+
+function renewalAutomationDependencies() {
+  return {
+    fetchCandidates: fetchGraytagRenewalCandidates,
+    registerProduct: registerGraytagExtensionProduct,
+    verifyRegistration: fetchGraytagRenewalRegistrationEvidence,
+    sendChat: async (input: { chatRoomUuid: string; dealUsid: string; message: string }) => {
+      const result = await sendGraytagChatMessage(input);
+      return { ok: result?.ok !== false, error: result?.error };
+    },
+    clock: () => new Date(),
+    store: renewalAutomationStore(),
+  };
+}
+
+function renewalReviewDto(job: ReturnType<JsonRenewalJobStore['get']> extends infer T ? Exclude<T, undefined> : never) {
+  return {
+    id: job.id, idempotencyKey: job.idempotencyKey, dealUsid: job.dealUsid, productUsid: job.productUsid,
+    service: job.service, category: job.category, buyer: job.buyer || '-', account: job.account || '-',
+    oldEnd: job.oldEnd, newEnd: job.newEnd, status: job.status, couponStatus: job.couponStatus,
+    registeredAt: job.registeredAt, messagedAt: job.messagedAt, reviewConfirmedAt: job.reviewConfirmedAt,
+    couponApprovedAt: job.couponApprovedAt, couponIssuedAt: job.couponIssuedAt, reviewRejectedAt: job.reviewRejectedAt,
+    reviewEvidence: job.reviewEvidence, reviewReason: job.reviewReason, audit: job.audit || [],
+    reconciliationAttempts: job.reconciliationAttempts || 0,
+    lastReconciliationAt: job.lastReconciliationAt,
+    reconciliationEvidence: job.reconciliationEvidence || [],
+    reconciliationAudit: job.reconciliationAudit || [],
+    chatUrl: `/dashboard/chat?room=${encodeURIComponent(job.chatRoomUuid)}`,
+    transactionUrl: `https://graytag.co.kr/lender/deal/detail?dealUsid=${encodeURIComponent(job.dealUsid)}`,
+    issuedIsManualConfirmation: true,
+  };
+}
+
+app.get('/renewal-automation/message-policy', (c) => {
+  try {
+    const { audit: _audit, ...policy } = renewalAutomationStore().getMessagePolicy();
+    return c.json({ ok: true, policy });
+  } catch (error: any) {
+    return c.json({ ok: false, error: String(error?.message || 'message policy unavailable').slice(0, 160) }, 500);
+  }
+});
+
+app.put('/renewal-automation/message-policy', async (c) => {
+  const requestId = auditRequestId(c);
+  const actor = authenticatedAdminActor(c);
+  const body = await c.req.json().catch(() => null) as any;
+  const keys = body && typeof body === 'object' && !Array.isArray(body) ? Object.keys(body).sort() : [];
+  if (keys.join(',') !== 'enabled,targetCount' || typeof body.enabled !== 'boolean'
+    || !Number.isInteger(body.targetCount) || body.targetCount < 0 || body.targetCount > 100) {
+    return c.json({ ok: false, error: 'enabled boolean and targetCount integer 0..100 are required' }, 400);
+  }
+  try {
+    const before = renewalAutomationStore().getMessagePolicy();
+    const updated = renewalAutomationStore().updateMessagePolicy(
+      { enabled: body.enabled, targetCount: body.targetCount },
+      { actor, at: new Date().toISOString() },
+    );
+    const { audit: _audit, ...policy } = updated;
+    writeAudit({ actor: 'admin', action: 'renewal.message-policy.update', targetType: 'renewalMessagePolicy', targetId: 'global', summary: 'renewal message policy updated', result: 'success', requestId, before: { enabled: before.enabled, targetCount: before.targetCount }, after: { enabled: policy.enabled, targetCount: policy.targetCount }, details: { authenticatedActor: actor } });
+    return c.json({ ok: true, policy });
+  } catch (error: any) {
+    writeAudit({ actor: 'admin', action: 'renewal.message-policy.update', targetType: 'renewalMessagePolicy', targetId: 'global', summary: 'renewal message policy update failed', result: 'error', requestId, details: { authenticatedActor: actor } });
+    return c.json({ ok: false, error: String(error?.message || 'message policy update failed').slice(0, 160) }, 409);
+  }
+});
+
+app.get('/renewal-automation/candidates', async (c) => {
+  try {
+    const store = renewalAutomationStore();
+    const rows = buildRenewalPreviewRows(await fetchGraytagRenewalCandidates(), store.list());
+    return c.json({ ok: true, ...renewalAutomationRuntimeFlags(), safeMode: loadSafeModeConfig().enabled, rows, count: rows.length, message: buildRenewalMessage() });
+  } catch (error: any) {
+    return c.json({ ok: false, error: String(error?.message || 'renewal candidate preview failed').slice(0, 160) }, 502);
+  }
+});
+
+app.post('/renewal-automation/batch', async (c) => {
+  const requestId = auditRequestId(c);
+  const body = await c.req.json().catch(() => ({})) as { idempotencyKeys?: unknown; dryRun?: boolean; messageTemplate?: string };
+  const idempotencyKeys = Array.isArray(body.idempotencyKeys) ? body.idempotencyKeys.map(String) : [];
+  if (!idempotencyKeys.length || idempotencyKeys.length > 100) return c.json({ ok: false, error: 'idempotencyKeys must contain 1..100 items' }, 400);
+  const requestedLive = body.dryRun === false;
+  if (requestedLive && !renewalAutomationRuntimeFlags().live) {
+    writeAudit({ actor: 'admin', action: 'renewal.batch', targetType: 'renewal', targetId: 'selected', summary: 'selected live renewal blocked: runtime disabled', result: 'blocked', requestId, details: { count: idempotencyKeys.length } });
+    return c.json({ ok: false, error: 'RENEWAL_AUTOMATION_LIVE_DISABLED', message: '연장 LIVE 잠금이 해제되지 않았습니다.' }, 423);
+  }
+  try {
+    const result = await runSelectedRenewalBatch(renewalAutomationDependencies(), {
+      idempotencyKeys, dryRun: requestedLive ? false : true, messageTemplate: body.messageTemplate,
+    });
+    writeAudit({ actor: 'admin', action: 'renewal.batch', targetType: 'renewal', targetId: 'selected', summary: `selected renewal ${result.dryRun ? 'dry-run' : 'live'}`, result: 'success', requestId, details: { count: idempotencyKeys.length, outcomes: result.results.map((item) => item.outcome) } });
+    return c.json({ ok: true, ...result });
+  } catch (error: any) {
+    writeAudit({ actor: 'admin', action: 'renewal.batch', targetType: 'renewal', targetId: 'selected', summary: 'selected renewal failed', result: 'error', requestId });
+    return c.json({ ok: false, error: String(error?.message || 'selected renewal failed').slice(0, 160) }, 409);
+  }
+});
+
+app.get('/renewal-automation/reviews', (c) => {
+  try {
+    const items = renewalAutomationStore().list().filter((job) => job.couponStatus !== 'not_started').map(renewalReviewDto)
+      .sort((a, b) => (a.couponStatus === 'awaiting_review' ? -1 : 0) - (b.couponStatus === 'awaiting_review' ? -1 : 0) || String(b.messagedAt || '').localeCompare(String(a.messagedAt || '')));
+    return c.json({ ok: true, items, count: items.length, issuedLabel: '수동 지급 완료(외부 쿠폰 자동 발급 아님)' });
+  } catch (error: any) {
+    return c.json({ ok: false, error: String(error?.message || 'review list failed').slice(0, 160) }, 500);
+  }
+});
+
+app.post('/renewal-automation/reviews/action', async (c) => {
+  const requestId = auditRequestId(c);
+  const actor = authenticatedAdminActor(c);
+  const body = await c.req.json().catch(() => ({})) as { ids?: unknown; action?: RenewalReviewAction; reason?: string; evidence?: string };
+  const ids = Array.isArray(body.ids) ? [...new Set(body.ids.map(String).filter(Boolean))].slice(0, 100) : [];
+  const allowed = new Set<RenewalReviewAction>(['review_confirm', 'reject', 'coupon_approve', 'mark_issued', 'mark_failed']);
+  const reason = String(body.reason || '').trim();
+  if (!ids.length || !body.action || !allowed.has(body.action) || !reason) return c.json({ ok: false, error: 'ids, allowed action and reason are required' }, 400);
+  const store = renewalAutomationStore();
+  const results = ids.map((id) => {
+    try {
+      const current = store.get(id);
+      if (!current) throw new Error('renewal job not found');
+      const transitionAt = new Date().toISOString();
+      const job = store.applyReviewAction(id, current.couponStatus, body.action!, {
+        actor,
+        at: transitionAt,
+        reason,
+        evidence: body.evidence,
+      });
+      writeAudit({
+        actor,
+        action: `renewal.review.${body.action}`,
+        targetType: 'renewalJob',
+        targetId: id,
+        summary: body.action === 'mark_issued' ? '수동 지급 완료 확인' : `renewal review ${body.action}`,
+        result: 'success',
+        requestId,
+        details: {
+          reason,
+          evidenceProvided: Boolean(String(body.evidence || '').trim()),
+          couponStatusBefore: current.couponStatus,
+          couponStatusAfter: job.couponStatus,
+        },
+      });
+      return { id, ok: true, item: renewalReviewDto(job) };
+    } catch (error: any) {
+      const message = String(error?.message || 'review action failed').slice(0, 120);
+      writeAudit({ actor, action: `renewal.review.${body.action}`, targetType: 'renewalJob', targetId: id, summary: `renewal review ${body.action} blocked`, result: 'blocked', requestId, details: { reason, error: message } });
+      return { id, ok: false, error: message };
+    }
+  });
+  return c.json({ ok: results.some((item) => item.ok), results }, results.some((item) => item.ok) ? 200 : 409);
+});
+
+app.get('/renewal-automation/status', (c) => {
+  const flags = renewalAutomationRuntimeFlags();
+  const jobs = renewalAutomationStore().list().slice().sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  const counts = jobs.reduce<Record<string, number>>((acc, job) => {
+    acc[job.status] = (acc[job.status] || 0) + 1;
+    return acc;
+  }, {});
+  return c.json({ ok: true, ...flags, counts, jobs: jobs.slice(0, 50), message: buildRenewalMessage() });
+});
+
+app.post('/renewal-automation/tick', async (c) => {
+  const requestId = auditRequestId(c);
+  const body = await c.req.json().catch(() => ({})) as { dryRun?: boolean; maxCandidates?: number };
+  const flags = renewalAutomationRuntimeFlags();
+  const requestedLive = body.dryRun === false;
+  if (requestedLive && !flags.live) {
+    writeAudit({ actor: 'admin', action: 'renewal.tick', targetType: 'renewal', targetId: 'automation', summary: 'live renewal tick blocked: runtime disabled', result: 'blocked', requestId });
+    return c.json({ ok: false, error: 'RENEWAL_AUTOMATION_LIVE_DISABLED', message: '연장 자동화 LIVE 잠금이 해제되지 않았습니다.' }, 423);
+  }
+  try {
+    const result = await runRenewalAutomation(renewalAutomationDependencies(), {
+      dryRun: requestedLive ? false : true,
+      maxCandidates: body.maxCandidates,
+    });
+    writeAudit({ actor: 'admin', action: 'renewal.tick', targetType: 'renewal', targetId: 'automation', summary: `renewal tick ${result.dryRun ? 'dry-run' : 'live'}`, result: 'success', requestId, details: { dryRun: result.dryRun, previews: result.previews.length, jobs: result.jobs.length, skipped: result.skipped } });
+    return c.json({ ok: true, ...result });
+  } catch (error: any) {
+    writeAudit({ actor: 'admin', action: 'renewal.tick', targetType: 'renewal', targetId: 'automation', summary: 'renewal tick failed', result: 'error', requestId });
+    return c.json({ ok: false, error: String(error?.message || 'renewal tick failed').slice(0, 160) }, 502);
+  }
+});
+
+app.post('/renewal-automation/jobs/:id/reconcile-registration', async (c) => {
+  const requestId = auditRequestId(c);
+  const id = c.req.param('id');
+  const actor = authenticatedAdminActor(c);
+  try {
+    const deps = renewalAutomationDependencies();
+    const job = await reconcileRenewalRegistration(id, deps, authenticatedAdminActor(c), 'manual');
+    writeAudit({
+      actor: 'admin', action: 'renewal.reconcile-registration', targetType: 'renewalJob', targetId: id,
+      summary: `renewal registration reconciliation ${job.status}`, result: 'success', requestId,
+      details: { authenticatedActor: actor, status: job.status, reconciliationAttempts: job.reconciliationAttempts || 0 },
+    });
+    return c.json({ ok: true, item: renewalReviewDto(job) });
+  } catch (error: any) {
+    const message = String(error?.message || 'registration reconciliation failed').slice(0, 120);
+    writeAudit({
+      actor: 'admin', action: 'renewal.reconcile-registration', targetType: 'renewalJob', targetId: id,
+      summary: 'renewal registration reconciliation blocked', result: 'blocked', requestId,
+      details: { authenticatedActor: actor, error: message },
+    });
+    return c.json({ ok: false, error: message }, 409);
+  }
+});
+
+app.post('/renewal-automation/jobs/:id/retry-registration', async (c) => {
+  const requestId = auditRequestId(c);
+  const id = c.req.param('id');
+  const actor = authenticatedAdminActor(c);
+  if (!renewalAutomationRuntimeFlags().live) {
+    return c.json({ ok: false, error: 'RENEWAL_AUTOMATION_LIVE_DISABLED', message: '연장 등록 잠금이 해제되지 않았습니다.' }, 423);
+  }
+  try {
+    const job = await retryRenewalRegistration(id, renewalAutomationDependencies(), actor);
+    writeAudit({
+      actor: 'admin', action: 'renewal.retry-registration', targetType: 'renewalJob', targetId: id,
+      summary: `safe renewal registration retry ${job.status}`, result: 'success', requestId,
+      details: { authenticatedActor: actor, status: job.status },
+    });
+    return c.json({ ok: true, item: renewalReviewDto(job) });
+  } catch (error: any) {
+    const message = String(error?.message || 'registration retry failed').slice(0, 120);
+    writeAudit({
+      actor: 'admin', action: 'renewal.retry-registration', targetType: 'renewalJob', targetId: id,
+      summary: 'safe renewal registration retry blocked', result: 'blocked', requestId,
+      details: { authenticatedActor: actor, error: message },
+    });
+    return c.json({ ok: false, error: message }, 409);
+  }
+});
+
+app.post('/renewal-automation/jobs/:id/retry-message', async (c) => {
+  const requestId = auditRequestId(c);
+  if (!renewalAutomationRuntimeFlags().live) {
+    return c.json({ ok: false, error: 'RENEWAL_AUTOMATION_LIVE_DISABLED', message: '메시지 발송 잠금이 해제되지 않았습니다.' }, 423);
+  }
+  try {
+    const deps = renewalAutomationDependencies();
+    const job = await retryRenewalMessage(c.req.param('id'), { sendChat: deps.sendChat, clock: deps.clock, store: deps.store });
+    writeAudit({ actor: 'admin', action: 'renewal.retry-message', targetType: 'renewalJob', targetId: job.id, summary: 'renewal message retry sent', result: 'success', requestId });
+    return c.json({ ok: true, job });
+  } catch (error: any) {
+    return c.json({ ok: false, error: String(error?.message || 'message retry failed').slice(0, 120) }, 409);
+  }
+});
 
 // STOMP를 통한 메시지 전송 (stomp-sender.cjs 사용)
 app.post('/chat/send', async (c) => {

@@ -81,16 +81,19 @@ describe('account slot UI helpers', () => {
   });
 
   test('bulk category fill excludes empty/non-party placeholder accounts', () => {
-    const emptyPaidGenerated = calculateAccountVacancy({ serviceType: '디즈니플러스', members: [], maxSlots: 6 });
+    const now = new Date('2026-05-19T12:00:00+09:00');
+    const emptyPaidGenerated = calculateAccountVacancy({ serviceType: '디즈니플러스', members: [], maxSlots: 6, now });
     const directDelivery = calculateAccountVacancy({
       serviceType: '디즈니플러스',
       members: Array.from({ length: 1 }, (_, i) => ({ dealUsid: `U${i}`, status: 'Using', endDateTime: '20260630T2359' })),
       maxSlots: 6,
+      now,
     });
     const realOpenParty = calculateAccountVacancy({
       serviceType: '디즈니플러스',
       members: Array.from({ length: 5 }, (_, i) => ({ dealUsid: `U${i}`, status: 'Using', endDateTime: '20260630T2359' })),
       maxSlots: 6,
+      now,
     });
 
     expect(canAccountReceiveAutoFill({ email: 'empty@example.com', vacancy: emptyPaidGenerated })).toBe(false);

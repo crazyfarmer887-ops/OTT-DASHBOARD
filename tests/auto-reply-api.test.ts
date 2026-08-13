@@ -1,4 +1,4 @@
-import { describe, expect, test, beforeEach, afterEach } from 'vitest';
+import { describe, expect, test, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -48,6 +48,7 @@ describe('auto reply API', () => {
   });
 
   afterEach(() => {
+    vi.unstubAllGlobals();
     rmSync(tempDir, { recursive: true, force: true });
     delete process.env.AUTO_REPLY_JOBS_PATH;
     delete process.env.AUTO_REPLY_CONFIG_PATH;
@@ -121,6 +122,7 @@ describe('auto reply API', () => {
   });
 
   test('daily first buyer message drafts account access notice and later acknowledgement is ignored', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 302 })));
     process.env.AUTO_REPLY_ENABLE_SEND = 'true';
     process.env.AUTO_REPLY_TEST_NOW = '2026-05-04T06:00:00Z'; // 15:00 KST
     const unique = `api-daily-room-${Date.now()}`;

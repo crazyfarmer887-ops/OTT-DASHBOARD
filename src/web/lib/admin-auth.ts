@@ -6,6 +6,7 @@ const ADMIN_REQUIRED_GET_PREFIXES = [
   "/api/chat/rooms",
   "/api/chat/messages",
   "/api/chat/poll",
+  "/api/chat/notifications",
   "/api/chat/auto-reply-log",
   "/api/price-safety",
   "/api/audit-log",
@@ -18,6 +19,8 @@ const ADMIN_REQUIRED_GET_PREFIXES = [
   "/api/management-hidden-accounts",
   "/api/operations-center",
   "/api/party-access",
+  "/api/renewal-automation",
+  "/api/youtube",
 ];
 
 export type AdminAuthFailureDetail = {

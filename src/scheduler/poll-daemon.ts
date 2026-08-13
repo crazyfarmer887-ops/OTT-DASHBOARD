@@ -3,6 +3,8 @@ import { closeSync, existsSync, openSync, readFileSync, writeFileSync, mkdirSync
 import { sendSellerAlert } from '../alerts/telegram';
 import { extractGraytagChats, findLatestBuyerInquiryMessage, type GraytagChatMessage } from '../api/chat-message-summary';
 import { messageFingerprint, normalizeBuyerMessage, type AutoReplyCandidateMessage } from '../api/auto-reply-message';
+import { chatNotificationBroker } from '../realtime/chat-notification-broker';
+import { observeYouTubeInvitationPollSources } from '../lib/youtube-invitation-poller';
 
 const POLL_SESSION_PATH = '/home/ubuntu/graytag-session/cookies.json';
 const POLL_INTERVAL_MS = 30 * 1000;
@@ -26,12 +28,12 @@ const BASE_HEADERS = {
   'Referer': 'https://graytag.co.kr/lender/deal/list',
 };
 
-export function buildPollDealsUrl(page = 1, rows = 50): string {
+export function buildPollDealsUrl(page = 1, rows = 500): string {
   // Graytag 판매내역 now only exposes current 판매중 rows when "종료된 거래 포함" is enabled.
   return `https://graytag.co.kr/ws/lender/findBeforeUsingLenderDeals?finishedDealIncluded=true&sorting=Latest&page=${page}&rows=${rows}`;
 }
 
-export function buildPollAfterUsingDealsUrl(page = 1, rows = 50): string {
+export function buildPollAfterUsingDealsUrl(page = 1, rows = 500): string {
   return `https://graytag.co.kr/ws/lender/findAfterUsingLenderDeals?finishedDealIncluded=false&sorting=Latest&page=${page}&rows=${rows}`;
 }
 
@@ -312,12 +314,14 @@ export async function reserveAndSendChatAlert(
   known: Record<string, string>,
   persist: (state: Record<string, string>) => boolean,
   send: () => Promise<{ sent: boolean }>,
+  onReserved?: () => void,
 ): Promise<boolean> {
   known[alert.fingerprint] = alert.timestamp;
   if (!persist(known)) {
     delete known[alert.fingerprint];
     return false;
   }
+  try { onReserved?.(); } catch {}
   const result = await send();
   return result.sent;
 }
@@ -383,14 +387,20 @@ async function recordPollFailure(reason: string, alertKey: string, severity: 'wa
   }
 }
 
-function extractLenderDeals(payload: any): any[] {
-  const candidates = [
-    payload?.data?.lenderDeals,
-    payload?.lenderDeals,
-    payload?.data?.data,
-    payload?.data,
-  ];
-  return candidates.find(Array.isArray) || [];
+export interface AuthoritativeLenderDealsResult {
+  authoritative: boolean;
+  deals: any[];
+}
+
+export function extractAuthoritativeLenderDeals(payload: unknown): AuthoritativeLenderDealsResult {
+  if (!payload || typeof payload !== 'object' || (payload as any).succeeded !== true) {
+    return { authoritative: false, deals: [] };
+  }
+  const data = (payload as any).data;
+  const candidate = data?.lenderDeals ?? data?.data?.lenderDeals;
+  return Array.isArray(candidate)
+    ? { authoritative: true, deals: candidate }
+    : { authoritative: false, deals: [] };
 }
 
 async function sendNewChatMessageAlerts(deals: PollChatDeal[], headers: Record<string, string>): Promise<number> {
@@ -425,7 +435,18 @@ async function sendNewChatMessageAlerts(deals: PollChatDeal[], headers: Record<s
         body: `${alert.productType} · ${alert.borrowerName}${accountLine}${dealLine}\n시간: ${alert.timestamp}\n메시지: ${alert.text}\n바로가기: https://email-verify.one/dashboard/chat?room=${encodeURIComponent(alert.chatRoomUuid)}`,
         category: 'inquiry',
         throttleMs: 0,
-      }));
+      }), () => {
+        chatNotificationBroker.publish({
+          chatRoomUuid: alert.chatRoomUuid,
+          dealUsid: alert.dealUsid,
+          buyerName: alert.borrowerName,
+          serviceType: alert.productType,
+          productName: alert.productName,
+          accountLabel: alert.keepAcct,
+          message: alert.text,
+          messageAt: alert.timestamp,
+        });
+      });
       if (didSend) sent += 1;
     } catch (e: any) {
       console.warn('[PollDaemon] 채팅 알림 확인 실패:', e?.message || e);
@@ -469,19 +490,49 @@ async function pollGraytag() {
     }
 
     const json = await resp.json() as any;
-    if (!json.succeeded) {
+    if (json.succeeded !== true) {
       console.log('[PollDaemon] API succeeded=false');
       await recordPollFailure('Graytag API succeeded=false', 'poll-daemon-api-failure');
       return;
     }
+    const beforeSource = extractAuthoritativeLenderDeals(json);
+    if (!beforeSource.authoritative) {
+      console.log('[PollDaemon] API lenderDeals shape invalid');
+      await recordPollFailure('Graytag API lenderDeals shape invalid', 'poll-daemon-api-failure');
+      return;
+    }
 
-    const deals: any[] = json.data?.lenderDeals ?? [];
+    const deals: any[] = beforeSource.deals;
     let allDealsForChatAlerts: any[] = deals;
+    let afterDeals: any[] = [];
+    let afterAuthoritative = false;
     if (afterResp.ok) {
       const afterJson = await afterResp.json() as any;
-      allDealsForChatAlerts = [...deals, ...extractLenderDeals(afterJson)];
+      const afterSource = extractAuthoritativeLenderDeals(afterJson);
+      if (afterSource.authoritative) {
+        afterDeals = afterSource.deals;
+        afterAuthoritative = true;
+        allDealsForChatAlerts = [...deals, ...afterDeals];
+      } else if (afterJson.succeeded !== true) {
+        console.log('[PollDaemon] 사용중 채팅 API succeeded=false');
+      } else {
+        console.log('[PollDaemon] 사용중 채팅 API lenderDeals shape invalid');
+      }
     } else {
       console.log('[PollDaemon] 사용중 채팅 API 실패:', afterResp.status);
+    }
+    if (afterAuthoritative) {
+      try {
+        observeYouTubeInvitationPollSources(
+          deals,
+          afterDeals,
+          beforeSource.authoritative,
+          afterAuthoritative,
+        );
+      } catch {
+        // Provider/store errors can carry identifiers. Keep daemon logs count/shape-only.
+        console.error('[PollDaemon] YouTube invitation observation failed');
+      }
     }
     const known = loadKnownDeals();
     const { updated, alerts } = buildNewDealStatusAlerts(deals, known);

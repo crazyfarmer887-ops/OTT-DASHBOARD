@@ -81,7 +81,6 @@ export interface PartyAccessMemberStatusLike {
 const ACTIVE_PARTY_MEMBER_STATUS_CODES = new Set([
   'active',
   'current',
-  'delivered',
   'deliveredandcheckprepaid',
   'using',
   'usingnearexpiration',
@@ -125,6 +124,13 @@ export function extractPartyAccessTokensFromText(text: string): string[] {
 
 function normalizeKeyPart(value: string): string {
   return String(value || '').trim();
+}
+
+export function isManagementSyntheticPartyAccessRecord(
+  record: Pick<PartyAccessLinkRecord, 'id' | 'shareToken'> | null | undefined,
+): boolean {
+  if (!record || normalizeKeyPart(String(record.shareToken || ''))) return false;
+  return normalizeKeyPart(record.id).endsWith(':management');
 }
 
 export function normalizeEmailVerifyUrl(value: string): string {
@@ -274,10 +280,14 @@ export function mergeRecoverablePartyAccessBackupStores(
   return { store: next, recoveredCount };
 }
 
-export function buildPartyAccessDeliverySnapshotByMember(store: PartyAccessLinkStore = {}): Map<string, PartyAccessDeliverySnapshot> {
+export function buildPartyAccessDeliverySnapshotByMember(
+  store: PartyAccessLinkStore = {},
+  options: { includeManagementSynthetic?: boolean } = {},
+): Map<string, PartyAccessDeliverySnapshot> {
   const snapshots = new Map<string, PartyAccessDeliverySnapshot>();
   const records = Object.values(store || {})
     .filter((record) => record && record.member?.memberId)
+    .filter((record) => options.includeManagementSynthetic !== false || !isManagementSyntheticPartyAccessRecord(record))
     .sort((a, b) => String(a.createdAt || '').localeCompare(String(b.createdAt || '')));
   for (const record of records) {
     const key = partyAccessMemberHistoryKey(record.serviceType, record.accountEmail, record.member.kind, record.member.memberId);
@@ -372,7 +382,7 @@ export function syncPartyAccessStoreWithMembers(input: {
   for (const [tokenHash, record] of Object.entries(input.store || {})) {
     if (!record?.member?.memberId) continue;
     const status = statusByKey.get(`${record.member.kind}:${record.member.memberId}`);
-    const syntheticManagementRecord = !record.shareToken && String(record.id || '').endsWith(':management');
+    const syntheticManagementRecord = isManagementSyntheticPartyAccessRecord(record);
     if (!status) {
       if (syntheticManagementRecord && !record.revokedAt) {
         next[tokenHash] = { ...record, revokedAt: now };
@@ -409,6 +419,38 @@ export function syncPartyAccessStoreWithMembers(input: {
       changed = true;
     }
   }
+  return { store: next, changed };
+}
+
+export function reconcileManagementSyntheticPartyAccessRoster(input: {
+  store: PartyAccessLinkStore;
+  accounts: Array<{
+    serviceType: string;
+    accountEmail: string;
+    currentMemberIds: string[];
+  }>;
+  now?: string;
+}): { store: PartyAccessLinkStore; changed: boolean } {
+  const now = input.now || new Date().toISOString();
+  const currentMemberIdsByAccount = new Map(
+    (input.accounts || []).map((account) => [
+      partyAccessAccountKey(account.serviceType, account.accountEmail),
+      new Set((account.currentMemberIds || []).map(normalizeKeyPart).filter(Boolean)),
+    ]),
+  );
+  const next: PartyAccessLinkStore = { ...(input.store || {}) };
+  let changed = false;
+
+  for (const [tokenHash, record] of Object.entries(input.store || {})) {
+    if (!isManagementSyntheticPartyAccessRecord(record)) continue;
+    const currentMemberIds = currentMemberIdsByAccount.get(partyAccessAccountKey(record.serviceType, record.accountEmail));
+    if (!currentMemberIds) continue;
+    const revokedAt = currentMemberIds.has(normalizeKeyPart(record.member.memberId)) ? null : (record.revokedAt || now);
+    if (revokedAt === record.revokedAt) continue;
+    next[tokenHash] = { ...record, revokedAt };
+    changed = true;
+  }
+
   return { store: next, changed };
 }
 
@@ -552,10 +594,25 @@ export function buildPartyAccessProfileStatuses(
   }
 
   const latestSiblings = Array.from(latestByMember.values());
-  const rows = latestSiblings
+  const activeSiblings = latestSiblings
     .filter((sibling) => !sibling.revokedAt)
     .filter((sibling) => isPartyAccessAllowed(sibling, now).allowed)
-    .filter((sibling) => isCurrentPartyAccessProfileStatus(sibling.member.status, sibling.member.statusName || sibling.member.status))
+    .filter((sibling) => isCurrentPartyAccessProfileStatus(sibling.member.status, sibling.member.statusName || sibling.member.status));
+
+  // Account-management synthetic siblings are refreshed from the same authoritative
+  // current-member rows shown on the operator dashboard. When they exist, stale real
+  // token history must not inflate or duplicate the buyer-facing profile list.
+  const managementSiblings = activeSiblings.filter(isManagementSyntheticPartyAccessRecord);
+  const authoritativeSiblings = managementSiblings.length > 0
+    ? [...managementSiblings, ...activeSiblings.filter((sibling) => sibling.member.kind === 'manual')]
+    : activeSiblings;
+  const exactCurrentKey = authoritativeSiblings.find((sibling) => sibling.member.kind === record.member.kind && sibling.member.memberId === record.member.memberId);
+  const currentProfileName = normalizeKeyPart(record.profileName || record.member.memberName || '');
+  const profileMatchedCurrent = exactCurrentKey || authoritativeSiblings.find((sibling) =>
+    currentProfileName && normalizeKeyPart(sibling.profileName || sibling.member.memberName || '') === currentProfileName);
+  const currentMemberKey = profileMatchedCurrent ? `${profileMatchedCurrent.member.kind}:${profileMatchedCurrent.member.memberId}` : '';
+
+  const rows = authoritativeSiblings
     .map((sibling) => ({
       profileName: normalizeKeyPart(sibling.profileName || sibling.member.memberName || '(미확인)'),
       memberName: normalizeKeyPart(sibling.member.memberName || '(미확인)'),
@@ -563,14 +620,14 @@ export function buildPartyAccessProfileStatuses(
       statusName: normalizeKeyPart(sibling.member.statusName || sibling.member.status),
       startDateTime: sibling.member.startDateTime || null,
       endDateTime: sibling.member.endDateTime || null,
-      isCurrentMember: sibling.member.kind === record.member.kind && sibling.member.memberId === record.member.memberId,
+      isCurrentMember: `${sibling.member.kind}:${sibling.member.memberId}` === currentMemberKey,
     }))
     .sort((a, b) => {
       if (a.isCurrentMember !== b.isCurrentMember) return a.isCurrentMember ? -1 : 1;
       return String(a.endDateTime || '').localeCompare(String(b.endDateTime || '')) || a.profileName.localeCompare(b.profileName);
     });
 
-  const limit = partyAccessProfileLimit(record.serviceType);
+  const limit = managementSiblings.length > 0 ? 0 : partyAccessProfileLimit(record.serviceType);
   const limitedRows = limit > 0 && rows.length > limit
     ? [...rows.filter((row) => row.isCurrentMember), ...rows.filter((row) => !row.isCurrentMember).slice(0, Math.max(0, limit - rows.filter((row) => row.isCurrentMember).length))]
     : rows;

@@ -27,9 +27,14 @@ describe('graytag fill product helpers', () => {
 
   test('auto-fill delivery memo uses a short access-link message with the generated URL', () => {
     const memo = buildAutoFillDeliveryMemo('수달이', 'https://example.com/dashboard/access/live-token');
+    const lines = memo.split('\n');
 
-    expect(memo).toContain('계정 업데이트 주소: https://example.com/dashboard/access/live-token');
-    expect(memo).toContain('배정 프로필: 수달이');
+    expect(lines.slice(0, 4)).toEqual([
+      '프로필 생성 시 만약 꽉차거나 지금 화면에 안보이는 프로필들이 있다면 매칭되지 않는 프로필 아무거나 하나 삭제해주세요.',
+      '만약 반대로 정해진 프로필 이름대로 생성 안하면 삭제될 수도 있으니 정확히 만들어주세요.',
+      '계정 업데이트 주소: https://example.com/dashboard/access/live-token',
+      '배정 프로필: 수달이',
+    ]);
     expect(memo).toContain('최신 ID/PW/PIN 확인');
     expect(memo).toContain('프로필은 배정된 이름으로만 사용');
     expect(memo).toContain('파티원 현황에 없는 프로필을 삭제');
@@ -37,7 +42,7 @@ describe('graytag fill product helpers', () => {
     expect(memo).not.toContain('이용하시기 전 꼭 하셔야 하는 2 STEP');
     expect(memo).not.toContain('이메일 접근 링크 버튼 누르고 핀번호 입력하고 인증 받기');
     expect(memo).not.toContain('계정 업데이트 주소는 다른 파티원들이 파티 탈퇴');
-    expect(memo.split('\n').length).toBeLessThanOrEqual(5);
+    expect(lines).toHaveLength(7);
   });
 
   test('graytag public ID/PW placeholders point buyers back to the access message', () => {

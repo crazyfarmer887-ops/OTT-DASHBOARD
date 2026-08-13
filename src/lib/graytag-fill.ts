@@ -29,6 +29,66 @@ export interface FillProductModelInput {
   sellingGuide?: string;
 }
 
+export interface YouTubeSharingNoKeepProductModelInput {
+  endDate: string;
+  price: number;
+  name: string;
+  sellingGuide: string;
+}
+
+export interface YouTubeSharingNoKeepProductModel {
+  tempProductCategory: 'youtube';
+  endDate: string;
+  priceType: 'Normal';
+  price: string;
+  name: string;
+  sellingGuide: string;
+}
+
+function normalizeGraytagEndDate(value: string): string {
+  const endDate = String(value ?? '').trim();
+  const match = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})$/.exec(endDate);
+  if (!match) throw new TypeError('endDate must use YYYYMMDDTHHmm format');
+
+  const [, yearText, monthText, dayText, hourText, minuteText] = match;
+  const [year, month, day, hour, minute] = [yearText, monthText, dayText, hourText, minuteText].map(Number);
+  const parsed = new Date(Date.UTC(year, month - 1, day, hour, minute));
+  const isValid = parsed.getUTCFullYear() === year
+    && parsed.getUTCMonth() === month - 1
+    && parsed.getUTCDate() === day
+    && parsed.getUTCHours() === hour
+    && parsed.getUTCMinutes() === minute;
+  if (!isValid) throw new TypeError('endDate must be a valid calendar date and time');
+  return endDate;
+}
+
+function normalizePositivePrice(value: number): string {
+  if (!Number.isSafeInteger(value) || value <= 0) throw new TypeError('price must be a positive safe integer');
+  return String(value);
+}
+
+function normalizeRequiredText(value: string, field: 'name' | 'sellingGuide', maxLength?: number): string {
+  const normalized = String(value ?? '').trim();
+  if (!normalized) throw new TypeError(`${field} must not be blank`);
+  if (maxLength !== undefined && Array.from(normalized).length > maxLength) {
+    throw new TypeError(`${field} must be ${maxLength} characters or fewer`);
+  }
+  return normalized;
+}
+
+export function buildYouTubeSharingNoKeepProductModel(
+  input: YouTubeSharingNoKeepProductModelInput,
+): YouTubeSharingNoKeepProductModel {
+  return {
+    tempProductCategory: 'youtube',
+    endDate: normalizeGraytagEndDate(input.endDate),
+    priceType: 'Normal',
+    price: normalizePositivePrice(input.price),
+    name: normalizeRequiredText(input.name, 'name'),
+    sellingGuide: normalizeRequiredText(input.sellingGuide, 'sellingGuide', 300),
+  };
+}
+
 export function buildFillProductModel(input: FillProductModelInput): Record<string, string> {
   const productModel: Record<string, string> = {
     tempProductCategory: input.category,
@@ -49,6 +109,8 @@ export function buildAutoFillDeliveryMemo(profileNickname: string, accessUrl = P
   const url = String(accessUrl || PARTY_ACCESS_URL_PLACEHOLDER).trim() || PARTY_ACCESS_URL_PLACEHOLDER;
   const profile = String(profileNickname || '').trim();
   return [
+    '프로필 생성 시 만약 꽉차거나 지금 화면에 안보이는 프로필들이 있다면 매칭되지 않는 프로필 아무거나 하나 삭제해주세요.',
+    '만약 반대로 정해진 프로필 이름대로 생성 안하면 삭제될 수도 있으니 정확히 만들어주세요.',
     `계정 업데이트 주소: ${url}`,
     profile ? `배정 프로필: ${profile}` : '',
     '위 링크에서 최신 ID/PW/PIN 확인 후 로그인해주세요.',

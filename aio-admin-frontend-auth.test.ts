@@ -51,11 +51,15 @@ describe("AIO admin auth frontend fetch patch", () => {
     installAdminAuthFetchPatch();
     await fetch("/api/session/cookies");
     await fetch("/api/chat/rooms", { headers: { Accept: "application/json" } });
+    await fetch("/api/chat/notifications/stream", { headers: { Accept: "text/event-stream" } });
 
     expect(new Headers(originalFetch.mock.calls[0][1]?.headers).get("x-admin-token")).toBe("secret-token");
     const secondHeaders = new Headers(originalFetch.mock.calls[1][1]?.headers);
     expect(secondHeaders.get("x-admin-token")).toBe("secret-token");
     expect(secondHeaders.get("accept")).toBe("application/json");
+    const streamHeaders = new Headers(originalFetch.mock.calls[2][1]?.headers);
+    expect(streamHeaders.get("x-admin-token")).toBe("secret-token");
+    expect(streamHeaders.get("accept")).toBe("text/event-stream");
   });
 
   it("notifies the user when a protected API returns 403", async () => {

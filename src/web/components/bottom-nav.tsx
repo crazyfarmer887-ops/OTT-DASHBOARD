@@ -1,11 +1,13 @@
 import { useState, useRef, useEffect } from "react";
 import { useLocation } from "wouter";
-import { Home, BarChart2, PenLine, LayoutGrid, User, Calculator, MessageCircle, Settings2, Info, Menu, X } from "lucide-react";
+import { Home, BarChart2, PenLine, LayoutGrid, User, Calculator, MessageCircle, Settings2, Info, Menu, X, RefreshCw, Youtube } from "lucide-react";
 
 const navGroups = [
   { label: "홈", items: [{ path: "/", label: "홈", Icon: Home }] },
   { label: "운영", items: [
     { path: "/manage",     label: "관리",    Icon: LayoutGrid },
+    { path: "/renewals", label: "연장 관리", Icon: RefreshCw },
+    { path: "/youtube-invites", label: "유튜브 초대", Icon: Youtube },
     { path: "/party-info", label: "파티정보", Icon: Info },
     { path: "/edit-price", label: "게시물",  Icon: Settings2 },
   ] },

@@ -6,8 +6,19 @@ import { buildPartyAccessDeliveryTemplate, PARTY_ACCESS_URL_PLACEHOLDER } from "
 import { GRAYTAG_ACCESS_NOTICE_ID, GRAYTAG_ACCESS_NOTICE_PW } from "../../lib/graytag-fill";
 import { makeDefaultProductDescription, makeDefaultProductTitle } from "../../lib/write-default-template";
 import { buildProfileAssignment, generateProfileNickname, isValidProfileNickname, normalizeProfileNickname } from "../../lib/profile-nickname";
+import {
+  buildYouTubeProductRequest,
+  clampYouTubeRepeat,
+  createYouTubeIdempotencyKey,
+  getSeoulTomorrow,
+  getYouTubePostRegistrationStep,
+  normalizeYouTubeEndDate,
+  summarizeYouTubeRegistration,
+  type YouTubeFamilyGroupDto,
+  type YouTubeFamilyGroupsDto,
+} from "../lib/youtube-write";
 
-interface SlAlias { id: number; email: string; enabled: boolean; nb_forward: number; pin?: string | null; hasPin?: boolean; }
+interface SlAlias { id: number | string; email: string; enabled: boolean; nb_forward: number; pin?: string | null; hasPin?: boolean; }
 
 const AUTO_COOKIE_ID = '__session_keeper__';
 const AUTO_COOKIE: CookieSet = { id: AUTO_COOKIE_ID, label: '자동 (Session Keeper)', AWSALB: '', AWSALBCORS: '', JSESSIONID: '__auto__' };
@@ -22,6 +33,7 @@ const SERVICES = [
   { key: 'watcha',  label: '왓챠플레이',   category: 'WatchaPlay', color: '#FF153C', bg: '#FFF0F3', logo: '/logos/watcha.png' },
   { key: 'netflix', label: '넷플릭스',    category: 'Netflix',   color: '#E50914', bg: '#FFF0F0', logo: '/logos/netflix.png' },
   { key: 'tving',   label: '티빙',        category: 'tving',     color: '#FF153C', bg: '#FFF0F3', logo: '/logos/tving.png' },
+  { key: 'youtube', label: '유튜브 프리미엄', category: 'youtube', color: '#FF0000', bg: '#FFF1F1', logo: '' },
 ];
 const DEFAULT_SVC_LABEL = SERVICES.find(s => s.key === DEFAULT_SERVICE_KEY)?.label || SERVICES[0].label;
 
@@ -100,7 +112,7 @@ export default function WritePage() {
   const [keepMemo, setKeepMemo] = useState(() => makeDefaultKeepMemo());
   const [slAliases, setSlAliases] = useState<SlAlias[]>([]);
   const [slLoading, setSlLoading] = useState(false);
-  const [selectedAliasId, setSelectedAliasId] = useState<number | null>(null);
+  const [selectedAliasId, setSelectedAliasId] = useState<number | string | null>(null);
   const [keepPin, setKeepPin] = useState('');
   const [maintenanceCredentialStore, setMaintenanceCredentialStore] = useState<PartyMaintenanceChecklistStore>({});
   const [maintenanceAutofillMessage, setMaintenanceAutofillMessage] = useState('');
@@ -117,6 +129,46 @@ export default function WritePage() {
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [youtubeGroups, setYoutubeGroups] = useState<YouTubeFamilyGroupDto[]>([]);
+  const [youtubeGroupsLoading, setYoutubeGroupsLoading] = useState(false);
+  const [youtubeGroupsError, setYoutubeGroupsError] = useState('');
+  const [youtubeEnabled, setYoutubeEnabled] = useState<boolean | null>(null);
+  const [selectedYoutubeGroupId, setSelectedYoutubeGroupId] = useState('');
+  const [registrationYoutubeGroupLabel, setRegistrationYoutubeGroupLabel] = useState('');
+
+  const loadYoutubeGroups = async () => {
+    setYoutubeGroupsLoading(true);
+    setYoutubeGroupsError('');
+    try {
+      const response = await fetch('/api/youtube/family-groups');
+      const payload = await response.json() as YouTubeFamilyGroupsDto;
+      if (!response.ok || !payload.ok || !Array.isArray(payload.familyGroups)) {
+        throw new Error(payload.error || '가족 그룹을 불러오지 못했어요.');
+      }
+      setYoutubeEnabled(payload.enabled === true);
+      setYoutubeGroups(payload.familyGroups);
+      setSelectedYoutubeGroupId(current => payload.familyGroups.some(group => group.id === current && group.enabled
+        && group.availableSeats > 0 && (!group.subscriptionEndDate || group.subscriptionEndDate >= getSeoulTomorrow())) ? current : '');
+    } catch (fetchError) {
+      setYoutubeEnabled(null);
+      setYoutubeGroups([]);
+      setSelectedYoutubeGroupId('');
+      setYoutubeGroupsError(fetchError instanceof Error ? fetchError.message : '가족 그룹을 불러오지 못했어요.');
+    } finally {
+      setYoutubeGroupsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (service === 'youtube') void loadYoutubeGroups();
+  }, [service]);
+
+  const selectedYoutubeGroup = youtubeGroups.find(group => group.id === selectedYoutubeGroupId) || null;
+  const youtubeRepeatMax = selectedYoutubeGroup ? Math.min(20, Math.max(0, selectedYoutubeGroup.availableSeats)) : 0;
+  const youtubeSubmitDisabled = service === 'youtube' && (
+    youtubeGroupsLoading || youtubeEnabled !== true || !selectedYoutubeGroup || youtubeRepeatMax === 0
+    || repeat > youtubeRepeatMax || !endDate
+  );
 
   const getCurrentPreset = (serviceKey = service) => getPresetForService(serviceKey, productPresetStore);
 
@@ -225,26 +277,91 @@ export default function WritePage() {
     return `${y}${m}${day}T2359`;
   };
 
-  const tomorrow = () => {
-    const d = new Date(); d.setDate(d.getDate()+1);
-    return d.toISOString().split('T')[0];
-  };
 
   // 등록 실행
   const handleSubmit = async () => {
-    const cs = cookies.find(c => c.id === selectedId);
-    if (!cs) { setError('계정을 선택해주세요'); return; }
+    const isYoutube = service === 'youtube';
+    const cs = isYoutube ? null : cookies.find(c => c.id === selectedId);
+    if (!isYoutube && !cs) { setError('계정을 선택해주세요'); return; }
+    if (isYoutube) {
+      if (youtubeEnabled !== true) { setError('유튜브 초대형 상품 판매 기능이 비활성화되어 있어요.'); return; }
+      if (!selectedYoutubeGroup) { setError('유튜브 가족 그룹을 선택해주세요.'); return; }
+      if (!selectedYoutubeGroup.enabled) { setError('비활성화된 가족 그룹은 사용할 수 없어요.'); return; }
+      if (selectedYoutubeGroup.availableSeats <= 0) { setError('선택한 가족 그룹에 등록 가능한 자리가 없어요.'); return; }
+      if (repeat > selectedYoutubeGroup.availableSeats) { setError(`반복 횟수는 남은 자리 ${selectedYoutubeGroup.availableSeats}개를 넘을 수 없어요.`); return; }
+      if (selectedYoutubeGroup.subscriptionEndDate && endDate > selectedYoutubeGroup.subscriptionEndDate) {
+        setError(`종료일은 구독 만료일 ${selectedYoutubeGroup.subscriptionEndDate}을 넘을 수 없어요.`); return;
+      }
+    }
     if (!endDate) { setError('종료일을 입력해주세요'); return; }
+    if (isYoutube && endDate < getSeoulTomorrow()) { setError('종료일은 내일 이후로 선택해주세요.'); return; }
     if (finalTotalPrice < 1000) { setError('가격은 최소 1,000원입니다'); return; }
     if (!title.trim()) { setError('제목을 입력해주세요'); return; }
     if (!description.trim()) { setError('상품 설명을 입력해주세요'); return; }
 
-    const count = Math.max(1, Math.min(repeat, 20));
+    const count = isYoutube && selectedYoutubeGroup
+      ? clampYouTubeRepeat(repeat, selectedYoutubeGroup.availableSeats)
+      : Math.max(1, Math.min(repeat, 20));
     const initial: ProgressItem[] = Array.from({length: count}, (_, i) => ({ index: i+1, status: 'pending' }));
     setProgressList(initial);
     setDoneProductUsids([]);
     setStep('progress');
     setError(null);
+
+    if (isYoutube && selectedYoutubeGroup) {
+      setRegistrationYoutubeGroupLabel(selectedYoutubeGroup.label);
+      const results: string[] = [];
+      let stopSafely = false;
+      for (let i = 0; i < count; i++) {
+        setProgressList(prev => prev.map(p => p.index === i + 1 ? { ...p, status: 'running' } : p));
+        try {
+          const request = buildYouTubeProductRequest({
+            familyGroupId: selectedYoutubeGroup.id,
+            endDate,
+            price: finalTotalPrice,
+            name: title.trim(),
+            sellingGuide: description.trim(),
+            idempotencyKey: createYouTubeIdempotencyKey(),
+          });
+          const response = await fetch(request.url, request.init);
+          const payload = await response.json().catch(() => ({})) as { ok?: boolean; productUsid?: string; code?: string; error?: string; replayed?: boolean };
+          const accepted = (response.status === 200 || response.status === 201) && payload.ok === true && typeof payload.productUsid === 'string' && payload.productUsid.length > 0;
+          if (!accepted) {
+            if (payload.code === 'YOUTUBE_FAMILY_GROUP_NO_CAPACITY') {
+              await loadYoutubeGroups();
+              stopSafely = true;
+              throw new Error('가족 그룹 자리가 모두 찼어요. 최신 자리 수를 불러왔습니다.');
+            }
+            const uncertain = response.status >= 500 || response.redirected || (response.status >= 200 && response.status < 300)
+              || payload.code === 'YOUTUBE_PRODUCT_REGISTRATION_UNCERTAIN'
+              || payload.code === 'YOUTUBE_PRODUCT_REGISTRATION_IN_PROGRESS';
+            if (uncertain) {
+              stopSafely = true;
+              throw new Error('등록 결과가 불확실합니다. 자동 재시도 금지 · 초대 관리 확인 후 처리해주세요.');
+            }
+            throw new Error(payload.error || '유튜브 초대형 상품 등록에 실패했어요.');
+          }
+          results.push(payload.productUsid!);
+          setProgressList(prev => prev.map(p => p.index === i + 1 ? { ...p, status: 'done', productUsid: payload.productUsid } : p));
+        } catch (submitError) {
+          const message = submitError instanceof Error ? submitError.message : '등록 결과가 불확실합니다. 자동 재시도 금지 · 초대 관리 확인 후 처리해주세요.';
+          const visibleMessage = submitError instanceof TypeError
+            ? '네트워크 오류로 등록 결과가 불확실합니다. 자동 재시도 금지 · 초대 관리 확인 후 처리해주세요.'
+            : message;
+          setProgressList(prev => prev.map(p => p.index === i + 1 ? { ...p, status: 'error', error: visibleMessage } : p));
+          if (submitError instanceof TypeError) stopSafely = true;
+        }
+        if (stopSafely) {
+          setProgressList(prev => prev.map(p => p.status === 'pending' ? { ...p, status: 'error', error: '안전을 위해 후속 등록을 중단했어요. 초대 관리를 확인해주세요.' } : p));
+          break;
+        }
+        if (i < count - 1) await new Promise(resolve => setTimeout(resolve, 800));
+      }
+      setDoneProductUsids(results);
+      await loadYoutubeGroups();
+      setTimeout(() => setStep(getYouTubePostRegistrationStep(results.length)), 500);
+      return;
+    }
 
     const svc = SERVICES.find(s => s.key === service)!;
     const productModel = {
@@ -266,7 +383,7 @@ export default function WritePage() {
         const res = await fetch('/api/post/create', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...(cs.id === AUTO_COOKIE_ID ? {} : { AWSALB: cs.AWSALB, AWSALBCORS: cs.AWSALBCORS, JSESSIONID: cs.JSESSIONID }), productModel }),
+          body: JSON.stringify({ ...(cs!.id === AUTO_COOKIE_ID ? {} : { AWSALB: cs!.AWSALB, AWSALBCORS: cs!.AWSALBCORS, JSESSIONID: cs!.JSESSIONID }), productModel }),
         });
         const json = await res.json() as any;
         if (!res.ok || !json.productUsid) throw new Error(json.error || '등록 실패');
@@ -332,7 +449,7 @@ export default function WritePage() {
     }
     if (successCount > 0) {
       const svcLabel = SERVICES.find(s => s.key === service)?.label || service;
-      const selectedAlias = slAliases.find(alias => alias.id === selectedAliasId);
+      const selectedAlias = slAliases.find(alias => String(alias.id) === String(selectedAliasId));
       const assignment = buildProfileAssignment({
         productUsids: successProductUsids,
         serviceType: svcLabel,
@@ -363,6 +480,7 @@ export default function WritePage() {
     setKeepAcct(''); setKeepPasswd('');
     setKeepMemo(makeDefaultKeepMemo());
     setKeepPin(''); setSelectedAliasId(null); setSlAliases([]); setMaintenanceCredentialStore({}); setMaintenanceAutofillMessage(''); setProfileNickname(generateProfileNickname());
+    setYoutubeGroups([]); setYoutubeGroupsLoading(false); setYoutubeGroupsError(''); setYoutubeEnabled(null); setSelectedYoutubeGroupId(''); setRegistrationYoutubeGroupLabel('');
   };
 
   // ── 쿠키 없음 ──────────────────────────────────────────────
@@ -371,14 +489,31 @@ export default function WritePage() {
   // ── 완료 ────────────────────────────────────────────────────
   if (step === 'done') {
     const successItems = progressList.filter(p => p.status === 'done');
+    const youtubeSummary = summarizeYouTubeRegistration(progressList);
     return (
       <div style={{ padding: '20px 16px' }}>
         <div style={{ background: '#fff', borderRadius: 20, padding: 28, textAlign: 'center', boxShadow: '0 4px 20px rgba(167,139,250,0.15)' }}>
           <PartyPopper size={48} color="#A78BFA" style={{ margin:"0 auto 12px", display:"block" }} />
-          <div style={{ fontSize: 18, fontWeight: 700, color: '#1E1B4B', marginBottom: 6 }}>등록 완료!</div>
-          <div style={{ fontSize: 13, color: '#9CA3AF', marginBottom: 20 }}>
-            {successItems.length}개 파티 판매 글이 등록됐어요
+          <div style={{ fontSize: 18, fontWeight: 700, color: '#1E1B4B', marginBottom: 6 }}>
+            {service === 'youtube' && successItems.length === 0 ? '등록 결과 확인 필요' : '등록 완료!'}
           </div>
+          <div style={{ fontSize: 13, color: '#9CA3AF', marginBottom: 20 }}>
+            {service === 'youtube'
+              ? `${successItems.length}개 초대형 유튜브 판매 글이 등록됐어요`
+              : `${successItems.length}개 파티 판매 글이 등록됐어요`}
+          </div>
+          {service === 'youtube' && (
+            <div style={{ background: '#FFF7ED', color: '#C2410C', borderRadius: 10, padding: '9px 12px', marginBottom: 14, fontSize: 11, textAlign: 'left', lineHeight:1.6 }}>
+              <strong>선택 가족 그룹:</strong> {registrationYoutubeGroupLabel || '확인 필요'}<br />
+              성공 {youtubeSummary.successCount}/{youtubeSummary.requestedCount} · 안전 중단 {youtubeSummary.safelyStoppedCount} · 결과 불확실 {youtubeSummary.uncertainCount} · 실패 {youtubeSummary.failedCount}<br />
+              결제 후 구매자의 Google 이메일을 받아 수동으로 가족 초대하세요. ID/PW는 전달하지 않아요.
+            </div>
+          )}
+          {progressList.some(item => item.status === 'error') && (
+            <div style={{ background: '#FFF0F0', color: '#DC2626', borderRadius: 10, padding: '9px 12px', marginBottom: 14, fontSize: 11, textAlign: 'left' }}>
+              일부 등록이 완료되지 않았어요. 자동 재시도 금지 · 초대 관리에서 결과를 확인해주세요.
+            </div>
+          )}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20 }}>
             {successItems.map(item => (
               <a key={item.productUsid}
@@ -411,7 +546,7 @@ export default function WritePage() {
         setMaintenanceAutofillMessage('재정비 DB에 저장된 비밀번호/PIN이 아직 없어요. 직접 입력하거나 재정비 UI에서 저장해주세요.');
         return false;
       }
-      setSelectedAliasId(Number(aliasId));
+      setSelectedAliasId(aliasId);
       setKeepAcct(credential.accountEmail || aliasEmail || '');
       setKeepPasswd(credential.password);
       setKeepPin(credential.pin);
@@ -632,7 +767,7 @@ export default function WritePage() {
       </div>
 
       {/* 계정 선택 */}
-      {cookies.length > 1 && (
+      {service !== 'youtube' && cookies.length > 1 && (
         <div className="no-scrollbar" style={{ display: 'flex', gap: 8, marginBottom: 14, overflowX: 'auto' }}>
           {cookies.map(cs => (
             <button key={cs.id} onClick={() => setSelectedId(cs.id)} style={{
@@ -658,26 +793,91 @@ export default function WritePage() {
               const previousTitle = title;
               const previousDescription = description;
               setService(s.key);
+              if (s.key === 'youtube') setEndDate(current => current || getSeoulTomorrow());
               setTitle(shouldAutoSwapPreset(previousTitle, previousService, 'title') ? getPresetForService(s.key, productPresetStore).title : previousTitle);
               setDescription(shouldAutoSwapPreset(previousDescription, previousService, 'description') ? getPresetForService(s.key, productPresetStore).description : previousDescription);
               setPresetNotice('');
             }} style={{
-              padding: '10px 12px', borderRadius: 12, cursor: 'pointer',
+              padding: '10px 12px',
+              paddingBottom: service === s.key && s.key === 'youtube' ? 34 : 10,
+              borderRadius: 12, cursor: 'pointer',
               display: 'flex', alignItems: 'center', gap: 10, fontFamily: 'inherit',
+              position: service === s.key && s.key === 'youtube' ? 'relative' : undefined,
               background: service === s.key ? s.bg : '#F8F8F8',
               border: `2px solid ${service === s.key ? s.color : 'transparent'}`,
             }}>
-              <img src={s.logo} alt={s.label}
-                style={{ width: 28, height: 28, objectFit: 'contain', borderRadius: 6, flexShrink: 0 }}
-                onError={e => { (e.target as HTMLImageElement).style.display='none'; }}
-              />
+              {s.key === 'youtube' ? (
+                <span aria-hidden="true" style={{ width: 28, height: 20, borderRadius: 6, flexShrink: 0, background: '#FF0000', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11 }}>▶</span>
+              ) : (
+                <img src={s.logo} alt={s.label}
+                  style={{ width: 28, height: 28, objectFit: 'contain', borderRadius: 6, flexShrink: 0 }}
+                  onError={e => { (e.target as HTMLImageElement).style.display='none'; }}
+                />
+              )}
               <span style={{ fontSize: 12, fontWeight: 700, color: service === s.key ? s.color : '#6B7280' }}>
                 {s.label}
               </span>
+              {s.key === 'youtube' && service === 'youtube' && <span style={{ position:'absolute', bottom:5, right:5, fontSize:9, fontWeight:900, color:'#fff', background:'#EF4444', borderRadius:999, padding:'3px 6px', whiteSpace:'nowrap' }}>구매 후 초대</span>}
             </button>
           ))}
         </div>
       </div>
+
+      {service === 'youtube' && (
+        <div style={{ ...card, borderColor: '#FECACA' }}>
+          <div style={{ background:'#FFF7ED', color:'#9A3412', borderRadius:10, padding:'9px 11px', marginBottom:10, fontSize:11, lineHeight:1.55 }}>
+            <strong>구매 후 초대</strong> · ID/PW는 전달하지 않아요. 결제 후 구매자의 Google 이메일을 받아 수동으로 가족 초대합니다.
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+            <div>
+              <label style={{ ...labelStyle, marginBottom: 2 }}>유튜브 가족 그룹 *</label>
+              <div style={{ fontSize: 10, color: '#9CA3AF' }}>선택한 그룹의 남은 자리와 만료일 안에서만 등록돼요.</div>
+            </div>
+            <button type="button" onClick={() => void loadYoutubeGroups()} disabled={youtubeGroupsLoading}
+              style={{ border: 'none', borderRadius: 8, background: '#FEE2E2', color: '#DC2626', padding: '6px 9px', fontSize: 10, fontWeight: 700, cursor: youtubeGroupsLoading ? 'wait' : 'pointer', fontFamily: 'inherit' }}>
+              새로고침
+            </button>
+          </div>
+          {youtubeGroupsLoading && <div style={{ fontSize: 12, color: '#EF4444', padding: '10px 0' }}>가족 그룹을 불러오는 중...</div>}
+          {!youtubeGroupsLoading && youtubeGroupsError && (
+            <div style={{ background: '#FFF0F0', borderRadius: 10, padding: '10px 12px', color: '#DC2626', fontSize: 11 }}>{youtubeGroupsError}</div>
+          )}
+          {!youtubeGroupsLoading && youtubeEnabled === false && (
+            <div style={{ background: '#FFF7ED', borderRadius: 10, padding: '10px 12px', color: '#C2410C', fontSize: 11 }}>유튜브 초대형 상품 판매 기능이 현재 비활성화되어 있어요.</div>
+          )}
+          {!youtubeGroupsLoading && !youtubeGroupsError && youtubeEnabled === true && youtubeGroups.filter(group => group.enabled).length === 0 && (
+            <div style={{ background: '#F9FAFB', borderRadius: 10, padding: '10px 12px', color: '#6B7280', fontSize: 11 }}>사용 가능한 가족 그룹이 없어요. 먼저 그룹을 등록해주세요.</div>
+          )}
+          {!youtubeGroupsLoading && youtubeEnabled === true && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {youtubeGroups.filter(group => group.enabled).map(group => {
+                const selected = selectedYoutubeGroupId === group.id;
+                const expired = Boolean(group.subscriptionEndDate && group.subscriptionEndDate < getSeoulTomorrow());
+                const noCapacity = group.availableSeats <= 0 || expired;
+                return (
+                  <button key={group.id} type="button" disabled={noCapacity} onClick={() => {
+                    setSelectedYoutubeGroupId(group.id);
+                    setRepeat(current => clampYouTubeRepeat(current, group.availableSeats) || 1);
+                    setEndDate(current => normalizeYouTubeEndDate(current, group.subscriptionEndDate));
+                    setError(null);
+                  }} style={{
+                    width: '100%', borderRadius: 12, padding: '11px 12px', textAlign: 'left', fontFamily: 'inherit',
+                    border: `1.5px solid ${selected ? '#FF0000' : '#FECACA'}`,
+                    background: selected ? '#FFF1F1' : '#fff', cursor: noCapacity ? 'not-allowed' : 'pointer', opacity: noCapacity ? 0.55 : 1,
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
+                      <span style={{ fontSize: 12, fontWeight: 800, color: selected ? '#DC2626' : '#1E1B4B' }}>{group.label}</span>
+                      <span style={{ fontSize: 11, fontWeight: 800, color: noCapacity ? '#9CA3AF' : '#059669' }}>{expired ? '구독 만료' : `남은 ${group.availableSeats}/${group.sellableSeats}자리`}</span>
+                    </div>
+                    <div style={{ fontSize: 10, color: '#6B7280', marginTop: 4 }}>관리자 {group.managerEmailMasked}</div>
+                    <div style={{ fontSize: 10, color: '#9CA3AF', marginTop: 2 }}>구독 만료 {group.subscriptionEndDate || '미설정'}</div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* 글 기본값 프리셋 */}
       <div style={{ ...card, background: '#FAFAFF' }}>
@@ -726,7 +926,8 @@ export default function WritePage() {
       {/* ③ 기간 + 가격 */}
       <div style={card}>
         <label style={labelStyle}>상품 종료일 *</label>
-        <input type="date" value={endDate} min={tomorrow()}
+        <input type="date" value={endDate} min={getSeoulTomorrow()}
+          max={service === 'youtube' ? selectedYoutubeGroup?.subscriptionEndDate || undefined : undefined}
           onChange={e => setEndDate(e.target.value)} style={inputStyle} />
 
         {/* 가격 모드 토글 */}
@@ -826,7 +1027,7 @@ export default function WritePage() {
       <div style={card}>
         <label style={labelStyle}>작성 반복 횟수</label>
         <div style={{ fontSize: 11, color: '#9CA3AF', marginBottom: 10 }}>
-          동일한 내용으로 여러 개 동시 등록 (최대 20개)
+          동일한 내용으로 여러 개 동시 등록 ({service === 'youtube' && selectedYoutubeGroup ? <>최대 {youtubeRepeatMax}개 · 남은 자리 기준</> : '최대 20개'})
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <button onClick={() => setRepeat(r => Math.max(1, r-1))} style={{
@@ -840,16 +1041,17 @@ export default function WritePage() {
             <span style={{ fontSize: 13, color: '#9CA3AF', marginLeft: 6 }}>개</span>
           </div>
 
-          <button onClick={() => setRepeat(r => Math.min(20, r+1))} style={{
+          <button disabled={service === 'youtube' && (youtubeRepeatMax === 0 || repeat >= youtubeRepeatMax)}
+            onClick={() => setRepeat(r => service === 'youtube' ? clampYouTubeRepeat(r + 1, youtubeRepeatMax) || 1 : Math.min(20, r+1))} style={{
             width: 38, height: 38, borderRadius: 10, border: '1.5px solid #EDE9FE',
-            background: '#F8F6FF', fontSize: 20, cursor: 'pointer', fontFamily: 'inherit',
+            background: '#F8F6FF', fontSize: 20, cursor: service === 'youtube' && (youtubeRepeatMax === 0 || repeat >= youtubeRepeatMax) ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
             display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#A78BFA', fontWeight: 700, flexShrink: 0,
           }}>+</button>
         </div>
 
         <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
-          {[1,2,3,5,10].map(n => (
-            <button key={n} onClick={() => setRepeat(n)} style={{
+          {[1,2,3,5,10].filter(n => service !== 'youtube' || n <= youtubeRepeatMax).map(n => (
+            <button key={n} onClick={() => setRepeat(service === 'youtube' ? clampYouTubeRepeat(n, youtubeRepeatMax) || 1 : n)} style={{
               padding: '5px 14px', borderRadius: 20, border: 'none', fontFamily: 'inherit',
               fontSize: 12, fontWeight: 600, cursor: 'pointer',
               background: repeat === n ? '#A78BFA' : '#EDE9FE',
@@ -866,10 +1068,10 @@ export default function WritePage() {
       </div>
 
       {/* 등록 버튼 */}
-      <button onClick={handleSubmit} style={{
-        width: '100%', background: '#A78BFA', border: 'none', borderRadius: 14,
+      <button onClick={handleSubmit} disabled={youtubeSubmitDisabled} style={{
+        width: '100%', background: youtubeSubmitDisabled ? '#D1D5DB' : '#A78BFA', border: 'none', borderRadius: 14,
         padding: 15, fontSize: 15, color: '#fff', fontWeight: 700,
-        cursor: 'pointer', fontFamily: 'inherit',
+        cursor: youtubeSubmitDisabled ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
         boxShadow: '0 4px 16px rgba(167,139,250,0.35)',
       }}>
         📝 {repeat > 1 ? `${repeat}개 등록하기` : '글 등록하기'}

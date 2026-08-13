@@ -4,6 +4,7 @@ import {
   createPartyAccessLinkRecord,
   enrichPartyAccessRecordWithKnownCredentials,
   isPartyAccessAllowed,
+  isManagementSyntheticPartyAccessRecord,
   mergeRecoverablePartyAccessBackupStores,
   normalizePartyAccessToken,
   normalizeEmailVerifyUrl,
@@ -15,6 +16,7 @@ import {
   buildPartyAccessDeliveryTemplate,
   buildPartyAccessProfileStatuses,
   syncPartyAccessStoreWithMembers,
+  reconcileManagementSyntheticPartyAccessRoster,
   redactPartyAccessPayloadForConsent,
   isValidPartyAccessConsent,
   PARTY_ACCESS_CONSENT_PHRASES,
@@ -23,6 +25,144 @@ import { buildPartyAccessHtml } from '../src/lib/party-access-page-html';
 import { mergePartyMaintenanceChecklistState } from '../src/lib/party-maintenance-checklist';
 
 describe('party member account access links', () => {
+  test('identifies only tokenless management synthetic records', () => {
+    const real = createPartyAccessLinkRecord({
+      token: 'real-management-lookalike-token',
+      now: '2026-07-24T00:00:00.000Z',
+      serviceType: '넷플릭스',
+      accountEmail: 'fx11@example.com',
+      member: { kind: 'graytag', memberId: 'deal-fx11', memberName: '구매자', status: 'Using' },
+    });
+    const synthetic = {
+      ...real,
+      id: '넷플릭스:fx11@example.com:graytag:deal-fx11:management',
+      shareToken: undefined,
+    };
+    const maliciousLookalike = { ...real, id: synthetic.id };
+
+    expect(isManagementSyntheticPartyAccessRecord(synthetic)).toBe(true);
+    expect(isManagementSyntheticPartyAccessRecord(real)).toBe(false);
+    expect(isManagementSyntheticPartyAccessRecord(maliciousLookalike)).toBe(false);
+  });
+
+  test('delivery snapshots include management synthetic records by default for buyer-facing consumers', () => {
+    const source = createPartyAccessLinkRecord({
+      token: 'synthetic-default-source',
+      now: '2026-07-24T00:00:00.000Z',
+      serviceType: '넷플릭스',
+      accountEmail: 'fx11-stale@example.com',
+      profileName: '합성 프로필',
+      member: { kind: 'graytag', memberId: 'deal-fx11', memberName: '구매자', status: 'Using' },
+    });
+    const synthetic = { ...source, id: '넷플릭스:fx11-stale@example.com:graytag:deal-fx11:management', shareToken: undefined };
+
+    const snapshots = buildPartyAccessDeliverySnapshotByMember({ [synthetic.tokenHash]: synthetic });
+
+    expect(resolvePartyAccessDeliverySnapshotByListing(snapshots, {
+      serviceType: '넷플릭스',
+      dealUsid: 'deal-fx11',
+    })?.accountEmail).toBe('fx11-stale@example.com');
+  });
+
+  test('management snapshots exclude synthetic history and resolve the real token record for the same member and account', () => {
+    const real = createPartyAccessLinkRecord({
+      token: 'fx11-real-token',
+      now: '2026-07-23T00:00:00.000Z',
+      serviceType: '넷플릭스',
+      accountEmail: 'fx11@example.com',
+      fallbackPassword: 'real-password',
+      profileName: '실제 프로필',
+      member: { kind: 'graytag', memberId: 'deal-fx11', memberName: '구매자', status: 'Using' },
+    });
+    const synthetic = {
+      ...real,
+      id: '넷플릭스:fx11@example.com:graytag:deal-fx11:management',
+      shareToken: undefined,
+      tokenHash: partyAccessTokenHash('management-넷플릭스-fx11@example.com-deal-fx11'),
+      fallbackPassword: 'synthetic-password',
+      profileName: '합성 프로필',
+      createdAt: '2026-07-24T00:00:00.000Z',
+    };
+
+    const snapshots = buildPartyAccessDeliverySnapshotByMember({
+      [real.tokenHash]: real,
+      [synthetic.tokenHash]: synthetic,
+    }, { includeManagementSynthetic: false });
+    const resolved = resolvePartyAccessDeliverySnapshotByListing(snapshots, {
+      serviceType: '넷플릭스',
+      dealUsid: 'deal-fx11',
+    });
+
+    expect(snapshots).toHaveLength(1);
+    expect(resolved).toMatchObject({
+      accountEmail: 'fx11@example.com',
+      password: 'real-password',
+      profileName: '실제 프로필',
+      deliveredAt: '2026-07-23T00:00:00.000Z',
+    });
+  });
+
+  test('management filtering keeps a real token record even when its id looks synthetic', () => {
+    const lookalike = {
+      ...createPartyAccessLinkRecord({
+        token: 'malicious-management-lookalike',
+        now: '2026-07-24T00:00:00.000Z',
+        serviceType: '넷플릭스',
+        accountEmail: 'real-lookalike@example.com',
+        profileName: '실제 프로필',
+        member: { kind: 'graytag', memberId: 'deal-lookalike', memberName: '구매자', status: 'Using' },
+      }),
+      id: '넷플릭스:real-lookalike@example.com:graytag:deal-lookalike:management',
+    };
+
+    const snapshots = buildPartyAccessDeliverySnapshotByMember(
+      { [lookalike.tokenHash]: lookalike },
+      { includeManagementSynthetic: false },
+    );
+
+    expect(resolvePartyAccessDeliverySnapshotByListing(snapshots, {
+      serviceType: '넷플릭스',
+      dealUsid: 'deal-lookalike',
+    })?.accountEmail).toBe('real-lookalike@example.com');
+  });
+
+  test('stale fx11 synthetic history cannot resolve a Using placeholder while a real access record still can', () => {
+    const real = createPartyAccessLinkRecord({
+      token: 'fx11-actual-delivery-token',
+      now: '2026-07-23T00:00:00.000Z',
+      serviceType: '넷플릭스',
+      accountEmail: 'fx11-actual@example.com',
+      fallbackPassword: 'actual-password',
+      member: { kind: 'graytag', memberId: 'deal-fx11-using', memberName: '구매자', status: 'Using' },
+    });
+    const staleSource = createPartyAccessLinkRecord({
+      token: 'fx11-stale-source',
+      now: '2026-07-24T00:00:00.000Z',
+      serviceType: '넷플릭스',
+      accountEmail: 'fx11-stale@example.com',
+      fallbackPassword: 'stale-password',
+      member: { kind: 'graytag', memberId: 'deal-fx11-using', memberName: '구매자', status: 'Using' },
+    });
+    const staleSynthetic = {
+      ...staleSource,
+      id: '넷플릭스:fx11-stale@example.com:graytag:deal-fx11-using:management',
+      shareToken: undefined,
+      tokenHash: partyAccessTokenHash('management-넷플릭스-fx11-stale@example.com-deal-fx11-using'),
+    };
+    const managementSnapshots = buildPartyAccessDeliverySnapshotByMember({
+      [real.tokenHash]: real,
+      [staleSynthetic.tokenHash]: staleSynthetic,
+    }, { includeManagementSynthetic: false });
+
+    const resolved = resolvePartyAccessDeliverySnapshotByListing(managementSnapshots, {
+      serviceType: '넷플릭스',
+      dealUsid: 'deal-fx11-using',
+    });
+
+    expect(Array.from(managementSnapshots.values())).not.toContainEqual(expect.objectContaining({ accountEmail: 'fx11-stale@example.com' }));
+    expect(resolved).toMatchObject({ accountEmail: 'fx11-actual@example.com', password: 'actual-password' });
+  });
+
   test('public preview hides credentials/profile before server-side consent is completed', () => {
     const record = createPartyAccessLinkRecord({
       token: 'consent-token',
@@ -640,6 +780,10 @@ describe('party member account access links', () => {
       token: 'checking', now: '2026-05-01T01:30:00.000Z', serviceType: '넷플릭스', accountEmail: 'n@example.com', profileName: '자두',
       member: { kind: 'graytag', memberId: 'deal-checking', memberName: '확인중', status: 'DeliveredAndCheckPrepaid', statusName: '계정확인중', endDateTime: '2026-05-28' },
     });
+    const delivered = createPartyAccessLinkRecord({
+      token: 'delivered-profile', now: '2026-05-01T01:45:00.000Z', serviceType: '넷플릭스', accountEmail: 'n@example.com', profileName: '전달중자리',
+      member: { kind: 'graytag', memberId: 'deal-delivered', memberName: '아직현재아님', status: 'Delivered', statusName: '전달완료', endDateTime: '2026-05-29' },
+    });
     const expiredByDate = createPartyAccessLinkRecord({
       token: 'expired-date-profile', now: '2026-05-01T02:00:00.000Z', serviceType: '넷플릭스', accountEmail: 'n@example.com', profileName: '삭제대상',
       member: { kind: 'graytag', memberId: 'deal-expired-date', memberName: '기간만료', status: 'Using', statusName: '이용중', endDateTime: '2026-04-30' },
@@ -672,6 +816,7 @@ describe('party member account access links', () => {
       [mine.tokenHash]: mine,
       [other.tokenHash]: other,
       [checking.tokenHash]: checking,
+      [delivered.tokenHash]: delivered,
       [expiredByDate.tokenHash]: expiredByDate,
       [withdrawn.tokenHash]: withdrawn,
       [left.tokenHash]: left,
@@ -716,6 +861,84 @@ describe('party member account access links', () => {
 
     const payload = buildPartyAccessPublicPayload(mine, {}, {}, '2026-05-03T00:00:00.000Z', store, profileAssignments);
     expect(payload.partyProfiles?.map((item) => item.profileName)).toEqual(['사과', '망고', '자두']);
+  });
+
+  test('uses current management siblings as the authoritative profile list and removes stale duplicate real-token history', () => {
+    const mine = createPartyAccessLinkRecord({
+      token: 'mine-authoritative', now: '2026-08-08T00:00:00.000Z', serviceType: '넷플릭스', accountEmail: 'latest@example.com', profileName: '담요',
+      member: { kind: 'graytag', memberId: 'old-deal-mine', memberName: '나', status: 'Using', statusName: '사용중', endDateTime: '2026-10-01' },
+    });
+    const staleDuplicate = createPartyAccessLinkRecord({
+      token: 'stale-real-history', now: '2026-08-07T00:00:00.000Z', serviceType: '넷플릭스', accountEmail: 'latest@example.com', profileName: '세탁기',
+      member: { kind: 'graytag', memberId: 'old-deal-stale', memberName: '예전회원', status: 'Using', statusName: '사용중', endDateTime: '2026-10-01' },
+    });
+    const synthetic = (memberId: string, profileName: string) => {
+      const base = createPartyAccessLinkRecord({
+        token: `seed-${memberId}`, now: '2026-08-08T01:00:00.000Z', serviceType: '넷플릭스', accountEmail: 'latest@example.com', profileName,
+        member: { kind: 'graytag', memberId, memberName: `${profileName} 회원`, status: 'Using', statusName: '사용중', endDateTime: '2026-10-01' },
+      });
+      return {
+        ...base,
+        id: `넷플릭스:latest@example.com:graytag:${memberId}:management`,
+        shareToken: undefined,
+        tokenHash: partyAccessTokenHash(`management-넷플릭스-latest@example.com-${memberId}`),
+      };
+    };
+    const current = [synthetic('current-1', '담요'), synthetic('current-2', '손전등'), synthetic('current-3', '세탁기'), synthetic('current-4', '사과')];
+    const store = { [mine.tokenHash]: mine, [staleDuplicate.tokenHash]: staleDuplicate, ...Object.fromEntries(current.map((record) => [record.tokenHash, record])) };
+
+    const statuses = buildPartyAccessProfileStatuses(mine, store, '2026-08-08T02:00:00.000Z');
+
+    expect(statuses).toHaveLength(4);
+    expect(new Set(statuses.map((item) => item.profileName))).toEqual(new Set(['담요', '손전등', '세탁기', '사과']));
+    expect(statuses.filter((item) => item.isCurrentMember)).toMatchObject([{ profileName: '담요' }]);
+  });
+
+  test('reconciles each management account against its authoritative current member ids', () => {
+    const makeSynthetic = (accountEmail: string, memberId: string, profileName: string) => {
+      const base = createPartyAccessLinkRecord({
+        token: `seed-${accountEmail}-${memberId}`, now: '2026-08-08T01:00:00.000Z', serviceType: '넷플릭스', accountEmail, profileName,
+        member: { kind: 'graytag', memberId, memberName: profileName, status: 'Using', statusName: '사용중', endDateTime: '2026-10-01' },
+      });
+      return { ...base, id: `넷플릭스:${accountEmail}:graytag:${memberId}:management`, shareToken: undefined, tokenHash: partyAccessTokenHash(`management-넷플릭스-${accountEmail}-${memberId}`) };
+    };
+    const current = makeSynthetic('roster@example.com', 'current-member', '사과');
+    const stale = makeSynthetic('roster@example.com', 'stale-member', '세탁기');
+    const otherAccount = makeSynthetic('other@example.com', 'other-member', '담요');
+    const real = createPartyAccessLinkRecord({
+      token: 'real-history-token', now: '2026-08-08T00:00:00.000Z', serviceType: '넷플릭스', accountEmail: 'roster@example.com', profileName: '세탁기',
+      member: { kind: 'graytag', memberId: 'stale-real-member', memberName: '예전회원', status: 'Using', statusName: '사용중', endDateTime: '2026-10-01' },
+    });
+
+    const result = reconcileManagementSyntheticPartyAccessRoster({
+      store: { [current.tokenHash]: current, [stale.tokenHash]: stale, [otherAccount.tokenHash]: otherAccount, [real.tokenHash]: real },
+      accounts: [{ serviceType: '넷플릭스', accountEmail: 'roster@example.com', currentMemberIds: ['current-member'] }],
+      now: '2026-08-09T00:00:00.000Z',
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.store[current.tokenHash].revokedAt).toBeNull();
+    expect(result.store[stale.tokenHash].revokedAt).toBe('2026-08-09T00:00:00.000Z');
+    expect(result.store[real.tokenHash].revokedAt).toBeNull();
+    expect(result.store[otherAccount.tokenHash].revokedAt).toBeNull();
+  });
+
+  test('does not truncate an authoritative management roster at the service profile limit', () => {
+    const mine = createPartyAccessLinkRecord({
+      token: 'six-member-viewer', now: '2026-08-08T00:00:00.000Z', serviceType: '넷플릭스', accountEmail: 'six@example.com', profileName: '프로필1',
+      member: { kind: 'graytag', memberId: 'old-viewer', memberName: '나', status: 'Using', statusName: '사용중', endDateTime: '2026-10-01' },
+    });
+    const current = Array.from({ length: 6 }, (_, index) => {
+      const memberId = `current-${index + 1}`;
+      const base = createPartyAccessLinkRecord({
+        token: `seed-six-${index}`, now: '2026-08-08T01:00:00.000Z', serviceType: '넷플릭스', accountEmail: 'six@example.com', profileName: `프로필${index + 1}`,
+        member: { kind: 'graytag', memberId, memberName: `회원${index + 1}`, status: 'Using', statusName: '사용중', endDateTime: '2026-10-01' },
+      });
+      return { ...base, id: `넷플릭스:six@example.com:graytag:${memberId}:management`, shareToken: undefined, tokenHash: partyAccessTokenHash(`management-넷플릭스-six@example.com-${memberId}`) };
+    });
+    const store = { [mine.tokenHash]: mine, ...Object.fromEntries(current.map((record) => [record.tokenHash, record])) };
+
+    expect(buildPartyAccessProfileStatuses(mine, store, '2026-08-09T00:00:00.000Z')).toHaveLength(6);
   });
 
   test('builds the copyable manual delivery template around the party access URL', () => {

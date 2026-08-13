@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { buildGeneratedAccount, deleteGeneratedAccountFromStore, extractSimpleLoginAliasRef, generateAccountPassword, generatedAccountKey, getGeneratedAccountCreationCopy, mergeGeneratedAccountsIntoManagement, nextGeneratedAliasPrefix, normalizeGeneratedAccountPatch, normalizeManualAliasPrefix, serviceAliasStem } from '../src/lib/generated-accounts';
+import { buildGeneratedAccount, deleteGeneratedAccountFromStore, extractSimpleLoginAliasRef, findRecoverableGeneratedAlias, generateAccountPassword, generatedAccountKey, getGeneratedAccountCreationCopy, mergeGeneratedAccountsIntoManagement, reconcileGeneratedAccountInManagement, nextGeneratedAliasPrefix, normalizeGeneratedAccountPatch, normalizeManualAliasPrefix, serviceAliasStem } from '../src/lib/generated-accounts';
 
 describe('generated accounts', () => {
   test('generates a 10 character password with lowercase start, digit, and symbol', () => {
@@ -65,6 +65,19 @@ describe('generated accounts', () => {
     expect(result.summary.totalAccounts).toBe(2);
   });
 
+  test('replaces a pending double-pass row with paid 티빙 and 웨이브 rows immediately', () => {
+    const pending = buildGeneratedAccount({ serviceType: '티빙+웨이브', alias: { id: 105, email: 'gtwavve9.fastball266@aleeas.com' }, password: 'safe-password', pin: '123456', memo: 'memo', now: '2026-04-29T12:02:00.000Z' });
+    const before: any = mergeGeneratedAccountsIntoManagement({ services: [] as any[], summary: { totalAccounts: 0 } }, { [pending.id]: pending });
+    const paid = { ...pending, paymentStatus: 'paid' as const, paidAt: '2026-04-29T12:15:00.000Z' };
+
+    const result = reconcileGeneratedAccountInManagement(before, paid);
+
+    expect(result.services.find(s => s.serviceType === '티빙+웨이브')?.accounts || []).toHaveLength(0);
+    expect(result.services.find(s => s.serviceType === '티빙')?.accounts.map(row => row.email)).toContain('gtwavve9');
+    expect(result.services.find(s => s.serviceType === '웨이브')?.accounts.map(row => row.email)).toContain('gtwavve9.fastball266@aleeas.com');
+    expect(result.summary.totalAccounts).toBe(2);
+  });
+
   test('uses corrected manual TVING login IDs for double-pass Wavve 4 generated rows', () => {
     const wavve4 = {
       ...buildGeneratedAccount({ serviceType: '티빙+웨이브', alias: { id: 104, email: 'gtwavve4.fastball266@aleeas.com' }, password: 'p4', pin: '444444', memo: 'memo', now: '2026-04-29T12:03:00.000Z' }),
@@ -87,6 +100,13 @@ describe('generated accounts', () => {
     expect(extractSimpleLoginAliasRef({ alias: { id: 123, email: 'Alias@Id.test' } })).toEqual({ id: 123, email: 'alias@id.test' });
     expect(extractSimpleLoginAliasRef({ data: { alias: { alias_id: 'abc', address: 'Nested@Example.com' } } })).toEqual({ id: 'abc', email: 'nested@example.com' });
     expect(extractSimpleLoginAliasRef({ alias: 'not-an-email' })).toBeNull();
+  });
+
+  test('preserves a sanitized SimpleLogin note without adding undefined fields', () => {
+    expect(extractSimpleLoginAliasRef({ id: 0, email: 'Fx17.Random@Example.com', note: '  [Graytag 계정 생성기] 넷플릭스 · prefix:fx17\u0000  ' }))
+      .toEqual({ id: 0, email: 'fx17.random@example.com', note: '[Graytag 계정 생성기] 넷플릭스 · prefix:fx17' });
+    expect(extractSimpleLoginAliasRef({ id: 1, email: 'plain@example.com' }))
+      .toEqual({ id: 1, email: 'plain@example.com' });
   });
 
   test('uses short service-number prefixes for generated SimpleLogin aliases', () => {
@@ -126,6 +146,41 @@ describe('generated accounts', () => {
 
   test('uses manual prefix exactly when provided instead of auto-numbering', () => {
     expect(nextGeneratedAliasPrefix('웨이브', ['wavve1@example.com'], 'Custom77')).toBe('custom77');
+  });
+
+  test('recovers the one generated orphan with exact service, prefix token, and generated email format', () => {
+    expect(findRecoverableGeneratedAlias({
+      aliases: [
+        { id: 0, email: 'fx17.unbiased099@aleeas.com', note: '[Graytag 계정 생성기] 넷플릭스 · prefix:fx17 · 2026-07-24T00:00:00.000Z' },
+      ],
+      serviceType: ' 넷플릭스 ',
+      manualPrefix: 'fx17',
+      existingEmails: [],
+    })).toEqual({ id: 0, email: 'fx17.unbiased099@aleeas.com' });
+  });
+
+  test.each([
+    ['no generator note', { id: 1, email: 'fx17.one@aleeas.com' }, 'fx17', []],
+    ['wrong service', { id: 1, email: 'fx17.one@aleeas.com', note: '[Graytag 계정 생성기] 디즈니플러스 · prefix:fx17' }, 'fx17', []],
+    ['wrong prefix token', { id: 1, email: 'fx17.one@aleeas.com', note: '[Graytag 계정 생성기] 넷플릭스 · prefix:fx170' }, 'fx17', []],
+    ['non-generated local part', { id: 1, email: 'fx170.one@aleeas.com', note: '[Graytag 계정 생성기] 넷플릭스 · prefix:fx17' }, 'fx17', []],
+    ['empty id', { id: '', email: 'fx17.one@aleeas.com', note: '[Graytag 계정 생성기] 넷플릭스 · prefix:fx17' }, 'fx17', []],
+    ['already registered email', { id: 1, email: 'fx17.one@aleeas.com', note: '[Graytag 계정 생성기] 넷플릭스 · prefix:fx17' }, 'fx17', ['FX17.ONE@ALEEAS.COM']],
+    ['automatic prefix selection', { id: 1, email: 'fx17.one@aleeas.com', note: '[Graytag 계정 생성기] 넷플릭스 · prefix:fx17' }, '', []],
+  ])('does not recover aliases with %s', (_reason, alias, manualPrefix, existingEmails) => {
+    expect(findRecoverableGeneratedAlias({ aliases: [alias], serviceType: '넷플릭스', manualPrefix, existingEmails })).toBeNull();
+  });
+
+  test('fails closed in Korean when more than one generated orphan matches', () => {
+    expect(() => findRecoverableGeneratedAlias({
+      aliases: [
+        { id: 17, email: 'fx17.first@aleeas.com', note: '[Graytag 계정 생성기] 넷플릭스 · prefix:fx17 · first' },
+        { id: 18, email: 'fx17.second@aleeas.com', note: '[Graytag 계정 생성기] 넷플릭스 · prefix:fx17 · second' },
+      ],
+      serviceType: '넷플릭스',
+      manualPrefix: 'fx17',
+      existingEmails: [],
+    })).toThrow(/복구.*후보.*여러/);
   });
 
   test('deletes generated accounts from the sensitive runtime store by id', () => {

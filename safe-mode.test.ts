@@ -91,7 +91,14 @@ describe('safe mode API and route locking', () => {
     const readRes = await apiApp.request('/safe-mode', { headers: { 'x-admin-token': 'test-admin-token' } });
     expect(readRes.status).toBe(200);
 
-    for (const path of ['/my/update-price', '/api/my/delete-products', '/auto-undercutter/run', '/chat/send']) {
+    for (const path of [
+      '/my/update-price',
+      '/api/my/delete-products',
+      '/auto-undercutter/run',
+      '/chat/send',
+      '/youtube/products',
+      '/youtube/invitations/youtube-invitation%3Aprivate-deal/finish-delivery',
+    ]) {
       const res = await apiApp.request(path, {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-admin-token': 'test-admin-token' },

@@ -8,6 +8,7 @@ import {
   buildNewChatAlertCandidate,
   buildNewDealStatusAlerts,
   createSingleFlightRunner,
+  extractAuthoritativeLenderDeals,
   isPollSessionAlertEnabled,
   parseGraytagMessageTime,
   persistAndSendDealAlerts,
@@ -26,14 +27,34 @@ describe('PollDaemon Graytag deal list URL', () => {
     expect(url).not.toContain('finishedDealIncluded=false');
     expect(url).toContain('sorting=Latest');
     expect(url).toContain('page=1');
-    expect(url).toContain('rows=50');
+    expect(url).toContain('rows=500');
   });
 
   test('also polls active deals so unread Graytag chats can trigger Telegram alerts', () => {
     const url = buildPollAfterUsingDealsUrl();
     expect(url).toContain('/ws/lender/findAfterUsingLenderDeals');
     expect(url).toContain('finishedDealIncluded=false');
-    expect(url).toContain('rows=50');
+    expect(url).toContain('rows=500');
+  });
+
+  test('accepts only explicit documented successful lenderDeals response shapes', () => {
+    const deals = [{ dealUsid: 'deal-1' }];
+    expect(extractAuthoritativeLenderDeals({ succeeded: true, data: { lenderDeals: deals } }))
+      .toEqual({ authoritative: true, deals });
+    expect(extractAuthoritativeLenderDeals({ succeeded: true, data: { data: { lenderDeals: [] } } }))
+      .toEqual({ authoritative: true, deals: [] });
+  });
+
+  test('treats succeeded responses with missing or malformed lenderDeals as non-authoritative', () => {
+    for (const payload of [
+      { succeeded: true },
+      { succeeded: true, data: {} },
+      { succeeded: true, data: { lenderDeals: null } },
+      { succeeded: true, lenderDeals: [] },
+      { succeeded: false, data: { lenderDeals: [] } },
+    ]) {
+      expect(extractAuthoritativeLenderDeals(payload)).toEqual({ authoritative: false, deals: [] });
+    }
   });
 
   test('can disable only stale/missing session-cookie PollDaemon alerts by env', () => {
@@ -128,17 +149,21 @@ describe('PollDaemon Graytag deal list URL', () => {
     const order: string[] = [];
     const alert = { fingerprint: 'room:time:text', timestamp: '2026-05-01T12:00:00Z' } as any;
     const send = vi.fn(async () => { order.push('send'); return { sent: true as const, reason: 'sent' as const }; });
+    const publishRealtime = vi.fn(() => { order.push('realtime'); });
 
     await expect(reserveAndSendChatAlert(alert, known, (state) => {
       expect(state[alert.fingerprint]).toBe(alert.timestamp);
       order.push('persist');
       return true;
-    }, send)).resolves.toBe(true);
-    expect(order).toEqual(['persist', 'send']);
+    }, send, publishRealtime)).resolves.toBe(true);
+    expect(order).toEqual(['persist', 'realtime', 'send']);
+    expect(publishRealtime).toHaveBeenCalledOnce();
 
     const failedSend = vi.fn(async () => ({ sent: true as const, reason: 'sent' as const }));
-    await expect(reserveAndSendChatAlert({ ...alert, fingerprint: 'other' }, known, () => false, failedSend)).resolves.toBe(false);
+    const failedPublish = vi.fn();
+    await expect(reserveAndSendChatAlert({ ...alert, fingerprint: 'other' }, known, () => false, failedSend, failedPublish)).resolves.toBe(false);
     expect(failedSend).not.toHaveBeenCalled();
+    expect(failedPublish).not.toHaveBeenCalled();
   });
 
   test('persists purchase state before Telegram sends and sends nothing if persistence fails', async () => {

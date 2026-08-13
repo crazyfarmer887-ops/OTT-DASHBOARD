@@ -3,8 +3,53 @@ import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import test from 'node:test';
 
+import {
+  buildCalendarEvents,
+  calcMemberIncome,
+  calcServiceProfits,
+  groupCalendarEventsByAccount,
+} from '../src/web/pages/profit.tsx';
+
 const root = process.cwd();
 const read = (path) => readFileSync(join(root, path), 'utf8');
+
+const sampleGraytagData = {
+  services: [{
+    serviceType: '넷플릭스',
+    totalUsingMembers: 1,
+    totalActiveMembers: 1,
+    totalIncome: 30000,
+    totalRealized: 0,
+    accounts: [{
+      email: 'netflix1.test@aleeas.com',
+      serviceType: '넷플릭스',
+      usingCount: 1,
+      activeCount: 1,
+      totalSlots: 5,
+      totalIncome: 30000,
+      totalRealizedIncome: 0,
+      expiryDate: '2026. 07. 01',
+      members: [{
+        dealUsid: 'deal-1',
+        name: '구매자A',
+        status: 'Using',
+        statusName: '이용 중',
+        price: '30,000원',
+        purePrice: 30000,
+        realizedSum: 0,
+        progressRatio: '0',
+        startDateTime: '2026. 06. 01',
+        endDateTime: '2026. 07. 01',
+        remainderDays: 30,
+        source: 'after',
+      }],
+    }],
+  }],
+  summary: { totalUsingMembers: 1, totalActiveMembers: 1, totalIncome: 30000, totalRealized: 0, totalAccounts: 1 },
+  updatedAt: '2026-06-01T00:00:00Z',
+};
+
+const emptyPersonalSub = { netflix: false, tving: false, disney: false, netflixDay: 1, tvingDay: 1, disneyDay: 1 };
 
 test('shared UI primitives exist for dashboard pages', () => {
   for (const file of [
@@ -15,6 +60,49 @@ test('shared UI primitives exist for dashboard pages', () => {
   ]) {
     assert.equal(existsSync(join(root, file)), true, `${file} should exist`);
   }
+});
+
+test('global realtime chat notifications are mounted with actionable alert controls', () => {
+  const app = read('src/web/app.tsx');
+  const notifier = read('src/web/components/realtime-chat-notifier.tsx');
+  assert.match(app, /<RealtimeChatNotifier \/>/);
+  assert.match(notifier, /\/api\/chat\/notifications\/stream/);
+  assert.match(notifier, /실시간 채팅 알림/);
+  assert.match(notifier, /채팅방 바로가기/);
+  assert.match(notifier, /브라우저 알림 켜기/);
+  assert.match(notifier, /소리 켜기/);
+  assert.match(notifier, /Last-Event-ID/);
+});
+
+test('graytag calendar income is accrued daily over the full usage period, not monthly on start date', () => {
+  const profits = calcServiceProfits(sampleGraytagData, 'snapshot', new Date('2026-06-16T00:00:00Z'), () => 1, () => false);
+  const events = buildCalendarEvents(profits, 'snapshot', new Date('2026-06-16T00:00:00Z'), 2026, 5, () => 1, emptyPersonalSub, () => false);
+
+  const june16Income = events.filter((event) => event.day === 16 && event.type === 'income');
+  assert.equal(june16Income.length, 1);
+  assert.equal(june16Income[0].amount, 900);
+  assert.doesNotMatch(june16Income[0].label, /\[30일분\]|월정산/);
+
+  const june1Income = events.filter((event) => event.day === 1 && event.type === 'income');
+  assert.equal(june1Income.reduce((sum, event) => sum + event.amount, 0), 900);
+
+  const monthTotalIncome = events.filter((event) => event.type !== 'expense').reduce((sum, event) => sum + event.amount, 0);
+  assert.equal(monthTotalIncome, 27000);
+
+  const grouped = groupCalendarEventsByAccount(june16Income);
+  assert.equal(grouped.length, 1);
+  assert.equal(grouped[0].amount, 900);
+  assert.equal(grouped[0].memberCount, 1);
+  assert.equal(grouped[0].accountLabel, 'netflix1.test');
+});
+
+test('thismonth graytag profit uses overlap days times daily rate', () => {
+  const member = sampleGraytagData.services[0].accounts[0].members[0];
+  assert.equal(calcMemberIncome(member, 'thismonth', new Date('2026-06-16T00:00:00Z')), 30000);
+  assert.equal(calcMemberIncome(member, 'thismonth', new Date('2026-07-16T00:00:00Z')), 0);
+
+  const crossMonthMember = { ...member, purePrice: 31000, startDateTime: '2026. 05. 15', endDateTime: '2026. 06. 15' };
+  assert.equal(calcMemberIncome(crossMonthMember, 'thismonth', new Date('2026-06-16T00:00:00Z')), 14000);
 });
 
 test('global tokens include semantic dashboard states', () => {
@@ -64,6 +152,7 @@ test('OTT home and navigation use the refreshed UI structure', () => {
   assert.match(home, /buildPartyMaintenanceTargets\(data/);
   assert.match(home, /party-maintenance-checklists/);
   const write = read('src/web/pages/write.tsx');
+  const quickAccountModal = read('src/web/components/quick-account-created-modal.tsx');
   assert.match(write, /WRITE_PRODUCT_PRESET_KEY/);
   assert.match(write, /makeDefaultProductTitle/);
   assert.match(write, /makeDefaultProductDescription/);
@@ -180,9 +269,9 @@ test('OTT home and navigation use the refreshed UI structure', () => {
   assert.match(admin, /인증됨|잠김|오류/);
   const manage = read('src/web/pages/manage.tsx');
   assert.doesNotMatch(manage, /<ManualResponseQueuePanel \/>/);
-  assert.match(manage, /일주일 이내 만료되는 파티원 명단/);
-  assert.match(manage, /expiringSoonMembers/);
-  assert.match(manage, /weekEnd\.setDate\(weekEnd\.getDate\(\) \+ 7\)/);
+  assert.doesNotMatch(manage, /일주일 이내 만료되는 파티원 명단/);
+  assert.doesNotMatch(manage, /expiringSoonMembers/);
+  assert.doesNotMatch(manage, /weekEnd\.setDate\(weekEnd\.getDate\(\) \+ 7\)/);
   assert.match(manage, /최근 7일 거래 취소 명단/);
   assert.match(manage, /cancelledRecentOpen/);
   assert.match(manage, /setCancelledRecentOpen\(v => !v\)/);
@@ -236,9 +325,11 @@ test('OTT home and navigation use the refreshed UI structure', () => {
   const generatedAccounts = read('src/lib/generated-accounts.ts');
   assert.match(manage, /계정 생성/);
   assert.match(manage, /getGeneratedAccountCreationCopy\(accountCreateService\)/);
-  assert.match(manage, /accountCreateCopy\.description/);
-  assert.match(manage, /accountCreateCopy\.prefixLabel/);
-  assert.match(manage, /accountCreateCopy\.prefixHelp/);
+  assert.match(manage, /빠른 계정 생성/);
+  assert.match(manage, /quick-account-generator-form/);
+  assert.match(manage, /Prefix를 비워두면 다음 번호를 자동으로 선택합니다/);
+  assert.doesNotMatch(manage, /accountCreateCopy\.description/);
+  assert.doesNotMatch(manage, /accountCreateCopy\.prefixHelp/);
   assert.match(generatedAccounts, /웨이브 19,500원 더블 플랜/);
   assert.match(generatedAccounts, /티빙 로그인 ID는 gtwavveN/);
   assert.match(generatedAccounts, /웨이브 로그인은 같은 prefix의 Email alias/);
@@ -253,7 +344,22 @@ test('OTT home and navigation use the refreshed UI structure', () => {
   assert.match(generatedAccounts, /alias prefix 직접 설정/);
   assert.match(manage, /accountCreatePrefix/);
   assert.match(manage, /aliasPrefix: accountCreatePrefix\.trim\(\)/);
-  assert.match(manage, /계정 관리에 표시됨/);
+  assert.match(manage, /mergeGeneratedAccountsIntoManagement/);
+  assert.match(manage, /setEmailAliases/);
+  assert.match(manage, /SimpleLogin 반영 확인 중/);
+  assert.match(manage, /void doFetch\(undefined, \{ forceRefresh: true, silent: true \}\)/);
+  const generatedAccountHandler = manage.slice(manage.indexOf('const handleCreateGeneratedAccount'), manage.indexOf('const toggleGeneratedAccountPaid'));
+  assert.doesNotMatch(generatedAccountHandler, /await doFetch\(undefined, \{ forceRefresh: true, silent: true \}\)/);
+  assert.match(manage, /계정 관리에 바로 표시됨/);
+  assert.match(manage, /QuickAccountCreatedModal/);
+  assert.match(quickAccountModal, /정보 전체 복사/);
+  assert.match(quickAccountModal, /결제 완료로 체크/);
+  assert.match(quickAccountModal, /글쓰기 바로 시작/);
+  assert.doesNotMatch(manage, /accountCreateCopy\.featureLabels\.map/);
+  assert.match(manage, /findQuickPostAccount\(data\?\.services \|\| \[\], quick\.id, quick\.serviceType\)/);
+  assert.match(manage, /await openFillModalForAccount\(target, vacancyInfo\)/);
+  assert.doesNotMatch(manage, /navigate\('\/write'\)/);
+  assert.doesNotMatch(write, /consumeQuickWriteDraft/);
   assert.match(generatedAccounts, /비워두면 서비스별 다음 번호를 자동 생성/);
   assert.match(manage, /생성만 완료/);
   assert.match(manage, /결제 완료/);
@@ -291,6 +397,33 @@ test('OTT home and navigation use the refreshed UI structure', () => {
   assert.match(manage, /관리자 전용 ID · PW · PIN/);
   assert.match(manage, /계정 클릭 시에만 표시/);
   assert.match(manage, /복붙용/);
+  assert.match(apiIndex, /mergeArchivedAccountsIntoManagement/);
+  assert.match(manage, /acct\.archivedAccount/);
+  assert.match(manage, /만료 · 보관 계정/);
+  assert.match(manage, /archivedCredential/);
+  assert.match(manage, /보관된 실제 ID\/PW/);
+  assert.match(manage, /paymentCard\?: ManagementPaymentCard/);
+  assert.match(manage, /결제 카드:/);
+  assert.match(manage, /••••/);
+  assert.match(manage, /카드 별칭/);
+  assert.match(manage, /카드사/);
+  assert.match(manage, /끝 4자리/);
+  assert.match(manage, /카드 전체번호 · CVV · 유효기간은 입력하거나 저장하지 않아요/);
+  assert.match(manage, /\/api\/management-payment-cards/);
+  assert.match(manage, /method: 'PUT'/);
+  assert.match(manage, /method: 'DELETE'/);
+  assert.match(manage, /maxLength=\{60\}/);
+  assert.match(manage, /inputMode="numeric"/);
+  assert.match(manage, /\^\\d\{4\}\$/);
+  assert.match(manage, /결제 카드 정보를 저장했어요/);
+  assert.match(manage, /결제 카드 정보를 지웠어요/);
+  assert.match(manage, /구독 갱신일/);
+  assert.match(manage, /매월 \$\{acct\.paymentCard\.renewalDay\}일 갱신/);
+  assert.match(manage, /isNetflixManagementService\(acct\.serviceType\)/);
+  assert.match(manage, /type="number"/);
+  assert.match(manage, /min=\{1\}/);
+  assert.match(manage, /max=\{31\}/);
+  assert.match(manage, /renewalDay:/);
   assert.match(manage, /탈퇴한 파티원 · 파티별 정리/);
   assert.match(manage, /탈퇴 날짜 최신순 · 퇴장 당시 저장된 PW\/PIN 확인용/);
   assert.match(manage, /buildWithdrawnPartyMembers/);
@@ -348,8 +481,12 @@ test('OTT home and navigation use the refreshed UI structure', () => {
   assert.match(manage, /GRAYTAG_ACCESS_NOTICE_PW/);
   assert.match(read('src/web/pages/write.tsx'), /GRAYTAG_ACCESS_NOTICE_ID/);
   assert.match(read('src/web/pages/write.tsx'), /GRAYTAG_ACCESS_NOTICE_PW/);
-  assert.match(read('src/lib/graytag-fill.ts'), /아래 메세지를 꼭 확인해주세요/);
-  assert.match(read('src/lib/graytag-fill.ts'), /그래야 계정에 접근할 수 있습니다/);
+  const graytagFill = read('src/lib/graytag-fill.ts');
+  assert.match(graytagFill, /프로필 생성 시 만약 꽉차거나 지금 화면에 안보이는 프로필들이 있다면 매칭되지 않는 프로필 아무거나 하나 삭제해주세요\./);
+  assert.match(graytagFill, /만약 반대로 정해진 프로필 이름대로 생성 안하면 삭제될 수도 있으니 정확히 만들어주세요\./);
+  assert.ok(graytagFill.indexOf('프로필 생성 시 만약 꽉차거나') < graytagFill.indexOf('계정 업데이트 주소:'));
+  assert.match(graytagFill, /아래 메세지를 꼭 확인해주세요/);
+  assert.match(graytagFill, /그래야 계정에 접근할 수 있습니다/);
   assert.match(manage, /productName: makeDefaultProductTitle\(fillModal\.serviceType\)/);
   assert.match(manage, /sellingGuide: makeDefaultProductDescription\(fillModal\.serviceType\)/);
   assert.match(manage, /fallbackPin: fillAliasStatus\?\.pin/);
@@ -480,6 +617,14 @@ test('website shell includes dollar emoji icon', () => {
   assert.match(html, /<title>OTT Dashboard<\/title>/);
   assert.match(html, /rel="icon"/);
   assert.match(html, /💵|%F0%9F%92%B5|\$%EF%B8%8F|💲/);
+});
+
+test('selected YouTube service tile keeps its invitation badge horizontal on narrow screens', () => {
+  const write = read('src/web/pages/write.tsx');
+  assert.match(write, /position: service === s\.key && s\.key === 'youtube' \? 'relative' : undefined/);
+  assert.match(write, /paddingBottom: service === s\.key && s\.key === 'youtube' \? 34 : 10/);
+  assert.match(write, /position:'absolute', bottom:5, right:5/);
+  assert.match(write, /whiteSpace:'nowrap'/);
 });
 
 test('dashboard startup stays lightweight and serves subpath assets directly', () => {

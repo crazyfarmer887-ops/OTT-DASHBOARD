@@ -1,7 +1,7 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 
-export type AuditActor = 'admin' | 'scheduler' | 'system';
+export type AuditActor = string;
 export type AuditResult = 'success' | 'blocked' | 'error';
 
 export interface AuditLogEntry {

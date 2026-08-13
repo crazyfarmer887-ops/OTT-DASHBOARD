@@ -23,6 +23,7 @@ export interface GeneratedAccount {
 export interface SimpleLoginAliasRef {
   id?: number | string;
   email: string;
+  note?: string;
 }
 
 export type GeneratedAccountStore = Record<string, GeneratedAccount>;
@@ -63,7 +64,12 @@ export function extractSimpleLoginAliasRef(data: any): SimpleLoginAliasRef | nul
     ?? data?.id
     ?? data?.alias_id
     ?? data?.aliasId;
-  return id === undefined || id === null || id === '' ? { email } : { id, email };
+  const rawNote = candidate.note ?? data?.note;
+  const note = typeof rawNote === 'string'
+    ? rawNote.replace(/[\u0000-\u001f\u007f]/g, '').trim()
+    : '';
+  const alias = id === undefined || id === null || id === '' ? { email } : { id, email };
+  return note ? { ...alias, note } : alias;
 }
 
 export function normalizeGeneratedAccountEmail(email: string): string {
@@ -155,6 +161,37 @@ export function nextGeneratedAliasPrefix(serviceType: string, existingEmails: st
     if (Number.isFinite(number) && number > max) max = number;
   }
   return `${stem}${max + 1}`;
+}
+
+export function findRecoverableGeneratedAlias(input: {
+  aliases: SimpleLoginAliasRef[];
+  serviceType: string;
+  manualPrefix: string;
+  existingEmails: string[];
+}): { id: number | string; email: string } | null {
+  const prefix = normalizeManualAliasPrefix(input.manualPrefix);
+  if (!prefix) return null;
+  const generatorToken = `[Graytag 계정 생성기] ${String(input.serviceType || '').trim()}`;
+  const prefixToken = `prefix:${prefix}`;
+  const existingEmails = new Set(input.existingEmails.map(normalizeGeneratedAccountEmail));
+  const matches = input.aliases.filter((alias) => {
+    const hasId = typeof alias.id === 'number'
+      ? Number.isFinite(alias.id)
+      : typeof alias.id === 'string' && alias.id.trim().length > 0;
+    if (!hasId || !alias.note) return false;
+    const email = normalizeGeneratedAccountEmail(alias.email);
+    const localPart = email.split('@')[0] || '';
+    const noteTokens = alias.note.split('·').map(token => token.trim());
+    return noteTokens[0] === generatorToken
+      && noteTokens.includes(prefixToken)
+      && localPart.startsWith(`${prefix}.`)
+      && !existingEmails.has(email);
+  });
+  if (matches.length > 1) {
+    throw new Error(`SimpleLogin alias 복구 후보가 여러 개라 안전하게 중단했어요: ${prefix}`);
+  }
+  if (matches.length === 0) return null;
+  return { id: matches[0].id as number | string, email: normalizeGeneratedAccountEmail(matches[0].email) };
 }
 
 export function deleteGeneratedAccountFromStore(store: GeneratedAccountStore, id: string): { store: GeneratedAccountStore; deleted: GeneratedAccount | null } {
@@ -307,4 +344,32 @@ export function mergeGeneratedAccountsIntoManagement<T extends {
 
   next.summary.totalAccounts = Number(next.summary.totalAccounts || 0) + added;
   return next;
+}
+
+/**
+ * Replace every UI row derived from one generated account, then rebuild its canonical
+ * rows from the latest server record. This is required when a paid double-pass changes
+ * from one pending bundle row into separate TVING and Wavve rows.
+ */
+export function reconcileGeneratedAccountInManagement<T extends {
+  services: Array<{ serviceType: string; accounts: any[]; totalUsingMembers: number; totalActiveMembers: number; totalIncome: number; totalRealized: number }>;
+  summary: { totalAccounts: number; [key: string]: unknown };
+}>(management: T, account: GeneratedAccount): T {
+  let removed = 0;
+  const withoutPrevious: T = {
+    ...management,
+    services: management.services.map(service => {
+      const accounts = service.accounts.filter(item => {
+        const matches = String(item?.generatedAccount?.id || '') === account.id;
+        if (matches) removed += 1;
+        return !matches;
+      });
+      return { ...service, accounts };
+    }),
+    summary: {
+      ...management.summary,
+      totalAccounts: Math.max(0, Number(management.summary.totalAccounts || 0) - removed),
+    },
+  };
+  return mergeGeneratedAccountsIntoManagement(withoutPrevious, { [account.id]: account });
 }

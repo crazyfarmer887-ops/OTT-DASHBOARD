@@ -7,6 +7,7 @@ import apiApp from './src/api/index.ts';
 import {
   createDashboardSessionToken,
   dashboardAdminPassword,
+  dashboardSessionSecret,
   dashboardSessionCookie,
   isDashboardHtmlPath,
   verifyDashboardSessionCookie,
@@ -15,6 +16,7 @@ import { scheduleAutoSync } from './src/scheduler/auto-sync.ts';
 import { startUndercutterScheduler } from './src/scheduler/undercutter.ts';
 import { startPollDaemon } from './src/scheduler/poll-daemon.ts';
 import { startAutoReplyDaemon } from './src/scheduler/auto-reply-daemon.ts';
+import { startRenewalAutomationDaemon } from './src/scheduler/renewal-automation-daemon.ts';
 import { buildPartyAccessHtml } from './src/lib/party-access-page-html.ts';
 
 const distDir = resolve(process.cwd(), 'dist/client');
@@ -36,9 +38,30 @@ const MIME_TYPES: Record<string, string> = {
   '.woff2': 'font/woff2',
 };
 
-const app = new Hono();
+export const app = new Hono();
 
 app.route('/api', apiApp);
+
+const DASHBOARD_CONFIGURATION_ERROR = 'Dashboard authentication is not configured.';
+
+function dashboardAuthConfiguration(): { password: string; secret: string } | null {
+  try {
+    const password = dashboardAdminPassword();
+    return { password, secret: dashboardSessionSecret(password) };
+  } catch {
+    return null;
+  }
+}
+
+function dashboardConfigurationErrorResponse(): Response {
+  return new Response(DASHBOARD_CONFIGURATION_ERROR, {
+    status: 503,
+    headers: {
+      'content-type': 'text/plain; charset=utf-8',
+      'cache-control': 'no-store',
+    },
+  });
+}
 
 function isHttpsRequest(c: any): boolean {
   const forwardedProto = String(c.req.header('x-forwarded-proto') || '').split(',')[0]?.trim().toLowerCase();
@@ -78,14 +101,16 @@ function dashboardLoginHtml(error = ''): string {
 }
 
 app.post('/dashboard/login', async (c) => {
+  const configuration = dashboardAuthConfiguration();
+  if (!configuration) return dashboardConfigurationErrorResponse();
   const body = await c.req.text();
   const params = new URLSearchParams(body);
   const password = String(params.get('password') || '');
-  const expected = dashboardAdminPassword();
+  const expected = configuration.password;
   if (password !== expected) {
     return new Response(dashboardLoginHtml('비밀번호가 맞지 않아요.'), { status: 401, headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } });
   }
-  const token = createDashboardSessionToken({ password: expected });
+  const token = createDashboardSessionToken({ password: expected, secret: configuration.secret });
   return new Response(null, {
     status: 303,
     headers: {
@@ -133,8 +158,12 @@ function normalizeDashboardAssetPath(pathname: string): string {
 app.get('*', async (c) => {
   const url = new URL(c.req.url);
   const pathname = decodeURIComponent(url.pathname);
-  if (isDashboardHtmlPath(pathname) && !verifyDashboardSessionCookie(c.req.header('cookie'), dashboardAdminPassword())) {
-    return new Response(dashboardLoginHtml(), { status: 401, headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } });
+  if (isDashboardHtmlPath(pathname)) {
+    const configuration = dashboardAuthConfiguration();
+    if (!configuration) return dashboardConfigurationErrorResponse();
+    if (!verifyDashboardSessionCookie(c.req.header('cookie'), configuration.password, configuration.secret)) {
+      return new Response(dashboardLoginHtml(), { status: 401, headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } });
+    }
   }
   const assetPathname = normalizeDashboardAssetPath(pathname);
   const candidatePath = assetPathname === '/' || assetPathname === '/dashboard' || assetPathname === '/dashboard/' ? '/index.html' : assetPathname;
@@ -176,3 +205,4 @@ scheduleAutoSync(port);
 startUndercutterScheduler(port);
 startPollDaemon();
 startAutoReplyDaemon(port);
+startRenewalAutomationDaemon(port);

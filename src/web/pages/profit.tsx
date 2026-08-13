@@ -136,7 +136,7 @@ interface ManageData {
 }
 
 // ─── 계산 모드 타입 ─────────────────────────────────────────────
-type CalcMode = 'snapshot' | 'thismonth' | 'monthly30';
+export type CalcMode = 'snapshot' | 'thismonth' | 'monthly30';
 
 // ─── 비즈니스 로직 상수 ─────────────────────────────────────────
 const COMMISSION_RATE = 0.10;
@@ -265,7 +265,7 @@ const isAccountCheckingMember = (m: Pick<Member, 'status' | 'statusName'>) => (
 const isActualPartyMember = (m: Pick<Member, 'status' | 'statusName'>) => ACTUAL_PARTY_SET.has(m.status) || isAccountCheckingMember(m);
 
 // ─── 파티원 일당 계산 ─────────────────────────────────────────
-function calcDailyRate(m: Member): number {
+export function calcDailyRate(m: Member): number {
   if (m.purePrice <= 0 || !isActualPartyMember(m)) return 0;
 
   const start = parseDate(m.startDateTime);
@@ -276,9 +276,22 @@ function calcDailyRate(m: Member): number {
   return m.purePrice / totalDays;
 }
 
-// 파티원 수입 (모드별) — 월 단위 정산 기준
-// 정산은 시작일 기준 매월 N일에 발생 (예: 3/10 시작 → 3/10, 4/10, 5/10...)
-function calcMemberIncome(m: Member, mode: CalcMode, now: Date): number {
+// 파티원 수입 (모드별) — 그레이태그 구매 금액을 전체 이용기간에 일할 배분
+// 예: 30,000원 / 30일 = 하루 1,000원씩 쌓이는 것으로 계산
+function monthWindow(now: Date): { start: Date; end: Date } {
+  return {
+    start: new Date(now.getFullYear(), now.getMonth(), 1),
+    end: new Date(now.getFullYear(), now.getMonth() + 1, 1),
+  };
+}
+
+function dateOverlapDays(periodStart: Date, periodEnd: Date, windowStart: Date, windowEnd: Date): number {
+  const start = periodStart > windowStart ? periodStart : windowStart;
+  const end = periodEnd < windowEnd ? periodEnd : windowEnd;
+  return Math.max(0, Math.ceil((end.getTime() - start.getTime()) / 86400000));
+}
+
+export function calcMemberIncome(m: Member, mode: CalcMode, now: Date): number {
   const daily = calcDailyRate(m);
   if (daily <= 0) return 0;
 
@@ -291,21 +304,10 @@ function calcMemberIncome(m: Member, mode: CalcMode, now: Date): number {
   const end = parseDate(m.endDateTime);
 
   if (mode === 'thismonth') {
-    // 이번 달에 정산되는 사이클들의 수입 합산
+    // 이번 달과 이용기간이 겹치는 날짜 수 × 일할 수입
     if (!start || !end) return 0;
-    let total = 0;
-    let cycleStart = new Date(start);
-    while (cycleStart < end) {
-      let cycleEnd = new Date(cycleStart.getFullYear(), cycleStart.getMonth() + 1, cycleStart.getDate());
-      if (cycleEnd > end) cycleEnd = end;
-      const cycleDays = Math.max(1, Math.ceil((cycleEnd.getTime() - cycleStart.getTime()) / 86400000));
-      // 정산 발생일이 이번 달인지 확인
-      if (cycleStart.getFullYear() === now.getFullYear() && cycleStart.getMonth() === now.getMonth()) {
-        total += Math.round(daily * cycleDays);
-      }
-      cycleStart = cycleEnd;
-    }
-    return total;
+    const { start: windowStart, end: windowEnd } = monthWindow(now);
+    return Math.round(daily * dateOverlapDays(start, end, windowStart, windowEnd));
   }
 
   // snapshot: 전체 계약 기간 수입 = purePrice 그대로
@@ -346,7 +348,7 @@ interface ServiceProfit {
   accounts: (Account & { renewalDay: number | null; partyDays: number })[];
 }
 
-function calcServiceProfits(data: ManageData, mode: CalcMode, now: Date, getSubStartDayFn?: (email: string, fallback: number | null) => number | null, isExtraShareOnFn?: (email: string, svcType: string) => boolean): ServiceProfit[] {
+export function calcServiceProfits(data: ManageData, mode: CalcMode, now: Date, getSubStartDayFn?: (email: string, fallback: number | null) => number | null, isExtraShareOnFn?: (email: string, svcType: string) => boolean): ServiceProfit[] {
   return data.services.map(svc => {
     const activeAccounts = svc.accounts.filter(a => a.usingCount > 0 && a.email !== '(직접전달)');
     const accountCount = activeAccounts.length;
@@ -452,15 +454,53 @@ function calcServiceProfits(data: ManageData, mode: CalcMode, now: Date, getSubS
 }
 
 // ─── 달력 이벤트 ─────────────────────────────────────────────
-interface CalendarEvent {
+export interface CalendarEvent {
   day: number;
   type: 'expense' | 'income' | 'extra';
   label: string;
   amount: number;
   serviceType: string;
+  groupKey?: string;
+  accountLabel?: string;
+  accountEmail?: string;
+  memberCount?: number;
 }
 
-function buildCalendarEvents(
+export interface CalendarEventGroup {
+  groupKey: string;
+  accountLabel: string;
+  serviceType: string;
+  type: CalendarEvent['type'];
+  amount: number;
+  memberCount: number;
+  events: CalendarEvent[];
+}
+
+export function groupCalendarEventsByAccount(events: CalendarEvent[]): CalendarEventGroup[] {
+  const groups = new Map<string, CalendarEventGroup>();
+  for (const evt of events) {
+    const groupKey = evt.groupKey || `${evt.type}:${evt.serviceType}:${evt.label}`;
+    const existing = groups.get(groupKey);
+    if (existing) {
+      existing.amount += evt.amount;
+      existing.memberCount += evt.memberCount || (evt.type === 'income' ? 1 : 0);
+      existing.events.push(evt);
+    } else {
+      groups.set(groupKey, {
+        groupKey,
+        accountLabel: evt.accountLabel || evt.label,
+        serviceType: evt.serviceType,
+        type: evt.type,
+        amount: evt.amount,
+        memberCount: evt.memberCount || (evt.type === 'income' ? 1 : 0),
+        events: [evt],
+      });
+    }
+  }
+  return Array.from(groups.values());
+}
+
+export function buildCalendarEvents(
   profits: ServiceProfit[],
   _mode: CalcMode,
   _now: Date,
@@ -560,32 +600,29 @@ function buildCalendarEvents(
         }
       }
 
-      // ── 수입 이벤트: 파티원 각자 startDateTime 기준 매월 정산 ──
+      // ── 수입 이벤트: 이용기간 전체에 매일 일할 수입(수수료 차감 후) 반영 ──
       for (const m of acct.members) {
         const daily = calcDailyRate(m);
         if (daily <= 0) continue;
         const start = parseDate(m.startDateTime);
         const end = parseDate(m.endDateTime);
         if (!start || !end) continue;
-
-        let cycleStart = new Date(start);
-        while (cycleStart < end) {
-          let cycleEnd = new Date(cycleStart.getFullYear(), cycleStart.getMonth() + 1, cycleStart.getDate());
-          if (cycleEnd > end) cycleEnd = end;
-
-          const cycleDays = Math.max(1, Math.ceil((cycleEnd.getTime() - cycleStart.getTime()) / 86400000));
-          const cycleIncome = Math.round(daily * cycleDays * (1 - COMMISSION_RATE));
-          const payDay = cycleStart.getDate();
-          const payDate = new Date(cycleStart.getFullYear(), cycleStart.getMonth(), payDay);
-
-          if (payDate.getFullYear() === calYear && payDate.getMonth() === calMonth) {
-            events.push({
-              day: Math.min(payDay, daysInMonth), type: 'income',
-              label: `${m.name || '파티원'} · ${acct.email.split('@')[0]} (${svc.serviceType}) [${cycleDays}일분]`,
-              amount: cycleIncome, serviceType: svc.serviceType,
-            });
-          }
-          cycleStart = cycleEnd;
+        const monthStart = new Date(calYear, calMonth, 1);
+        const monthEndExclusive = new Date(calYear, calMonth + 1, 1);
+        const first = start > monthStart ? start : monthStart;
+        const lastExclusive = end < monthEndExclusive ? end : monthEndExclusive;
+        const dailyNet = Math.round(daily * (1 - COMMISSION_RATE));
+        const accountLabel = acct.email.split('@')[0];
+        for (let dayCursor = new Date(first); dayCursor < lastExclusive; dayCursor.setDate(dayCursor.getDate() + 1)) {
+          events.push({
+            day: dayCursor.getDate(), type: 'income',
+            label: `${m.name || '파티원'} · ${accountLabel} (${svc.serviceType}) 일할 수입`,
+            amount: dailyNet, serviceType: svc.serviceType,
+            groupKey: `income:${svc.serviceType}:${acct.email}`,
+            accountLabel,
+            accountEmail: acct.email,
+            memberCount: 1,
+          });
         }
       }
     }
@@ -764,6 +801,7 @@ export default function ProfitPage() {
   const monthNet = monthTotalIncome - monthTotalExpense;
   const dayIncome = dayEvents.filter(e => e.type !== 'expense').reduce((s, e) => s + e.amount, 0);
   const dayExpense = dayEvents.filter(e => e.type === 'expense').reduce((s, e) => s + e.amount, 0);
+  const groupedDayEvents = groupCalendarEventsByAccount(dayEvents);
 
   // 계산 모드 메타
   const MODE_META: Record<CalcMode, { label: string; badge: string; desc: string; color: string }> = {
@@ -776,7 +814,7 @@ export default function ProfitPage() {
     thismonth: {
       label: `${now.getMonth() + 1}월 실발생`,
       badge: `${now.getMonth() + 1}월`,
-      desc: `이번 달에 정산되는 수입(시작일 기준 매월 정산) + 구독료 1회 + 추가수익 1회.`,
+      desc: `이번 달 이용일수 × 일할 수입 + 구독료 1회 + 추가수익 1회.`,
       color: '#059669',
     },
     monthly30: {
@@ -1283,16 +1321,31 @@ export default function ProfitPage() {
                 </div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {dayEvents.map((evt, i) => {
-                  const isExp = evt.type === 'expense';
+                {groupedDayEvents.map((group, i) => {
+                  const isExp = group.type === 'expense';
+                  const isIncomeGroup = group.type === 'income' && group.events.length > 0;
                   return (
-                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#F8F6FF', borderRadius: 10, padding: '8px 12px' }}>
-                      <div style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: isExp ? '#EF4444' : '#059669' }} />
-                      <div style={{ flex: 1, fontSize: 12, color: '#1E1B4B' }}>{evt.label}</div>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: isExp ? '#EF4444' : '#059669' }}>
-                        {isExp ? '-' : '+'}{evt.amount.toLocaleString()}원
-                      </div>
-                    </div>
+                    <details key={group.groupKey || i} open={!isIncomeGroup || group.events.length <= 1} style={{ background: '#F8F6FF', borderRadius: 10, padding: '8px 12px' }}>
+                      <summary style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: isIncomeGroup ? 'pointer' : 'default', listStyle: 'none' }}>
+                        <div style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: isExp ? '#EF4444' : '#059669' }} />
+                        <div style={{ flex: 1, fontSize: 12, color: '#1E1B4B' }}>
+                          {isIncomeGroup ? `${group.accountLabel} (${group.serviceType}) · ${group.memberCount}명 일할 수입` : group.accountLabel}
+                        </div>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: isExp ? '#EF4444' : '#059669' }}>
+                          {isExp ? '-' : '+'}{group.amount.toLocaleString()}원
+                        </div>
+                      </summary>
+                      {isIncomeGroup && group.events.length > 1 && (
+                        <div style={{ marginTop: 6, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          {group.events.map((evt, idx) => (
+                            <div key={idx} style={{ display: 'flex', gap: 8, fontSize: 11, color: '#6B7280' }}>
+                              <span style={{ flex: 1 }}>{evt.label}</span>
+                              <span style={{ color: '#059669', fontWeight: 700 }}>+{evt.amount.toLocaleString()}원</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </details>
                   );
                 })}
               </div>
@@ -1648,10 +1701,10 @@ export default function ProfitPage() {
             <div style={{ fontWeight: 600, color: '#7C3AED', marginBottom: 4 }}>계산 기준</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
               <div><span style={{ color: '#7C3AED', fontWeight: 600 }}>현재 스냅샷</span> — 파티 전체 기간의 총 손익. 구독료는 기간 내 월 수만큼 차감.</div>
-              <div><span style={{ color: '#059669', fontWeight: 600 }}>{now.getMonth() + 1}월 실발생</span> — 이번 달 정산되는 사이클 수입 합산 + 구독료 1회 + 추가수익 1회</div>
+              <div><span style={{ color: '#059669', fontWeight: 600 }}>{now.getMonth() + 1}월 실발생</span> — 이번 달 이용일수 × 일할 수입 + 구독료 1회 + 추가수익 1회</div>
               <div><span style={{ color: '#2563EB', fontWeight: 600 }}>30일 환산</span> — 일당 × 30일 + 구독료 1회 + 추가수익 1회 (월 기준 정규화)</div>
               <div style={{ borderTop: '1px solid #EDE9FE', paddingTop: 4, marginTop: 2 }}>
-                수입: 월 단위 정산 (시작일 기준 매월 N일에 한 달치 정산)<br />
+                수입: 전체 이용기간 총액을 이용일별로 나눈 일할 수입<br />
                 수수료: 수입의 10% (정산 시 차감)<br />
                 구독료: 넷플 17,000/월 · 디즈니+ 18,000/월 · 웨이브+티빙 번들 19,000/월 (매월 고정)<br />
                 자리 공유: 티빙 -15,000+24,000/월 · 넷플 -10,000+18,000/월 · 디즈니+ +5,000/월 · 왓챠 +12,000/월<br />
@@ -1775,6 +1828,7 @@ export function MonthlyCalendarWidget({ data }: { data: ManageData }) {
   const dayEvents = selectedDay ? calEvents.filter(e => e.day === selectedDay) : [];
   const dayIncome = dayEvents.filter(e => e.type !== 'expense').reduce((s, e) => s + e.amount, 0);
   const dayExpense = dayEvents.filter(e => e.type === 'expense').reduce((s, e) => s + e.amount, 0);
+  const groupedDayEvents = groupCalendarEventsByAccount(dayEvents);
 
   return (
     <div style={{ padding: '12px 0 0' }}>
@@ -1864,16 +1918,31 @@ export function MonthlyCalendarWidget({ data }: { data: ManageData }) {
             </div>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {dayEvents.map((evt, i) => {
-              const isExp = evt.type === 'expense';
+            {groupedDayEvents.map((group, i) => {
+              const isExp = group.type === 'expense';
+              const isIncomeGroup = group.type === 'income' && group.events.length > 0;
               return (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#F8F6FF', borderRadius: 10, padding: '8px 12px' }}>
-                  <div style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: isExp ? '#EF4444' : '#059669' }} />
-                  <div style={{ flex: 1, fontSize: 12, color: '#1E1B4B' }}>{evt.label}</div>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: isExp ? '#EF4444' : '#059669' }}>
-                    {isExp ? '-' : '+'}{evt.amount.toLocaleString()}원
-                  </div>
-                </div>
+                <details key={group.groupKey || i} open={!isIncomeGroup || group.events.length <= 1} style={{ background: '#F8F6FF', borderRadius: 10, padding: '8px 12px' }}>
+                  <summary style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: isIncomeGroup ? 'pointer' : 'default', listStyle: 'none' }}>
+                    <div style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: isExp ? '#EF4444' : '#059669' }} />
+                    <div style={{ flex: 1, fontSize: 12, color: '#1E1B4B' }}>
+                      {isIncomeGroup ? `${group.accountLabel} (${group.serviceType}) · ${group.memberCount}명 일할 수입` : group.accountLabel}
+                    </div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: isExp ? '#EF4444' : '#059669' }}>
+                      {isExp ? '-' : '+'}{group.amount.toLocaleString()}원
+                    </div>
+                  </summary>
+                  {isIncomeGroup && group.events.length > 1 && (
+                    <div style={{ marginTop: 6, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      {group.events.map((evt, idx) => (
+                        <div key={idx} style={{ display: 'flex', gap: 8, fontSize: 11, color: '#6B7280' }}>
+                          <span style={{ flex: 1 }}>{evt.label}</span>
+                          <span style={{ color: '#059669', fontWeight: 700 }}>+{evt.amount.toLocaleString()}원</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </details>
               );
             })}
           </div>
