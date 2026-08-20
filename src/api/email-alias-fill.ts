@@ -10,6 +10,8 @@ export interface EmailAliasCandidate {
 export interface EmailAliasFillResult {
   ok: boolean;
   found: boolean;
+  pinConfigured: boolean;
+  pinRecoverable: boolean;
   email: string;
   serviceType: string;
   emailId: number | string | null;
@@ -19,7 +21,7 @@ export interface EmailAliasFillResult {
   message?: string;
 }
 
-type PinRecord = { pin?: string; updatedAt?: string };
+type PinRecord = { pin?: string; hash?: string; updatedAt?: string };
 
 const DEFAULT_PIN_STORE_PATH = '/home/ubuntu/.hermes/hermes-agent/graytag-email-verify-dashboard-5588/data/alias-pins.json';
 
@@ -119,17 +121,17 @@ export async function updateEmailAliasPin(input: {
   const serviceType = input.serviceType.trim();
   const pin = normalizeSixDigitPin(input.pin);
   if (!pin) {
-    return { ok: false, found: false, email: accountEmail, serviceType, emailId: null, pin: null, memo: '', missing: ['pin'], message: 'PIN은 6자리 숫자여야 해요.' };
+    return { ok: false, found: false, pinConfigured: false, pinRecoverable: false, email: accountEmail, serviceType, emailId: null, pin: null, memo: '', missing: ['pin'], message: 'PIN은 6자리 숫자여야 해요.' };
   }
   const pinStore = loadAliasPinStore();
   const alias = chooseAlias(accountEmail, serviceType, input.aliases, pinStore);
   if (!alias) {
-    return { ok: false, found: false, email: accountEmail, serviceType, emailId: null, pin: null, memo: '', missing: ['email'], message: '이 계정과 연결된 이메일 대시보드 alias를 찾지 못했어요.' };
+    return { ok: false, found: false, pinConfigured: false, pinRecoverable: false, email: accountEmail, serviceType, emailId: null, pin: null, memo: '', missing: ['email'], message: '이 계정과 연결된 이메일 대시보드 alias를 찾지 못했어요.' };
   }
   const key = String(alias.id);
   const nextStore = { ...pinStore, [key]: { ...(pinStore[key] || {}), pin, updatedAt: now } };
   saveAliasPinStore(nextStore);
-  return { ok: true, found: true, email: alias.email, serviceType, emailId: alias.id, pin, memo: makeEmailVerifyMemo(alias.id, pin), missing: [] };
+  return { ok: true, found: true, pinConfigured: true, pinRecoverable: true, email: alias.email, serviceType, emailId: alias.id, pin, memo: makeEmailVerifyMemo(alias.id, pin), missing: [] };
 }
 
 export function makeEmailVerifyMemo(emailId: string | number, pin: string): string {
@@ -213,21 +215,30 @@ export async function resolveEmailAliasFill(input: {
     && String(alias.id) === String(input.fallbackEmailId ?? '')
     && compatibleServiceType(serviceType, input.fallbackServiceType);
   const generatedPin = exactAlias ? normalizeSixDigitPin(String(input.fallbackPin || '')) : null;
-  const pin = alias ? pinStore[String(alias.id)]?.pin?.trim() || generatedPin : null;
+  const pinRecord = alias ? pinStore[String(alias.id)] : undefined;
+  const pin = pinRecord?.pin?.trim() || generatedPin || null;
+  const pinRecoverable = Boolean(alias && pin);
+  const pinConfigured = Boolean(alias && (pinRecoverable || pinRecord?.hash?.trim()));
   const missing: Array<'email' | 'pin'> = [];
   if (!alias) missing.push('email');
-  if (!pin) missing.push('pin');
+  if (!alias || !pinConfigured) missing.push('pin');
 
-  const ok = Boolean(alias && pin);
+  const ok = pinRecoverable;
   return {
     ok,
     found: ok,
+    pinConfigured,
+    pinRecoverable,
     email: alias?.email || accountEmail,
     serviceType,
     emailId: alias?.id ?? null,
     pin,
     memo: ok ? makeEmailVerifyMemo(alias!.id, pin!) : '',
     missing,
-    ...(ok ? {} : { message: missing.includes('email') ? '이 계정과 연결된 이메일 대시보드 alias를 찾지 못했어요.' : '이 계정 alias의 PIN 번호가 설정되어 있지 않아요.' }),
+    ...(ok ? {} : { message: missing.includes('email')
+      ? '이 계정과 연결된 이메일 대시보드 alias를 찾지 못했어요.'
+      : pinConfigured
+        ? 'PIN은 설정되어 있지만 기존 번호 원문은 확인할 수 없어요.'
+        : '이 계정 alias의 PIN 번호가 설정되어 있지 않아요.' }),
   };
 }

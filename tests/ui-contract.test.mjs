@@ -62,6 +62,20 @@ test('shared UI primitives exist for dashboard pages', () => {
   }
 });
 
+test('management UI distinguishes configured hash-only PINs from missing PINs', () => {
+  const manage = read('src/web/pages/manage.tsx');
+  assert.match(manage, /interface ExistingPinCacheEntry \{[^}]*pinConfigured: boolean;[^}]*pinRecoverable: boolean;/s);
+  assert.match(manage, /const pinConfigured = json\.pinConfigured === true \|\| Boolean\(pin\)/);
+  assert.match(manage, /const pinRecoverable = json\.pinRecoverable === true && Boolean\(pin\)/);
+  assert.match(manage, /existingPinRecord\?\.checked && existingPinRecord\.pinConfigured && !existingPinRecord\.pinRecoverable/);
+  assert.match(manage, /PIN 설정됨 · 기존 번호 확인 불가/);
+  assert.match(manage, /existingPinRecord\?\.checked && !existingPinRecord\.pinConfigured/);
+  assert.doesNotMatch(manage, /existingPinRecord\?\.checked && !existingPinRecord\.pin && \(/);
+  const configuredBranch = manage.indexOf("data?.pinConfigured");
+  const missingPinBranch = manage.indexOf("missing.includes('pin')", configuredBranch);
+  assert.ok(configuredBranch > -1 && missingPinBranch > configuredBranch, 'fill memo lookup should prioritize configured hash-only status before missing PIN');
+});
+
 test('global realtime chat notifications are mounted with actionable alert controls', () => {
   const app = read('src/web/app.tsx');
   const notifier = read('src/web/components/realtime-chat-notifier.tsx');

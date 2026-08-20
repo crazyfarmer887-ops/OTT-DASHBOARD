@@ -58,7 +58,7 @@ interface EmailAlias { id: number | string; email: string; enabled?: boolean; }
 interface ManagementHiddenAccount { serviceType: string; accountEmail: string; reason?: string; hiddenAt?: string; updatedAt?: string; }
 interface ManagementPaymentCard { serviceType: string; accountEmail: string; label?: string; cardIssuer?: string; last4?: string; renewalDay?: number; updatedAt: string; }
 interface PaymentCardDraft { label: string; cardIssuer: string; last4: string; renewalDay: string; }
-interface ExistingPinCacheEntry { pin: string; emailId: number | string | null; loading: boolean; checked: boolean; message?: string; }
+interface ExistingPinCacheEntry { pin: string; pinConfigured: boolean; pinRecoverable: boolean; emailId: number | string | null; loading: boolean; checked: boolean; message?: string; }
 interface ManageData {
   services: ServiceGroup[];
   onSaleByKeepAcct: Record<string, OnSaleProduct[]>;
@@ -213,7 +213,7 @@ export default function ManagePage() {
   const [fillCount, setFillCount] = useState(1);
   const [fillKeepMemo, setFillKeepMemo] = useState('');
   const [fillProfileNickname, setFillProfileNickname] = useState('');
-  const [fillAliasStatus, setFillAliasStatus] = useState<{ ok: boolean; message: string; email?: string; serviceType?: string; memo?: string; emailId?: number | string | null; pin?: string | null; emailAccessUrl?: string } | null>(null);
+  const [fillAliasStatus, setFillAliasStatus] = useState<{ ok: boolean; pinConfigured?: boolean; message: string; email?: string; serviceType?: string; memo?: string; emailId?: number | string | null; pin?: string | null; emailAccessUrl?: string } | null>(null);
   const [fillAliasLoading, setFillAliasLoading] = useState(false);
   const [fillLoading, setFillLoading] = useState(false);
   const [bulkFillLoading, setBulkFillLoading] = useState(false);
@@ -570,26 +570,34 @@ export default function ManagePage() {
     setExistingPinCache(prev => {
       const current = prev[key];
       if (current?.loading || current?.checked) return prev;
-      return { ...prev, [key]: { pin: current?.pin || '', emailId: current?.emailId ?? findEmailAliasId(acct), loading: true, checked: false, message: '기존 PIN 로딩중' } };
+      return { ...prev, [key]: { pin: current?.pin || '', pinConfigured: current?.pinConfigured || false, pinRecoverable: current?.pinRecoverable || false, emailId: current?.emailId ?? findEmailAliasId(acct), loading: true, checked: false, message: '기존 PIN 로딩중' } };
     });
     try {
       const res = await fetch(`/api/email-alias-fill?email=${encodeURIComponent(acct.email)}&serviceType=${encodeURIComponent(acct.serviceType)}`);
-      const json = await res.json() as { ok?: boolean; pin?: string | null; emailId?: number | string | null; message?: string };
+      const json = await res.json() as { ok?: boolean; pin?: string | null; pinConfigured?: boolean; pinRecoverable?: boolean; emailId?: number | string | null; message?: string };
       const pin = typeof json.pin === 'string' ? json.pin.trim() : '';
+      const pinConfigured = json.pinConfigured === true || Boolean(pin);
+      const pinRecoverable = json.pinRecoverable === true && Boolean(pin);
       setExistingPinCache(prev => ({
         ...prev,
         [key]: {
           pin,
+          pinConfigured,
+          pinRecoverable,
           emailId: json.emailId ?? findEmailAliasId(acct),
           loading: false,
           checked: true,
-          message: res.ok && json.ok && pin ? '기존 PIN 로드 완료' : (json.message || '기존 PIN 없음'),
+          message: pinRecoverable
+            ? '기존 PIN 로드 완료'
+            : pinConfigured
+              ? 'PIN 설정됨 · 기존 번호 확인 불가'
+              : (json.message || '기존 PIN 없음'),
         },
       }));
     } catch (e: any) {
       setExistingPinCache(prev => ({
         ...prev,
-        [key]: { pin: '', emailId: findEmailAliasId(acct), loading: false, checked: true, message: e?.message || '기존 PIN 로드 실패' },
+        [key]: { pin: '', pinConfigured: false, pinRecoverable: false, emailId: findEmailAliasId(acct), loading: false, checked: true, message: e?.message || '기존 PIN 로드 실패' },
       }));
     }
   };
@@ -1085,11 +1093,13 @@ export default function ManagePage() {
       const missing = Array.isArray(data?.missing) ? data.missing : [];
       const message = missing.includes('email')
         ? '이 계정 이메일이 이메일 대시보드 alias 목록에 없어요.'
-        : missing.includes('pin')
-          ? '이 계정 이메일의 PIN 번호가 이메일 대시보드에 없어요.'
-          : (data?.message || data?.error || '이메일/PIN 정보를 찾지 못했어요.');
+        : data?.pinConfigured
+          ? (data?.message || 'PIN은 설정되어 있지만 기존 번호 원문은 확인할 수 없어요.')
+          : missing.includes('pin')
+            ? '이 계정 이메일의 PIN 번호가 이메일 대시보드에 없어요.'
+            : (data?.message || data?.error || '이메일/PIN 정보를 찾지 못했어요.');
       setFillKeepMemo(fallbackMemo || '');
-      setFillAliasStatus({ ok: false, message, email, serviceType });
+      setFillAliasStatus({ ok: false, pinConfigured: data?.pinConfigured === true, message, email, serviceType });
       return '';
     } catch (e: any) {
       setFillKeepMemo(fallbackMemo || '');
@@ -2318,12 +2328,17 @@ export default function ManagePage() {
                                       <Loader2 size={11} style={{ animation:'spin 1s linear infinite' }} /> 기존 PIN 로딩중
                                     </div>
                                   )}
-                                  {existingPinRecord?.checked && existingPinRecord.pin && !exitChecklist?.generatedPin && !acct.generatedAccount?.pin && (
+                                  {existingPinRecord?.checked && existingPinRecord.pinRecoverable && existingPinRecord.pin && !exitChecklist?.generatedPin && !acct.generatedAccount?.pin && (
                                     <div style={{ marginTop:8, background:'#ECFDF5', border:'1px solid #A7F3D0', borderRadius:10, padding:'7px 9px', fontSize:10, color:'#047857', fontWeight:900 }}>
                                       기존 PIN 로드 완료 · Email #{existingPinRecord.emailId || '-'}
                                     </div>
                                   )}
-                                  {existingPinRecord?.checked && !existingPinRecord.pin && (
+                                  {existingPinRecord?.checked && existingPinRecord.pinConfigured && !existingPinRecord.pinRecoverable && (
+                                    <div style={{ marginTop:8, background:'#EEF2FF', border:'1px solid #C7D2FE', borderRadius:10, padding:'7px 9px', fontSize:10, color:'#4338CA', fontWeight:900 }}>
+                                      PIN 설정됨 · 기존 번호 확인 불가
+                                    </div>
+                                  )}
+                                  {existingPinRecord?.checked && !existingPinRecord.pinConfigured && (
                                     <div style={{ marginTop:8, background:'#FFFBEB', border:'1px solid #FDE68A', borderRadius:10, padding:'7px 9px', fontSize:10, color:'#92400E', fontWeight:900 }}>
                                       {existingPinRecord.message || '기존 PIN 없음'}
                                     </div>
@@ -2791,7 +2806,7 @@ export default function ManagePage() {
             )}
             {fillAliasStatus && (
               <div style={{ background: fillAliasStatus.ok ? '#ECFDF5' : '#FFF0F0', border:`1px solid ${fillAliasStatus.ok ? '#6EE7B7' : '#FCA5A5'}`, borderRadius:10, padding:'8px 10px', marginBottom:8, fontSize:11, color: fillAliasStatus.ok ? '#059669' : '#EF4444', fontWeight:700 }}>
-                {fillAliasStatus.ok ? '자동 입력 완료' : '이메일/PIN 정보 없음'} · {fillAliasStatus.message}
+                {fillAliasStatus.ok ? '자동 입력 완료' : fillAliasStatus.pinConfigured ? 'PIN 설정됨 · 기존 번호 확인 불가' : '이메일/PIN 정보 없음'} · {fillAliasStatus.message}
               </div>
             )}
             <textarea value={fillKeepMemo} readOnly={fillAliasStatus?.ok === true} onChange={e => setFillKeepMemo(e.target.value)}

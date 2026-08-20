@@ -150,6 +150,54 @@ describe('email alias fill lookup', () => {
     expect(body).toMatchObject({ ok: true, found: true, emailId: 202, pin: '1357' });
   });
 
+  it('reports a hash-only alias PIN as configured but not recoverable without exposing the hash', async () => {
+    writeFileSync(process.env.EMAIL_ALIAS_PIN_STORE_PATH!, JSON.stringify({
+      '303': { hash: 'scrypt:fake-hash-only-value', updatedAt: '2026-06-12T00:00:00Z' },
+    }), 'utf8');
+    const { resolveEmailAliasFill } = await import('./src/api/email-alias-fill.ts');
+
+    const result = await resolveEmailAliasFill({
+      accountEmail: 'hash-only.test@example.com',
+      serviceType: '넷플릭스',
+      aliases: [{ id: 303, email: 'hash-only.test@example.com', enabled: true }],
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      found: false,
+      emailId: 303,
+      pin: null,
+      memo: '',
+      missing: [],
+      pinConfigured: true,
+      pinRecoverable: false,
+      message: 'PIN은 설정되어 있지만 기존 번호 원문은 확인할 수 없어요.',
+    });
+    expect(JSON.stringify(result)).not.toContain('fake-hash-only-value');
+  });
+
+  it('keeps a real unconfigured alias classified as missing PIN', async () => {
+    writeFileSync(process.env.EMAIL_ALIAS_PIN_STORE_PATH!, JSON.stringify({}), 'utf8');
+    const { resolveEmailAliasFill } = await import('./src/api/email-alias-fill.ts');
+
+    const result = await resolveEmailAliasFill({
+      accountEmail: 'no-pin.test@example.com',
+      serviceType: '넷플릭스',
+      aliases: [{ id: 304, email: 'no-pin.test@example.com', enabled: true }],
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      found: false,
+      emailId: 304,
+      pin: null,
+      memo: '',
+      missing: ['pin'],
+      pinConfigured: false,
+      pinRecoverable: false,
+    });
+  });
+
   it('rejects a generated-account PIN when the live exact alias id no longer matches the generated account', async () => {
     writeFileSync(process.env.EMAIL_ALIAS_PIN_STORE_PATH!, JSON.stringify({
       '999': { hash: 'scrypt:hashed-pin-only' },
@@ -164,7 +212,7 @@ describe('email alias fill lookup', () => {
       fallbackEmailId: 44877806,
     });
 
-    expect(result).toMatchObject({ ok: false, found: false, emailId: 999, pin: null, missing: ['pin'] });
+    expect(result).toMatchObject({ ok: false, found: false, emailId: 999, pin: null, missing: [], pinConfigured: true, pinRecoverable: false });
     expect(result.memo).toBe('');
   });
 
@@ -183,7 +231,7 @@ describe('email alias fill lookup', () => {
       fallbackServiceType: '디즈니플러스',
     });
 
-    expect(result).toMatchObject({ ok: false, found: false, emailId: 44877806, pin: null, missing: ['pin'] });
+    expect(result).toMatchObject({ ok: false, found: false, emailId: 44877806, pin: null, missing: [], pinConfigured: true, pinRecoverable: false });
   });
 
   it('rejects non-digit generated-account PIN text instead of silently normalizing it', async () => {
@@ -201,7 +249,7 @@ describe('email alias fill lookup', () => {
       fallbackServiceType: '넷플릭스',
     });
 
-    expect(result).toMatchObject({ ok: false, found: false, emailId: 44877806, pin: null, missing: ['pin'] });
+    expect(result).toMatchObject({ ok: false, found: false, emailId: 44877806, pin: null, missing: [], pinConfigured: true, pinRecoverable: false });
   });
 
   it('falls back to the exact generated-account PIN after the email dashboard migrates PIN storage to hashes', async () => {
