@@ -134,10 +134,23 @@ export function isManagementSyntheticPartyAccessRecord(
 }
 
 export function normalizeEmailVerifyUrl(value: string): string {
-  return normalizeKeyPart(value)
+  const migrated = normalizeKeyPart(value)
     .replace(/^http:\/\/email-verify\.xyz(?=\/|$)/i, 'https://email-verify.one')
     .replace(/^https?:\/\/email-verify\.xyz(?=\/|$)/i, 'https://email-verify.one')
     .replace(/^http:\/\/email-verify\.one(?=\/|$)/i, 'https://email-verify.one');
+  if (!migrated) return '';
+  try {
+    const parsed = new URL(migrated);
+    if (parsed.protocol !== 'https:' || parsed.hostname !== 'email-verify.one') return '';
+    if (!/^\/email\/mail\/[^/]+\/?$/.test(parsed.pathname)) return '';
+    parsed.username = '';
+    parsed.password = '';
+    parsed.search = '';
+    parsed.hash = '';
+    return parsed.toString();
+  } catch {
+    return '';
+  }
 }
 
 export function isWavvePartyAccessService(serviceType: string): boolean {
@@ -608,8 +621,10 @@ export function buildPartyAccessProfileStatuses(
     : activeSiblings;
   const exactCurrentKey = authoritativeSiblings.find((sibling) => sibling.member.kind === record.member.kind && sibling.member.memberId === record.member.memberId);
   const currentProfileName = normalizeKeyPart(record.profileName || record.member.memberName || '');
-  const profileMatchedCurrent = exactCurrentKey || authoritativeSiblings.find((sibling) =>
-    currentProfileName && normalizeKeyPart(sibling.profileName || sibling.member.memberName || '') === currentProfileName);
+  const profileMatches = exactCurrentKey || !currentProfileName ? [] : authoritativeSiblings.filter((sibling) =>
+    normalizeKeyPart(sibling.profileName || sibling.member.memberName || '') === currentProfileName);
+  // 이름만 같은 행이 여러 개면 타인을 현재 구매자로 잘못 강조하지 않는다.
+  const profileMatchedCurrent = exactCurrentKey || (profileMatches.length === 1 ? profileMatches[0] : undefined);
   const currentMemberKey = profileMatchedCurrent ? `${profileMatchedCurrent.member.kind}:${profileMatchedCurrent.member.memberId}` : '';
 
   const rows = authoritativeSiblings

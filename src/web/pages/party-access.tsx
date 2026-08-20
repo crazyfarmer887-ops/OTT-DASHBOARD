@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { AlertTriangle, CheckCircle2, Copy, ExternalLink, KeyRound, Loader2, Lock, Mail, ShieldCheck, X } from "lucide-react";
 import { getProfileAvatarTheme } from "../../lib/profile-avatar-theme";
+import { safeEmailVerifyUrl } from "../lib/email-verify-url";
 
 type AccessPayload = {
   ok: boolean;
@@ -64,7 +65,7 @@ export default function PartyAccessPage() {
   const [savingCredentials, setSavingCredentials] = useState(false);
   const [credentialEditMessage, setCredentialEditMessage] = useState('');
   const [emailDialogOpen, setEmailDialogOpen] = useState(false);
-  const [pinCopied, setPinCopied] = useState(false);
+  const [pinCopyStatus, setPinCopyStatus] = useState<'idle' | 'copied' | 'failed'>('idle');
 
   const fetchFullPayloadAfterConsent = async () => {
     const phrases = [AGREEMENT_1, AGREEMENT_2, AGREEMENT_3];
@@ -102,9 +103,25 @@ export default function PartyAccessPage() {
     setEditCredentials({ id: payload.credentials.id || '', password: payload.credentials.password || '' });
   }, [payload?.credentials?.id, payload?.credentials?.password]);
 
-  const copy = async (value: string) => {
-    if (!value) return;
-    try { await navigator.clipboard?.writeText(value); } catch {}
+  const copy = async (value: string): Promise<boolean> => {
+    if (!value) return false;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(value);
+        return true;
+      }
+      const input = document.createElement('textarea');
+      input.value = value;
+      input.style.position = 'fixed';
+      input.style.opacity = '0';
+      document.body.appendChild(input);
+      input.select();
+      const copied = document.execCommand('copy');
+      input.remove();
+      return copied;
+    } catch {
+      return false;
+    }
   };
 
   if (loading) {
@@ -140,7 +157,8 @@ export default function PartyAccessPage() {
       }
     } catch {}
   };
-  const showEmailAccess = Boolean(payload.emailAccessUrl) && !isWavveService(payload.serviceType);
+  const emailAccessUrl = safeEmailVerifyUrl(payload.emailAccessUrl);
+  const showEmailAccess = Boolean(emailAccessUrl) && !isWavveService(payload.serviceType);
   const displayProfiles = partyProfiles.length > 0 ? partyProfiles : [{
     profileName,
     memberName: payload.memberName || '파티원',
@@ -290,7 +308,7 @@ export default function PartyAccessPage() {
             ))}
           </div>
 
-          {showEmailAccess && <button type="button" onClick={() => { setPinCopied(false); setEmailDialogOpen(true); }} style={{ width:'100%', border:'none', borderRadius:16, padding:'14px 16px', background:'linear-gradient(135deg,#7C3AED,#4F46E5)', color:'#fff', fontSize:14, fontWeight:1000, display:'flex', alignItems:'center', justifyContent:'center', gap:8, cursor:'pointer', marginBottom:10, boxShadow:'0 10px 24px rgba(124,58,237,.24)' }}><Mail size={17} /> 이메일 확인하러 가기</button>}
+          {showEmailAccess && <button type="button" onClick={() => { setPinCopyStatus('idle'); setEmailDialogOpen(true); }} style={{ width:'100%', border:'none', borderRadius:16, padding:'14px 16px', background:'linear-gradient(135deg,#7C3AED,#4F46E5)', color:'#fff', fontSize:14, fontWeight:1000, display:'flex', alignItems:'center', justifyContent:'center', gap:8, cursor:'pointer', marginBottom:10, boxShadow:'0 10px 24px rgba(124,58,237,.24)' }}><Mail size={17} /> 이메일 확인하러 가기</button>}
 
           {isAdminAccess && (
             <div style={{ background:'#FFFBEB', border:'1.5px solid #FDE68A', borderRadius:16, padding:14, marginBottom:10 }}>
@@ -334,8 +352,8 @@ export default function PartyAccessPage() {
               <div style={{ fontSize:payload.credentials?.pin?34:16, lineHeight:1.25, fontWeight:1000, letterSpacing:payload.credentials?.pin?6:0, marginTop:8, wordBreak:'break-all' }}>{payload.credentials?.pin || '등록된 PIN이 없어요'}</div>
             </div>
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:9 }}>
-              <button type="button" disabled={!payload.credentials?.pin} onClick={async () => { await copy(payload.credentials?.pin || ''); setPinCopied(true); }} style={{ border:0, borderRadius:15, padding:'13px 10px', background:payload.credentials?.pin?'#EDE9FE':'#E5E7EB', color:payload.credentials?.pin?'#6D28D9':'#9CA3AF', fontSize:13, fontWeight:1000, display:'flex', alignItems:'center', justifyContent:'center', gap:6, cursor:payload.credentials?.pin?'pointer':'not-allowed' }}><Copy size={15} /> {pinCopied?'복사했어요':'PIN 복사'}</button>
-              <a href={payload.emailAccessUrl} target="_blank" rel="noreferrer" onClick={() => setEmailDialogOpen(false)} style={{ borderRadius:15, padding:'13px 10px', background:'#7C3AED', color:'#fff', fontSize:13, fontWeight:1000, display:'flex', alignItems:'center', justifyContent:'center', gap:6, textDecoration:'none' }}>바로가기 <ExternalLink size={15} /></a>
+              <button type="button" disabled={!payload.credentials?.pin} onClick={async () => { setPinCopyStatus(await copy(payload.credentials?.pin || '') ? 'copied' : 'failed'); }} style={{ border:0, borderRadius:15, padding:'13px 10px', background:payload.credentials?.pin?'#EDE9FE':'#E5E7EB', color:payload.credentials?.pin?'#6D28D9':'#9CA3AF', fontSize:13, fontWeight:1000, display:'flex', alignItems:'center', justifyContent:'center', gap:6, cursor:payload.credentials?.pin?'pointer':'not-allowed' }}><Copy size={15} /> {pinCopyStatus==='copied'?'복사했어요':pinCopyStatus==='failed'?'복사 실패 · 길게 눌러주세요':'PIN 복사'}</button>
+ <a href={emailAccessUrl} target="_blank" rel="noreferrer" onClick={() => setEmailDialogOpen(false)} style={{ borderRadius:15, padding:'13px 10px', background:'#7C3AED', color:'#fff', fontSize:13, fontWeight:1000, display:'flex', alignItems:'center', justifyContent:'center', gap:6, textDecoration:'none' }}>바로가기 <ExternalLink size={15} /></a>
             </div>
           </div>
         </div>

@@ -736,7 +736,9 @@ let _lastGraytagRequest = 0;
 let _rateLimitUntil: number = 0;
 let _chatRoomsCache: FastChatRoomsSnapshot | null = null;
 let _chatRoomsHydrationGeneration = 0;
+let _chatRoomsHydrationInFlight: Promise<void> | null = null;
 const CHAT_ROOMS_CACHE_TTL_MS = 60_000;
+const CHAT_RATE_LIMIT_BACKOFF_MS = 60_000;
 
 /** webshare 프록시 리스트 로드 (서버 시작 시 + 1시간마다 자동 갱신) */
 async function loadProxies() {
@@ -800,6 +802,7 @@ async function rateLimitedFetch(url: string, options?: RequestInit, bypass = fal
     if (elapsed < 1500) await new Promise(r => setTimeout(r, 1500 - elapsed));
     _lastGraytagRequest = Date.now();
     const resp = await fetch(url, options);
+    if (resp.status === 429) _rateLimitUntil = Math.max(_rateLimitUntil, Date.now() + CHAT_RATE_LIMIT_BACKOFF_MS);
     if (resp.status === 403) console.log('[rate-limiter] 403 감지 (프록시 없음)');
     return resp;
   }
@@ -820,6 +823,7 @@ async function rateLimitedFetch(url: string, options?: RequestInit, bypass = fal
         : await fetch(url, options);
 
       if (resp.status === 403 || resp.status === 429) {
+        if (resp.status === 429) _rateLimitUntil = Math.max(_rateLimitUntil, Date.now() + CHAT_RATE_LIMIT_BACKOFF_MS);
         console.log(`[ProxyRotator] 시도 ${attempt + 1}/${maxAttempts} — ${resp.status} 감지, 다음 프록시로`);
         rotateProxy(`${resp.status}`);
         lastResp = resp;
@@ -2033,6 +2037,9 @@ app.get('/chat/rooms', async (c) => {
 
   try {
     const forceRefresh = c.req.query('refresh') === '1' || c.req.query('force') === '1';
+    if (_chatRoomsHydrationInFlight && _chatRoomsCache) {
+      return c.json({ ..._chatRoomsCache, fromCache: true, cacheTtlMs: CHAT_ROOMS_CACHE_TTL_MS });
+    }
     if (!forceRefresh && _chatRoomsCache && Date.now() - new Date(_chatRoomsCache.updatedAt).getTime() < CHAT_ROOMS_CACHE_TTL_MS) {
       return c.json({ ..._chatRoomsCache, fromCache: true, cacheTtlMs: CHAT_ROOMS_CACHE_TTL_MS });
     }
@@ -2089,21 +2096,28 @@ app.get('/chat/rooms', async (c) => {
     const result = buildChatRoomsSnapshot(allDeals, new Date().toISOString(), _chatRoomsCache?.rooms || []);
     _chatRoomsCache = result;
 
-    if (result.messageHydrationPending) {
-      void startChatRoomMessageHydration(result, async (room) => {
+    if (result.messageHydrationPending && !_chatRoomsHydrationInFlight) {
+      const hydration = startChatRoomMessageHydration(result, async (room) => {
         const msgResp = await rateLimitedFetch(
           `https://graytag.co.kr/ws/chat/findChats?uuid=${encodeURIComponent(room.chatRoomUuid)}&page=1`,
           { headers, redirect: 'manual', signal: AbortSignal.timeout(2000) },
         );
-        if (!msgResp.ok) throw new Error(`fetch_http_${msgResp.status}`);
+        if (!msgResp.ok) {
+          const error = new Error(`fetch_http_${msgResp.status}`) as Error & { status?: number };
+          error.status = msgResp.status;
+          throw error;
+        }
         const msgData = await safeJson(msgResp);
         return extractGraytagChats(msgData);
-      }).then((hydrated) => {
+      }, { concurrency: 1 }).then((hydrated) => {
         // 더 최신 갱신이 시작된 경우 오래된 비동기 결과로 캐시를 덮지 않는다.
         if (generation === _chatRoomsHydrationGeneration) _chatRoomsCache = hydrated;
       }).catch((error) => {
         console.warn(`[chat/rooms] background message hydration failed: ${error?.message || error}`);
+      }).finally(() => {
+        if (_chatRoomsHydrationInFlight === hydration) _chatRoomsHydrationInFlight = null;
       });
+      _chatRoomsHydrationInFlight = hydration;
     }
 
     return c.json(result);
@@ -4770,6 +4784,7 @@ app.post('/chat/mark-read', async (c) => {
       return c.json({ ok: false, error: parsed.data?.message || 'Graytag 읽음 처리 실패', detail: parsed.data }, 502);
     }
 
+    _chatRoomsHydrationGeneration += 1;
     _chatRoomsCache = null;
     return c.json({ ok: true, data: parsed.data });
   } catch (e: any) {

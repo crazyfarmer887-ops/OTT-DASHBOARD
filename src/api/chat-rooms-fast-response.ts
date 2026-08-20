@@ -67,7 +67,7 @@ export function buildChatRoomsSnapshot(
       };
     });
 
-  const pendingRooms = rooms.filter(room => room.lenderChatUnread && !room.lastMessageFetchOk);
+  const pendingRooms = rooms;
   return {
     rooms,
     totalRooms: rooms.length,
@@ -84,40 +84,58 @@ export function buildChatRoomsSnapshot(
 export async function startChatRoomMessageHydration(
   snapshot: FastChatRoomsSnapshot,
   fetchMessages: (room: FastChatRoom) => Promise<readonly GraytagChatMessage[]>,
+  options: { concurrency?: number } = {},
 ): Promise<FastChatRoomsSnapshot> {
-  let hydratedCount = snapshot.messageHydratedCount;
   let failedCount = 0;
-  const rooms = await Promise.all(snapshot.rooms.map(async room => {
-    if (!room.lenderChatUnread || room.lastMessageFetchOk) return room;
+  let rateLimited = false;
+  const concurrency = Math.max(1, Math.min(8, Math.floor(options.concurrency || 3)));
+  const rooms = [...snapshot.rooms];
+  const queue = rooms
+    .map((room, index) => ({ room, index }))
+    .sort((a, b) => Number(b.room.lenderChatUnread) - Number(a.room.lenderChatUnread));
+  let nextIndex = 0;
+
+  const hydrateOne = async ({ room, index }: { room: FastChatRoom; index: number }) => {
     try {
       const latest = findLatestBuyerInquiryMessage(await fetchMessages(room));
-      if (!latest) {
-        failedCount += 1;
-        return { ...room, lastMessageFetchOk: true, lastMessageMissingReason: 'no_buyer_message' };
-      }
-      hydratedCount += 1;
-      return {
+      rooms[index] = latest ? {
         ...room,
         lastMessage: String(latest.message || '').replace(/<br\s*\/?>/gi, ' ').replace(/<[^>]+>/g, '').trim().slice(0, 50),
         lastMessageTime: latest.registeredDateTime || latest.createdAt || latest.updatedAt,
         lastMessageFetchOk: true,
         lastMessageMissingReason: undefined,
+      } : {
+        ...room,
+        lastMessage: undefined,
+        lastMessageTime: undefined,
+        lastMessageFetchOk: true,
+        lastMessageMissingReason: 'no_buyer_message',
       };
     } catch (error: any) {
       failedCount += 1;
-      return {
+      const status = Number(error?.status || String(error?.message || '').match(/fetch_http_(\d+)/)?.[1] || 0);
+      if (status === 429) rateLimited = true;
+      rooms[index] = {
         ...room,
         lastMessageFetchOk: false,
-        lastMessageMissingReason: error?.name === 'TimeoutError' ? 'timeout' : 'fetch_failed',
+        lastMessageMissingReason: status === 429 ? 'rate_limited' : error?.name === 'TimeoutError' ? 'timeout' : 'fetch_failed',
       };
+    }
+  };
+
+  await Promise.all(Array.from({ length: Math.min(concurrency, queue.length) }, async () => {
+    while (nextIndex < queue.length) {
+      const item = queue[nextIndex++];
+      await hydrateOne(item);
     }
   }));
 
   return {
     ...snapshot,
     rooms,
+    rateLimited,
     messageHydrationPending: false,
-    messageHydratedCount: hydratedCount,
+    messageHydratedCount: rooms.filter(room => room.lastMessageFetchOk && Boolean(room.lastMessage)).length,
     messageHydrationFailedCount: failedCount,
   };
 }

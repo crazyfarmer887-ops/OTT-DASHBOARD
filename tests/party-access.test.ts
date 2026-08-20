@@ -958,6 +958,30 @@ describe('party member account access links', () => {
     expect(getProfileAvatarTheme('')).toMatchObject({ background: expect.any(String), foreground: expect.any(String) });
   });
 
+  test('rejects non-HTTPS, foreign-host, and script email verification URLs', () => {
+    expect(normalizeEmailVerifyUrl('javascript:alert(document.domain)')).toBe('');
+    expect(normalizeEmailVerifyUrl('data:text/html,boom')).toBe('');
+    expect(normalizeEmailVerifyUrl('https://evil.example/email/mail/123')).toBe('');
+    expect(normalizeEmailVerifyUrl('https://email-verify.one.evil.example/email/mail/123')).toBe('');
+    expect(normalizeEmailVerifyUrl('https://email-verify.one/email/mail/123')).toBe('https://email-verify.one/email/mail/123');
+  });
+
+  test('does not guess the current member when an authoritative roster has duplicate profile names', () => {
+    const mine = createPartyAccessLinkRecord({
+      token: 'duplicate-profile-current', now: '2026-08-08T00:00:00.000Z', serviceType: '넷플릭스', accountEmail: 'duplicate@example.com', profileName: '사과',
+      member: { kind: 'graytag', memberId: 'old-deal', memberName: '나', status: 'Using', endDateTime: '2026-10-01' },
+    });
+    const roster = ['new-deal-a', 'new-deal-b'].map((memberId, index) => ({
+      ...createPartyAccessLinkRecord({
+        token: `duplicate-roster-${index}`, now: '2026-08-09T00:00:00.000Z', serviceType: '넷플릭스', accountEmail: 'duplicate@example.com', profileName: '사과',
+        member: { kind: 'graytag', memberId, memberName: `회원${index}`, status: 'Using', endDateTime: '2026-10-01' },
+      }),
+      id: `넷플릭스:duplicate@example.com:graytag:${memberId}:management`, shareToken: undefined,
+    }));
+    const rows = buildPartyAccessProfileStatuses(mine, Object.fromEntries(roster.map(row => [row.tokenHash, row])), '2026-08-10T00:00:00.000Z');
+    expect(rows.filter(row => row.isCurrentMember)).toHaveLength(0);
+  });
+
   test('serves a profile-first public access shell with a PIN preview dialog', () => {
     const html = buildPartyAccessHtml('tok<en>&1');
     expect(html).toContain('window.__PARTY_ACCESS_TOKEN__="tok\\u003cen\\u003e\\u00261"');

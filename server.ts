@@ -3,6 +3,7 @@ import { serve } from '@hono/node-server';
 import { readFile, stat } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { extname, resolve } from 'node:path';
+import { randomBytes } from 'node:crypto';
 import apiApp from './src/api/index.ts';
 import {
   createDashboardSessionToken,
@@ -125,10 +126,12 @@ app.post('/dashboard/login', dashboardLoginHandler);
 app.post('/login', dashboardLoginHandler);
 
 function partyAccessHtmlResponse(token: string): Response {
-  return new Response(buildPartyAccessHtml(token), {
+  const nonce = randomBytes(18).toString('base64');
+  return new Response(buildPartyAccessHtml(token, nonce), {
     headers: {
       'content-type': 'text/html; charset=utf-8',
       'cache-control': 'no-store',
+      'content-security-policy': `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline'; img-src 'self' https: data:; connect-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'none'`,
     },
   });
 }

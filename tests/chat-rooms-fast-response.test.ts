@@ -33,20 +33,42 @@ describe('chat rooms fast response', () => {
     });
   });
 
-  test('hydrates only unread rooms and reports the finished snapshot', async () => {
+  test('hydrates unread first but refreshes every room with bounded concurrency', async () => {
     const snapshot = buildChatRoomsSnapshot([
       deal(),
       deal({ dealUsid: 'deal-2', chatRoomUuid: 'room-2', lenderChatUnread: false }),
     ], '2026-08-20T00:00:00.000Z');
     const requested: string[] = [];
+    let active = 0;
+    let maxActive = 0;
     const hydrated = await startChatRoomMessageHydration(snapshot, async (room) => {
       requested.push(room.chatRoomUuid);
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      await new Promise(resolve => setTimeout(resolve, 2));
+      active -= 1;
       return [{ message: '새 문의', registeredDateTime: '2026-08-20T00:01:00.000Z', owned: false }];
-    });
+    }, { concurrency: 1 });
 
-    expect(requested).toEqual(['room-1']);
-    expect(hydrated).toMatchObject({ messageHydrationPending: false, messageHydratedCount: 1, messageHydrationFailedCount: 0 });
+    expect(requested).toEqual(['room-1', 'room-2']);
+    expect(maxActive).toBe(1);
+    expect(hydrated).toMatchObject({ messageHydrationPending: false, messageHydratedCount: 2, messageHydrationFailedCount: 0 });
     expect(hydrated.rooms.find(room => room.chatRoomUuid === 'room-1')).toMatchObject({ lastMessage: '새 문의', lastMessageFetchOk: true });
+  });
+
+  test('revalidates an old successful summary and exposes 429 backoff', async () => {
+    const previous = [{
+      ...buildChatRoomsSnapshot([deal()], '2026-08-19T00:00:00.000Z').rooms[0],
+      lastMessage: '오래된 문의', lastMessageTime: '2026-08-19T00:00:00.000Z', lastMessageFetchOk: true,
+    }];
+    const snapshot = buildChatRoomsSnapshot([deal()], '2026-08-20T00:00:00.000Z', previous);
+    expect(snapshot.messageHydrationPending).toBe(true);
+    const hydrated = await startChatRoomMessageHydration(snapshot, async () => {
+      const error = new Error('fetch_http_429') as Error & { status?: number };
+      error.status = 429;
+      throw error;
+    });
+    expect(hydrated).toMatchObject({ rateLimited: true, messageHydrationPending: false, messageHydrationFailedCount: 1 });
   });
 
   test('builds encoded Graytag links and exposes a direct-link control for every room', () => {

@@ -2,7 +2,7 @@ function jsonForScript(value: string): string {
   return JSON.stringify(value).replace(/</g, '\\u003c').replace(/>/g, '\\u003e').replace(/&/g, '\\u0026');
 }
 
-export function buildPartyAccessHtml(token: string): string {
+export function buildPartyAccessHtml(token: string, nonce = ''): string {
   return `<!doctype html>
 <html lang="ko">
 <head>
@@ -23,8 +23,8 @@ export function buildPartyAccessHtml(token: string): string {
 </head>
 <body>
   <div id="root"><div class="loading"><span><span class="spin"></span>계정 정보 확인 중...</span></div></div>
-  <script>window.__PARTY_ACCESS_TOKEN__=${jsonForScript(token)};</script>
-  <script>
+  <script nonce="${nonce}">window.__PARTY_ACCESS_TOKEN__=${jsonForScript(token)};</script>
+  <script nonce="${nonce}">
     (function(){
       const token = window.__PARTY_ACCESS_TOKEN__ || '';
       const root = document.getElementById('root');
@@ -38,7 +38,14 @@ export function buildPartyAccessHtml(token: string): string {
         return m[1] + '.' + String(m[2]).padStart(2,'0') + '.' + String(m[3]).padStart(2,'0');
       };
       const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-      const copy = async (value) => { if (!value) return; try { await navigator.clipboard.writeText(value); } catch (_) {} };
+      const copy = async (value) => {
+        if (!value) return false;
+        try {
+          if (navigator.clipboard && navigator.clipboard.writeText) { await navigator.clipboard.writeText(value); return true; }
+          const input = document.createElement('textarea'); input.value=value; input.style.position='fixed'; input.style.opacity='0'; document.body.appendChild(input); input.select(); const copied=document.execCommand('copy'); input.remove(); return copied;
+        } catch (_) { return false; }
+      };
+      const safeEmailVerifyUrl = (value) => { try { const parsed=new URL(String(value||'').trim()); if(parsed.protocol!=='https:'||parsed.hostname!=='email-verify.one'||!(new RegExp('^/email/mail/[^/]+/?$')).test(parsed.pathname)) return ''; parsed.username=''; parsed.password=''; parsed.search=''; parsed.hash=''; return parsed.toString(); } catch (_) { return ''; } };
       const isWavveService = (value) => { const v = String(value || '').trim().toLowerCase().replace(/\\s+/g, ''); return v === '웨이브' || v === 'wavve'; };
       const getAdminToken = () => {
         try {
@@ -68,14 +75,15 @@ export function buildPartyAccessHtml(token: string): string {
         return section;
       };
       const openEmailAccessDialog = (payload) => {
+        const emailAccessUrl = safeEmailVerifyUrl(payload.emailAccessUrl); if (!emailAccessUrl) return;
         const c = payload.credentials || {}; const overlay = el('div','email-dialog-backdrop'); const dialog = el('div','email-dialog');
         dialog.setAttribute('role','dialog'); dialog.setAttribute('aria-modal','true'); dialog.setAttribute('aria-labelledby','email-dialog-title');
         overlay.onclick = () => overlay.remove(); dialog.onclick = (event) => event.stopPropagation();
         const head = el('div','email-dialog-head'); const titles = el('div'); const title = el('div','email-dialog-title','PIN을 먼저 확인해 주세요'); title.id='email-dialog-title'; titles.appendChild(title); titles.appendChild(el('div','email-dialog-sub','EMAIL 페이지로 이동하기 전에 복사해두면 편해요.'));
         const close = el('button','email-dialog-close','×'); close.type='button'; close.setAttribute('aria-label','닫기'); close.onclick=()=>overlay.remove(); head.appendChild(titles); head.appendChild(close); dialog.appendChild(head);
         const pinBox = el('div','email-pin-box'); pinBox.appendChild(el('div','email-pin-label','EMAIL PIN')); pinBox.appendChild(el('div','email-pin-value',c.pin || '등록된 PIN이 없어요')); dialog.appendChild(pinBox);
-        const actions = el('div','email-dialog-actions'); const copyButton = el('button','email-copy-button',c.pin ? 'PIN 복사' : '등록된 PIN이 없어요'); copyButton.type='button'; copyButton.disabled=!c.pin; copyButton.onclick=async()=>{ await copy(c.pin); copyButton.textContent='복사했어요'; };
-        const direct = el('a','email-direct-link','바로가기'); direct.href=payload.emailAccessUrl; direct.target = '_blank'; direct.rel = 'noreferrer'; direct.onclick=()=>overlay.remove(); actions.appendChild(copyButton); actions.appendChild(direct); dialog.appendChild(actions); overlay.appendChild(dialog); document.body.appendChild(overlay);
+        const actions = el('div','email-dialog-actions'); const copyButton = el('button','email-copy-button',c.pin ? 'PIN 복사' : '등록된 PIN이 없어요'); copyButton.type='button'; copyButton.disabled=!c.pin; copyButton.onclick=async()=>{ copyButton.textContent=(await copy(c.pin))?'복사했어요':'복사 실패 · 길게 눌러주세요'; };
+        const direct = el('a','email-direct-link','바로가기'); direct.href=emailAccessUrl; direct.target = '_blank'; direct.rel = 'noreferrer'; direct.onclick=()=>overlay.remove(); actions.appendChild(copyButton); actions.appendChild(direct); dialog.appendChild(actions); overlay.appendChild(dialog); document.body.appendChild(overlay);
       };
       const renderConsent = (profileName, payload, onDone) => {
         let step = 0;
@@ -150,7 +158,8 @@ export function buildPartyAccessHtml(token: string): string {
       const render = (payload) => {
         if (!payload || !payload.ok) return blocked();
         const c = payload.credentials || {}; const profileName = payload.profileName || payload.memberName || '(미확인)';
-        const showEmailAccess = Boolean(payload.emailAccessUrl) && !isWavveService(payload.serviceType);
+        const emailAccessUrl = safeEmailVerifyUrl(payload.emailAccessUrl);
+        const showEmailAccess = Boolean(emailAccessUrl) && !isWavveService(payload.serviceType);
         const isAdminAccess = payload.adminAccess === true;
         if (!isAdminAccess && payload.sensitiveRedacted) {
           try { if (localStorage.getItem('access-consent-v3:' + token) === 'ok') return revealAfterConsent(); } catch (_) {}
