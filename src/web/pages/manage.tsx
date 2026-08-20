@@ -1784,18 +1784,18 @@ export default function ManagePage() {
         </div>
       )}
 
-      {/* 유튜브 가족 그룹 관리 */}
-      <section aria-labelledby="youtube-family-groups-title" style={{ background:'#fff', border:'1.5px solid #FCA5A5', borderRadius:18, padding:14, marginBottom:14, boxShadow:'0 5px 18px rgba(239,68,68,0.06)' }}>
+      {/* 유튜브 프리미엄 관리 */}
+      <section className="youtube-premium-management-card" aria-labelledby="youtube-premium-management-title" style={{ background:'#fff', border:'1.5px solid #FCA5A5', borderRadius:18, padding:14, marginBottom:14, boxShadow:'0 5px 18px rgba(239,68,68,0.06)' }}>
         <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:10, flexWrap:'wrap', marginBottom:12 }}>
           <div style={{ minWidth:0 }}>
-            <h2 id="youtube-family-groups-title" style={{ display:'flex', alignItems:'center', gap:7, margin:0, color:'#991B1B', fontSize:15, fontWeight:900 }}><Youtube size={18} /> 유튜브 가족 그룹</h2>
-            <p style={{ margin:'4px 0 0', color:'#9CA3AF', fontSize:11 }}>관리자 계정과 판매 가능한 가족 좌석을 관리합니다.</p>
+            <h2 id="youtube-premium-management-title" style={{ display:'flex', alignItems:'center', gap:7, margin:0, color:'#991B1B', fontSize:15, fontWeight:900 }}><Youtube size={18} /> 유튜브 프리미엄 관리</h2>
+            <p style={{ margin:'4px 0 0', color:'#6B7280', fontSize:11, fontWeight:700 }}>가족 그룹 · 좌석 · 초대를 한곳에서 관리하세요.</p>
           </div>
           <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
-            <button type="button" onClick={() => navigate('/youtube-invites')} style={{ border:'1px solid #FECACA', borderRadius:10, padding:'7px 10px', background:'#FFF7F7', color:'#B91C1C', fontSize:11, fontWeight:900, cursor:'pointer', display:'inline-flex', alignItems:'center', gap:5 }}>
+            <button type="button" aria-label="유튜브 프리미엄 초대 관리로 이동" onClick={() => navigate('/youtube-invites')} style={{ border:'1px solid #FECACA', borderRadius:10, padding:'7px 10px', background:'#FFF7F7', color:'#B91C1C', fontSize:11, fontWeight:900, cursor:'pointer', display:'inline-flex', alignItems:'center', gap:5 }}>
               초대 관리 <ExternalLink size={12} />
             </button>
-            <button type="button" onClick={openYouTubeGroupCreateForm} disabled={youtubeGroupsFeatureEnabled !== true || youtubeGroupMutationLoading} style={{ border:'none', borderRadius:10, padding:'7px 10px', background:youtubeGroupsFeatureEnabled !== true?'#D1D5DB':'#EF4444', color:'#fff', fontSize:11, fontWeight:900, cursor:youtubeGroupsFeatureEnabled !== true?'not-allowed':'pointer', display:'inline-flex', alignItems:'center', gap:5 }}>
+            <button type="button" aria-label="새 유튜브 프리미엄 가족 그룹 추가" onClick={openYouTubeGroupCreateForm} disabled={youtubeGroupsFeatureEnabled !== true || youtubeGroupMutationLoading} style={{ border:'none', borderRadius:10, padding:'7px 10px', background:youtubeGroupsFeatureEnabled !== true?'#D1D5DB':'#EF4444', color:'#fff', fontSize:11, fontWeight:900, cursor:youtubeGroupsFeatureEnabled !== true?'not-allowed':'pointer', display:'inline-flex', alignItems:'center', gap:5 }}>
               <PlusCircle size={12} /> 그룹 추가
             </button>
           </div>

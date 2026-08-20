@@ -4,12 +4,22 @@ import test from 'node:test';
 
 const manage = readFileSync(new URL('../src/web/pages/manage.tsx', import.meta.url), 'utf8');
 
-test('manage page exposes safe YouTube family-group cards and navigation', () => {
-  assert.match(manage, /유튜브 가족 그룹/);
+test('manage page exposes a prominent YouTube Premium management card', () => {
+  assert.match(manage, /className="youtube-premium-management-card"/);
+  assert.match(manage, /> 유튜브 프리미엄 관리<\/h2>/);
+  assert.match(manage, /가족 그룹 · 좌석 · 초대를 한곳에서 관리하세요/);
+  assert.match(manage, /aria-label="유튜브 프리미엄 초대 관리로 이동"/);
+  assert.match(manage, /초대 관리/);
+});
+
+test('YouTube Premium management card exposes safe family-group and seat controls', () => {
   assert.match(manage, /managerEmailMasked/);
   assert.match(manage, /availableSeats/);
   assert.match(manage, /sellableSeats/);
   assert.match(manage, /navigate\('\/youtube-invites'\)/);
+  assert.match(manage, /그룹 추가/);
+  assert.match(manage, /판매 가능 좌석/);
+  assert.match(manage, /사용 중인 좌석/);
   assert.match(manage, /기능이 비활성화되어 있습니다/);
   assert.match(manage, /가족 그룹을 불러오는 중/);
 });
