@@ -963,6 +963,7 @@ describe('party member account access links', () => {
     expect(normalizeEmailVerifyUrl('data:text/html,boom')).toBe('');
     expect(normalizeEmailVerifyUrl('https://evil.example/email/mail/123')).toBe('');
     expect(normalizeEmailVerifyUrl('https://email-verify.one.evil.example/email/mail/123')).toBe('');
+    expect(normalizeEmailVerifyUrl('https://email-verify.one:444/email/mail/123')).toBe('');
     expect(normalizeEmailVerifyUrl('https://email-verify.one/email/mail/123')).toBe('https://email-verify.one/email/mail/123');
   });
 

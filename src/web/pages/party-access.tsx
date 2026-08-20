@@ -107,18 +107,24 @@ export default function PartyAccessPage() {
     if (!value) return false;
     try {
       if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(value);
-        return true;
+        try {
+          await navigator.clipboard.writeText(value);
+          return true;
+        } catch {
+          // 권한 거부 시 legacy fallback을 시도한다.
+        }
       }
       const input = document.createElement('textarea');
-      input.value = value;
-      input.style.position = 'fixed';
-      input.style.opacity = '0';
-      document.body.appendChild(input);
-      input.select();
-      const copied = document.execCommand('copy');
-      input.remove();
-      return copied;
+      try {
+        input.value = value;
+        input.style.position = 'fixed';
+        input.style.opacity = '0';
+        document.body.appendChild(input);
+        input.select();
+        return document.execCommand('copy');
+      } finally {
+        input.remove();
+      }
     } catch {
       return false;
     }

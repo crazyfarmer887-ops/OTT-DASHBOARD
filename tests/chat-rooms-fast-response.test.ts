@@ -63,12 +63,15 @@ describe('chat rooms fast response', () => {
     }];
     const snapshot = buildChatRoomsSnapshot([deal()], '2026-08-20T00:00:00.000Z', previous);
     expect(snapshot.messageHydrationPending).toBe(true);
-    const hydrated = await startChatRoomMessageHydration(snapshot, async () => {
+    let calls = 0;
+    const hydrated = await startChatRoomMessageHydration({ ...snapshot, rooms: [snapshot.rooms[0], { ...snapshot.rooms[0], dealUsid: 'deal-2', chatRoomUuid: 'room-2' }] }, async () => {
+      calls += 1;
       const error = new Error('fetch_http_429') as Error & { status?: number };
       error.status = 429;
       throw error;
-    });
-    expect(hydrated).toMatchObject({ rateLimited: true, messageHydrationPending: false, messageHydrationFailedCount: 1 });
+    }, { concurrency: 1 });
+    expect(calls).toBe(1);
+    expect(hydrated).toMatchObject({ rateLimited: true, messageHydrationPending: true, messageHydrationFailedCount: 1 });
   });
 
   test('builds encoded Graytag links and exposes a direct-link control for every room', () => {

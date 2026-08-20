@@ -88,6 +88,7 @@ export async function startChatRoomMessageHydration(
 ): Promise<FastChatRoomsSnapshot> {
   let failedCount = 0;
   let rateLimited = false;
+  let stoppedByRateLimit = false;
   const concurrency = Math.max(1, Math.min(8, Math.floor(options.concurrency || 3)));
   const rooms = [...snapshot.rooms];
   const queue = rooms
@@ -114,7 +115,10 @@ export async function startChatRoomMessageHydration(
     } catch (error: any) {
       failedCount += 1;
       const status = Number(error?.status || String(error?.message || '').match(/fetch_http_(\d+)/)?.[1] || 0);
-      if (status === 429) rateLimited = true;
+      if (status === 429) {
+        rateLimited = true;
+        stoppedByRateLimit = true;
+      }
       rooms[index] = {
         ...room,
         lastMessageFetchOk: false,
@@ -124,7 +128,7 @@ export async function startChatRoomMessageHydration(
   };
 
   await Promise.all(Array.from({ length: Math.min(concurrency, queue.length) }, async () => {
-    while (nextIndex < queue.length) {
+    while (!stoppedByRateLimit && nextIndex < queue.length) {
       const item = queue[nextIndex++];
       await hydrateOne(item);
     }
@@ -134,7 +138,7 @@ export async function startChatRoomMessageHydration(
     ...snapshot,
     rooms,
     rateLimited,
-    messageHydrationPending: false,
+    messageHydrationPending: stoppedByRateLimit,
     messageHydratedCount: rooms.filter(room => room.lastMessageFetchOk && Boolean(room.lastMessage)).length,
     messageHydrationFailedCount: failedCount,
   };

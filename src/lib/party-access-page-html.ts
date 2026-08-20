@@ -41,11 +41,13 @@ export function buildPartyAccessHtml(token: string, nonce = ''): string {
       const copy = async (value) => {
         if (!value) return false;
         try {
-          if (navigator.clipboard && navigator.clipboard.writeText) { await navigator.clipboard.writeText(value); return true; }
-          const input = document.createElement('textarea'); input.value=value; input.style.position='fixed'; input.style.opacity='0'; document.body.appendChild(input); input.select(); const copied=document.execCommand('copy'); input.remove(); return copied;
+          if (navigator.clipboard && navigator.clipboard.writeText) { try { await navigator.clipboard.writeText(value); return true; } catch (_) {} }
+          const input = document.createElement('textarea');
+          try { input.value=value; input.style.position='fixed'; input.style.opacity='0'; document.body.appendChild(input); input.select(); return document.execCommand('copy'); }
+          finally { input.remove(); }
         } catch (_) { return false; }
       };
-      const safeEmailVerifyUrl = (value) => { try { const parsed=new URL(String(value||'').trim()); if(parsed.protocol!=='https:'||parsed.hostname!=='email-verify.one'||!(new RegExp('^/email/mail/[^/]+/?$')).test(parsed.pathname)) return ''; parsed.username=''; parsed.password=''; parsed.search=''; parsed.hash=''; return parsed.toString(); } catch (_) { return ''; } };
+      const safeEmailVerifyUrl = (value) => { try { const parsed=new URL(String(value||'').trim()); if(parsed.origin!=='https://email-verify.one'||!(new RegExp('^/email/mail/[^/]+/?$')).test(parsed.pathname)) return ''; parsed.username=''; parsed.password=''; parsed.search=''; parsed.hash=''; return parsed.toString(); } catch (_) { return ''; } };
       const isWavveService = (value) => { const v = String(value || '').trim().toLowerCase().replace(/\\s+/g, ''); return v === '웨이브' || v === 'wavve'; };
       const getAdminToken = () => {
         try {
