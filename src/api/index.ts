@@ -20,6 +20,7 @@ import { buildProfileAuditRows, profileAuditKey, runProfileCheckPlaceholder, sum
 import { createProfileAuditProgress, finishProfileAuditProgress, loadProfileAuditStore, saveProfileAuditStore, updateProfileAuditProgress, type ProfileAuditProgress } from './profile-audit';
 import { checkNetflixProfiles, fetchNetflixEmailCodeViaEmailServer } from './netflix-profile-checker';
 import { extractGraytagChats, findLatestBuyerInquiryMessage, findLatestBuyerInquiryThread, type GraytagChatMessage } from './chat-message-summary';
+import { buildChatRoomsSnapshot, startChatRoomMessageHydration, type FastChatRoomsSnapshot } from './chat-rooms-fast-response';
 import { mergePartyMaintenanceChecklistState, type PartyMaintenanceChecklistStore } from '../lib/party-maintenance-checklist';
 import { buildProfileAssignment, profileNicknameForPartyMember, type ProfileAssignment } from '../lib/profile-nickname';
 import { buildGeneratedAccount, deleteGeneratedAccountFromStore, extractSimpleLoginAliasRef, findRecoverableGeneratedAlias, generateAccountPassword, mergeGeneratedAccountsIntoManagement, nextGeneratedAliasPrefix, normalizeGeneratedAccountPatch, normalizeManualAliasPrefix, type GeneratedAccountStore, type SimpleLoginAliasRef } from '../lib/generated-accounts';
@@ -733,7 +734,8 @@ let _proxyList: string[] = [];       // "host:port" 형식
 let _proxyIndex = 0;
 let _lastGraytagRequest = 0;
 let _rateLimitUntil: number = 0;
-let _chatRoomsCache: { rooms: any[]; totalRooms: number; unreadCount: number; updatedAt: string } | null = null;
+let _chatRoomsCache: FastChatRoomsSnapshot | null = null;
+let _chatRoomsHydrationGeneration = 0;
 const CHAT_ROOMS_CACHE_TTL_MS = 60_000;
 
 /** webshare 프록시 리스트 로드 (서버 시작 시 + 1시간마다 자동 갱신) */
@@ -2081,81 +2083,29 @@ app.get('/chat/rooms', async (c) => {
       if (loaded === 'cookie-expired') return c.json({ error: '쿠키가 만료됐어요 (302 리다이렉트 — rate-limit 아님)', code: 'COOKIE_EXPIRED' }, 401);
     }
 
-    // 각 room의 lastMessage 가져오기 (병렬)
-    let messageHydratedCount = 0;
-    let messageHydrationFailedCount = 0;
-    const roomsWithMessages = await Promise.all(allDeals
-      .filter((d: any) => d.chatRoomUuid)
-      .map(async (d: any) => {
-        const room = {
-          dealUsid: d.dealUsid,
-          chatRoomUuid: d.chatRoomUuid,
-          borrowerName: d.borrowerName?.trim(),
-          borrowerThumbnail: d.borrowerThumbnailImageUrl,
-          productType: d.productTypeString,
-          productName: d.productName,
-          dealStatus: d.dealStatus,
-          statusName: d.lenderDealStatusName,
-          remainderDays: d.remainderDays,
-          endDateTime: d.endDateTime,
-          lenderChatUnread: d.lenderChatUnread || d.dealDetail?.lenderChatUnread || false,
-          price: d.price,
-          keepAcct: d.keepAcct,
-          lastMessage: undefined as string | undefined,
-          lastMessageTime: undefined as string | undefined,
-          lastMessageFetchOk: false,
-          lastMessageMissingReason: undefined as string | undefined,
-        };
+    // 방 목록은 즉시 반환하고, 최신 구매자 문의 미리보기는 응답 이후 보강한다.
+    // 이전 캐시의 미리보기는 유지하므로 사용자는 빈 목록 대신 곧바로 방을 열 수 있다.
+    const generation = ++_chatRoomsHydrationGeneration;
+    const result = buildChatRoomsSnapshot(allDeals, new Date().toISOString(), _chatRoomsCache?.rooms || []);
+    _chatRoomsCache = result;
 
-        // 최신 메시지 조회 (첫 페이지만)
-        try {
-          const msgResp = await rateLimitedFetch(
-            `https://graytag.co.kr/ws/chat/findChats?uuid=${d.chatRoomUuid}&page=1`,
-            { headers, redirect: 'manual', signal: AbortSignal.timeout(2000) }
-          );
-          if (msgResp.ok) {
-            const msgData = await safeJson(msgResp);
-            const messages = extractGraytagChats(msgData);
-            const userMsg = findLatestBuyerInquiryMessage(messages);
-            room.lastMessageFetchOk = true;
-            if (userMsg) {
-              messageHydratedCount += 1;
-              room.lastMessage = userMsg.message
-                .replace(/<br\s*\/?>/gi, ' ')
-                .replace(/<[^>]+>/g, '')
-                .trim()
-                .slice(0, 50);
-              room.lastMessageTime = userMsg.registeredDateTime || userMsg.createdAt || userMsg.updatedAt;
-            } else {
-              room.lastMessageMissingReason = 'no_buyer_message';
-              if (room.lenderChatUnread) messageHydrationFailedCount += 1;
-            }
-          } else {
-            room.lastMessageMissingReason = `fetch_http_${msgResp.status}`;
-            if (room.lenderChatUnread) messageHydrationFailedCount += 1;
-          }
-        } catch (e: any) {
-          room.lastMessageMissingReason = e?.name === 'TimeoutError' ? 'timeout' : 'fetch_failed';
-          if (room.lenderChatUnread) messageHydrationFailedCount += 1;
-        }
+    if (result.messageHydrationPending) {
+      void startChatRoomMessageHydration(result, async (room) => {
+        const msgResp = await rateLimitedFetch(
+          `https://graytag.co.kr/ws/chat/findChats?uuid=${encodeURIComponent(room.chatRoomUuid)}&page=1`,
+          { headers, redirect: 'manual', signal: AbortSignal.timeout(2000) },
+        );
+        if (!msgResp.ok) throw new Error(`fetch_http_${msgResp.status}`);
+        const msgData = await safeJson(msgResp);
+        return extractGraytagChats(msgData);
+      }).then((hydrated) => {
+        // 더 최신 갱신이 시작된 경우 오래된 비동기 결과로 캐시를 덮지 않는다.
+        if (generation === _chatRoomsHydrationGeneration) _chatRoomsCache = hydrated;
+      }).catch((error) => {
+        console.warn(`[chat/rooms] background message hydration failed: ${error?.message || error}`);
+      });
+    }
 
-        return room;
-      })
-    );
-
-    const rooms = roomsWithMessages;
-
-    const result = {
-      rooms,
-      totalRooms: rooms.length,
-      unreadCount: rooms.filter((r: any) => r.lenderChatUnread).length,
-      updatedAt: new Date().toISOString(),
-      fromCache: false,
-      rateLimited: false,
-      messageHydratedCount,
-      messageHydrationFailedCount,
-    };
-    _chatRoomsCache = result; // 캐시 저장
     return c.json(result);
   } catch (e: any) { return c.json({ error: e.message }, 500); }
 });

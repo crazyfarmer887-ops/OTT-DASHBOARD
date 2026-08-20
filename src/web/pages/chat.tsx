@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { MessageCircle, RefreshCw, Loader2, Send, ChevronLeft, ArrowDown, Sparkles, ChevronDown, Bell, Settings, ToggleLeft, ToggleRight } from "lucide-react";
+import { MessageCircle, RefreshCw, Loader2, Send, ChevronLeft, ArrowDown, Sparkles, ChevronDown, Bell, Settings, ToggleLeft, ToggleRight, ExternalLink } from "lucide-react";
 import { autoReplyStatusLabel, autoReplyStatusTone, summarizeAutoReplyJobs, type AutoReplyLogJob } from "../lib/auto-reply-log";
 import { groupChatRoomsByAccount, sortChatRoomsByLatestBuyerMessage, type ChatSortMode } from "../lib/chat-room-sort";
+import { buildGraytagChatUrl } from "../lib/graytag-chat-url";
 
 interface ChatRoom {
   dealUsid: string; chatRoomUuid: string; borrowerName: string;
@@ -68,6 +69,7 @@ export default function ChatPage() {
   const [chatSortMode, setChatSortMode] = useState<ChatSortMode>('latest');
   const msgEndRef = useRef<HTMLDivElement>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const hydrationPollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const resizeRef = useRef<number>(400);
   const locallyReadRoomsRef = useRef<Record<string, string>>(loadLocalReadRooms());
 
@@ -142,6 +144,12 @@ export default function ChatPage() {
       });
       setRooms(nextRooms);
       localStorage.setItem(CHAT_ROOMS_CACHE_KEY, JSON.stringify({ savedAt: Date.now(), rooms: nextRooms }));
+      if (data.messageHydrationPending && !hydrationPollRef.current) {
+        hydrationPollRef.current = setTimeout(() => {
+          hydrationPollRef.current = null;
+          void loadRooms({ quiet: true });
+        }, 3000);
+      }
     } catch (e: any) { setError(e.message); }
     finally { if (!options.quiet) setLoading(false); }
   }, []);
@@ -187,7 +195,10 @@ export default function ChatPage() {
       setPollCount(c => c + 1);
       if (selectedRoom) loadMessages(selectedRoom.chatRoomUuid, 1);
     }, 60000);
-    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+      if (hydrationPollRef.current) clearTimeout(hydrationPollRef.current);
+    };
   }, [selectedRoom, loadRooms, loadMessages]);
 
   // 사이드바 리사이즈
@@ -479,31 +490,33 @@ export default function ChatPage() {
   );
 
   const renderRoomButton = (room: ChatRoom, nested = false) => (
-    <button key={room.dealUsid} onClick={()=>selectRoom(room)}
-      style={{width:"100%",padding:"12px 16px 12px "+(nested?"44px":"16px"),display:"flex",alignItems:"center",gap:12,
-        background:selectedRoom?.dealUsid===room.dealUsid?"#EDE9FE":room.lenderChatUnread?"#F5F3FF":"transparent",
-        border:"none",cursor:"pointer",borderBottom:"1px solid #F8F6FF",fontFamily:"inherit",transition:"background 0.15s"}}>
-      <div style={{width:38,height:38,borderRadius:10,flexShrink:0,overflow:"hidden",background:"#EDE9FE",position:"relative"}}>
-        <img src={room.borrowerThumbnail||''} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}
-          onError={(e)=>{(e.target as HTMLImageElement).style.display="none";}}/>
-        <div style={{position:"absolute",bottom:0,right:0,width:10,height:10,borderRadius:"50%",
-          background:STATUS_COLORS[room.dealStatus]||"#9CA3AF",border:"2px solid #fff"}}/>
-      </div>
-      <div style={{flex:1,minWidth:0,textAlign:"left"}}>
-        <div style={{fontSize:13,fontWeight:room.lenderChatUnread?700:500,color:"#1E1B4B",
-          overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-          {room.borrowerName}
+    <div key={room.dealUsid} style={{display:'flex',alignItems:'stretch',borderBottom:'1px solid #F8F6FF',background:selectedRoom?.dealUsid===room.dealUsid?'#EDE9FE':room.lenderChatUnread?'#F5F3FF':'transparent'}}>
+      <button onClick={()=>selectRoom(room)}
+        style={{flex:1,minWidth:0,padding:"12px 8px 12px "+(nested?"44px":"16px"),display:"flex",alignItems:"center",gap:12,
+          background:'transparent',border:"none",cursor:"pointer",fontFamily:"inherit",transition:"background 0.15s"}}>
+        <div style={{width:38,height:38,borderRadius:10,flexShrink:0,overflow:"hidden",background:"#EDE9FE",position:"relative"}}>
+          {room.borrowerThumbnail&&<img src={room.borrowerThumbnail} alt="" loading="lazy" decoding="async" style={{width:"100%",height:"100%",objectFit:"cover"}}
+            onError={(e)=>{(e.target as HTMLImageElement).style.display="none";}}/>}
+          <div style={{position:"absolute",bottom:0,right:0,width:10,height:10,borderRadius:"50%",
+            background:STATUS_COLORS[room.dealStatus]||"#9CA3AF",border:"2px solid #fff"}}/>
         </div>
-        <div style={{fontSize:11,color:"#9CA3AF",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginTop:2}}>
-          {room.lastMessage?stripHtml(room.lastMessage).slice(0,32):"메시지 없음"}
+        <div style={{flex:1,minWidth:0,textAlign:"left"}}>
+          <div style={{fontSize:13,fontWeight:room.lenderChatUnread?700:500,color:"#1E1B4B",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{room.borrowerName}</div>
+          <div style={{fontSize:11,color:"#9CA3AF",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginTop:2}}>
+            {room.lastMessage?stripHtml(room.lastMessage).slice(0,32):"메시지 없음"}
+          </div>
+          {chatSortMode==='latest'&&<div style={{fontSize:10,color:'#C4B5FD',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',marginTop:2}}>{room.productType} · {room.keepAcct || '(직접전달)'}</div>}
         </div>
-        {chatSortMode==='latest'&&<div style={{fontSize:10,color:'#C4B5FD',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',marginTop:2}}>{room.productType} · {room.keepAcct || '(직접전달)'}</div>}
-      </div>
-      <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4,flexShrink:0}}>
-        <div style={{fontSize:10,color:"#9CA3AF"}}>{formatTime(room.lastMessageTime||'')}</div>
-        <div style={{background:room.lenderChatUnread?"#EF4444":"#F3F4F6",color:room.lenderChatUnread?"#fff":"#6B7280",borderRadius:10,padding:"2px 6px",fontSize:9,fontWeight:800}}>{room.lenderChatUnread?"안읽음":"읽음"}</div>
-      </div>
-    </button>
+        <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4,flexShrink:0}}>
+          <div style={{fontSize:10,color:"#9CA3AF"}}>{formatTime(room.lastMessageTime||'')}</div>
+          <div style={{background:room.lenderChatUnread?"#EF4444":"#F3F4F6",color:room.lenderChatUnread?"#fff":"#6B7280",borderRadius:10,padding:"2px 6px",fontSize:9,fontWeight:800}}>{room.lenderChatUnread?"안읽음":"읽음"}</div>
+        </div>
+      </button>
+      <a href={buildGraytagChatUrl(room.chatRoomUuid)} target="_blank" rel="noreferrer" aria-label={`${room.borrowerName} 그레이태그 채팅방 바로가기`} title="그레이태그 채팅방 바로가기"
+        style={{width:42,display:'grid',placeItems:'center',color:'#7C3AED',textDecoration:'none',background:'rgba(255,255,255,.55)',flexShrink:0}}>
+        <ExternalLink size={15}/>
+      </a>
+    </div>
   );
 
   // ── 사이드바 ─────────────────────────────────────────────────
@@ -619,13 +632,17 @@ export default function ChatPage() {
             <ChevronLeft size={22}/> {isMobile&&"목록"}
           </button>
           <div style={{width:40,height:40,borderRadius:10,overflow:"hidden",background:"#EDE9FE",flexShrink:0}}>
-            <img src={selectedRoom.borrowerThumbnail||''} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}
-              onError={(e)=>{(e.target as HTMLImageElement).style.display="none";}}/>
+            {selectedRoom.borrowerThumbnail&&<img src={selectedRoom.borrowerThumbnail} alt="" loading="lazy" decoding="async" style={{width:"100%",height:"100%",objectFit:"cover"}}
+              onError={(e)=>{(e.target as HTMLImageElement).style.display="none";}}/>}
           </div>
           <div style={{flex:1}}>
             <div style={{fontSize:17,fontWeight:700,color:"#1E1B4B"}}>{selectedRoom.borrowerName}</div>
             <div style={{fontSize:11,color:"#9CA3AF",marginTop:2}}>{selectedRoom.productType} · {selectedRoom.statusName} · {selectedRoom.keepAcct}</div>
           </div>
+          <a href={buildGraytagChatUrl(selectedRoom.chatRoomUuid)} target="_blank" rel="noreferrer" title="그레이태그 채팅방 바로가기" aria-label="그레이태그 채팅방 바로가기"
+            style={{background:'#111827',color:'#fff',borderRadius:8,padding:'6px 10px',display:'inline-flex',alignItems:'center',gap:5,textDecoration:'none',fontSize:11,fontWeight:800,whiteSpace:'nowrap'}}>
+            <ExternalLink size={13}/> {!isMobile&&'그레이태그 바로가기'}
+          </a>
           {selectedRoom.lenderChatUnread&&<button onClick={()=>markRoomRead(selectedRoom)} style={{background:"#FEF3C7",border:"none",borderRadius:8,padding:"6px 10px",cursor:"pointer",fontSize:12,color:"#B45309",fontWeight:800,fontFamily:"inherit"}}>읽음 처리</button>}
           <button onClick={()=>loadMessages(selectedRoom.chatRoomUuid,1)}
             style={{background:"#EDE9FE",border:"none",borderRadius:8,padding:"6px 10px",cursor:"pointer",display:"flex",alignItems:"center",gap:4,fontSize:12,color:"#7C3AED",fontWeight:600,fontFamily:"inherit"}}>
