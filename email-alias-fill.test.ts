@@ -263,6 +263,44 @@ describe('email alias fill lookup', () => {
     expect(result).toMatchObject({ ok: false, found: false, emailId: 44877806, pin: null, missing: [], pinConfigured: true, pinRecoverable: false });
   });
 
+  it('rejects a generated Wavve PIN for a TVING request even when email and alias id match', async () => {
+    writeFileSync(process.env.EMAIL_ALIAS_PIN_STORE_PATH!, JSON.stringify({
+      '44877806': { hash: 'scrypt:hashed-pin-only' },
+    }), 'utf8');
+    const { resolveEmailAliasFill } = await import('./src/api/email-alias-fill.ts');
+
+    const result = await resolveEmailAliasFill({
+      accountEmail: 'double-pass-generated@example.com',
+      serviceType: '티빙',
+      aliases: [{ id: 44877806, email: 'double-pass-generated@example.com', enabled: true }],
+      fallbackPin: '074056',
+      fallbackEmailId: 44877806,
+      fallbackServiceType: '웨이브',
+    });
+
+    expect(result).toMatchObject({ ok: false, found: false, emailId: 44877806, pin: null, missing: [], pinConfigured: true, pinRecoverable: false });
+    expect(result.memo).toBe('');
+  });
+
+  it('allows an exact generated bundle PIN for a Wavve component request', async () => {
+    writeFileSync(process.env.EMAIL_ALIAS_PIN_STORE_PATH!, JSON.stringify({
+      '44877806': { hash: 'scrypt:hashed-pin-only' },
+    }), 'utf8');
+    const { resolveEmailAliasFill } = await import('./src/api/email-alias-fill.ts');
+
+    const result = await resolveEmailAliasFill({
+      accountEmail: 'double-pass-generated@example.com',
+      serviceType: '웨이브',
+      aliases: [{ id: 44877806, email: 'double-pass-generated@example.com', enabled: true }],
+      fallbackPin: '074056',
+      fallbackEmailId: 44877806,
+      fallbackServiceType: '티빙+웨이브',
+    });
+
+    expect(result).toMatchObject({ ok: true, found: true, emailId: 44877806, pin: '074056', missing: [], pinConfigured: true, pinRecoverable: true });
+    expect(result.memo).toContain('074056');
+  });
+
   it('rejects non-digit generated-account PIN text instead of silently normalizing it', async () => {
     writeFileSync(process.env.EMAIL_ALIAS_PIN_STORE_PATH!, JSON.stringify({
       '44877806': { hash: 'scrypt:hashed-pin-only' },

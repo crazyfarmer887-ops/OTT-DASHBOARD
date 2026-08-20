@@ -84,13 +84,21 @@ function normalizeSixDigitPin(pin: string) {
 }
 
 function compatibleServiceType(requested: string, stored: string | null | undefined) {
-  const normalize = (value: string) => value.trim().toLowerCase().replace(/\s+/g, '');
+  const normalize = (value: string) => {
+    const service = value.trim().toLowerCase().replace(/\s+/g, '');
+    if (['티빙', '티방', 'tving'].includes(service)) return 'tving';
+    if (['웨이브', 'wavve'].includes(service)) return 'wavve';
+    if (service === '티빙+웨이브') return 'tving+wavve';
+    return service;
+  };
   const requestedService = normalize(requested);
   const storedService = normalize(String(stored || ''));
   if (!requestedService || !storedService) return false;
   if (requestedService === storedService) return true;
-  const doublePassServices = new Set(['티빙', '티방', '웨이브', '티빙+웨이브', 'tving', 'wavve']);
-  return doublePassServices.has(requestedService) && doublePassServices.has(storedService);
+  const bundle = 'tving+wavve';
+  const components = new Set(['tving', 'wavve']);
+  return (requestedService === bundle && components.has(storedService))
+    || (storedService === bundle && components.has(requestedService));
 }
 
 export function generateSixDigitPin(random = Math.random): string {
