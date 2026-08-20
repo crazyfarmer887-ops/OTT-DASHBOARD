@@ -121,24 +121,113 @@ describe('email alias fill lookup', () => {
     expect(result.memo).toBe('');
   });
 
-  it('fails closed for concrete email accounts when exact alias is absent', async () => {
+  it('fails closed before creating a forced synthetic alias for a concrete email', async () => {
+    writeFileSync(process.env.EMAIL_ALIAS_PIN_STORE_PATH!, JSON.stringify({
+      'wavve4444.prozac789@aleeas.com': { pin: '681965', updatedAt: '2026-05-18T09:35:06.605Z' },
+    }), 'utf8');
+    const { resolveEmailAliasFill } = await import('./src/api/email-alias-fill.ts');
+
+    const result = await resolveEmailAliasFill({
+      accountEmail: 'gtwavve444@example.com',
+      serviceType: '티빙',
+      aliases: [],
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      found: false,
+      email: 'gtwavve444@example.com',
+      emailId: null,
+      pin: null,
+      memo: '',
+      missing: ['email', 'pin'],
+      pinConfigured: false,
+      pinRecoverable: false,
+    });
+  });
+
+  it('never selects a listed forced destination for a different concrete email', async () => {
+    writeFileSync(process.env.EMAIL_ALIAS_PIN_STORE_PATH!, JSON.stringify({
+      '42994795': { hash: 'scrypt:forced-destination-hash', updatedAt: '2026-05-18T09:35:06.605Z' },
+    }), 'utf8');
+    const { resolveEmailAliasFill } = await import('./src/api/email-alias-fill.ts');
+
+    const result = await resolveEmailAliasFill({
+      accountEmail: 'gtwavve444@example.com',
+      serviceType: '티빙',
+      aliases: [
+        { id: 42994795, email: 'wavve4444.prozac789@aleeas.com', enabled: true },
+      ],
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      found: false,
+      email: 'gtwavve444@example.com',
+      emailId: null,
+      pin: null,
+      memo: '',
+      missing: ['email', 'pin'],
+      pinConfigured: false,
+      pinRecoverable: false,
+    });
+    expect(JSON.stringify(result)).not.toContain('forced-destination-hash');
+  });
+
+  it('keeps the durable forced mapping for a login ID without @', async () => {
     writeFileSync(process.env.EMAIL_ALIAS_PIN_STORE_PATH!, JSON.stringify({
       '42994795': { pin: '681965', updatedAt: '2026-05-18T09:35:06.605Z' },
     }), 'utf8');
     const { resolveEmailAliasFill } = await import('./src/api/email-alias-fill.ts');
 
     const result = await resolveEmailAliasFill({
-      accountEmail: 'gtdny9.claim390@aleeas.com',
-      serviceType: '디즈니플러스',
+      accountEmail: 'gtwavve444',
+      serviceType: '티빙',
       aliases: [
-        { id: 42994795, email: 'disney7.county770@aleeas.com', enabled: true },
+        { id: 42994795, email: 'wavve4444.prozac789@aleeas.com', enabled: true },
       ],
     });
 
-    expect(result.ok).toBe(false);
-    expect(result.emailId).toBeNull();
-    expect(result.pin).toBeNull();
-    expect(result.missing).toEqual(expect.arrayContaining(['email', 'pin']));
+    expect(result).toMatchObject({
+      ok: true,
+      found: true,
+      email: 'wavve4444.prozac789@aleeas.com',
+      emailId: 42994795,
+      pin: '681965',
+      missing: [],
+      pinConfigured: true,
+      pinRecoverable: true,
+    });
+  });
+
+  it('prefers an exact concrete alias over every fallback', async () => {
+    writeFileSync(process.env.EMAIL_ALIAS_PIN_STORE_PATH!, JSON.stringify({
+      '101': { hash: 'scrypt:exact-hash-only' },
+      '42994795': { pin: '681965' },
+    }), 'utf8');
+    const { resolveEmailAliasFill } = await import('./src/api/email-alias-fill.ts');
+
+    const result = await resolveEmailAliasFill({
+      accountEmail: ' GTWAVVE444@EXAMPLE.COM ',
+      serviceType: '티빙',
+      aliases: [
+        { id: 42994795, email: 'wavve4444.prozac789@aleeas.com', enabled: true },
+        { id: 101, email: 'gtwavve444@example.com', enabled: true },
+      ],
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      found: false,
+      email: 'gtwavve444@example.com',
+      emailId: 101,
+      pin: null,
+      memo: '',
+      missing: [],
+      pinConfigured: true,
+      pinRecoverable: false,
+    });
+    expect(JSON.stringify(result)).not.toContain('exact-hash-only');
   });
 
   it('reports missing alias and PIN without placeholders when no data exists', async () => {

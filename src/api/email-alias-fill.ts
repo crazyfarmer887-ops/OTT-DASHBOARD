@@ -34,7 +34,9 @@ function normalizeEmail(value: string) {
 }
 
 function forcedDoublePassAliasEmail(accountEmail: string, serviceType: string): string | null {
-  const local = normalizeEmail(accountEmail).split('@')[0] || '';
+  const loginId = normalizeEmail(accountEmail);
+  if (loginId.includes('@')) return null;
+  const local = loginId;
   const service = String(serviceType || '').trim();
   if (service === '티빙' && local === 'gtwavve444') return 'wavve4444.prozac789@aleeas.com';
   if (service === '티빙' && local === 'gtwavve4444') return 'wavve4.hyperlink631@aleeas.com';
@@ -161,6 +163,10 @@ function chooseAlias(accountEmail: string, serviceType: string, aliases: EmailAl
   const direct = enabledAliases.find(a => normalizeEmail(a.email) === targetEmail);
   if (direct) return direct;
 
+  // A concrete email is an account identity, not a hint. Once exact matching
+  // fails, never reinterpret its local part through login-ID fallbacks.
+  if (targetEmail.includes('@')) return null;
+
   const forcedAliasEmail = forcedDoublePassAliasEmail(accountEmail, serviceType);
   if (forcedAliasEmail) {
     const forced = enabledAliases.find(a => normalizeEmail(a.email) === forcedAliasEmail);
@@ -172,11 +178,6 @@ function chooseAlias(accountEmail: string, serviceType: string, aliases: EmailAl
     const record = pinStore[String(a.id)];
     return Boolean(record?.pin?.trim() || record?.hash?.trim());
   });
-
-  // For concrete SimpleLogin-style email addresses, fail closed when the exact alias
-  // is absent. A broad service fallback can otherwise map gtdny9.claim... to an
-  // unrelated Disney alias that merely has a PIN configured.
-  if (targetEmail.includes('@')) return null;
 
   const doublePassNo = resolveDoublePassBundleNo({ serviceType, email: accountEmail, loginId: accountEmail, accountId: accountEmail });
   if (doublePassNo) {
