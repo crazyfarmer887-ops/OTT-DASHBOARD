@@ -160,7 +160,10 @@ function chooseAlias(accountEmail: string, serviceType: string, aliases: EmailAl
     return { id: forcedAliasEmail, email: forcedAliasEmail, enabled: true };
   }
 
-  const withPin = enabledAliases.filter(a => pinStore[String(a.id)]?.pin);
+  const withPin = enabledAliases.filter(a => {
+    const record = pinStore[String(a.id)];
+    return Boolean(record?.pin?.trim() || record?.hash?.trim());
+  });
 
   // For concrete SimpleLogin-style email addresses, fail closed when the exact alias
   // is absent. A broad service fallback can otherwise map gtdny9.claim... to an

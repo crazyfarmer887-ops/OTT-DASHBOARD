@@ -72,6 +72,35 @@ describe('email alias fill lookup', () => {
     expect(result.memo).toContain('https://email-verify.one/email/mail/42948775');
   });
 
+  it('matches a TVING bundle alias whose PIN is configured as a hash only', async () => {
+    writeFileSync(process.env.EMAIL_ALIAS_PIN_STORE_PATH!, JSON.stringify({
+      '42948775': { hash: 'scrypt:bundle-hash-only-value', updatedAt: '2026-06-12T00:00:00Z' },
+    }), 'utf8');
+    const { resolveEmailAliasFill } = await import('./src/api/email-alias-fill.ts');
+
+    const result = await resolveEmailAliasFill({
+      accountEmail: 'gtwavve8',
+      serviceType: '티빙',
+      aliases: [
+        { id: 42948775, email: 'gtwavve8.retry470@aleeas.com', enabled: true },
+      ],
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      found: false,
+      email: 'gtwavve8.retry470@aleeas.com',
+      emailId: 42948775,
+      pin: null,
+      memo: '',
+      missing: [],
+      pinConfigured: true,
+      pinRecoverable: false,
+      message: 'PIN은 설정되어 있지만 기존 번호 원문은 확인할 수 없어요.',
+    });
+    expect(JSON.stringify(result)).not.toContain('bundle-hash-only-value');
+  });
+
   it('fails closed for TVING double-pass accounts when the same bundle alias is absent', async () => {
     writeFileSync(process.env.EMAIL_ALIAS_PIN_STORE_PATH!, JSON.stringify({
       '43949717': { pin: '919693', updatedAt: '2026-05-23T09:48:12.469Z' },
