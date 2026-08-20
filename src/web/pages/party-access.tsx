@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { AlertTriangle, CheckCircle2, KeyRound, Loader2, Lock, Mail, ShieldCheck } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Copy, ExternalLink, KeyRound, Loader2, Lock, Mail, ShieldCheck, X } from "lucide-react";
+import { getProfileAvatarTheme } from "../../lib/profile-avatar-theme";
 
 type AccessPayload = {
   ok: boolean;
@@ -42,16 +43,15 @@ const isWavveService = (value?: string) => {
   return v === '웨이브' || v === 'wavve';
 };
 
-function credentialRows(payload: AccessPayload): Array<{ label: string; value: string; link?: string }> {
+function credentialRows(payload: AccessPayload): Array<{ label: string; value: string }> {
   const c = payload.credentials;
-  const showEmailAccess = Boolean(payload.emailAccessUrl) && !isWavveService(payload.serviceType);
   return [
     { label: 'ID', value: c?.id || '' },
     { label: 'PW', value: c?.password || '' },
-    showEmailAccess ? { label: 'EMAIL', value: payload.emailAccessUrl || '', link: payload.emailAccessUrl || '' } : null,
-    showEmailAccess ? { label: '이메일 접근 PIN번호', value: c?.pin || '' } : null,
-  ].filter(Boolean) as Array<{ label: string; value: string; link?: string }>;
+  ];
 }
+
+const profileInitial = (value: string) => Array.from(String(value || '?').trim())[0] || '?';
 
 export default function PartyAccessPage() {
   const token = decodeURIComponent(window.location.pathname.split('/access/')[1] || '');
@@ -63,6 +63,8 @@ export default function PartyAccessPage() {
   const [editCredentials, setEditCredentials] = useState({ id: '', password: '' });
   const [savingCredentials, setSavingCredentials] = useState(false);
   const [credentialEditMessage, setCredentialEditMessage] = useState('');
+  const [emailDialogOpen, setEmailDialogOpen] = useState(false);
+  const [pinCopied, setPinCopied] = useState(false);
 
   const fetchFullPayloadAfterConsent = async () => {
     const phrases = [AGREEMENT_1, AGREEMENT_2, AGREEMENT_3];
@@ -139,6 +141,15 @@ export default function PartyAccessPage() {
     } catch {}
   };
   const showEmailAccess = Boolean(payload.emailAccessUrl) && !isWavveService(payload.serviceType);
+  const displayProfiles = partyProfiles.length > 0 ? partyProfiles : [{
+    profileName,
+    memberName: payload.memberName || '파티원',
+    status: '',
+    statusName: '',
+    startDateTime: payload.period?.startDateTime || null,
+    endDateTime: payload.period?.endDateTime || null,
+    isCurrentMember: true,
+  }];
   const saveCredentialEdits = async () => {
     if (!isAdminAccess) return;
     const id = editCredentials.id.trim();
@@ -247,22 +258,39 @@ export default function PartyAccessPage() {
             <div style={{ fontSize:11, color:'#9CA3AF', marginTop:4 }}>{fmtDate(payload.period?.startDateTime)} ~ {fmtDate(payload.period?.endDateTime)}</div>
           </div>
 
-          <div style={{ background:'#EEF2FF', border:'1.5px solid #C7D2FE', borderRadius:16, padding:'13px 14px', marginBottom:10, textAlign:'center' }}>
-            <div style={{ fontSize:11, color:'#4F46E5', fontWeight:1000 }}>구매자님이 만들어야 하는 프로필 이름</div>
-            <div style={{ fontSize:24, color:'#1E1B4B', fontWeight:1000, marginTop:4 }}>{profileName}</div>
-          </div>
+          <section aria-label="파티원 프로필" style={{ background:'linear-gradient(145deg,#111827,#312E81)', borderRadius:22, padding:'20px 14px 18px', marginBottom:14, color:'#fff', textAlign:'center', overflow:'hidden' }}>
+            <div style={{ fontSize:22, fontWeight:1000, letterSpacing:'-0.04em' }}>누가 시청할까요?</div>
+            <div style={{ fontSize:11, color:'#C4B5FD', fontWeight:800, marginTop:4 }}>보라색 테두리가 구매자님에게 배정된 프로필이에요</div>
+            <div className="profile-avatar-grid" style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(82px,1fr))', gap:'18px 10px', marginTop:20, alignItems:'start' }}>
+              {displayProfiles.map((profile, idx) => {
+                const theme = getProfileAvatarTheme(profile.profileName);
+                return <div key={`${profile.profileName}-${idx}`} style={{ minWidth:0, textAlign:'center' }}>
+                  <div style={{ width:profile.isCurrentMember?86:72, height:profile.isCurrentMember?86:72, maxWidth:'100%', aspectRatio:'1', margin:'0 auto', borderRadius:20, display:'grid', placeItems:'center', background:theme.background, color:theme.foreground, border:profile.isCurrentMember?'4px solid #C4B5FD':'3px solid rgba(255,255,255,.18)', boxShadow:profile.isCurrentMember?'0 0 0 5px rgba(196,181,253,.18),0 14px 30px rgba(0,0,0,.3)':'0 10px 20px rgba(0,0,0,.2)', fontSize:profile.isCurrentMember?34:28, fontWeight:1000 }}>
+                    {profileInitial(profile.profileName)}
+                  </div>
+                  <div style={{ fontSize:profile.isCurrentMember?16:13, fontWeight:1000, marginTop:9, overflowWrap:'anywhere' }}>{profile.profileName || '(미확인)'}</div>
+                  <div style={{ minHeight:18, marginTop:4, fontSize:9, color:profile.isCurrentMember?'#DDD6FE':'#9CA3AF', fontWeight:900 }}>{profile.isCurrentMember?'내 프로필':`${fmtDate(profile.endDateTime)}까지`}</div>
+                </div>;
+              })}
+            </div>
+            <div style={{ marginTop:16, background:'rgba(255,255,255,.1)', border:'1px solid rgba(255,255,255,.15)', borderRadius:12, padding:'9px 10px', color:'#E0E7FF', fontSize:10, lineHeight:1.5, fontWeight:800 }}>
+              프로필이 꽉 찼다면 위 현황에 없는 프로필을 삭제한 뒤, 배정된 이름으로 새로 만들어 사용해주세요.
+            </div>
+          </section>
 
           <div style={{ display:'grid', gap:10, marginBottom:10 }}>
             {credentialRows(payload).map((row) => (
               <div key={row.label} style={{ background:'#FFFFFF', border:'1.5px solid #EDE9FE', borderRadius:16, padding:'12px 14px' }}>
                 <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}>
-                  <div style={{ fontSize:11, color:'#7C3AED', fontWeight:900, display:'flex', alignItems:'center', gap:5 }}>{row.label === 'EMAIL' ? <Mail size={12} /> : <KeyRound size={12} />} {row.label}</div>
-                  {row.link ? <a href={row.link} target="_blank" rel="noreferrer" style={{ border:'none', borderRadius:999, background:'#F5F3FF', color:'#7C3AED', fontSize:11, fontWeight:900, padding:'6px 10px', textDecoration:'none' }}>이메일 인증 열기</a> : <button onClick={() => copy(row.value)} style={{ border:'none', borderRadius:999, background:'#F5F3FF', color:'#7C3AED', fontSize:11, fontWeight:900, padding:'6px 10px', cursor:'pointer' }}>복사</button>}
+                  <div style={{ fontSize:11, color:'#7C3AED', fontWeight:900, display:'flex', alignItems:'center', gap:5 }}><KeyRound size={12} /> {row.label}</div>
+                  <button onClick={() => copy(row.value)} style={{ border:'none', borderRadius:999, background:'#F5F3FF', color:'#7C3AED', fontSize:11, fontWeight:900, padding:'6px 10px', cursor:'pointer' }}>복사</button>
                 </div>
-                <div style={{ fontSize:16, color:'#1E1B4B', fontWeight:900, marginTop:6, wordBreak:'break-all' }}>{row.link ? '이메일 인증/핀번호 확인 링크' : (row.value || '-')}</div>
+                <div style={{ fontSize:16, color:'#1E1B4B', fontWeight:900, marginTop:6, wordBreak:'break-all' }}>{row.value || '-'}</div>
               </div>
             ))}
           </div>
+
+          {showEmailAccess && <button type="button" onClick={() => { setPinCopied(false); setEmailDialogOpen(true); }} style={{ width:'100%', border:'none', borderRadius:16, padding:'14px 16px', background:'linear-gradient(135deg,#7C3AED,#4F46E5)', color:'#fff', fontSize:14, fontWeight:1000, display:'flex', alignItems:'center', justifyContent:'center', gap:8, cursor:'pointer', marginBottom:10, boxShadow:'0 10px 24px rgba(124,58,237,.24)' }}><Mail size={17} /> 이메일 확인하러 가기</button>}
 
           {isAdminAccess && (
             <div style={{ background:'#FFFBEB', border:'1.5px solid #FDE68A', borderRadius:16, padding:14, marginBottom:10 }}>
@@ -288,39 +316,30 @@ export default function PartyAccessPage() {
             </div>
           )}
 
-          <div style={{ background:'#F9FAFB', border:'1.5px solid #E5E7EB', borderRadius:16, padding:'13px 14px', marginBottom:10 }}>
-            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, marginBottom:8 }}>
-              <div>
-                <div style={{ fontSize:11, color:'#4B5563', fontWeight:1000 }}>현재 파티원 프로필 현황</div>
-                <div style={{ fontSize:10, color:'#9CA3AF', fontWeight:800, marginTop:2 }}>계정 접근 시점 기준으로 확인됩니다</div>
-              </div>
-              <button onClick={() => window.location.reload()} style={{ border:'none', borderRadius:999, background:'#EEF2FF', color:'#4F46E5', fontSize:10, fontWeight:1000, padding:'6px 9px', cursor:'pointer' }}>새로고침</button>
-            </div>
-            {partyProfiles.length > 0 ? (
-              <div style={{ display:'grid', gap:7 }}>
-                {partyProfiles.map((profile, idx) => (
-                  <div key={`${profile.profileName}-${idx}`} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:10, background:profile.isCurrentMember ? '#F5F3FF' : '#FFFFFF', border:profile.isCurrentMember ? '1.5px solid #C4B5FD' : '1px solid #E5E7EB', borderRadius:12, padding:'9px 10px' }}>
-                    <div style={{ minWidth:0 }}>
-                      <div style={{ fontSize:15, color:'#111827', fontWeight:1000, wordBreak:'break-all' }}>{profile.profileName}{profile.isCurrentMember ? ' · 내 프로필' : ''}</div>
-                      <div style={{ fontSize:10, color:'#6B7280', fontWeight:800, marginTop:3 }}>{profile.memberName || '파티원'} · {fmtDate(profile.endDateTime)}까지</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div style={{ fontSize:12, color:'#6B7280', lineHeight:1.55, fontWeight:800 }}>아직 표시할 파티원 프로필 현황이 없습니다. 배정된 프로필 이름을 우선 사용해주세요.</div>
-            )}
-            <div style={{ marginTop:9, fontSize:11, color:'#92400E', background:'#FFFBEB', border:'1px solid #FDE68A', borderRadius:10, padding:'8px 9px', lineHeight:1.5, fontWeight:800 }}>
-              프로필이 꽉 찼다면 위 현황에 없는 프로필을 삭제한 뒤, 배정된 이름으로 새로 만들어 사용해주세요.
-            </div>
-          </div>
-
           <div style={{ marginTop:14, background:'#ECFDF5', border:'1px solid #A7F3D0', borderRadius:14, padding:12, color:'#065F46', fontSize:12, lineHeight:1.55, fontWeight:800, display:'flex', gap:7 }}>
             <CheckCircle2 size={16} style={{ flexShrink:0 }} />
             <div>이 페이지는 최신 로그인 정보를 실시간으로 보여줍니다. 비밀번호가 갑자기 안 되면 먼저 새로고침 후 다시 확인해주세요.</div>
           </div>
         </div>
       </div>}
+      {emailDialogOpen && showEmailAccess && (
+        <div onClick={() => setEmailDialogOpen(false)} style={{ position:'fixed', inset:0, zIndex:220, background:'rgba(15,23,42,.72)', backdropFilter:'blur(8px)', display:'grid', placeItems:'center', padding:18 }}>
+          <div role="dialog" aria-modal="true" aria-labelledby="email-access-title" onClick={event => event.stopPropagation()} style={{ width:'100%', maxWidth:390, borderRadius:26, background:'#fff', padding:20, boxShadow:'0 28px 80px rgba(0,0,0,.35)', boxSizing:'border-box' }}>
+            <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:12 }}>
+              <div><div id="email-access-title" style={{ fontSize:19, fontWeight:1000, color:'#1E1B4B' }}>PIN을 먼저 확인해 주세요</div><div style={{ fontSize:11, color:'#6B7280', fontWeight:800, marginTop:4 }}>EMAIL 페이지로 이동하기 전에 복사해두면 편해요.</div></div>
+              <button type="button" aria-label="닫기" onClick={() => setEmailDialogOpen(false)} style={{ border:0, background:'#F3F4F6', width:34, height:34, borderRadius:12, display:'grid', placeItems:'center', cursor:'pointer' }}><X size={17} /></button>
+            </div>
+            <div style={{ margin:'18px 0 14px', borderRadius:20, background:'linear-gradient(145deg,#111827,#312E81)', color:'#fff', textAlign:'center', padding:'22px 12px' }}>
+              <div style={{ fontSize:10, color:'#C4B5FD', fontWeight:1000, letterSpacing:2 }}>EMAIL PIN</div>
+              <div style={{ fontSize:payload.credentials?.pin?34:16, lineHeight:1.25, fontWeight:1000, letterSpacing:payload.credentials?.pin?6:0, marginTop:8, wordBreak:'break-all' }}>{payload.credentials?.pin || '등록된 PIN이 없어요'}</div>
+            </div>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:9 }}>
+              <button type="button" disabled={!payload.credentials?.pin} onClick={async () => { await copy(payload.credentials?.pin || ''); setPinCopied(true); }} style={{ border:0, borderRadius:15, padding:'13px 10px', background:payload.credentials?.pin?'#EDE9FE':'#E5E7EB', color:payload.credentials?.pin?'#6D28D9':'#9CA3AF', fontSize:13, fontWeight:1000, display:'flex', alignItems:'center', justifyContent:'center', gap:6, cursor:payload.credentials?.pin?'pointer':'not-allowed' }}><Copy size={15} /> {pinCopied?'복사했어요':'PIN 복사'}</button>
+              <a href={payload.emailAccessUrl} target="_blank" rel="noreferrer" onClick={() => setEmailDialogOpen(false)} style={{ borderRadius:15, padding:'13px 10px', background:'#7C3AED', color:'#fff', fontSize:13, fontWeight:1000, display:'flex', alignItems:'center', justifyContent:'center', gap:6, textDecoration:'none' }}>바로가기 <ExternalLink size={15} /></a>
+            </div>
+          </div>
+        </div>
+      )}
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
   );

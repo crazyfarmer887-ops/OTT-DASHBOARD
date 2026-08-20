@@ -22,6 +22,7 @@ import {
   PARTY_ACCESS_CONSENT_PHRASES,
 } from '../src/lib/party-access';
 import { buildPartyAccessHtml } from '../src/lib/party-access-page-html';
+import { getProfileAvatarTheme } from '../src/lib/profile-avatar-theme';
 import { mergePartyMaintenanceChecklistState } from '../src/lib/party-maintenance-checklist';
 
 describe('party member account access links', () => {
@@ -951,7 +952,13 @@ describe('party member account access links', () => {
     expect(template).toContain('로그인이 안될 때마다 직접 묻지 마시고 먼저 저 링크에서 업데이트 된 정보 확인');
   });
 
-  test('serves a lightweight public access shell with updated profile and email verification copy', () => {
+  test('uses deterministic profile avatar themes', () => {
+    expect(getProfileAvatarTheme('수달이')).toEqual(getProfileAvatarTheme('수달이'));
+    expect(getProfileAvatarTheme('수달이')).not.toEqual(getProfileAvatarTheme('여우비'));
+    expect(getProfileAvatarTheme('')).toMatchObject({ background: expect.any(String), foreground: expect.any(String) });
+  });
+
+  test('serves a profile-first public access shell with a PIN preview dialog', () => {
     const html = buildPartyAccessHtml('tok<en>&1');
     expect(html).toContain('window.__PARTY_ACCESS_TOKEN__="tok\\u003cen\\u003e\\u00261"');
     expect(html).toContain('고소장 실제사례 이미지');
@@ -970,10 +977,20 @@ describe('party member account access links', () => {
     expect(html).not.toContain('renderNoticeImage(profileName, payload.partyProfiles)');
     expect(html).not.toContain('const renderNoticeImage');
     expect(html).toContain("new URLSearchParams(window.location.search).get('admin_token')");
-    expect(html).toContain('이메일 접근 PIN번호');
-    expect(html).toContain('이메일 인증/핀번호 확인 링크');
-    expect(html).toContain('이메일 인증 열기');
-    expect(html).toContain('현재 파티원 프로필 현황');
+    expect(html).toContain('누가 시청할까요?');
+    expect(html).toContain('profile-avatar-grid');
+    expect(html).toContain('isCurrentMember');
+    expect(html).toContain('이메일 확인하러 가기');
+    expect(html).toContain("setAttribute('role','dialog')");
+    expect(html).toContain("setAttribute('aria-modal','true')");
+    expect(html).toContain('PIN을 먼저 확인해 주세요');
+    expect(html).toContain('등록된 PIN이 없어요');
+    expect(html).toContain('복사했어요');
+    expect(html).toContain("target = '_blank'");
+    expect(html).toContain("rel = 'noreferrer'");
+    expect(html).toContain('바로가기');
+    expect(html).not.toContain('이메일 인증/핀번호 확인 링크');
+    expect(html).not.toContain('현재 파티원 프로필 현황');
     expect(html).toContain('프로필이 꽉 찼다면 위 현황에 없는 프로필을 삭제한 뒤');
     expect(html).not.toContain('status-chip');
     expect(html).not.toContain("profile.statusName || profile.status || '이용중'");
