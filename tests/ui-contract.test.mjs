@@ -119,6 +119,60 @@ test('thismonth graytag profit uses overlap days times daily rate', () => {
   assert.equal(calcMemberIncome(crossMonthMember, 'thismonth', new Date('2026-06-16T00:00:00Z')), 14000);
 });
 
+test('current 30-day extension excludes OnSale-only accounts from both income and subscription cost', () => {
+  const active = sampleGraytagData.services[0].accounts[0];
+  const paidLegacyOnSaleOnly = {
+    ...active,
+    email: 'paid-legacy@example.com',
+    usingCount: 0,
+    activeCount: 0,
+    totalIncome: 0,
+    totalRealizedIncome: 0,
+    onSaleAccount: { productCount: 1, source: 'graytag-on-sale' },
+    members: [{
+      ...active.members[0], dealUsid: 'historical-deal', status: 'NormalFinished', statusName: '완료',
+      startDateTime: '2026. 04. 01', endDateTime: '2026. 05. 01', realizedSum: 20000,
+    }],
+  };
+  const pendingGeneratedOnSaleOnly = {
+    ...active,
+    email: 'pending@example.com',
+    usingCount: 0,
+    activeCount: 0,
+    totalIncome: 0,
+    totalRealizedIncome: 0,
+    onSaleAccount: { productCount: 1, source: 'graytag-on-sale' },
+    generatedAccount: { paymentStatus: 'pending', paidAt: null, createdAt: '2026-05-01T00:00:00Z' },
+    members: [],
+  };
+  const data = {
+    ...sampleGraytagData,
+    services: [{ ...sampleGraytagData.services[0], accounts: [active, paidLegacyOnSaleOnly, pendingGeneratedOnSaleOnly] }],
+  };
+
+  const current = calcServiceProfits(data, 'monthly30', new Date('2026-06-16T00:00:00Z'), () => 1)[0];
+  assert.equal(current.revenueAccountCount, 1);
+  assert.equal(current.maintainedAccountCount, 1);
+  assert.equal(current.partyIncome, 30000);
+  assert.equal(current.subscriptionCost, 17000);
+  assert.equal(current.netProfit, 10000);
+
+  const snapshot = calcServiceProfits(data, 'snapshot', new Date('2026-06-16T00:00:00Z'), () => 1)[0];
+  assert.equal(snapshot.revenueAccountCount, 1);
+  assert.equal(snapshot.maintainedAccountCount, 1);
+  assert.equal(snapshot.subscriptionCost, 17000);
+});
+
+test('profit page has no extra-share or personal extra-subscription feature contract', () => {
+  const profit = read('src/web/pages/profit.tsx');
+  assert.doesNotMatch(profit, /extra-share|ExtraShareMap|EXTRA_COST|EXTRA_INCOME|isExtraShareOn|extraShareMemos/);
+  assert.doesNotMatch(profit, /graytag_personal_sub_v1|PersonalSubSettings|PERSONAL_SUB_COSTS/);
+  assert.doesNotMatch(profit, /추가\s*공유|추가공유|추가\s*파티|개인\s*추가\s*구독|자리\s*공유/);
+  assert.doesNotMatch(profit, /extraIncome|extraCostTotal|extraProfit/);
+  assert.match(profit, /기존 파티 그대로 30일 연장/);
+  assert.match(profit, /판매 중 슬롯·미판매 계정 제외/);
+});
+
 test('global tokens include semantic dashboard states', () => {
   const css = read('src/web/styles.css');
   for (const token of ['--success', '--warning', '--danger', '--info', '--surface-raised', '--text-muted']) {

@@ -1,11 +1,11 @@
-import { getExtraShareOn, toggleExtraShare as _toggle, loadExtraShareFromStorage, saveExtraShareToStorage, type ExtraShareMap } from "../../../extra-share";
 import { useState, useEffect } from "react";
 import { CATEGORIES } from "../lib/constants";
+
 import {
-  RefreshCw, KeyRound, Loader2, AlertCircle, ExternalLink,
+  RefreshCw, Loader2, AlertCircle, ExternalLink,
   TrendingUp, TrendingDown, ChevronLeft, ChevronRight, ChevronDown,
-  Calendar, Wallet, ArrowUpRight, ArrowDownRight, Minus, Info, Mail, User,
-  Settings, Check, X, CreditCard, Pencil,
+  Calendar, Wallet, ArrowUpRight, ArrowDownRight, Minus, Info, Mail,
+  Settings, Check, X, Pencil,
 } from "lucide-react";
 
 // ─── SimpleLogin Alias 타입 ──────────────────────────────────────
@@ -72,35 +72,7 @@ function getActiveManualCount(manuals: ManualMember[], serviceType: string, acco
   ).length;
 }
 
-// ─── 개인 구독 설정 타입 ─────────────────────────────────────────
-interface PersonalSubSettings {
-  netflix: boolean;   // 넷플릭스 추가 공유 (+10,000/월)
-  tving: boolean;     // 티빙 추가 공유 (+15,000/월)
-  disney: boolean;    // 디즈니+ 추가 공유 (+추가금액/월)
-  netflixDay: number; // 결제일
-  tvingDay: number;
-  disneyDay: number;
-}
-
-const PERSONAL_SUB_KEY = 'graytag_personal_sub_v1';
 const SUB_START_KEY = 'graytag_sub_start_v1'; // { [email]: number(day) }
-
-const DEFAULT_PERSONAL_SUB: PersonalSubSettings = {
-  netflix: false, tving: false, disney: false,
-  netflixDay: 1, tvingDay: 1, disneyDay: 1,
-};
-
-const PERSONAL_SUB_COSTS: Record<string, number> = {
-  netflix: 10000,  // 넷플릭스 추가 공유 비용
-  tving: 15000,    // 티빙 추가 공유 비용
-  disney: 9900,    // 디즈니+ 추가 공유 비용 (4K 기준)
-};
-
-const loadPersonalSub = (): PersonalSubSettings => {
-  try { return { ...DEFAULT_PERSONAL_SUB, ...JSON.parse(localStorage.getItem(PERSONAL_SUB_KEY) || '{}') }; }
-  catch { return DEFAULT_PERSONAL_SUB; }
-};
-const savePersonalSub = (s: PersonalSubSettings) => localStorage.setItem(PERSONAL_SUB_KEY, JSON.stringify(s));
 
 
 const loadSubStarts = (): Record<string, number> => {
@@ -120,6 +92,10 @@ interface Account {
   email: string; serviceType: string; members: Member[];
   usingCount: number; activeCount: number; totalSlots: number;
   totalIncome: number; totalRealizedIncome: number; expiryDate: string | null;
+  onSaleAccount?: { productCount?: number; source?: string };
+  generatedAccount?: { paymentStatus?: string; paidAt?: string | null; paymentPaidAt?: string | null; createdAt?: string | null };
+  paymentStatus?: string | null; paymentPaidAt?: string | null;
+  paymentCard?: { label?: string | null; cardIssuer?: string | null; last4?: string | null; renewalDay?: number | null };
 }
 interface ServiceGroup {
   serviceType: string; accounts: Account[];
@@ -145,17 +121,6 @@ const SUBSCRIPTION_COST: Record<string, number> = {
   '디즈니플러스': 14000,
   '티빙': 10000,
   '웨이브': 10000,
-};
-// 파티 추가공유 비용/수입 (에브리뷰 등 — 토글 ON인 파티만 적용)
-const EXTRA_COST: Record<string, number> = {
-  '넷플릭스': 10000,
-  '디즈니플러스': 5000,
-  '티빙': 15000,
-};
-const EXTRA_INCOME: Record<string, number> = {
-  '넷플릭스': 18000,
-  '디즈니플러스': 9000,
-  '티빙': 24000,
 };
 
 // 구독료 조회 (단순 조회)
@@ -333,28 +298,29 @@ function calcAccountDays(acct: Account): number {
 // 핵심: 수입은 월 단위 정산(시작일 기준 매월 N일), 구독료는 월 고정(매월), 수수료는 수입의 10%
 interface ServiceProfit {
   serviceType: string;
-  accountCount: number;
+  accountCount: number;        // 수익 참여 계정 (legacy field)
+  revenueAccountCount: number;
+  maintainedAccountCount: number;
   partyIncome: number;       // 파티원 수입 합계 (세전)
   realizedIncome: number;    // 확정 수입 (realizedSum 합계, 수수료 전)
   dailyIncome: number;       // 일당 합계 (전체 파티원)
   commission: number;        // 수수료 (수입의 10%)
   netPartyIncome: number;    // 수입 - 수수료
   subscriptionCost: number;  // 구독료 (월 고정 × 개월수)
-  extraIncome: number;       // 추가공유 수익 (토글 ON 파티만)
-  extraCostTotal: number;    // 추가공유 지출 (토글 ON 파티만)
-  extraProfit: number;       // 추가공유 순수익 (extraIncome - extraCostTotal)
   netProfit: number;
   avgPartyDays: number;
   accounts: (Account & { renewalDay: number | null; partyDays: number })[];
 }
 
-export function calcServiceProfits(data: ManageData, mode: CalcMode, now: Date, getSubStartDayFn?: (email: string, fallback: number | null) => number | null, isExtraShareOnFn?: (email: string, svcType: string) => boolean): ServiceProfit[] {
+export function calcServiceProfits(data: ManageData, mode: CalcMode, now: Date, getSubStartDayFn?: (email: string, fallback: number | null) => number | null): ServiceProfit[] {
   return data.services.map(svc => {
     const activeAccounts = svc.accounts.filter(a => a.usingCount > 0 && a.email !== '(직접전달)');
     const accountCount = activeAccounts.length;
+    // 기본 월 수익은 현재 실제 이용 중인 기존 파티만 그대로 30일 연장한다.
+    // 판매 중인 빈 슬롯과 OnSale-only 계정은 수입·구독료 모두 포함하지 않는다.
+    const maintainedAccountCount = accountCount;
     const unitCost = getSubscriptionCost(svc.serviceType);
-    const baseExtraIncome = EXTRA_INCOME[svc.serviceType] || 0;
-    const baseExtraCost = EXTRA_COST[svc.serviceType] || 0;
+
 
     // 파티원 수입 합산 (모드별)
     const partyIncome = activeAccounts.reduce((sum, acct) =>
@@ -372,32 +338,13 @@ export function calcServiceProfits(data: ManageData, mode: CalcMode, now: Date, 
     const commission = Math.round(partyIncome * COMMISSION_RATE);
     const netPartyIncome = partyIncome - commission;
 
-    // 구독료 & 추가공유 수익/지출 = 매월 고정
-    // 모드에 따라 몇 개월분을 계산할지 결정
+    // 구독료는 모드에 따라 계약기간 또는 현재 유지 1개월분을 계산한다.
     let subscriptionCost = 0;
-    let extraIncomeTotal = 0;
-    let extraCostSum = 0;
     let totalPartyDays = 0;
 
     const enrichedAccounts = activeAccounts.map(acct => {
       const partyDays = calcAccountDays(acct);
       totalPartyDays += partyDays;
-
-      // 이 계정의 가장 늦은 파티 종료일 확인
-      let acctLatestEnd: Date | null = null;
-      for (const m of acct.members) {
-        if (!isActualPartyMember(m)) continue;
-        if (m.endDateTime) {
-          const ed = parseDate(m.endDateTime);
-          if (ed && (!acctLatestEnd || ed > acctLatestEnd)) acctLatestEnd = ed;
-        }
-      }
-      const acctAlive = !acctLatestEnd || acctLatestEnd >= now;
-
-      // 파티별 추가공유 ON/OFF
-      const extraOn = isExtraShareOnFn ? isExtraShareOnFn(acct.email, svc.serviceType) : true;
-      const unitExtraIncome = extraOn ? baseExtraIncome : 0;
-      const unitExtraCost = extraOn ? baseExtraCost : 0;
 
       if (mode === 'snapshot') {
         let acctEarliestStart: Date | null = null;
@@ -416,20 +363,6 @@ export function calcServiceProfits(data: ManageData, mode: CalcMode, now: Date, 
           ? Math.max(1, countPayments(acctEarliestStart, acctLatestEndAll, payDay))
           : Math.ceil(partyDays / 30);
         subscriptionCost += unitCost * months;
-        extraIncomeTotal += unitExtraIncome * months;
-        extraCostSum += unitExtraCost * months;
-      } else if (mode === 'thismonth') {
-        if (acctAlive) {
-          subscriptionCost += unitCost;
-          extraIncomeTotal += unitExtraIncome;
-          extraCostSum += unitExtraCost;
-        }
-      } else if (mode === 'monthly30') {
-        if (acctAlive) {
-          subscriptionCost += unitCost;
-          extraIncomeTotal += unitExtraIncome;
-          extraCostSum += unitExtraCost;
-        }
       }
 
       return {
@@ -439,24 +372,24 @@ export function calcServiceProfits(data: ManageData, mode: CalcMode, now: Date, 
       };
     });
 
-    const extraProfit = extraIncomeTotal - extraCostSum;
-    // 순수익 = 총수익(netPartyIncome + extraIncome) - 파티유지비용(subscriptionCost + extraCost)
-    const netProfit = (netPartyIncome + extraIncomeTotal) - (subscriptionCost + extraCostSum);
+    if (mode !== 'snapshot') subscriptionCost = unitCost * maintainedAccountCount;
+
+    const netProfit = netPartyIncome - subscriptionCost;
     const avgPartyDays = accountCount > 0 ? Math.round(totalPartyDays / accountCount) : 30;
 
     return {
-      serviceType: svc.serviceType, accountCount, partyIncome, realizedIncome,
+      serviceType: svc.serviceType, accountCount, revenueAccountCount: accountCount, maintainedAccountCount, partyIncome, realizedIncome,
       dailyIncome, commission, netPartyIncome, subscriptionCost,
-      extraIncome: extraIncomeTotal, extraCostTotal: extraCostSum, extraProfit, netProfit,
+      netProfit,
       avgPartyDays, accounts: enrichedAccounts,
     };
-  }).filter(s => s.accountCount > 0);
+  }).filter(s => s.revenueAccountCount > 0);
 }
 
 // ─── 달력 이벤트 ─────────────────────────────────────────────
 export interface CalendarEvent {
   day: number;
-  type: 'expense' | 'income' | 'extra';
+  type: 'expense' | 'income';
   label: string;
   amount: number;
   serviceType: string;
@@ -507,39 +440,16 @@ export function buildCalendarEvents(
   calYear: number,
   calMonth: number,
   getSubStartDayFn: (email: string, fallback: number | null) => number | null,
-  personalSub: PersonalSubSettings,
-  isExtraShareOnFn: (email: string, svcType: string) => boolean,
 ): CalendarEvent[] {
   const events: CalendarEvent[] = [];
   const monthEnd = new Date(calYear, calMonth + 1, 0, 23, 59, 59);
   const daysInMonth = monthEnd.getDate();
 
-  // ── 개인 추가 구독 이벤트 ──
-  const personalItems: { key: keyof PersonalSubSettings; label: string; dayKey: keyof PersonalSubSettings }[] = [
-    { key: 'netflix', label: '넷플릭스 추가 공유 (개인)', dayKey: 'netflixDay' },
-    { key: 'tving',   label: '티빙 추가 공유 (개인)',   dayKey: 'tvingDay' },
-    { key: 'disney',  label: '디즈니+ 추가 공유 (개인)', dayKey: 'disneyDay' },
-  ];
-  for (const item of personalItems) {
-    if (personalSub[item.key]) {
-      const day = Math.min(personalSub[item.dayKey] as number, daysInMonth);
-      events.push({
-        day, type: 'expense',
-        label: item.label,
-        amount: PERSONAL_SUB_COSTS[item.key as string],
-        serviceType: item.key as string,
-      });
-    }
-  }
-
   for (const svc of profits) {
     const unitCost = getSubscriptionCost(svc.serviceType);
 
     for (const acct of svc.accounts) {
-      // 파티별 추가공유 ON/OFF
-      const extraOn = isExtraShareOnFn(acct.email, svc.serviceType);
-      const unitExtraCost = extraOn ? (EXTRA_COST[svc.serviceType] || 0) : 0;
-      const unitExtraIncome = extraOn ? (EXTRA_INCOME[svc.serviceType] || 0) : 0;
+
       // ── 이 계정의 전체 파티원 중 가장 이른 startDate / 가장 늦은 endDate ──
       let latestEnd: Date | null = null;
       let earliestStart: Date | null = null;
@@ -556,12 +466,12 @@ export function buildCalendarEvents(
 
       if (!subStartDay || !latestEnd) continue;
 
-      // ── 구독료/자리공유 이벤트 ──
+      // ── 구독료 이벤트 ──
       // 결제일 = subStartDay (매월 고정)
       // 결제 범위: earliestStart 이후 ~ latestEnd 이전 (당일 미포함)
       // 예) 3/15 시작, 6/14 종료, 결제일=15
       //   → 3/15 O, 4/15 O, 5/15 O, 6/15 X (6/14 < 6/15)  → 총 3회
-      if (unitCost > 0 || unitExtraCost > 0 || unitExtraIncome > 0) {
+      if (unitCost > 0) {
         const thisMonthPayDate = new Date(calYear, calMonth, subStartDay);
         // 결제일이 latestEnd 보다 이전이어야 함 (latestEnd 당일 이후 결제 없음)
         const payBeforeEnd = thisMonthPayDate < latestEnd;
@@ -583,20 +493,7 @@ export function buildCalendarEvents(
               amount: unitCost, serviceType: svc.serviceType,
             });
           }
-          if (unitExtraCost > 0) {
-            events.push({
-              day: subStartDay, type: 'expense',
-              label: `${svc.serviceType} 자리 공유 비용 · ${emailShort}`,
-              amount: unitExtraCost, serviceType: svc.serviceType,
-            });
-          }
-          if (unitExtraIncome > 0) {
-            events.push({
-              day: subStartDay, type: 'extra',
-              label: `${svc.serviceType} 자리 공유 수입 · ${emailShort}`,
-              amount: unitExtraIncome, serviceType: svc.serviceType,
-            });
-          }
+
         }
       }
 
@@ -649,43 +546,6 @@ export default function ProfitPage() {
   const [subStartInput, setSubStartInput] = useState('');
   const [showSubSettings, setShowSubSettings] = useState(false);
 
-  // 개인 추가 구독
-  const [personalSub, setPersonalSub] = useState<PersonalSubSettings>(loadPersonalSub);
-
-  // 파티별 추가공유 ON/OFF (pendingExtraShare = 저장 전 임시값)
-  const [extraShare, setExtraShare] = useState<ExtraShareMap>(loadExtraShareFromStorage);
-  const [pendingExtraShare, setPendingExtraShare] = useState<ExtraShareMap>(loadExtraShareFromStorage);
-  const [extraShareDirty, setExtraShareDirty] = useState(false);
-  const [extraShareSaved, setExtraShareSaved] = useState(false);
-
-  // 추가공유 메모 (계정 추가공유 링크 저장)
-  const [extraShareMemos, setExtraShareMemos] = useState<Record<string, string>>(() => {
-    try { return JSON.parse(localStorage.getItem('extraShareMemos') || '{}'); } catch { return {}; }
-  });
-  const getExtraShareMemoKey = (email: string, svcType: string) => `${email}__${svcType}`;
-  const updateExtraShareMemo = (email: string, svcType: string, value: string) => {
-    const key = getExtraShareMemoKey(email, svcType);
-    const next = { ...extraShareMemos, [key]: value };
-    setExtraShareMemos(next);
-    localStorage.setItem('extraShareMemos', JSON.stringify(next));
-  };
-
-  const togglePendingExtraShare = (email: string, svcType: string) => {
-    const next = _toggle(pendingExtraShare, email, svcType);
-    setPendingExtraShare(next);
-    setExtraShareDirty(true);
-    setExtraShareSaved(false);
-  };
-  const saveExtraShareChanges = () => {
-    setExtraShare(pendingExtraShare);
-    saveExtraShareToStorage(pendingExtraShare);
-    setExtraShareDirty(false);
-    setExtraShareSaved(true);
-    setTimeout(() => setExtraShareSaved(false), 2000);
-  };
-  const isExtraOn = (email: string, svcType: string) => getExtraShareOn(extraShare, email, svcType);
-  const isPendingOn = (email: string, svcType: string) => getExtraShareOn(pendingExtraShare, email, svcType);
-
   const now = new Date();
   const [calYear, setCalYear] = useState(now.getFullYear());
   const [calMonth, setCalMonth] = useState(now.getMonth());
@@ -719,12 +579,6 @@ export default function ProfitPage() {
       .finally(() => setAliasLoading(false));
   }, []);
 
-  const updatePersonalSub = (patch: Partial<PersonalSubSettings>) => {
-    const next = { ...personalSub, ...patch };
-    setPersonalSub(next);
-    savePersonalSub(next);
-  };
-
   const updateSubStart = (email: string, day: number) => {
     const next = { ...subStarts, [email]: day };
     setSubStarts(next);
@@ -756,39 +610,24 @@ export default function ProfitPage() {
 
   // 자동 쿠키가 항상 있으므로 빈 상태 가드 제거됨
 
-  const profits = data ? calcServiceProfits(data, calcMode, now, getSubStartDay, isExtraOn) : [];
-  const totalPartyIncome = profits.reduce((s, p) => s + p.partyIncome, 0);
-  // 총수익 = 파티수입(수수료 차감) + 추가공유 수익
-  const totalIncome = profits.reduce((s, p) => s + p.netPartyIncome + p.extraIncome, 0);
-  // 파티유지비용 = 구독료 + 추가공유 지출
-  const totalExpense = profits.reduce((s, p) => s + p.subscriptionCost + p.extraCostTotal, 0);
+  const profits = data ? calcServiceProfits(data, calcMode, now, getSubStartDay) : [];
+  const totalIncome = profits.reduce((s, p) => s + p.netPartyIncome, 0);
+  const totalExpense = profits.reduce((s, p) => s + p.subscriptionCost, 0);
   const totalCommission = profits.reduce((s, p) => s + p.commission, 0);
   // 순수익 = 총수익 - 파티유지비용
   const totalNet = totalIncome - totalExpense;
   const totalRealizedIncome = profits.reduce((s, p) => s + p.realizedIncome, 0); // 확정 수입 (수수료 전)
-  const totalRealizedNet = Math.round(totalRealizedIncome * (1 - COMMISSION_RATE)); // 수수료 차감 후
-  const calEvents = data ? buildCalendarEvents(profits, calcMode, now, calYear, calMonth, getSubStartDay, personalSub, isExtraOn) : [];
+
+  const calEvents = data ? buildCalendarEvents(profits, calcMode, now, calYear, calMonth, getSubStartDay) : [];
 
   // 일당 핵심 지표
   const totalDailyIncome = profits.reduce((s, p) => s + p.dailyIncome, 0); // 일 총수입
   const totalDailyCommission = Math.round(totalDailyIncome * COMMISSION_RATE); // 일 수수료
   const totalDailySub = profits.reduce((s, p) => {
     const unit = getSubscriptionCost(p.serviceType);
-    return s + Math.round((unit * p.accountCount) / 30);
+    return s + Math.round((unit * p.maintainedAccountCount) / 30);
   }, 0); // 일 구독료 (월 구독료 ÷ 30)
-  const totalDailyExtraIncome = profits.reduce((s, p) => {
-    // 계정별 ON인 것만 합산
-    const onCount = p.accounts.filter(a => isExtraOn(a.email, p.serviceType)).length;
-    const unit = EXTRA_INCOME[p.serviceType] || 0;
-    return s + Math.round((unit * onCount) / 30);
-  }, 0);
-  const totalDailyExtraCost = profits.reduce((s, p) => {
-    const onCount = p.accounts.filter(a => isExtraOn(a.email, p.serviceType)).length;
-    const unit = EXTRA_COST[p.serviceType] || 0;
-    return s + Math.round((unit * onCount) / 30);
-  }, 0);
-  const totalDailyExtra = totalDailyExtraIncome - totalDailyExtraCost;
-  const totalDailyNet = Math.round(totalDailyIncome) - totalDailyCommission - totalDailySub + totalDailyExtra;
+  const totalDailyNet = Math.round(totalDailyIncome) - totalDailyCommission - totalDailySub;
 
   const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
   const firstDow = new Date(calYear, calMonth, 1).getDay();
@@ -814,13 +653,13 @@ export default function ProfitPage() {
     thismonth: {
       label: `${now.getMonth() + 1}월 실발생`,
       badge: `${now.getMonth() + 1}월`,
-      desc: `이번 달 이용일수 × 일할 수입 + 구독료 1회 + 추가수익 1회.`,
+      desc: `이번 달 이용일수 × 일할 수입에서 현재 유지 계정 구독료 1회를 차감.`,
       color: '#059669',
     },
     monthly30: {
-      label: '30일 환산',
-      badge: '월 환산',
-      desc: '일당 × 30일 수입 + 구독료 1회 + 추가수익 1회. 계약 기간 관계없이 월 단위 비교 가능.',
+      label: '기존 파티 30일 연장',
+      badge: '기존 파티 30일 연장',
+      desc: '현재 이용 중인 기존 파티의 구성원·가격을 그대로 30일 연장하고, 해당 계정 구독료 1회만 차감. 판매 중 슬롯과 미판매 계정은 제외.',
       color: '#2563EB',
     },
   };
@@ -912,7 +751,7 @@ export default function ProfitPage() {
               </div>
               <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 6 }}>매일 고정비 차감 후 실제 손에 쥐는 금액</div>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 6 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
               <div style={{ background: '#ECFDF5', borderRadius: 10, padding: '8px 4px', textAlign: 'center' }}>
                 <div style={{ fontSize: 13, fontWeight: 700, color: '#059669' }}>{Math.round(totalDailyIncome).toLocaleString()}</div>
                 <div style={{ fontSize: 9, color: '#6B7280', marginTop: 2 }}>일 수입</div>
@@ -925,10 +764,7 @@ export default function ProfitPage() {
                 <div style={{ fontSize: 13, fontWeight: 700, color: '#EF4444' }}>-{totalDailySub.toLocaleString()}</div>
                 <div style={{ fontSize: 9, color: '#6B7280', marginTop: 2 }}>구독료/일</div>
               </div>
-              <div style={{ background: '#ECFDF5', borderRadius: 10, padding: '8px 4px', textAlign: 'center' }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: '#059669' }}>+{totalDailyExtra.toLocaleString()}</div>
-                <div style={{ fontSize: 9, color: '#6B7280', marginTop: 2 }}>추가/일</div>
-              </div>
+
             </div>
             <div style={{ marginTop: 10, background: '#F8F6FF', borderRadius: 8, padding: '6px 10px', textAlign: 'center', fontSize: 11, color: '#7C3AED', fontWeight: 600 }}>
               30일 환산 ≈ {totalDailyNet >= 0 ? '+' : ''}{(totalDailyNet * 30).toLocaleString()}원/월
@@ -992,8 +828,8 @@ export default function ProfitPage() {
               return (
                 <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
                   {others.map(m => {
-                    const op = calcServiceProfits(data, m, now, getSubStartDay, isExtraOn);
-                    const oNet = op.reduce((s, p) => s + (p.netPartyIncome + p.extraIncome) - (p.subscriptionCost + p.extraCostTotal), 0);
+                    const op = calcServiceProfits(data, m, now, getSubStartDay);
+                    const oNet = op.reduce((s, p) => s + p.netProfit, 0);
                     return (
                       <button key={m} onClick={() => setCalcMode(m)} style={{
                         flex: 1, background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.25)',
@@ -1075,9 +911,7 @@ export default function ProfitPage() {
                       {[
                         { label: `파티원 수입 (${meta.badge})`, value: svc.partyIncome, sign: 1 },
                         { label: `수수료 (10%)`, value: svc.commission, sign: -1 },
-                        ...(svc.extraIncome > 0 ? [{ label: `추가공유 수익`, value: svc.extraIncome, sign: 1 }] : []),
-                        ...(svc.subscriptionCost > 0 ? [{ label: `구독료 (${fmtMoneyPlain(getSubscriptionCost(svc.serviceType))}/월 × ${svc.accountCount}개${calcMode === 'snapshot' ? ' × ' + (getSubscriptionCost(svc.serviceType) > 0 ? Math.round(svc.subscriptionCost / getSubscriptionCost(svc.serviceType) / svc.accountCount) : Math.ceil(svc.avgPartyDays/30)) + '개월' : ''})`, value: svc.subscriptionCost, sign: -1 }] : []),
-                        ...(svc.extraCostTotal > 0 ? [{ label: `추가공유 지출`, value: svc.extraCostTotal, sign: -1 }] : []),
+                        ...(svc.subscriptionCost > 0 ? [{ label: `구독료 (${fmtMoneyPlain(getSubscriptionCost(svc.serviceType))}/월 × ${svc.maintainedAccountCount}개${calcMode === 'snapshot' ? ' × ' + (getSubscriptionCost(svc.serviceType) > 0 && svc.maintainedAccountCount > 0 ? Math.round(svc.subscriptionCost / getSubscriptionCost(svc.serviceType) / svc.maintainedAccountCount) : Math.ceil(svc.avgPartyDays/30)) + '개월' : ''})`, value: svc.subscriptionCost, sign: -1 }] : []),
                       ].map((row, i) => (
                         <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                           <span style={{ fontSize: 12, color: '#6B7280', display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -1272,8 +1106,6 @@ export default function ProfitPage() {
               {Array.from({ length: daysInMonth }).map((_, i) => {
                 const day = i + 1;
                 const de = calEvents.filter(e => e.day === day);
-                const hasExp = de.some(e => e.type === 'expense');
-                const hasInc = de.some(e => e.type === 'income' || e.type === 'extra');
                 const isSel = selectedDay === day;
                 const isToday = day === now.getDate() && calMonth === now.getMonth() && calYear === now.getFullYear();
                 return (
@@ -1357,7 +1189,7 @@ export default function ProfitPage() {
             </div>
           )}
 
-          {/* ─── 구독 설정 (파티 구독일 + 개인 추가 구독 통합) ─── */}
+          {/* ─── 유지 계정 결제일 설정 ─── */}
           {profits.length > 0 && (
             <div style={{ background: '#fff', borderRadius: 16, overflow: 'hidden', boxShadow: '0 2px 12px rgba(167,139,250,0.08)', border: '1.5px solid #EDE9FE', marginBottom: 14 }}>
               <button
@@ -1370,35 +1202,13 @@ export default function ProfitPage() {
                 {!aliasLoading && Object.keys(aliasMap).length > 0 && (
                   <span style={{ fontSize: 11, background: '#ECFDF5', color: '#059669', borderRadius: 6, padding: '2px 8px', fontWeight: 600 }}>SL연동</span>
                 )}
-                {(personalSub.netflix || personalSub.tving || personalSub.disney) && (
-                  <span style={{ fontSize: 11, background: '#EDE9FE', color: '#7C3AED', borderRadius: 6, padding: '2px 8px', fontWeight: 600 }}>
-                    개인 -{[['netflix',personalSub.netflix],['tving',personalSub.tving],['disney',personalSub.disney]].filter(([,v])=>v).reduce((s,[k])=>s+PERSONAL_SUB_COSTS[k as string],0).toLocaleString()}원
-                  </span>
-                )}
+
                 {showSubSettings ? <ChevronDown size={15} color="#A78BFA" /> : <ChevronRight size={15} color="#A78BFA" />}
               </button>
 
               {showSubSettings && (
                 <div style={{ borderTop: '1px solid #F3F0FF', padding: '12px 16px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
 
-                  {/* 추가공유 저장 버튼 */}
-                  {extraShareDirty && (
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, background: "#FFFBEB", borderRadius: 10, padding: "8px 12px", border: "1px solid #FDE68A" }}>
-                      <span style={{ fontSize: 12, color: "#D97706", flex: 1, fontWeight: 600 }}>추가공유 설정이 변경됐어요</span>
-                      <button
-                        onClick={saveExtraShareChanges}
-                        style={{ background: "#7C3AED", color: "#fff", border: "none", borderRadius: 8, padding: "6px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5 }}
-                      >
-                        <Check size={13} strokeWidth={3} /> 저장
-                      </button>
-                    </div>
-                  )}
-                  {extraShareSaved && (
-                    <div style={{ display: "flex", alignItems: "center", gap: 6, background: "#ECFDF5", borderRadius: 10, padding: "8px 12px" }}>
-                      <Check size={13} color="#059669" strokeWidth={3} />
-                      <span style={{ fontSize: 12, color: "#059669", fontWeight: 600 }}>저장 완료! 수익 계산에 반영됐어요</span>
-                    </div>
-                  )}
                   {/* 안내 텍스트 */}
                   <div style={{ fontSize: 11, color: '#9CA3AF', lineHeight: 1.6 }}>
                     각 파티 이메일의 구독 시작일(캘린더 지출 기준일)을 설정해요.<br />
@@ -1456,9 +1266,7 @@ export default function ProfitPage() {
                       if (ed && (!latestEnd || ed > latestEnd)) latestEnd = ed;
                       if (sd && (!earliestStart || sd < earliestStart)) earliestStart = sd;
                     }
-                    const unitCost = getSubscriptionCost(svc.serviceType);
-                    const unitExtraCost = EXTRA_COST[svc.serviceType] || 0;
-                    const perPayment = unitCost + unitExtraCost;
+                    const perPayment = getSubscriptionCost(svc.serviceType);
 
                     // countPayments 헬퍼로 정확한 결제 횟수 계산
                     const payCount = (earliestStart && latestEnd)
@@ -1483,8 +1291,6 @@ export default function ProfitPage() {
                       : null;
 
                     const logo = svcLogo(svc.serviceType);
-                    const { color: svcClr } = svcColor(svc.serviceType);
-
                     return (
                       <div key={acct.email} style={{ background: '#F8F6FF', borderRadius: 12, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
                         {/* 이메일 + 서비스 */}
@@ -1584,61 +1390,6 @@ export default function ProfitPage() {
                           </div>
                         )}
 
-                        {/* 파티별 추가공유 ON/OFF */}
-                        {(EXTRA_INCOME[svc.serviceType] || EXTRA_COST[svc.serviceType]) ? (
-                          <>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: isPendingOn(acct.email, svc.serviceType) ? '#F0FDF4' : '#F9FAFB', borderRadius: 8, padding: '7px 10px' }}>
-                            <span style={{ fontSize: 11, color: '#6B7280', flex: 1 }}>
-                              추가공유
-                              {EXTRA_INCOME[svc.serviceType] ? <span style={{ color: '#059669', fontWeight: 600 }}> +{EXTRA_INCOME[svc.serviceType].toLocaleString()}</span> : ''}
-                              {EXTRA_COST[svc.serviceType] ? <span style={{ color: '#EF4444' }}> / -{EXTRA_COST[svc.serviceType].toLocaleString()}</span> : ''}
-                            </span>
-                            <button
-                              onClick={() => togglePendingExtraShare(acct.email, svc.serviceType)}
-                              style={{
-                                width: 40, height: 22, borderRadius: 11, border: 'none', cursor: 'pointer',
-                                background: isPendingOn(acct.email, svc.serviceType) ? '#059669' : '#D1D5DB',
-                                position: 'relative', flexShrink: 0, transition: 'background 0.2s',
-                              }}
-                            >
-                              <div style={{
-                                position: 'absolute', top: 3, left: isPendingOn(acct.email, svc.serviceType) ? 20 : 3,
-                                width: 16, height: 16, borderRadius: '50%', background: '#fff',
-                                transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
-                              }} />
-                            </button>
-                            <span style={{ fontSize: 10, color: isPendingOn(acct.email, svc.serviceType) ? '#059669' : '#9CA3AF', fontWeight: 600, minWidth: 20 }}>
-                              {isPendingOn(acct.email, svc.serviceType) ? 'ON' : 'OFF'}
-                            </span>
-                          </div>
-                          {/* 추가공유 ON일 때 계정 링크 메모 */}
-                          {isPendingOn(acct.email, svc.serviceType) && (
-                            <div style={{ background: '#F0FDF4', borderRadius: 8, padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                              <span style={{ fontSize: 10, color: '#059669', fontWeight: 600 }}>📋 계정 추가공유 링크</span>
-                              <input
-                                type="text"
-                                value={extraShareMemos[getExtraShareMemoKey(acct.email, svc.serviceType)] || ''}
-                                onChange={e => updateExtraShareMemo(acct.email, svc.serviceType, e.target.value)}
-                                placeholder="추가공유 초대 링크를 붙여넣으세요"
-                                style={{
-                                  width: '100%', fontSize: 11, padding: '5px 8px', borderRadius: 6,
-                                  border: '1px solid #A7F3D0', outline: 'none', background: '#fff',
-                                  color: '#1E1B4B', boxSizing: 'border-box',
-                                }}
-                              />
-                              {extraShareMemos[getExtraShareMemoKey(acct.email, svc.serviceType)] && (
-                                <a
-                                  href={extraShareMemos[getExtraShareMemoKey(acct.email, svc.serviceType)]}
-                                  target="_blank" rel="noopener noreferrer"
-                                  style={{ fontSize: 10, color: '#059669', textDecoration: 'underline', wordBreak: 'break-all' }}
-                                >
-                                  링크 열기 →
-                                </a>
-                              )}
-                            </div>
-                          )}
-                          </>
-                        ) : null}
                       </div>
                     );
                   })}
@@ -1646,52 +1397,6 @@ export default function ProfitPage() {
                       );
                     })}
 
-                  {/* ── 구분선 ── */}
-                  <div style={{ height: 1, background: '#EDE9FE', margin: '2px 0' }} />
-
-                  {/* ── 개인 추가 구독 (공통) ── */}
-                  <div style={{ fontSize: 12, fontWeight: 700, color: '#7C3AED', marginBottom: 2 }}>
-                    개인 추가 공유 구독
-                    {(personalSub.netflix || personalSub.tving || personalSub.disney) && (
-                      <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 400, color: '#9CA3AF' }}>
-                        월 -{[['netflix',personalSub.netflix],['tving',personalSub.tving],['disney',personalSub.disney]].filter(([,v])=>v).reduce((s,[k])=>s+PERSONAL_SUB_COSTS[k as string],0).toLocaleString()}원
-                      </span>
-                    )}
-                  </div>
-                  <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: -6, marginBottom: 2 }}>내가 직접 결제하는 OTT 추가 공유 비용 (캘린더 지출에 반영)</div>
-                  {([
-                    { key: 'netflix' as const, dayKey: 'netflixDay' as const, label: '넷플릭스 추가 공유', cost: PERSONAL_SUB_COSTS.netflix, color: '#E50914' },
-                    { key: 'tving'   as const, dayKey: 'tvingDay'   as const, label: '티빙 추가 공유',   cost: PERSONAL_SUB_COSTS.tving,   color: '#FF153C' },
-                    { key: 'disney'  as const, dayKey: 'disneyDay'  as const, label: '디즈니+ 추가 공유', cost: PERSONAL_SUB_COSTS.disney,  color: '#1A3E8C' },
-                  ] as const).map(item => (
-                    <div key={item.key} style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#F8F6FF', borderRadius: 10, padding: '9px 12px' }}>
-                      <button
-                        onClick={() => updatePersonalSub({ [item.key]: !personalSub[item.key] } as any)}
-                        style={{ width: 22, height: 22, borderRadius: 6, border: `2px solid ${personalSub[item.key] ? item.color : '#D1D5DB'}`, background: personalSub[item.key] ? item.color : '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
-                      >
-                        {personalSub[item.key] && <Check size={13} color="#fff" strokeWidth={3} />}
-                      </button>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: '#1E1B4B' }}>{item.label}</div>
-                        <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 2 }}>{item.cost.toLocaleString()}원/월</div>
-                      </div>
-                      {personalSub[item.key] && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <span style={{ fontSize: 11, color: '#9CA3AF' }}>결제일</span>
-                          <input
-                            type="number" min={1} max={28}
-                            value={personalSub[item.dayKey]}
-                            onChange={e => {
-                              const v = Math.max(1, Math.min(28, parseInt(e.target.value) || 1));
-                              updatePersonalSub({ [item.dayKey]: v } as any);
-                            }}
-                            style={{ width: 44, padding: '4px 6px', borderRadius: 6, border: '1.5px solid #EDE9FE', fontSize: 12, textAlign: 'center', fontFamily: 'inherit', color: '#1E1B4B', background: '#fff' }}
-                          />
-                          <span style={{ fontSize: 11, color: '#9CA3AF' }}>일</span>
-                        </div>
-                      )}
-                    </div>
-                  ))}
                 </div>
               )}
             </div>
@@ -1701,13 +1406,13 @@ export default function ProfitPage() {
             <div style={{ fontWeight: 600, color: '#7C3AED', marginBottom: 4 }}>계산 기준</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
               <div><span style={{ color: '#7C3AED', fontWeight: 600 }}>현재 스냅샷</span> — 파티 전체 기간의 총 손익. 구독료는 기간 내 월 수만큼 차감.</div>
-              <div><span style={{ color: '#059669', fontWeight: 600 }}>{now.getMonth() + 1}월 실발생</span> — 이번 달 이용일수 × 일할 수입 + 구독료 1회 + 추가수익 1회</div>
-              <div><span style={{ color: '#2563EB', fontWeight: 600 }}>30일 환산</span> — 일당 × 30일 + 구독료 1회 + 추가수익 1회 (월 기준 정규화)</div>
+              <div><span style={{ color: '#059669', fontWeight: 600 }}>{now.getMonth() + 1}월 실발생</span> — 이번 달 이용일수 × 일할 수입 - 현재 유지 계정 구독료 1회</div>
+              <div><span style={{ color: '#2563EB', fontWeight: 600 }}>기존 파티 그대로 30일 연장</span> — 현재 이용 중인 구성원·가격의 30일 수입 - 해당 계정 구독료 1회 (판매 중 슬롯·미판매 계정 제외)</div>
               <div style={{ borderTop: '1px solid #EDE9FE', paddingTop: 4, marginTop: 2 }}>
                 수입: 전체 이용기간 총액을 이용일별로 나눈 일할 수입<br />
                 수수료: 수입의 10% (정산 시 차감)<br />
                 구독료: 넷플 17,000/월 · 디즈니+ 18,000/월 · 웨이브+티빙 번들 19,000/월 (매월 고정)<br />
-                자리 공유: 티빙 -15,000+24,000/월 · 넷플 -10,000+18,000/월 · 디즈니+ +5,000/월 · 왓챠 +12,000/월<br />
+
                 구독일: SimpleLogin 가입일 자동 적용 (캘린더 아래 설정에서 수정 가능)
               </div>
             </div>
@@ -1734,18 +1439,10 @@ export function MonthlyCalendarWidget({ data }: { data: ManageData }) {
   const [editingSubStart, setEditingSubStart] = useState<string | null>(null);
   const [subStartInput, setSubStartInput] = useState('');
   const [showSubSettings, setShowSubSettings] = useState(false);
-  const [personalSub, setPersonalSub] = useState<PersonalSubSettings>(loadPersonalSub);
   const [calYear, setCalYear] = useState(now.getFullYear());
   const [calMonth, setCalMonth] = useState(now.getMonth());
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
-  const [manuals, setManuals] = useState<ManualMember[]>([]);
 
-  useEffect(() => {
-    fetch('/api/manual-members')
-      .then(r => r.json())
-      .then((d: any) => setManuals(d.members || []))
-      .catch(() => {});
-  }, []);
 
   useEffect(() => {
     setAliasLoading(true);
@@ -1762,12 +1459,6 @@ export function MonthlyCalendarWidget({ data }: { data: ManageData }) {
       .finally(() => setAliasLoading(false));
   }, []);
 
-  const updatePersonalSub = (patch: Partial<PersonalSubSettings>) => {
-    const next = { ...personalSub, ...patch };
-    setPersonalSub(next);
-    savePersonalSub(next);
-  };
-
   const updateSubStart = (email: string, day: number) => {
     const next = { ...subStarts, [email]: day };
     setSubStarts(next);
@@ -1780,41 +1471,8 @@ export function MonthlyCalendarWidget({ data }: { data: ManageData }) {
     return fallback;
   };
 
-  // 홈에서도 저장된 extraShare 반영
-  const [extraShareWidget, setExtraShareWidget] = useState<ExtraShareMap>(loadExtraShareFromStorage);
-  const [pendingExtraShareWidget, setPendingExtraShareWidget] = useState<ExtraShareMap>(loadExtraShareFromStorage);
-  const [extraShareWidgetDirty, setExtraShareWidgetDirty] = useState(false);
-  const [extraShareWidgetSaved, setExtraShareWidgetSaved] = useState(false);
-  const togglePendingWidget = (email: string, svcType: string) => {
-    const next = _toggle(pendingExtraShareWidget, email, svcType);
-    setPendingExtraShareWidget(next);
-    setExtraShareWidgetDirty(true);
-    setExtraShareWidgetSaved(false);
-  };
-  const saveWidgetExtraShare = () => {
-    setExtraShareWidget(pendingExtraShareWidget);
-    saveExtraShareToStorage(pendingExtraShareWidget);
-    setExtraShareWidgetDirty(false);
-    setExtraShareWidgetSaved(true);
-    setTimeout(() => setExtraShareWidgetSaved(false), 2000);
-  };
-  const isWidgetExtraOn = (email: string, svcType: string) => getExtraShareOn(extraShareWidget, email, svcType);
-  const isPendingWidgetOn = (email: string, svcType: string) => getExtraShareOn(pendingExtraShareWidget, email, svcType);
-
-  // 추가공유 메모 (Widget용)
-  const [extraShareMemos, setExtraShareMemos] = useState<Record<string, string>>(() => {
-    try { return JSON.parse(localStorage.getItem('extraShareMemos') || '{}'); } catch { return {}; }
-  });
-  const getExtraShareMemoKey = (email: string, svcType: string) => `${email}__${svcType}`;
-  const updateExtraShareMemo = (email: string, svcType: string, value: string) => {
-    const key = getExtraShareMemoKey(email, svcType);
-    const next = { ...extraShareMemos, [key]: value };
-    setExtraShareMemos(next);
-    localStorage.setItem('extraShareMemos', JSON.stringify(next));
-  };
-
-  const profits = calcServiceProfits(data, "snapshot", now, getSubStartDay, isWidgetExtraOn);
-  const calEvents = buildCalendarEvents(profits, "snapshot", now, calYear, calMonth, getSubStartDay, personalSub, isWidgetExtraOn);
+  const profits = calcServiceProfits(data, "snapshot", now, getSubStartDay);
+  const calEvents = buildCalendarEvents(profits, "snapshot", now, calYear, calMonth, getSubStartDay);
 
   const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
   const firstDow = new Date(calYear, calMonth, 1).getDay();
@@ -1967,31 +1625,11 @@ export function MonthlyCalendarWidget({ data }: { data: ManageData }) {
             {!aliasLoading && Object.keys(aliasMap).length > 0 && (
               <span style={{ fontSize: 11, background: '#ECFDF5', color: '#059669', borderRadius: 6, padding: '2px 8px', fontWeight: 600 }}>SL연동</span>
             )}
-            {(personalSub.netflix || personalSub.tving || personalSub.disney) && (
-              <span style={{ fontSize: 11, background: '#EDE9FE', color: '#7C3AED', borderRadius: 6, padding: '2px 8px', fontWeight: 600 }}>
-                개인 -{[['netflix',personalSub.netflix],['tving',personalSub.tving],['disney',personalSub.disney]].filter(([,v])=>v).reduce((s,[k])=>s+PERSONAL_SUB_COSTS[k as string],0).toLocaleString()}원
-              </span>
-            )}
             {showSubSettings ? <ChevronDown size={15} color="#A78BFA" /> : <ChevronRight size={15} color="#A78BFA" />}
           </button>
 
           {showSubSettings && (
             <div style={{ borderTop: '1px solid #F3F0FF', padding: '12px 16px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {/* 추가공유 저장 버튼 */}
-              {extraShareWidgetDirty && (
-                <div style={{ display: "flex", alignItems: "center", gap: 8, background: "#FFFBEB", borderRadius: 10, padding: "8px 12px", border: "1px solid #FDE68A" }}>
-                  <span style={{ fontSize: 12, color: "#D97706", flex: 1, fontWeight: 600 }}>추가공유 설정이 변경됐어요</span>
-                  <button onClick={saveWidgetExtraShare} style={{ background: "#7C3AED", color: "#fff", border: "none", borderRadius: 8, padding: "6px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5 }}>
-                    <Check size={13} strokeWidth={3} /> 저장
-                  </button>
-                </div>
-              )}
-              {extraShareWidgetSaved && (
-                <div style={{ display: "flex", alignItems: "center", gap: 6, background: "#ECFDF5", borderRadius: 10, padding: "8px 12px" }}>
-                  <Check size={13} color="#059669" strokeWidth={3} />
-                  <span style={{ fontSize: 12, color: "#059669", fontWeight: 600 }}>저장 완료! 수익 계산에 반영됐어요</span>
-                </div>
-              )}
               <div style={{ fontSize: 11, color: '#9CA3AF', lineHeight: 1.6 }}>
                 각 파티 이메일의 구독 시작일(캘린더 지출 기준일)을 설정해요.<br />
                 <span style={{ color: '#059669', fontWeight: 600 }}>● SL</span> = SimpleLogin 계정 생성일 자동 적용 &nbsp;
@@ -2046,9 +1684,7 @@ export function MonthlyCalendarWidget({ data }: { data: ManageData }) {
                     if (ed && (!latestEnd || ed > latestEnd)) latestEnd = ed;
                     if (sd && (!earliestStart || sd < earliestStart)) earliestStart = sd;
                   }
-                  const unitCost = getSubscriptionCost(svc.serviceType);
-                  const unitExtraCost = EXTRA_COST[svc.serviceType] || 0;
-                  const perPayment = unitCost + unitExtraCost;
+                  const perPayment = getSubscriptionCost(svc.serviceType);
                   const payCount = (earliestStart && latestEnd) ? countPayments(earliestStart, latestEnd, effectiveDay) : 0;
                   const totalSubCost = perPayment * payCount;
                   const payDates: Date[] = [];
@@ -2136,61 +1772,6 @@ export function MonthlyCalendarWidget({ data }: { data: ManageData }) {
                           })}
                         </div>
                       )}
-                      {/* 파티별 추가공유 ON/OFF */}
-                      {(EXTRA_INCOME[svc.serviceType] || EXTRA_COST[svc.serviceType]) ? (
-                        <>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: isPendingWidgetOn(acct.email, svc.serviceType) ? '#F0FDF4' : '#F9FAFB', borderRadius: 8, padding: '7px 10px' }}>
-                          <span style={{ fontSize: 11, color: '#6B7280', flex: 1 }}>
-                            {svc.serviceType} 추가공유
-                            {EXTRA_INCOME[svc.serviceType] ? <span style={{ color: '#059669', fontWeight: 600 }}> +{EXTRA_INCOME[svc.serviceType].toLocaleString()}</span> : ''}
-                            {EXTRA_COST[svc.serviceType] ? <span style={{ color: '#EF4444' }}> / -{EXTRA_COST[svc.serviceType].toLocaleString()}</span> : ''}
-                          </span>
-                          <button
-                            onClick={() => togglePendingWidget(acct.email, svc.serviceType)}
-                            style={{
-                              width: 40, height: 22, borderRadius: 11, border: 'none', cursor: 'pointer',
-                              background: isPendingWidgetOn(acct.email, svc.serviceType) ? '#059669' : '#D1D5DB',
-                              position: 'relative', flexShrink: 0, transition: 'background 0.2s',
-                            }}
-                          >
-                            <div style={{
-                              position: 'absolute', top: 3, left: isPendingWidgetOn(acct.email, svc.serviceType) ? 20 : 3,
-                              width: 16, height: 16, borderRadius: '50%', background: '#fff',
-                              transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
-                            }} />
-                          </button>
-                          <span style={{ fontSize: 10, color: isPendingWidgetOn(acct.email, svc.serviceType) ? '#059669' : '#9CA3AF', fontWeight: 600, minWidth: 20 }}>
-                            {isPendingWidgetOn(acct.email, svc.serviceType) ? 'ON' : 'OFF'}
-                          </span>
-                        </div>
-                        {/* 추가공유 ON일 때 계정 링크 메모 */}
-                        {isPendingWidgetOn(acct.email, svc.serviceType) && (
-                          <div style={{ background: '#F0FDF4', borderRadius: 8, padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                            <span style={{ fontSize: 10, color: '#059669', fontWeight: 600 }}>📋 계정 추가공유 링크</span>
-                            <input
-                              type="text"
-                              value={extraShareMemos[getExtraShareMemoKey(acct.email, svc.serviceType)] || ''}
-                              onChange={e => updateExtraShareMemo(acct.email, svc.serviceType, e.target.value)}
-                              placeholder="추가공유 초대 링크를 붙여넣으세요"
-                              style={{
-                                width: '100%', fontSize: 11, padding: '5px 8px', borderRadius: 6,
-                                border: '1px solid #A7F3D0', outline: 'none', background: '#fff',
-                                color: '#1E1B4B', boxSizing: 'border-box',
-                              }}
-                            />
-                            {extraShareMemos[getExtraShareMemoKey(acct.email, svc.serviceType)] && (
-                              <a
-                                href={extraShareMemos[getExtraShareMemoKey(acct.email, svc.serviceType)]}
-                                target="_blank" rel="noopener noreferrer"
-                                style={{ fontSize: 10, color: '#059669', textDecoration: 'underline', wordBreak: 'break-all' }}
-                              >
-                                링크 열기 →
-                              </a>
-                            )}
-                          </div>
-                        )}
-                        </>
-                      ) : null}
                     </div>
                   );
                 })}
@@ -2198,43 +1779,6 @@ export function MonthlyCalendarWidget({ data }: { data: ManageData }) {
                     );
                   })}
 
-              <div style={{ height: 1, background: '#EDE9FE', margin: '2px 0' }} />
-
-              <div style={{ fontSize: 12, fontWeight: 700, color: '#7C3AED', marginBottom: 2 }}>
-                개인 추가 공유 구독
-                {(personalSub.netflix || personalSub.tving || personalSub.disney) && (
-                  <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 400, color: '#9CA3AF' }}>
-                    월 -{[['netflix',personalSub.netflix],['tving',personalSub.tving],['disney',personalSub.disney]].filter(([,v])=>v).reduce((s,[k])=>s+PERSONAL_SUB_COSTS[k as string],0).toLocaleString()}원
-                  </span>
-                )}
-              </div>
-              <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: -6, marginBottom: 2 }}>내가 직접 결제하는 OTT 추가 공유 비용 (캘린더 지출에 반영)</div>
-              {([
-                { key: 'netflix' as const, dayKey: 'netflixDay' as const, label: '넷플릭스 추가 공유', cost: PERSONAL_SUB_COSTS.netflix, color: '#E50914' },
-                { key: 'tving'   as const, dayKey: 'tvingDay'   as const, label: '티빙 추가 공유',   cost: PERSONAL_SUB_COSTS.tving,   color: '#FF153C' },
-                { key: 'disney'  as const, dayKey: 'disneyDay'  as const, label: '디즈니+ 추가 공유', cost: PERSONAL_SUB_COSTS.disney,  color: '#1A3E8C' },
-              ] as const).map(item => (
-                <div key={item.key} style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#F8F6FF', borderRadius: 10, padding: '9px 12px' }}>
-                  <button onClick={() => updatePersonalSub({ [item.key]: !personalSub[item.key] } as any)}
-                    style={{ width: 22, height: 22, borderRadius: 6, border: `2px solid ${personalSub[item.key] ? item.color : '#D1D5DB'}`, background: personalSub[item.key] ? item.color : '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    {personalSub[item.key] && <Check size={13} color="#fff" strokeWidth={3} />}
-                  </button>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: '#1E1B4B' }}>{item.label}</div>
-                    <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 2 }}>{item.cost.toLocaleString()}원/월</div>
-                  </div>
-                  {personalSub[item.key] && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <span style={{ fontSize: 11, color: '#9CA3AF' }}>결제일</span>
-                      <input type="number" min={1} max={28} value={personalSub[item.dayKey]}
-                        onChange={e => { const v = Math.max(1, Math.min(28, parseInt(e.target.value)||1)); updatePersonalSub({ [item.dayKey]: v } as any); }}
-                        style={{ width: 44, padding: '4px 6px', borderRadius: 6, border: '1.5px solid #EDE9FE', fontSize: 12, textAlign: 'center', fontFamily: 'inherit', color: '#1E1B4B', background: '#fff' }}
-                      />
-                      <span style={{ fontSize: 11, color: '#9CA3AF' }}>일</span>
-                    </div>
-                  )}
-                </div>
-              ))}
             </div>
           )}
         </div>
