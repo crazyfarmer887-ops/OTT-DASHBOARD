@@ -87,6 +87,16 @@ export interface GraytagPartyAccessDealLike {
   lenderDealStatusName?: string | null;
   startDateTime?: string | null;
   endDateTime?: string | null;
+  productTypeString?: string | null;
+}
+
+export interface PartyAccessRenewalJobLike {
+  dealUsid?: string | null;
+  productUsid?: string | null;
+  oldEnd?: string | null;
+  newEnd?: string | null;
+  status?: string | null;
+  registeredAt?: string | null;
 }
 
 const ACTIVE_PARTY_MEMBER_STATUS_CODES = new Set([
@@ -192,6 +202,18 @@ function parseDateEndOfDay(value: string | null | undefined): Date | null {
   if (m) return new Date(`${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}T23:59:59.999Z`);
   const parsed = new Date(raw);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function parseStrictCalendarDateEndOfDay(value: string | null | undefined): Date | null {
+  const raw = normalizeKeyPart(String(value || ''));
+  const match = raw.match(/^(\d{4})-?(\d{2})-?(\d{2})(?:T.*)?$/);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day, 23, 59, 59, 999));
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return null;
+  return date;
 }
 
 function compactStatusText(value: string | null | undefined): string {
@@ -472,6 +494,7 @@ export function buildPartyAccessMemberStatusRefsFromDeals(
 function inheritPaidExtensionShareTokenRecords(
   store: PartyAccessLinkStore,
   deals: GraytagPartyAccessDealLike[],
+  renewalJobs: PartyAccessRenewalJobLike[] = [],
 ): { store: PartyAccessLinkStore; changed: boolean } {
   const dealIdsByProduct = new Map<string, Set<string>>();
   for (const deal of deals) {
@@ -506,6 +529,65 @@ function inheritPaidExtensionShareTokenRecords(
     extensionByOldDealId.set(oldDealIds[0], extensions[0]);
   }
 
+  const dealsById = new Map<string, GraytagPartyAccessDealLike>();
+  for (const deal of deals) {
+    const dealUsid = normalizeKeyPart(String(deal.dealUsid || ''));
+    if (dealUsid) dealsById.set(dealUsid, deal);
+  }
+  const completedRenewalStatuses = new Set([
+    'registered',
+    'messaged',
+    'message_skipped',
+    'message_sending',
+    'message_error',
+    'message_unknown',
+  ]);
+  for (const job of renewalJobs) {
+    const oldDealId = normalizeKeyPart(String(job.dealUsid || ''));
+    const oldProductId = normalizeKeyPart(String(job.productUsid || ''));
+    const jobOldEnd = parseStrictCalendarDateEndOfDay(job.oldEnd);
+    const targetEnd = parseStrictCalendarDateEndOfDay(job.newEnd);
+    const oldDeal = dealsById.get(oldDealId);
+    const oldDealEnd = parseStrictCalendarDateEndOfDay(oldDeal?.endDateTime);
+    if (
+      !oldDealId
+      || !oldProductId
+      || !oldDeal
+      || normalizeKeyPart(String(oldDeal.productUsid || '')) !== oldProductId
+      || !job.registeredAt
+      || !completedRenewalStatuses.has(normalizeKeyPart(String(job.status || '')))
+      || !jobOldEnd
+      || !targetEnd
+      || !oldDealEnd
+      || jobOldEnd.getTime() !== oldDealEnd.getTime()
+    ) continue;
+    const oldBorrower = normalizeKeyPart(String(oldDeal.borrowerName || ''));
+    const oldService = normalizeKeyPart(String(oldDeal.productTypeString || ''));
+    if (!oldBorrower || !oldService) continue;
+    const candidates = deals.filter((deal) => {
+      const status = normalizeKeyPart(String(deal.dealStatus || ''));
+      const paidActive = status === 'ExtensionUsing'
+        || (status === 'ExtensionDelivering' && normalizeKeyPart(String(deal.lenderDealStatusName || '')) === '결제완료');
+      const extensionEnd = parseStrictCalendarDateEndOfDay(deal.endDateTime);
+      const oldEnd = oldDealEnd;
+      return paidActive
+        && normalizeKeyPart(String(deal.dealUsid || '')) !== oldDealId
+        && normalizeKeyPart(String(deal.borrowerName || '')) === oldBorrower
+        && normalizeKeyPart(String(deal.productTypeString || '')) === oldService
+        && Boolean(extensionEnd && extensionEnd.getTime() === targetEnd.getTime())
+        && Boolean(extensionEnd && oldEnd && extensionEnd.getTime() > oldEnd.getTime());
+    });
+    // ExtensionUsing drops previous-* metadata. The durable job keeps the old
+    // deal/product; exact buyer + service + paid end must identify one cycle.
+    if (candidates.length !== 1) continue;
+    const existing = extensionByOldDealId.get(oldDealId);
+    if (existing && normalizeKeyPart(String(existing.dealUsid || '')) !== normalizeKeyPart(String(candidates[0].dealUsid || ''))) {
+      extensionByOldDealId.delete(oldDealId);
+      continue;
+    }
+    extensionByOldDealId.set(oldDealId, candidates[0]);
+  }
+
   let changed = false;
   const next: PartyAccessLinkStore = { ...store };
   for (const [tokenHash, record] of Object.entries(store)) {
@@ -518,8 +600,8 @@ function inheritPaidExtensionShareTokenRecords(
         ...record.member,
         memberId: normalizeKeyPart(String(extension.dealUsid || '')),
         memberName: normalizeKeyPart(String(extension.borrowerName || record.member.memberName)) || record.member.memberName,
-        status: 'ExtensionDelivering',
-        statusName: '결제완료',
+        status: normalizeKeyPart(String(extension.dealStatus || '')),
+        statusName: normalizeKeyPart(String(extension.lenderDealStatusName || extension.dealStatus || '')),
         startDateTime: extension.startDateTime || null,
         endDateTime: extension.endDateTime || null,
       },
@@ -535,9 +617,10 @@ function inheritPaidExtensionShareTokenRecords(
 export function syncPartyAccessStoreWithGraytagDeals(input: {
   store: PartyAccessLinkStore;
   deals: GraytagPartyAccessDealLike[];
+  renewalJobs?: PartyAccessRenewalJobLike[];
   now?: string;
 }): { store: PartyAccessLinkStore; changed: boolean } {
-  const inherited = inheritPaidExtensionShareTokenRecords(input.store, input.deals || []);
+  const inherited = inheritPaidExtensionShareTokenRecords(input.store, input.deals || [], input.renewalJobs || []);
   const synced = syncPartyAccessStoreWithMembers({
     store: inherited.store,
     members: buildPartyAccessMemberStatusRefsFromDeals(input.deals || []),

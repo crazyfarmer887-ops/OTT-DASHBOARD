@@ -73,7 +73,9 @@ export default function ChatPage() {
   const [organizationLoading, setOrganizationLoading] = useState(false);
   const [organizationError, setOrganizationError] = useState<string | null>(null);
   const [organizationSavingRooms, setOrganizationSavingRooms] = useState<Record<string, boolean>>({});
+  const [headerFolderMenuOpen, setHeaderFolderMenuOpen] = useState(false);
   const msgEndRef = useRef<HTMLDivElement>(null);
+  const headerFolderMenuRef = useRef<HTMLDivElement>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const hydrationPollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const resizeRef = useRef<number>(400);
@@ -113,6 +115,26 @@ export default function ChatPage() {
     mq.addEventListener('change', sync);
     return () => mq.removeEventListener('change', sync);
   }, []);
+
+  useEffect(() => {
+    if (!headerFolderMenuOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setHeaderFolderMenuOpen(false);
+    };
+    const closeOnOutsideClick = (event: PointerEvent) => {
+      if (!headerFolderMenuRef.current?.contains(event.target as Node)) setHeaderFolderMenuOpen(false);
+    };
+    document.addEventListener('keydown', closeOnEscape);
+    document.addEventListener('pointerdown', closeOnOutsideClick);
+    return () => {
+      document.removeEventListener('keydown', closeOnEscape);
+      document.removeEventListener('pointerdown', closeOnOutsideClick);
+    };
+  }, [headerFolderMenuOpen]);
+
+  useEffect(() => {
+    setHeaderFolderMenuOpen(false);
+  }, [selectedRoom?.chatRoomUuid]);
 
   // 채팅방 목록 로드
   const loadAutoReplyLog = useCallback(async () => {
@@ -809,10 +831,14 @@ export default function ChatPage() {
 
   const renderChat = () => {
     if (!selectedRoom) return null;
+    const selectedRoomOrganizationEntry = roomOrganization.rooms[selectedRoom.chatRoomUuid];
+    const selectedRoomCategory = roomOrganization.categories.find(category => category.id === selectedRoomOrganizationEntry?.categoryId);
+    const selectedRoomFolderLabel = selectedRoomCategory?.name || '폴더 지정';
+    const selectedRoomOrganizationSaving = organizationSavingRooms[selectedRoom.chatRoomUuid] === true;
     return (
       <div style={{flex:1,height:"100%",display:"flex",flexDirection:"column",minWidth:0}}>
         {/* 헤더 */}
-        <div style={{padding:"14px 20px",borderBottom:"1px solid #F3F0FF",display:"flex",alignItems:"center",gap:12,flexShrink:0,background:"#fff"}}>
+        <div style={{padding:isMobile?"10px 12px":"14px 20px",borderBottom:"1px solid #F3F0FF",display:"flex",alignItems:"center",gap:12,flexWrap:isMobile?'wrap':'nowrap',flexShrink:0,background:"#fff"}}>
           <button onClick={()=>setSelectedRoom(null)} style={{background:"none",border:"none",cursor:"pointer",padding:4,borderRadius:6,color:"#7C3AED",display:"flex",alignItems:"center",gap:2,fontSize:12,fontWeight:800}}>
             <ChevronLeft size={22}/> {isMobile&&"목록"}
           </button>
@@ -820,9 +846,41 @@ export default function ChatPage() {
             {selectedRoom.borrowerThumbnail&&<img src={selectedRoom.borrowerThumbnail} alt="" loading="lazy" decoding="async" style={{width:"100%",height:"100%",objectFit:"cover"}}
               onError={(e)=>{(e.target as HTMLImageElement).style.display="none";}}/>}
           </div>
-          <div style={{flex:1}}>
+          <div style={{flex:1,minWidth:0}}>
             <div style={{fontSize:17,fontWeight:700,color:"#1E1B4B"}}>{selectedRoom.borrowerName}</div>
             <div style={{fontSize:11,color:"#9CA3AF",marginTop:2}}>{selectedRoom.productType} · {selectedRoom.statusName} · {selectedRoom.keepAcct}</div>
+          </div>
+          <div data-chat-header-actions style={{width:isMobile?'100%':'auto',display:'flex',alignItems:'center',justifyContent:'flex-end',gap:8,marginLeft:isMobile?'auto':0,minWidth:0,flexShrink:0}}>
+          <div ref={headerFolderMenuRef} style={{position:'relative',flexShrink:0}}>
+            <button
+              type="button"
+              aria-label="선택한 채팅방 폴더 지정"
+              aria-haspopup="menu"
+              aria-expanded={headerFolderMenuOpen}
+              disabled={selectedRoomOrganizationSaving}
+              onClick={() => setHeaderFolderMenuOpen(open => !open)}
+              style={{minHeight:44,maxWidth:isMobile?104:150,border:'1px solid #DDD6FE',borderRadius:8,padding:'0 10px',background:'#F5F3FF',color:'#6D28D9',display:'inline-flex',alignItems:'center',gap:5,cursor:selectedRoomOrganizationSaving?'wait':'pointer',fontSize:11,fontWeight:800,fontFamily:'inherit',opacity:selectedRoomOrganizationSaving?0.65:1}}
+            >
+              {selectedRoomOrganizationSaving?<Loader2 size={13} style={{animation:'spin 1s linear infinite',flexShrink:0}}/>:<Folder size={13} style={{flexShrink:0}}/>}
+              <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{selectedRoomFolderLabel}</span>
+              <ChevronDown size={12} style={{flexShrink:0,transform:headerFolderMenuOpen?'rotate(180deg)':'none'}}/>
+            </button>
+            {headerFolderMenuOpen&&(
+              <div role="menu" aria-label="폴더 선택" style={{position:'absolute',right:0,top:'calc(100% + 6px)',zIndex:30,minWidth:180,maxWidth:260,maxHeight:300,overflowY:'auto',padding:6,border:'1px solid #DDD6FE',borderRadius:10,background:'#fff',boxShadow:'0 12px 30px rgba(76,29,149,.18)'}}>
+                <button type="button" role="menuitemradio" aria-checked={!selectedRoomOrganizationEntry?.categoryId}
+                  onClick={() => { setHeaderFolderMenuOpen(false); void updateRoomOrganization(selectedRoom, { categoryId: null }); }}
+                  style={{width:'100%',minHeight:44,border:'none',borderRadius:7,padding:'8px 10px',background:!selectedRoomOrganizationEntry?.categoryId?'#EDE9FE':'transparent',color:'#4C1D95',display:'flex',alignItems:'center',gap:8,cursor:'pointer',fontSize:12,fontWeight:700,textAlign:'left'}}>
+                  <CheckCircle2 size={14} style={{opacity:!selectedRoomOrganizationEntry?.categoryId?1:0}}/> 미분류
+                </button>
+                {roomOrganization.categories.map(category => (
+                  <button key={category.id} type="button" role="menuitemradio" aria-checked={selectedRoomOrganizationEntry?.categoryId === category.id}
+                    onClick={() => { setHeaderFolderMenuOpen(false); void updateRoomOrganization(selectedRoom, { categoryId: category.id }); }}
+                    style={{width:'100%',minHeight:44,border:'none',borderRadius:7,padding:'8px 10px',background:selectedRoomOrganizationEntry?.categoryId===category.id?'#EDE9FE':'transparent',color:'#4C1D95',display:'flex',alignItems:'center',gap:8,cursor:'pointer',fontSize:12,fontWeight:700,textAlign:'left'}}>
+                    <CheckCircle2 size={14} style={{opacity:selectedRoomOrganizationEntry?.categoryId===category.id?1:0}}/> {category.name}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
           <a href={buildGraytagChatUrl(selectedRoom.chatRoomUuid)} target="_blank" rel="noreferrer" title="그레이태그 채팅방 바로가기" aria-label="그레이태그 채팅방 바로가기"
             style={{background:'#111827',color:'#fff',borderRadius:8,padding:'6px 10px',display:'inline-flex',alignItems:'center',gap:5,textDecoration:'none',fontSize:11,fontWeight:800,whiteSpace:'nowrap'}}>
@@ -830,9 +888,10 @@ export default function ChatPage() {
           </a>
           {selectedRoom.lenderChatUnread&&<button onClick={()=>markRoomRead(selectedRoom)} style={{background:"#FEF3C7",border:"none",borderRadius:8,padding:"6px 10px",cursor:"pointer",fontSize:12,color:"#B45309",fontWeight:800,fontFamily:"inherit"}}>읽음 처리</button>}
           <button onClick={()=>loadMessages(selectedRoom.chatRoomUuid,1)}
-            style={{background:"#EDE9FE",border:"none",borderRadius:8,padding:"6px 10px",cursor:"pointer",display:"flex",alignItems:"center",gap:4,fontSize:12,color:"#7C3AED",fontWeight:600,fontFamily:"inherit"}}>
+            style={{background:"#EDE9FE",border:"none",borderRadius:8,padding:"6px 10px",cursor:"pointer",display:"flex",alignItems:"center",gap:4,fontSize:12,color:"#7C3AED",fontWeight:600,fontFamily:"inherit",minHeight:44}}>
             <RefreshCw size={13}/> {!isMobile&&"새로고침"}
           </button>
+          </div>
         </div>
 
         {/* 메시지 영역 */}

@@ -51,6 +51,38 @@ test('folder move, rename, and delete controls keep 44px touch targets', () => {
   assert.match(chat, /폴더 삭제`\}[\s\S]{0,350}minWidth:44,minHeight:44/);
 });
 
+test('selected chat header exposes an accessible folder menu immediately before the Graytag shortcut', () => {
+  assert.match(chat, /aria-label="선택한 채팅방 폴더 지정"/);
+  assert.match(chat, /aria-haspopup="menu"/);
+  assert.match(chat, /aria-expanded=\{headerFolderMenuOpen\}/);
+  assert.match(chat, /aria-label="선택한 채팅방 폴더 지정"[\s\S]{0,5000}그레이태그 채팅방 바로가기/);
+  assert.match(chat, /aria-label="선택한 채팅방 폴더 지정"[\s\S]{0,700}minHeight:44/);
+});
+
+test('header folder menu identifies the current folder and assigns unclassified or a category through the existing save flow', () => {
+  assert.match(chat, /role="menu"/);
+  assert.match(chat, /role="menuitemradio"/);
+  assert.match(chat, /aria-checked=\{!selectedRoomOrganizationEntry\?\.categoryId\}/);
+  assert.match(chat, /aria-checked=\{selectedRoomOrganizationEntry\?\.categoryId === category\.id\}/);
+  assert.match(chat, /updateRoomOrganization\(selectedRoom, \{ categoryId: null \}\)/);
+  assert.match(chat, /updateRoomOrganization\(selectedRoom, \{ categoryId: category\.id \}\)/);
+  assert.match(chat, /미분류/);
+  assert.match(chat, /roomOrganization\.categories\.map/);
+});
+
+test('header folder menu closes on outside click and Escape', () => {
+  assert.match(chat, /headerFolderMenuRef/);
+  assert.match(chat, /event\.key === 'Escape'/);
+  assert.match(chat, /headerFolderMenuRef\.current\?\.contains/);
+  assert.match(chat, /setHeaderFolderMenuOpen\(false\)/);
+});
+
+test('mobile chat header wraps actions onto a separate full-width row', () => {
+  assert.match(chat, /flexWrap:isMobile\?'wrap':'nowrap'/);
+  assert.match(chat, /data-chat-header-actions/);
+  assert.match(chat, /width:isMobile\?'100%':'auto'/);
+});
+
 test('existing room selection, URL state, read state, and refresh detection remain wired', () => {
   assert.match(chat, /selectRoom\(room\)/);
   assert.match(chat, /\/dashboard\/chat\?room=/);

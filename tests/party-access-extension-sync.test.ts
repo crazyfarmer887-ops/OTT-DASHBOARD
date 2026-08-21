@@ -119,6 +119,155 @@ describe('paid Graytag extension party-access inheritance', () => {
     expect(result.store[existing.tokenHash].member.memberId).toBe('old-deal-usid');
   });
 
+  test('inherits an active ExtensionUsing cycle through the durable renewal job when Graytag drops previous metadata', () => {
+    const existing = existingBuyerLink();
+    const activeExtension = {
+      ...paidExtension,
+      previousProductUsid: undefined,
+      dealStatus: 'ExtensionUsing',
+      lenderDealStatusName: '사용중',
+      productTypeString: '넷플릭스',
+    };
+
+    const result = syncPartyAccessStoreWithGraytagDeals({
+      store: { [existing.tokenHash]: existing },
+      deals: [{ ...oldDeal, productTypeString: '넷플릭스' }, activeExtension],
+      renewalJobs: [{
+        dealUsid: oldDeal.dealUsid,
+        productUsid: oldDeal.productUsid,
+        oldEnd: oldDeal.endDateTime,
+        newEnd: '20261119T0000',
+        status: 'message_skipped',
+        registeredAt: '2026-08-01T00:00:00.000Z',
+      }],
+      now: '2026-08-22T00:00:00.000Z',
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.store[existing.tokenHash]).toMatchObject({
+      shareToken: existing.shareToken,
+      revokedAt: null,
+      member: {
+        memberId: 'new-extension-deal-usid',
+        status: 'ExtensionUsing',
+        statusName: '사용중',
+        endDateTime: '2026-11-19',
+      },
+    });
+  });
+
+  test('fails closed when the renewal job identity matches more than one active extension', () => {
+    const existing = existingBuyerLink();
+    const activeExtension = {
+      ...paidExtension,
+      previousProductUsid: undefined,
+      dealStatus: 'ExtensionUsing',
+      lenderDealStatusName: '사용중',
+      productTypeString: '넷플릭스',
+    };
+    const renewalJobs = [{
+      dealUsid: oldDeal.dealUsid,
+      productUsid: oldDeal.productUsid,
+      oldEnd: oldDeal.endDateTime,
+      newEnd: '20261119T0000',
+      status: 'messaged',
+      registeredAt: '2026-08-01T00:00:00.000Z',
+    }];
+
+    const result = syncPartyAccessStoreWithGraytagDeals({
+      store: { [existing.tokenHash]: existing },
+      deals: [
+        { ...oldDeal, productTypeString: '넷플릭스' },
+        activeExtension,
+        { ...activeExtension, dealUsid: 'ambiguous-extension-deal-usid' },
+      ],
+      renewalJobs,
+      now: '2026-08-22T00:00:00.000Z',
+    });
+
+    expect(result.store[existing.tokenHash].member.memberId).toBe('old-deal-usid');
+  });
+
+  test('reopens a status-revoked old link when one paid active extension chain is proven', () => {
+    const existing = { ...existingBuyerLink(), revokedAt: '2026-08-22T00:00:00.000Z' };
+    const result = syncPartyAccessStoreWithGraytagDeals({
+      store: { [existing.tokenHash]: existing },
+      deals: [oldDeal, paidExtension],
+      now: '2026-08-22T00:00:00.000Z',
+    });
+
+    expect(result.store[existing.tokenHash].member.memberId).toBe('new-extension-deal-usid');
+    expect(result.store[existing.tokenHash].revokedAt).toBeNull();
+  });
+
+  test.each(['message_sending', 'message_error', 'message_unknown'])(
+    'inherits a registered paid extension even when chat delivery is %s',
+    (status) => {
+      const existing = existingBuyerLink();
+      const result = syncPartyAccessStoreWithGraytagDeals({
+        store: { [existing.tokenHash]: existing },
+        deals: [
+          { ...oldDeal, productTypeString: '넷플릭스' },
+          { ...paidExtension, previousProductUsid: undefined, dealStatus: 'ExtensionUsing', lenderDealStatusName: '사용중', productTypeString: '넷플릭스' },
+        ],
+        renewalJobs: [{
+          dealUsid: oldDeal.dealUsid,
+          productUsid: oldDeal.productUsid,
+          oldEnd: oldDeal.endDateTime,
+          newEnd: '20261119T0000',
+          status,
+          registeredAt: '2026-08-01T00:00:00.000Z',
+        }],
+      });
+
+      expect(result.store[existing.tokenHash].member.memberId).toBe('new-extension-deal-usid');
+      expect(result.store[existing.tokenHash].revokedAt).toBeNull();
+    },
+  );
+
+  test('rejects impossible renewal calendar dates instead of normalizing them', () => {
+    const existing = existingBuyerLink();
+    const result = syncPartyAccessStoreWithGraytagDeals({
+      store: { [existing.tokenHash]: existing },
+      deals: [
+        { ...oldDeal, productTypeString: '넷플릭스' },
+        { ...paidExtension, previousProductUsid: undefined, dealStatus: 'ExtensionUsing', lenderDealStatusName: '사용중', productTypeString: '넷플릭스', endDateTime: '2026-03-02' },
+      ],
+      renewalJobs: [{
+        dealUsid: oldDeal.dealUsid,
+        productUsid: oldDeal.productUsid,
+        oldEnd: oldDeal.endDateTime,
+        newEnd: '20260230T0000',
+        status: 'messaged',
+        registeredAt: '2026-08-01T00:00:00.000Z',
+      }],
+    });
+
+    expect(result.store[existing.tokenHash].member.memberId).toBe('old-deal-usid');
+  });
+
+  test('rejects a renewal job whose old end does not match the old deal', () => {
+    const existing = existingBuyerLink();
+    const result = syncPartyAccessStoreWithGraytagDeals({
+      store: { [existing.tokenHash]: existing },
+      deals: [
+        { ...oldDeal, productTypeString: '넷플릭스' },
+        { ...paidExtension, previousProductUsid: undefined, dealStatus: 'ExtensionUsing', lenderDealStatusName: '사용중', productTypeString: '넷플릭스' },
+      ],
+      renewalJobs: [{
+        dealUsid: oldDeal.dealUsid,
+        productUsid: oldDeal.productUsid,
+        oldEnd: '2026-07-01',
+        newEnd: '20261119T0000',
+        status: 'messaged',
+        registeredAt: '2026-08-01T00:00:00.000Z',
+      }],
+    });
+
+    expect(result.store[existing.tokenHash].member.memberId).toBe('old-deal-usid');
+  });
+
+
   test('does not migrate tokenless account-management synthetic records', () => {
     const existing = existingBuyerLink();
     const synthetic = {
@@ -139,5 +288,7 @@ describe('paid Graytag extension party-access inheritance', () => {
   test('uses the same Graytag deal sync helper in refresh and account-management paths', () => {
     const source = readFileSync(new URL('../src/api/index.ts', import.meta.url), 'utf8');
     expect(source.match(/syncPartyAccessStoreWithGraytagDeals\(\{/g)).toHaveLength(2);
+    expect(source.match(/renewalJobs: renewalJobsForPartyAccessSync\(\)/g)).toHaveLength(2);
+    expect(source).toMatch(/function renewalJobsForPartyAccessSync\([\s\S]*catch[\s\S]*return \[\]/);
   });
 });

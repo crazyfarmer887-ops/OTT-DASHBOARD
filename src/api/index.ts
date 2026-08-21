@@ -1282,6 +1282,7 @@ app.post('/my/management', async (c) => {
     const syncedPartyAccess = syncPartyAccessStoreWithGraytagDeals({
       store: partyAccessStoreBeforeSync,
       deals: allDeals,
+      renewalJobs: renewalJobsForPartyAccessSync(),
     });
     if (syncedPartyAccess.changed) savePartyAccessLinkStore(syncedPartyAccess.store);
     const deliverySnapshotByMember = buildPartyAccessDeliverySnapshotByMember(
@@ -2298,6 +2299,15 @@ const RENEWAL_AUTOMATION_JOBS_PATH = process.env.RENEWAL_AUTOMATION_JOBS_PATH
 
 function renewalAutomationStore() {
   return new JsonRenewalJobStore(RENEWAL_AUTOMATION_JOBS_PATH);
+}
+
+function renewalJobsForPartyAccessSync(): RenewalJob[] {
+  try {
+    return renewalAutomationStore().list();
+  } catch (error: any) {
+    console.warn(`[party-access] renewal jobs unavailable; continuing without extension-job reconciliation: ${error?.message || error}`);
+    return [];
+  }
 }
 
 function renewalAutomationRuntimeFlags() {
@@ -5091,6 +5101,7 @@ async function refreshPartyAccessStoreWithLiveDealStatuses(store: PartyAccessLin
   const synced = syncPartyAccessStoreWithGraytagDeals({
     store,
     deals: allDeals,
+    renewalJobs: renewalJobsForPartyAccessSync(),
   });
   const profiled = syncPartyAccessStoreWithCurrentDealProfiles(synced.store, allDeals);
   const nextStore = profiled.store;
