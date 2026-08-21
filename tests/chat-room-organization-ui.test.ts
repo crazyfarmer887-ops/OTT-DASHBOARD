@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildChatRoomOrganizationCounts,
+  captureChatRoomOrganizationRead,
   filterRoomsByOrganizationView,
+  invalidateChatRoomOrganizationReads,
+  isChatRoomOrganizationReadCurrent,
   type ChatRoomOrganization,
 } from '../src/web/lib/chat-room-organization.ts';
 
@@ -33,6 +36,16 @@ describe('chat room organization UI helpers', () => {
       unassigned: 2,
       byCategory: { urgent: 2, billing: 0 },
     });
+  });
+
+  it('invalidates organization GET snapshots when a mutation starts', () => {
+    const generation = { current: 4 };
+    const pendingRead = captureChatRoomOrganizationRead(generation);
+
+    invalidateChatRoomOrganizationReads(generation);
+
+    expect(isChatRoomOrganizationReadCurrent(generation, pendingRead)).toBe(false);
+    expect(isChatRoomOrganizationReadCurrent(generation, captureChatRoomOrganizationRead(generation))).toBe(true);
   });
 
   it('filters all, unresolved, unassigned, and category views without changing room order', () => {

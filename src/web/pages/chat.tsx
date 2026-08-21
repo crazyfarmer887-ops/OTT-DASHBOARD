@@ -3,7 +3,7 @@ import { MessageCircle, RefreshCw, Loader2, Send, ChevronLeft, ArrowDown, Sparkl
 import { autoReplyStatusLabel, autoReplyStatusTone, summarizeAutoReplyJobs, type AutoReplyLogJob } from "../lib/auto-reply-log";
 import { groupChatRoomsByAccount, sortChatRoomsByLatestBuyerMessage, type ChatSortMode } from "../lib/chat-room-sort";
 import { buildGraytagChatUrl } from "../lib/graytag-chat-url";
-import { buildChatRoomOrganizationCounts, emptyChatRoomOrganization, filterRoomsByOrganizationView, type ChatRoomOrganization, type ChatRoomOrganizationView } from "../lib/chat-room-organization";
+import { buildChatRoomOrganizationCounts, captureChatRoomOrganizationRead, emptyChatRoomOrganization, filterRoomsByOrganizationView, invalidateChatRoomOrganizationReads, isChatRoomOrganizationReadCurrent, type ChatRoomOrganization, type ChatRoomOrganizationView } from "../lib/chat-room-organization";
 
 interface ChatRoom {
   dealUsid: string; chatRoomUuid: string; borrowerName: string;
@@ -78,6 +78,7 @@ export default function ChatPage() {
   const hydrationPollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const resizeRef = useRef<number>(400);
   const locallyReadRoomsRef = useRef<Record<string, string>>(loadLocalReadRooms());
+  const organizationRequestGenerationRef = useRef(0);
 
   // 자동응답 state
   const [arEnabled, setArEnabled] = useState<boolean>(true);
@@ -127,16 +128,19 @@ export default function ChatPage() {
   }, []);
 
   const loadRoomOrganization = useCallback(async (quiet = false) => {
+    const requestGeneration = captureChatRoomOrganizationRead(organizationRequestGenerationRef);
     if (!quiet) setOrganizationLoading(true);
     try {
       const res = await fetch('/api/chat/room-organization', { cache: 'no-store' });
       const data = await res.json().catch(() => ({}));
+      if (!isChatRoomOrganizationReadCurrent(organizationRequestGenerationRef, requestGeneration)) return;
       if (!res.ok || data.version !== 1 || !Array.isArray(data.categories) || !data.rooms) {
         throw new Error(data.error || '채팅방 폴더를 불러오지 못했습니다.');
       }
       setRoomOrganization(data as ChatRoomOrganization);
       setOrganizationError(null);
     } catch (e: any) {
+      if (!isChatRoomOrganizationReadCurrent(organizationRequestGenerationRef, requestGeneration)) return;
       setOrganizationError(e.message || '채팅방 폴더를 불러오지 못했습니다.');
     } finally {
       if (!quiet) setOrganizationLoading(false);
@@ -144,6 +148,7 @@ export default function ChatPage() {
   }, []);
 
   const updateRoomOrganization = async (room: ChatRoom, patch: { categoryId?: string | null; unresolved?: boolean }) => {
+    invalidateChatRoomOrganizationReads(organizationRequestGenerationRef);
     setOrganizationSavingRooms(prev => ({ ...prev, [room.chatRoomUuid]: true }));
     try {
       const res = await fetch(`/api/chat/room-organization/rooms/${encodeURIComponent(room.chatRoomUuid)}`, {
@@ -170,6 +175,7 @@ export default function ChatPage() {
   const createRoomCategory = async () => {
     const name = prompt('새 폴더 이름을 입력하세요.');
     if (name === null) return;
+    invalidateChatRoomOrganizationReads(organizationRequestGenerationRef);
     try {
       const res = await fetch('/api/chat/room-categories', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }),
@@ -189,6 +195,7 @@ export default function ChatPage() {
   const renameRoomCategory = async (categoryId: string, currentName: string) => {
     const name = prompt('폴더 이름을 변경하세요.', currentName);
     if (name === null || name === currentName) return;
+    invalidateChatRoomOrganizationReads(organizationRequestGenerationRef);
     try {
       const res = await fetch(`/api/chat/room-categories/${encodeURIComponent(categoryId)}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }),
@@ -206,6 +213,7 @@ export default function ChatPage() {
 
   const deleteRoomCategory = async (categoryId: string, categoryName: string) => {
     if (!confirm(`“${categoryName}” 폴더를 삭제할까요? 채팅방은 미분류로 이동합니다.`)) return;
+    invalidateChatRoomOrganizationReads(organizationRequestGenerationRef);
     try {
       const res = await fetch(`/api/chat/room-categories/${encodeURIComponent(categoryId)}`, { method: 'DELETE' });
       const data = await res.json().catch(() => ({}));
@@ -423,6 +431,10 @@ export default function ChatPage() {
 
   const groupedRooms = () => groupChatRoomsByAccount(visibleRooms());
   const organizationCounts = buildChatRoomOrganizationCounts(rooms, roomOrganization);
+  const selectedRoomOutsideFilter = selectedRoom
+    && !visibleRooms().some(room => room.chatRoomUuid === selectedRoom.chatRoomUuid)
+    ? selectedRoom
+    : null;
 
   // 자동응답 액션
   const toggleAr = async () => {
@@ -641,7 +653,7 @@ export default function ChatPage() {
           value={organizationEntry?.categoryId || ''}
           disabled={organizationSaving}
           onChange={(event) => updateRoomOrganization(room, { categoryId: event.target.value || null })}
-          style={{width:'100%',height:28,border:'1px solid #DDD6FE',borderRadius:7,background:'#fff',color:'#6B7280',fontSize:10,padding:'0 3px',cursor:organizationSaving?'wait':'pointer'}}
+          style={{width:'100%',minHeight:44,border:'1px solid #DDD6FE',borderRadius:7,background:'#fff',color:'#6B7280',fontSize:10,padding:'0 3px',cursor:organizationSaving?'wait':'pointer'}}
         >
           <option value="">미분류로 이동</option>
           {roomOrganization.categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}
@@ -699,9 +711,9 @@ export default function ChatPage() {
                 {category.name} {organizationCounts.byCategory[category.id] || 0}
               </button>
               <button type="button" title={`${category.name} 이름 변경`} aria-label={`${category.name} 이름 변경`} onClick={()=>renameRoomCategory(category.id, category.name)}
-                style={{border:'none',padding:'6px 3px',cursor:'pointer',display:'grid',placeItems:'center',background:'transparent',color:organizationView===view?'#EDE9FE':'#9CA3AF'}}><Pencil size={10}/></button>
+                style={{minWidth:44,minHeight:44,border:'none',padding:0,cursor:'pointer',display:'grid',placeItems:'center',background:'transparent',color:organizationView===view?'#EDE9FE':'#9CA3AF'}}><Pencil size={12}/></button>
               <button type="button" title={`${category.name} 폴더 삭제`} aria-label={`${category.name} 폴더 삭제`} onClick={()=>deleteRoomCategory(category.id, category.name)}
-                style={{border:'none',padding:'6px 8px 6px 3px',cursor:'pointer',display:'grid',placeItems:'center',background:'transparent',color:organizationView===view?'#FECACA':'#9CA3AF'}}><Trash2 size={10}/></button>
+                style={{minWidth:44,minHeight:44,border:'none',padding:0,cursor:'pointer',display:'grid',placeItems:'center',background:'transparent',color:organizationView===view?'#FECACA':'#9CA3AF'}}><Trash2 size={12}/></button>
             </div>;
           })}
         </div>
@@ -736,6 +748,12 @@ export default function ChatPage() {
           {loading?<Loader2 size={12} style={{animation:"spin 1s linear infinite"}}/>:"새로고침"}
         </button>
       </div>
+      {selectedRoomOutsideFilter && (
+        <div aria-label="현재 선택된 필터 밖 채팅방" style={{borderBottom:'2px solid #C4B5FD',background:'#FAF5FF'}}>
+          <div role="status" style={{padding:'7px 14px',fontSize:10,fontWeight:900,color:'#6D28D9'}}>현재 선택 · 필터 밖</div>
+          {renderRoomButton(selectedRoomOutsideFilter, false)}
+        </div>
+      )}
       {chatSortMode==='latest' ? (
         <div>
           {visibleRooms().map(room => renderRoomButton(room, false))}

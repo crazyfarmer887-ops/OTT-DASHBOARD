@@ -21,6 +21,20 @@ export type ChatRoomOrganizationView = 'all' | 'unresolved' | 'unassigned' | `ca
 
 type IdentifiedChatRoom = { chatRoomUuid: string };
 
+export type ChatRoomOrganizationGenerationRef = { current: number };
+
+export function captureChatRoomOrganizationRead(generation: ChatRoomOrganizationGenerationRef): number {
+  return generation.current;
+}
+
+export function invalidateChatRoomOrganizationReads(generation: ChatRoomOrganizationGenerationRef): void {
+  generation.current += 1;
+}
+
+export function isChatRoomOrganizationReadCurrent(generation: ChatRoomOrganizationGenerationRef, snapshot: number): boolean {
+  return generation.current === snapshot;
+}
+
 export function emptyChatRoomOrganization(): ChatRoomOrganization {
   return { version: 1, categories: [], rooms: {} };
 }

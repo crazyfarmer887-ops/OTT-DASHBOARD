@@ -52,7 +52,7 @@ import chatNotificationStreamApp from './chat-notification-stream';
 import { createYouTubeInvitationsApp } from './youtube-invitations';
 import { normalizeYouTubeAuditReason } from '../lib/youtube-audit-reason';
 import { readAuthoritativeYouTubeSellerProducts, reconcileYouTubeProductRegistration, type YouTubeProductRegistrationReconciliationClaim } from '../lib/youtube-product-registration-reconciliation';
-import { createChatRoomCategory, deleteChatRoomCategory, loadChatRoomOrganization, renameChatRoomCategory, updateChatRoomOrganizationEntry } from '../lib/chat-room-organization';
+import { ChatRoomOrganizationValidationError, createChatRoomCategory, deleteChatRoomCategory, loadChatRoomOrganization, renameChatRoomCategory, updateChatRoomOrganizationEntry } from '../lib/chat-room-organization';
 
 const EMAIL_SERVER = "http://127.0.0.1:3001";
 // MANAGEMENT_HIDDEN_ACCOUNTS_PATH is owned by src/lib/management-hidden-accounts.ts.
@@ -2016,17 +2016,27 @@ app.get("/email/uid/:uid", async (c) => {
 
 // 사용자 지정 채팅방 폴더와 미해결 상태 (서버 JSON store)
 function chatRoomOrganizationError(c: any, error: unknown) {
-  return c.json({ ok: false, error: error instanceof Error ? error.message : '요청을 처리할 수 없습니다.' }, 400);
+  const isValidation = error instanceof ChatRoomOrganizationValidationError;
+  return c.json({
+    ok: false,
+    error: isValidation && error instanceof Error ? error.message : '채팅방 폴더 저장소를 처리할 수 없습니다.',
+  }, isValidation ? 400 : 500);
 }
 
 async function parseOrganizationBody(c: any): Promise<Record<string, unknown>> {
   const body = await c.req.json().catch(() => null);
-  if (!body || typeof body !== 'object' || Array.isArray(body)) throw new Error('JSON 요청 본문이 필요합니다.');
+  if (!body || typeof body !== 'object' || Array.isArray(body)) throw new ChatRoomOrganizationValidationError('JSON 요청 본문이 필요합니다.');
   return body as Record<string, unknown>;
 }
 
 for (const prefix of ['', '/api']) {
-  app.get(`${prefix}/chat/room-organization`, (c) => c.json(loadChatRoomOrganization()));
+  app.get(`${prefix}/chat/room-organization`, (c) => {
+    try {
+      return c.json(loadChatRoomOrganization());
+    } catch (error) {
+      return chatRoomOrganizationError(c, error);
+    }
+  });
 
   app.post(`${prefix}/chat/room-categories`, async (c) => {
     try {
@@ -2062,13 +2072,13 @@ for (const prefix of ['', '/api']) {
       const body = await parseOrganizationBody(c);
       const keys = Object.keys(body);
       if (keys.length === 0 || keys.some((key) => key !== 'categoryId' && key !== 'unresolved')) {
-        throw new Error('변경할 채팅방 상태가 올바르지 않습니다.');
+        throw new ChatRoomOrganizationValidationError('변경할 채팅방 상태가 올바르지 않습니다.');
       }
       if ('unresolved' in body && typeof body.unresolved !== 'boolean') {
-        throw new Error('미해결 상태는 true 또는 false여야 합니다.');
+        throw new ChatRoomOrganizationValidationError('미해결 상태는 true 또는 false여야 합니다.');
       }
       if ('categoryId' in body && body.categoryId !== null && typeof body.categoryId !== 'string') {
-        throw new Error('카테고리 식별자가 올바르지 않습니다.');
+        throw new ChatRoomOrganizationValidationError('카테고리 식별자가 올바르지 않습니다.');
       }
       const room = updateChatRoomOrganizationEntry(c.req.param('roomId'), body);
       return c.json({ ok: true, room });

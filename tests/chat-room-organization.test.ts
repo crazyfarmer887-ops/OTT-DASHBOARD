@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -100,6 +100,29 @@ describe('chat room organization store', () => {
     expect(() => updateChatRoomOrganizationEntry('room-1', { categoryId: 'missing' })).toThrow('카테고리');
   });
 
+  it('rejects prototype keys and round-trips ordinary room IDs through a prototype-safe store', async () => {
+    const { loadChatRoomOrganization, updateChatRoomOrganizationEntry, validateChatRoomId } = await import('../src/lib/chat-room-organization.ts');
+    for (const reserved of ['__proto__', 'prototype', 'constructor']) {
+      expect(() => validateChatRoomId(reserved)).toThrow('채팅방');
+    }
+
+    updateChatRoomOrganizationEntry('room-safe', { unresolved: true }, '2026-08-21T13:00:00.000Z');
+    const loaded = loadChatRoomOrganization();
+    expect(Object.getPrototypeOf(loaded.rooms)).toBeNull();
+    expect(loaded.rooms['room-safe']).toEqual({ unresolved: true, updatedAt: '2026-08-21T13:00:00.000Z' });
+
+    const app = (await import('../src/api/index.ts')).default;
+    const headers = { 'content-type': 'application/json', 'x-admin-token': 'test-admin-token' };
+    for (const reserved of ['__proto__', 'prototype', 'constructor']) {
+      const response = await app.request(`/api/chat/room-organization/rooms/${reserved}`, {
+        method: 'PATCH', headers, body: JSON.stringify({ unresolved: true }),
+      });
+      expect(response.status).toBe(400);
+    }
+    const listed = await app.request('/api/chat/room-organization', { headers });
+    expect((await listed.json() as any).rooms['room-safe']).toMatchObject({ unresolved: true });
+  });
+
   it('exposes authenticated category and room organization APIs with safe validation', async () => {
     const app = (await import('../src/api/index.ts')).default;
     const adminHeaders = { 'content-type': 'application/json', 'x-admin-token': 'test-admin-token' };
@@ -145,6 +168,50 @@ describe('chat room organization store', () => {
     });
     expect(removed.status).toBe(200);
     expect(await removed.json()).toMatchObject({ ok: true, store: { categories: [], rooms: { 'room-456': { unresolved: true } } } });
+  });
+
+  it('fails closed on malformed or invalid stores and never overwrites corruption during mutation', async () => {
+    const path = process.env.CHAT_ROOM_ORGANIZATION_PATH!;
+    const corrupt = '{"version":1,"categories":[';
+    writeFileSync(path, corrupt, 'utf8');
+    const { createChatRoomCategory, loadChatRoomOrganization } = await import('../src/lib/chat-room-organization.ts');
+
+    expect(() => loadChatRoomOrganization()).toThrow();
+    expect(() => createChatRoomCategory('긴급')).toThrow();
+    expect(readFileSync(path, 'utf8')).toBe(corrupt);
+
+    for (const invalid of [
+      null,
+      { version: 2, categories: [], rooms: {} },
+      { version: 1, categories: 'invalid', rooms: {} },
+      { version: 1, categories: [], rooms: [] },
+      { version: 1, categories: [{ id: 'a', name: 'A', createdAt: 'now' }], rooms: {} },
+      { version: 1, categories: [], rooms: { room: { unresolved: 'yes', updatedAt: 'now' } } },
+    ]) {
+      writeFileSync(path, JSON.stringify(invalid), 'utf8');
+      expect(() => loadChatRoomOrganization()).toThrow();
+    }
+  });
+
+  it('maps corrupt storage to 500 while keeping request validation failures at 400', async () => {
+    const path = process.env.CHAT_ROOM_ORGANIZATION_PATH!;
+    writeFileSync(path, '{broken', 'utf8');
+    const app = (await import('../src/api/index.ts')).default;
+    const adminHeaders = { 'content-type': 'application/json', 'x-admin-token': 'test-admin-token' };
+
+    const getCorrupt = await app.request('/api/chat/room-organization', { headers: adminHeaders });
+    expect(getCorrupt.status).toBe(500);
+    const mutateCorrupt = await app.request('/api/chat/room-categories', {
+      method: 'POST', headers: adminHeaders, body: JSON.stringify({ name: '긴급' }),
+    });
+    expect(mutateCorrupt.status).toBe(500);
+    expect(readFileSync(path, 'utf8')).toBe('{broken');
+
+    rmSync(path);
+    const invalid = await app.request('/api/chat/room-categories', {
+      method: 'POST', headers: adminHeaders, body: JSON.stringify({ name: '../unsafe' }),
+    });
+    expect(invalid.status).toBe(400);
   });
 
   it('rejects malformed room organization patches', async () => {

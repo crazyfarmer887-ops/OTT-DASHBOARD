@@ -32,6 +32,25 @@ test('category CRUD uses server APIs protected by the global admin fetch patch',
   assert.match(adminAuth, /"\/api\/chat\/room-categories"/);
 });
 
+test('organization reads use a generation guard invalidated before every mutation request', () => {
+  assert.match(chat, /organizationRequestGenerationRef\s*=\s*useRef/);
+  assert.match(chat, /captureChatRoomOrganizationRead\(organizationRequestGenerationRef\)/);
+  assert.match(chat, /isChatRoomOrganizationReadCurrent\(organizationRequestGenerationRef,\s*requestGeneration\)/);
+  assert.equal((chat.match(/invalidateChatRoomOrganizationReads\(organizationRequestGenerationRef\);/g) || []).length, 4);
+});
+
+test('selected room remains visible outside the active folder filter', () => {
+  assert.match(chat, /selectedRoomOutsideFilter/);
+  assert.match(chat, /현재 선택 · 필터 밖/);
+  assert.match(chat, /aria-label="현재 선택된 필터 밖 채팅방"/);
+});
+
+test('folder move, rename, and delete controls keep 44px touch targets', () => {
+  assert.match(chat, /aria-label=\{`\$\{room\.borrowerName\} 폴더 이동`\}[\s\S]{0,500}minHeight:44/);
+  assert.match(chat, /이름 변경`\}[\s\S]{0,350}minWidth:44,minHeight:44/);
+  assert.match(chat, /폴더 삭제`\}[\s\S]{0,350}minWidth:44,minHeight:44/);
+});
+
 test('existing room selection, URL state, read state, and refresh detection remain wired', () => {
   assert.match(chat, /selectRoom\(room\)/);
   assert.match(chat, /\/dashboard\/chat\?room=/);
