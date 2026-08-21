@@ -41,7 +41,7 @@ import { buildOpenRouterAutoReplyRequest, parseOpenRouterAutoReplyJson, resolveO
 import { evaluateAutoReplySafety } from './auto-reply-safety';
 import { decideAutonomousReply } from './auto-reply-autonomy';
 import { buildOperationsCenter, createManualResponseQueueItem, mergeManualResponseQueueItem, summarizeManualResponseQueue, type ManualResponseQueueItem } from '../lib/operations-center';
-import { buildPartyAccessDeliverySnapshotByMember, buildPartyAccessPublicPayload, createPartyAccessLinkRecord, enrichPartyAccessRecordWithKnownCredentials, extractPartyAccessTokensFromText, isPartyAccessAllowed, isValidPartyAccessConsent, mergeRecoverablePartyAccessBackupStores, normalizePartyAccessToken, partyAccessAccountKey, partyAccessMemberHistoryKey, partyAccessTokenHash, redactPartyAccessPayloadForConsent, resolvePartyAccessDeliverySnapshotByListing, resolvePartyAccessDeliverySnapshotForDeal, syncPartyAccessStoreWithMembers, type PartyAccessDeliverySnapshot, type PartyAccessLinkRecord, type PartyAccessLinkStore } from '../lib/party-access';
+import { buildPartyAccessDeliverySnapshotByMember, buildPartyAccessPublicPayload, createPartyAccessLinkRecord, enrichPartyAccessRecordWithKnownCredentials, extractPartyAccessTokensFromText, isPartyAccessAllowed, isValidPartyAccessConsent, mergeRecoverablePartyAccessBackupStores, normalizePartyAccessToken, partyAccessAccountKey, partyAccessTokenHash, redactPartyAccessPayloadForConsent, resolvePartyAccessDeliverySnapshotByListing, resolvePartyAccessDeliverySnapshotForDeal, syncPartyAccessStoreWithGraytagDeals, type PartyAccessDeliverySnapshot, type PartyAccessLinkRecord, type PartyAccessLinkStore } from '../lib/party-access';
 import { CLOSING_ACKNOWLEDGEMENT_CATEGORY, DAILY_ACCOUNT_ACCESS_NOTICE_CATEGORY, OFF_HOURS_NOTICE_CATEGORY, buildClosingAcknowledgementReply, buildDailyAccountAccessNoticeReply, buildOffHoursNoticeReply, combineNoticeReplies, hasDailyAccountAccessNoticeToday, isSimpleAcknowledgement, shouldSendClosingAcknowledgement, shouldSendDailyAccountAccessNotice, shouldSendOffHoursNotice } from './auto-reply-daily-notice';
 import { JsonRenewalJobStore, type RenewalJob, type RenewalReviewAction } from '../renewal/job-store';
 import { buildRenewalMessage, buildRenewalPreviewRows, type ExtensionProductModel } from '../renewal/core';
@@ -865,30 +865,6 @@ function extractLenderDeals(payload: any): any[] {
   return Array.isArray(deals) ? deals : [];
 }
 
-function buildPartyAccessMemberStatusRefsFromDeals(deals: any[] = []) {
-  return (deals || []).flatMap((deal: any) => {
-    const base = {
-      kind: 'graytag' as const,
-      memberName: deal.borrowerName?.trim() || null,
-      status: deal.dealStatus,
-      statusName: deal.lenderDealStatusName || deal.dealStatus,
-      startDateTime: deal.startDateTime || null,
-      endDateTime: deal.endDateTime || null,
-    };
-    const refs: any[] = [];
-    const dealUsid = String(deal.dealUsid || '').trim();
-    if (dealUsid) refs.push({ ...base, memberId: dealUsid });
-
-    // Pre-sale buyer links are created as graytag:fill:{productUsid}. Once Graytag converts
-    // the listing into a real deal, the buyer keeps the same access URL while the live member
-    // state moves to dealUsid. Sync both identifiers so `/dashboard/access/{token}` uses the
-    // same current-member basis/count as account management.
-    const productUsid = String(deal.productUsid || '').trim();
-    if (productUsid) refs.push({ ...base, memberId: `fill:${productUsid}` });
-    return refs;
-  });
-}
-
 function isAccountCheckingDeal(deal: any): boolean {
   return isAccountCheckStatus(deal);
 }
@@ -1300,9 +1276,9 @@ app.post('/my/management', async (c) => {
       }) as any;
     };
     const partyAccessStoreBeforeSync = loadPartyAccessLinkStore();
-    const syncedPartyAccess = syncPartyAccessStoreWithMembers({
+    const syncedPartyAccess = syncPartyAccessStoreWithGraytagDeals({
       store: partyAccessStoreBeforeSync,
-      members: buildPartyAccessMemberStatusRefsFromDeals(allDeals),
+      deals: allDeals,
     });
     if (syncedPartyAccess.changed) savePartyAccessLinkStore(syncedPartyAccess.store);
     const deliverySnapshotByMember = buildPartyAccessDeliverySnapshotByMember(
@@ -5035,9 +5011,9 @@ async function refreshPartyAccessStoreWithLiveDealStatuses(store: PartyAccessLin
     allDeals.push(deal);
   }
 
-  const synced = syncPartyAccessStoreWithMembers({
+  const synced = syncPartyAccessStoreWithGraytagDeals({
     store,
-    members: buildPartyAccessMemberStatusRefsFromDeals(allDeals),
+    deals: allDeals,
   });
   const profiled = syncPartyAccessStoreWithCurrentDealProfiles(synced.store, allDeals);
   const nextStore = profiled.store;

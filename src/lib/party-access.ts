@@ -78,6 +78,17 @@ export interface PartyAccessMemberStatusLike {
   endDateTime?: string | null;
 }
 
+export interface GraytagPartyAccessDealLike {
+  dealUsid?: string | null;
+  productUsid?: string | null;
+  previousProductUsid?: string | null;
+  borrowerName?: string | null;
+  dealStatus?: string | null;
+  lenderDealStatusName?: string | null;
+  startDateTime?: string | null;
+  endDateTime?: string | null;
+}
+
 const ACTIVE_PARTY_MEMBER_STATUS_CODES = new Set([
   'active',
   'current',
@@ -433,6 +444,106 @@ export function syncPartyAccessStoreWithMembers(input: {
     }
   }
   return { store: next, changed };
+}
+
+export function buildPartyAccessMemberStatusRefsFromDeals(
+  deals: GraytagPartyAccessDealLike[] = [],
+): PartyAccessMemberStatusLike[] {
+  return deals.flatMap((deal) => {
+    const base = {
+      kind: 'graytag' as const,
+      memberName: normalizeKeyPart(String(deal.borrowerName || '')) || null,
+      status: deal.dealStatus,
+      statusName: deal.lenderDealStatusName || deal.dealStatus,
+      startDateTime: deal.startDateTime || null,
+      endDateTime: deal.endDateTime || null,
+    };
+    const refs: PartyAccessMemberStatusLike[] = [];
+    const dealUsid = normalizeKeyPart(String(deal.dealUsid || ''));
+    if (dealUsid) refs.push({ ...base, memberId: dealUsid });
+
+    // Keep pre-sale fill links synchronized after a listing becomes a real deal.
+    const productUsid = normalizeKeyPart(String(deal.productUsid || ''));
+    if (productUsid) refs.push({ ...base, memberId: `fill:${productUsid}` });
+    return refs;
+  });
+}
+
+function inheritPaidExtensionShareTokenRecords(
+  store: PartyAccessLinkStore,
+  deals: GraytagPartyAccessDealLike[],
+): { store: PartyAccessLinkStore; changed: boolean } {
+  const dealIdsByProduct = new Map<string, Set<string>>();
+  for (const deal of deals) {
+    const productUsid = normalizeKeyPart(String(deal.productUsid || ''));
+    const dealUsid = normalizeKeyPart(String(deal.dealUsid || ''));
+    if (!productUsid || !dealUsid) continue;
+    const ids = dealIdsByProduct.get(productUsid) || new Set<string>();
+    ids.add(dealUsid);
+    dealIdsByProduct.set(productUsid, ids);
+  }
+
+  const paidExtensionsByPreviousProduct = new Map<string, GraytagPartyAccessDealLike[]>();
+  for (const deal of deals) {
+    const previousProductUsid = normalizeKeyPart(String(deal.previousProductUsid || ''));
+    const dealUsid = normalizeKeyPart(String(deal.dealUsid || ''));
+    if (
+      !previousProductUsid
+      || !dealUsid
+      || normalizeKeyPart(String(deal.dealStatus || '')) !== 'ExtensionDelivering'
+      || normalizeKeyPart(String(deal.lenderDealStatusName || '')) !== '결제완료'
+    ) continue;
+    const extensions = paidExtensionsByPreviousProduct.get(previousProductUsid) || [];
+    extensions.push(deal);
+    paidExtensionsByPreviousProduct.set(previousProductUsid, extensions);
+  }
+
+  const extensionByOldDealId = new Map<string, GraytagPartyAccessDealLike>();
+  for (const [previousProductUsid, extensions] of paidExtensionsByPreviousProduct) {
+    const oldDealIds = Array.from(dealIdsByProduct.get(previousProductUsid) || []);
+    // Provider history must establish a unique old product -> old deal -> extension chain.
+    if (extensions.length !== 1 || oldDealIds.length !== 1) continue;
+    extensionByOldDealId.set(oldDealIds[0], extensions[0]);
+  }
+
+  let changed = false;
+  const next: PartyAccessLinkStore = { ...store };
+  for (const [tokenHash, record] of Object.entries(store)) {
+    if (!record.shareToken || record.member.kind !== 'graytag') continue;
+    const extension = extensionByOldDealId.get(normalizeKeyPart(record.member.memberId));
+    if (!extension) continue;
+    const updated: PartyAccessLinkRecord = {
+      ...record,
+      member: {
+        ...record.member,
+        memberId: normalizeKeyPart(String(extension.dealUsid || '')),
+        memberName: normalizeKeyPart(String(extension.borrowerName || record.member.memberName)) || record.member.memberName,
+        status: 'ExtensionDelivering',
+        statusName: '결제완료',
+        startDateTime: extension.startDateTime || null,
+        endDateTime: extension.endDateTime || null,
+      },
+      revokedAt: null,
+    };
+    if (JSON.stringify(updated) === JSON.stringify(record)) continue;
+    next[tokenHash] = updated;
+    changed = true;
+  }
+  return { store: next, changed };
+}
+
+export function syncPartyAccessStoreWithGraytagDeals(input: {
+  store: PartyAccessLinkStore;
+  deals: GraytagPartyAccessDealLike[];
+  now?: string;
+}): { store: PartyAccessLinkStore; changed: boolean } {
+  const inherited = inheritPaidExtensionShareTokenRecords(input.store, input.deals || []);
+  const synced = syncPartyAccessStoreWithMembers({
+    store: inherited.store,
+    members: buildPartyAccessMemberStatusRefsFromDeals(input.deals || []),
+    now: input.now,
+  });
+  return { store: synced.store, changed: inherited.changed || synced.changed };
 }
 
 export function reconcileManagementSyntheticPartyAccessRoster(input: {
