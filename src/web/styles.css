@@ -363,7 +363,10 @@ body {
 .youtube-open-invites { width: 100%; min-height: 44px; background: #B91C1C; color: #fff; }
 
 @media (max-width: 1100px) {
-  .management-account-grid,
+  .management-account-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .youtube-family-group-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -378,7 +381,11 @@ body {
     padding-inline: 12px;
   }
 
-  .management-account-grid,
+  .management-account-grid {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 10px;
+  }
+
   .youtube-family-group-grid {
     grid-template-columns: minmax(0, 1fr);
     padding: 10px;
