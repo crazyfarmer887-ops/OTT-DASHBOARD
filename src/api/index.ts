@@ -52,6 +52,7 @@ import chatNotificationStreamApp from './chat-notification-stream';
 import { createYouTubeInvitationsApp } from './youtube-invitations';
 import { normalizeYouTubeAuditReason } from '../lib/youtube-audit-reason';
 import { readAuthoritativeYouTubeSellerProducts, reconcileYouTubeProductRegistration, type YouTubeProductRegistrationReconciliationClaim } from '../lib/youtube-product-registration-reconciliation';
+import { createChatRoomCategory, deleteChatRoomCategory, loadChatRoomOrganization, renameChatRoomCategory, updateChatRoomOrganizationEntry } from '../lib/chat-room-organization';
 
 const EMAIL_SERVER = "http://127.0.0.1:3001";
 // MANAGEMENT_HIDDEN_ACCOUNTS_PATH is owned by src/lib/management-hidden-accounts.ts.
@@ -68,6 +69,8 @@ const ADMIN_REQUIRED_GET_PREFIXES = [
   '/chat/poll',
   '/chat/notifications',
   '/chat/auto-reply-log',
+  '/chat/room-organization',
+  '/chat/room-categories',
   '/price-safety',
   '/audit-log',
   '/safe-mode',
@@ -2010,6 +2013,70 @@ app.get("/email/uid/:uid", async (c) => {
     return c.json(data, res.status as any);
   } catch (e: any) { return c.json({ error: e.message }, 500); }
 });
+
+// 사용자 지정 채팅방 폴더와 미해결 상태 (서버 JSON store)
+function chatRoomOrganizationError(c: any, error: unknown) {
+  return c.json({ ok: false, error: error instanceof Error ? error.message : '요청을 처리할 수 없습니다.' }, 400);
+}
+
+async function parseOrganizationBody(c: any): Promise<Record<string, unknown>> {
+  const body = await c.req.json().catch(() => null);
+  if (!body || typeof body !== 'object' || Array.isArray(body)) throw new Error('JSON 요청 본문이 필요합니다.');
+  return body as Record<string, unknown>;
+}
+
+for (const prefix of ['', '/api']) {
+  app.get(`${prefix}/chat/room-organization`, (c) => c.json(loadChatRoomOrganization()));
+
+  app.post(`${prefix}/chat/room-categories`, async (c) => {
+    try {
+      const body = await parseOrganizationBody(c);
+      const category = createChatRoomCategory(body.name);
+      return c.json({ ok: true, category }, 201);
+    } catch (error) {
+      return chatRoomOrganizationError(c, error);
+    }
+  });
+
+  app.patch(`${prefix}/chat/room-categories/:categoryId`, async (c) => {
+    try {
+      const body = await parseOrganizationBody(c);
+      const category = renameChatRoomCategory(c.req.param('categoryId'), body.name);
+      return c.json({ ok: true, category });
+    } catch (error) {
+      return chatRoomOrganizationError(c, error);
+    }
+  });
+
+  app.delete(`${prefix}/chat/room-categories/:categoryId`, (c) => {
+    try {
+      const store = deleteChatRoomCategory(c.req.param('categoryId'));
+      return c.json({ ok: true, store });
+    } catch (error) {
+      return chatRoomOrganizationError(c, error);
+    }
+  });
+
+  app.patch(`${prefix}/chat/room-organization/rooms/:roomId`, async (c) => {
+    try {
+      const body = await parseOrganizationBody(c);
+      const keys = Object.keys(body);
+      if (keys.length === 0 || keys.some((key) => key !== 'categoryId' && key !== 'unresolved')) {
+        throw new Error('변경할 채팅방 상태가 올바르지 않습니다.');
+      }
+      if ('unresolved' in body && typeof body.unresolved !== 'boolean') {
+        throw new Error('미해결 상태는 true 또는 false여야 합니다.');
+      }
+      if ('categoryId' in body && body.categoryId !== null && typeof body.categoryId !== 'string') {
+        throw new Error('카테고리 식별자가 올바르지 않습니다.');
+      }
+      const room = updateChatRoomOrganizationEntry(c.req.param('roomId'), body);
+      return c.json({ ok: true, room });
+    } catch (error) {
+      return chatRoomOrganizationError(c, error);
+    }
+  });
+}
 
 // 채팅방 목록 (모든 활성 딜 + unread 상태)
 app.get('/chat/rooms', async (c) => {

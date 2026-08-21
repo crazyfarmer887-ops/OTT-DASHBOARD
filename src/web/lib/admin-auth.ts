@@ -8,6 +8,8 @@ const ADMIN_REQUIRED_GET_PREFIXES = [
   "/api/chat/poll",
   "/api/chat/notifications",
   "/api/chat/auto-reply-log",
+  "/api/chat/room-organization",
+  "/api/chat/room-categories",
   "/api/price-safety",
   "/api/audit-log",
   "/api/safe-mode",

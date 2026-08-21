@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { MessageCircle, RefreshCw, Loader2, Send, ChevronLeft, ArrowDown, Sparkles, ChevronDown, Bell, Settings, ToggleLeft, ToggleRight, ExternalLink } from "lucide-react";
+import { MessageCircle, RefreshCw, Loader2, Send, ChevronLeft, ArrowDown, Sparkles, ChevronDown, Bell, Settings, ToggleLeft, ToggleRight, ExternalLink, Folder, FolderPlus, AlertCircle, CheckCircle2, Pencil, Trash2 } from "lucide-react";
 import { autoReplyStatusLabel, autoReplyStatusTone, summarizeAutoReplyJobs, type AutoReplyLogJob } from "../lib/auto-reply-log";
 import { groupChatRoomsByAccount, sortChatRoomsByLatestBuyerMessage, type ChatSortMode } from "../lib/chat-room-sort";
 import { buildGraytagChatUrl } from "../lib/graytag-chat-url";
+import { buildChatRoomOrganizationCounts, emptyChatRoomOrganization, filterRoomsByOrganizationView, type ChatRoomOrganization, type ChatRoomOrganizationView } from "../lib/chat-room-organization";
 
 interface ChatRoom {
   dealUsid: string; chatRoomUuid: string; borrowerName: string;
@@ -67,6 +68,11 @@ export default function ChatPage() {
   const [isMobile, setIsMobile] = useState(false);
   const [unreadOnly, setUnreadOnly] = useState(false);
   const [chatSortMode, setChatSortMode] = useState<ChatSortMode>('latest');
+  const [roomOrganization, setRoomOrganization] = useState<ChatRoomOrganization>(emptyChatRoomOrganization());
+  const [organizationView, setOrganizationView] = useState<ChatRoomOrganizationView>('all');
+  const [organizationLoading, setOrganizationLoading] = useState(false);
+  const [organizationError, setOrganizationError] = useState<string | null>(null);
+  const [organizationSavingRooms, setOrganizationSavingRooms] = useState<Record<string, boolean>>({});
   const msgEndRef = useRef<HTMLDivElement>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const hydrationPollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -119,6 +125,100 @@ export default function ChatPage() {
     } catch {}
     finally { setArLogLoading(false); }
   }, []);
+
+  const loadRoomOrganization = useCallback(async (quiet = false) => {
+    if (!quiet) setOrganizationLoading(true);
+    try {
+      const res = await fetch('/api/chat/room-organization', { cache: 'no-store' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.version !== 1 || !Array.isArray(data.categories) || !data.rooms) {
+        throw new Error(data.error || '채팅방 폴더를 불러오지 못했습니다.');
+      }
+      setRoomOrganization(data as ChatRoomOrganization);
+      setOrganizationError(null);
+    } catch (e: any) {
+      setOrganizationError(e.message || '채팅방 폴더를 불러오지 못했습니다.');
+    } finally {
+      if (!quiet) setOrganizationLoading(false);
+    }
+  }, []);
+
+  const updateRoomOrganization = async (room: ChatRoom, patch: { categoryId?: string | null; unresolved?: boolean }) => {
+    setOrganizationSavingRooms(prev => ({ ...prev, [room.chatRoomUuid]: true }));
+    try {
+      const res = await fetch(`/api/chat/room-organization/rooms/${encodeURIComponent(room.chatRoomUuid)}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.ok !== true) throw new Error(data.error || '채팅방 상태 저장에 실패했습니다.');
+      setRoomOrganization(prev => {
+        const nextRooms = { ...prev.rooms };
+        if (data.room) nextRooms[room.chatRoomUuid] = data.room;
+        else delete nextRooms[room.chatRoomUuid];
+        return { ...prev, rooms: nextRooms };
+      });
+      setOrganizationError(null);
+    } catch (e: any) {
+      const message = e.message || '채팅방 상태 저장에 실패했습니다.';
+      setOrganizationError(message);
+      alert(message);
+    } finally {
+      setOrganizationSavingRooms(prev => ({ ...prev, [room.chatRoomUuid]: false }));
+    }
+  };
+
+  const createRoomCategory = async () => {
+    const name = prompt('새 폴더 이름을 입력하세요.');
+    if (name === null) return;
+    try {
+      const res = await fetch('/api/chat/room-categories', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.category) throw new Error(data.error || '폴더 생성에 실패했습니다.');
+      setRoomOrganization(prev => ({ ...prev, categories: [...prev.categories, data.category] }));
+      setOrganizationView(`category:${data.category.id}`);
+      setOrganizationError(null);
+    } catch (e: any) {
+      const message = e.message || '폴더 생성에 실패했습니다.';
+      setOrganizationError(message);
+      alert(message);
+    }
+  };
+
+  const renameRoomCategory = async (categoryId: string, currentName: string) => {
+    const name = prompt('폴더 이름을 변경하세요.', currentName);
+    if (name === null || name === currentName) return;
+    try {
+      const res = await fetch(`/api/chat/room-categories/${encodeURIComponent(categoryId)}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.category) throw new Error(data.error || '폴더 이름 변경에 실패했습니다.');
+      setRoomOrganization(prev => ({ ...prev, categories: prev.categories.map(category => category.id === categoryId ? data.category : category) }));
+      setOrganizationError(null);
+    } catch (e: any) {
+      const message = e.message || '폴더 이름 변경에 실패했습니다.';
+      setOrganizationError(message);
+      alert(message);
+    }
+  };
+
+  const deleteRoomCategory = async (categoryId: string, categoryName: string) => {
+    if (!confirm(`“${categoryName}” 폴더를 삭제할까요? 채팅방은 미분류로 이동합니다.`)) return;
+    try {
+      const res = await fetch(`/api/chat/room-categories/${encodeURIComponent(categoryId)}`, { method: 'DELETE' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.store) throw new Error(data.error || '폴더 삭제에 실패했습니다.');
+      setRoomOrganization(data.store as ChatRoomOrganization);
+      if (organizationView === `category:${categoryId}`) setOrganizationView('unassigned');
+      setOrganizationError(null);
+    } catch (e: any) {
+      const message = e.message || '폴더 삭제에 실패했습니다.';
+      setOrganizationError(message);
+      alert(message);
+    }
+  };
 
   const loadRooms = useCallback(async (options: { force?: boolean; quiet?: boolean } = {}) => {
     if (!options.quiet) setLoading(true);
@@ -174,6 +274,7 @@ export default function ChatPage() {
   // 초기 로드
   useEffect(() => {
     loadRooms();
+    loadRoomOrganization();
     (async () => {
       try {
         const [sr, pr, lr] = await Promise.all([
@@ -186,12 +287,13 @@ export default function ChatPage() {
         if (lr.ok) { const d = await lr.json(); setArJobs(d.jobs || []); setArLogs((d.logs || []).slice(-3)); }
       } catch {}
     })();
-  }, [loadRooms]);
+  }, [loadRooms, loadRoomOrganization]);
 
   // 1분 polling
   useEffect(() => {
     pollRef.current = setInterval(() => {
       loadRooms({ quiet: true });
+      loadRoomOrganization(true);
       setPollCount(c => c + 1);
       if (selectedRoom) loadMessages(selectedRoom.chatRoomUuid, 1);
     }, 60000);
@@ -199,7 +301,7 @@ export default function ChatPage() {
       if (pollRef.current) clearInterval(pollRef.current);
       if (hydrationPollRef.current) clearTimeout(hydrationPollRef.current);
     };
-  }, [selectedRoom, loadRooms, loadMessages]);
+  }, [selectedRoom, loadRooms, loadMessages, loadRoomOrganization]);
 
   // 사이드바 리사이즈
   useEffect(() => {
@@ -314,11 +416,13 @@ export default function ChatPage() {
   };
 
   const visibleRooms = () => {
-    const sourceRooms = unreadOnly ? rooms.filter(r => r.lenderChatUnread) : rooms;
+    const organizedRooms = filterRoomsByOrganizationView(rooms, roomOrganization, organizationView);
+    const sourceRooms = unreadOnly ? organizedRooms.filter(r => r.lenderChatUnread) : organizedRooms;
     return sortChatRoomsByLatestBuyerMessage(sourceRooms);
   };
 
   const groupedRooms = () => groupChatRoomsByAccount(visibleRooms());
+  const organizationCounts = buildChatRoomOrganizationCounts(rooms, roomOrganization);
 
   // 자동응답 액션
   const toggleAr = async () => {
@@ -489,7 +593,10 @@ export default function ChatPage() {
     </div>
   );
 
-  const renderRoomButton = (room: ChatRoom, nested = false) => (
+  const renderRoomButton = (room: ChatRoom, nested = false) => {
+    const organizationEntry = roomOrganization.rooms[room.chatRoomUuid];
+    const organizationSaving = organizationSavingRooms[room.chatRoomUuid] === true;
+    return (
     <div key={room.dealUsid} style={{display:'flex',alignItems:'stretch',borderBottom:'1px solid #F8F6FF',background:selectedRoom?.dealUsid===room.dealUsid?'#EDE9FE':room.lenderChatUnread?'#F5F3FF':'transparent'}}>
       <button onClick={()=>selectRoom(room)}
         style={{flex:1,minWidth:0,padding:"12px 8px 12px "+(nested?"44px":"16px"),display:"flex",alignItems:"center",gap:12,
@@ -516,8 +623,33 @@ export default function ChatPage() {
         style={{width:42,display:'grid',placeItems:'center',color:'#7C3AED',textDecoration:'none',background:'rgba(255,255,255,.55)',flexShrink:0}}>
         <ExternalLink size={15}/>
       </a>
+      <div style={{width:92,padding:'7px 7px 7px 0',display:'flex',flexDirection:'column',justifyContent:'center',gap:5,flexShrink:0}}>
+        <button
+          type="button"
+          aria-label={organizationEntry?.unresolved ? '해결됨으로 표시' : '미해결로 표시'}
+          title={organizationEntry?.unresolved ? '해결됨으로 표시' : '미해결로 표시'}
+          disabled={organizationSaving}
+          onClick={() => updateRoomOrganization(room, { unresolved: !organizationEntry?.unresolved })}
+          style={{minHeight:44,border:'none',borderRadius:7,cursor:organizationSaving?'wait':'pointer',background:organizationEntry?.unresolved?'#FEE2E2':'#ECFDF5',color:organizationEntry?.unresolved?'#B91C1C':'#047857',display:'flex',alignItems:'center',justifyContent:'center',gap:4,fontSize:10,fontWeight:800,opacity:organizationSaving ? 0.6 : 1}}
+        >
+          {organizationSaving?<Loader2 size={12} style={{animation:'spin 1s linear infinite'}}/>:organizationEntry?.unresolved?<AlertCircle size={12}/>:<CheckCircle2 size={12}/>}
+          {organizationEntry?.unresolved?'미해결':'해결됨'}
+        </button>
+        <select
+          aria-label={`${room.borrowerName} 폴더 이동`}
+          title="폴더 이동"
+          value={organizationEntry?.categoryId || ''}
+          disabled={organizationSaving}
+          onChange={(event) => updateRoomOrganization(room, { categoryId: event.target.value || null })}
+          style={{width:'100%',height:28,border:'1px solid #DDD6FE',borderRadius:7,background:'#fff',color:'#6B7280',fontSize:10,padding:'0 3px',cursor:organizationSaving?'wait':'pointer'}}
+        >
+          <option value="">미분류로 이동</option>
+          {roomOrganization.categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}
+        </select>
+      </div>
     </div>
-  );
+    );
+  };
 
   // ── 사이드바 ─────────────────────────────────────────────────
 
@@ -539,6 +671,41 @@ export default function ChatPage() {
           style={{fontSize:12,fontWeight:800,padding:"8px 0",borderRadius:9,background:chatSortMode==='account'?"#7C3AED":"#F3F4F6",border:"none",cursor:"pointer",color:chatSortMode==='account'?"#fff":"#6B7280"}}>
           계정별 정리
         </button>
+      </div>
+      <div style={{padding:'10px 14px 0',borderBottom:'1px solid #EDE9FE',flexShrink:0}}>
+        <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:8}}>
+          <Folder size={14} color="#7C3AED"/>
+          <span style={{fontSize:12,fontWeight:800,color:'#1E1B4B',flex:1}}>폴더</span>
+          {organizationLoading&&<Loader2 size={13} color="#7C3AED" style={{animation:'spin 1s linear infinite'}}/>}
+          <button type="button" onClick={createRoomCategory} title="새 폴더" aria-label="새 폴더"
+            style={{border:'none',borderRadius:7,background:'#EDE9FE',color:'#7C3AED',padding:'5px 8px',display:'flex',alignItems:'center',gap:4,fontSize:11,fontWeight:800,cursor:'pointer'}}>
+            <FolderPlus size={13}/> 새 폴더
+          </button>
+        </div>
+        <div style={{display:'flex',gap:6,overflowX:'auto',paddingBottom:8}}>
+          {([
+            ['all', `전체 ${organizationCounts.total}`],
+            ['unresolved', `미해결 ${organizationCounts.unresolved}`],
+            ['unassigned', `미분류 ${organizationCounts.unassigned}`],
+          ] as Array<[ChatRoomOrganizationView, string]>).map(([view,label]) => (
+            <button key={view} type="button" aria-pressed={organizationView===view} onClick={()=>setOrganizationView(view)}
+              style={{border:'none',borderRadius:999,padding:'6px 10px',whiteSpace:'nowrap',cursor:'pointer',fontSize:11,fontWeight:800,background:organizationView===view?'#7C3AED':'#F3F4F6',color:organizationView===view?'#fff':'#6B7280'}}>{label}</button>
+          ))}
+          {roomOrganization.categories.map(category => {
+            const view: ChatRoomOrganizationView = `category:${category.id}`;
+            return <div key={category.id} style={{display:'flex',alignItems:'center',borderRadius:999,background:organizationView===view?'#7C3AED':'#F3F4F6',overflow:'hidden',flexShrink:0}}>
+              <button type="button" aria-pressed={organizationView===view} onClick={()=>setOrganizationView(view)}
+                style={{border:'none',padding:'6px 7px 6px 10px',whiteSpace:'nowrap',cursor:'pointer',fontSize:11,fontWeight:800,background:'transparent',color:organizationView===view?'#fff':'#6B7280'}}>
+                {category.name} {organizationCounts.byCategory[category.id] || 0}
+              </button>
+              <button type="button" title={`${category.name} 이름 변경`} aria-label={`${category.name} 이름 변경`} onClick={()=>renameRoomCategory(category.id, category.name)}
+                style={{border:'none',padding:'6px 3px',cursor:'pointer',display:'grid',placeItems:'center',background:'transparent',color:organizationView===view?'#EDE9FE':'#9CA3AF'}}><Pencil size={10}/></button>
+              <button type="button" title={`${category.name} 폴더 삭제`} aria-label={`${category.name} 폴더 삭제`} onClick={()=>deleteRoomCategory(category.id, category.name)}
+                style={{border:'none',padding:'6px 8px 6px 3px',cursor:'pointer',display:'grid',placeItems:'center',background:'transparent',color:organizationView===view?'#FECACA':'#9CA3AF'}}><Trash2 size={10}/></button>
+            </div>;
+          })}
+        </div>
+        {organizationError&&<div role="alert" style={{fontSize:10,color:'#B91C1C',paddingBottom:8}}>{organizationError}</div>}
       </div>
       <div style={{display:"flex",gap:8,padding:"10px 14px",borderBottom:"1px solid #EDE9FE",flexShrink:0}}>
         <button onClick={()=>setUnreadOnly(v=>!v)}
@@ -611,10 +778,10 @@ export default function ChatPage() {
           </div>
         );
       })}
-      {rooms.length===0&&!loading&&(
+      {visibleRooms().length===0&&!loading&&(
         <div style={{textAlign:"center",padding:"48px 20px",color:"#9CA3AF",fontSize:13}}>
           <MessageCircle size={28} color="#C4B5FD" style={{margin:"0 auto 10px"}}/>
-          채팅방 없음
+          {rooms.length===0?'채팅방 없음':'조건에 맞는 채팅방 없음'}
         </div>
       )}
     </div>
