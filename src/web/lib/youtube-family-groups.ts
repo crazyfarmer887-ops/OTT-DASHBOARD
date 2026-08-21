@@ -22,6 +22,42 @@ export interface YouTubeFamilyGroupDraft {
   sellableSeats: string;
 }
 
+export type YouTubeInvitationStatus =
+  | 'waiting_for_group_assignment'
+  | 'waiting_for_buyer_email'
+  | 'email_candidate_found'
+  | 'email_confirmed'
+  | 'invite_sent'
+  | 'delivery_completion_pending'
+  | 'delivered_waiting_inspection'
+  | 'active'
+  | 'failed'
+  | 'ended';
+
+export interface YouTubeInvitationSummaryDto {
+  id: string;
+  familyGroupId: string;
+  buyerName: string;
+  buyerEmailMasked: string | null;
+  endDateTime: string | null;
+  status: YouTubeInvitationStatus;
+  updatedAt: string;
+}
+
+export interface YouTubeInvitationsResult {
+  enabled: boolean;
+  invitations: YouTubeInvitationSummaryDto[];
+}
+
+export interface YouTubeFamilyGroupSummary extends YouTubeFamilyGroupDto {
+  activeCount: number;
+  pendingCount: number;
+  acceptedCount: number;
+  failedCount: number;
+  occupiedSeats: number;
+  members: YouTubeInvitationSummaryDto[];
+}
+
 export type YouTubeFamilyGroupCreateBody = {
   label: string;
   managerEmail: string;
@@ -56,24 +92,40 @@ function isRealIsoDate(value: string): boolean {
   return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
 }
 
+function safeDtoText(value: unknown, max: number): string | null {
+  return typeof value === 'string' && value.length > 0 && value.length <= max
+    && !/[\x00-\x1f\x7f]/.test(value) ? value : null;
+}
+
+function isSafeIsoTimestamp(value: unknown): value is string {
+  if (typeof value !== 'string' || value.length > 50) return false;
+  const parsed = new Date(value);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString() === value;
+}
+
+function isMaskedEmail(value: unknown): value is string {
+  return typeof value === 'string' && value.length <= 320 && value.includes('*')
+    && value.includes('@') && !/\s/.test(value);
+}
+
 function parseSafeFamilyGroup(value: unknown): YouTubeFamilyGroupDto | null {
   if (!value || typeof value !== 'object') return null;
   const item = value as Record<string, unknown>;
+  const id = safeDtoText(item.id, 200);
+  const label = safeDtoText(item.label, 120);
   const subscriptionEndDate = item.subscriptionEndDate;
   if (
-    typeof item.id !== 'string' || !item.id ||
-    typeof item.label !== 'string' || !item.label ||
-    typeof item.managerEmailMasked !== 'string' || !item.managerEmailMasked ||
+    !id || !label || !isMaskedEmail(item.managerEmailMasked) ||
     !(subscriptionEndDate === null || (typeof subscriptionEndDate === 'string' && isRealIsoDate(subscriptionEndDate))) ||
     !Number.isInteger(item.sellableSeats) || Number(item.sellableSeats) < 1 || Number(item.sellableSeats) > 20 ||
     !Number.isInteger(item.availableSeats) || Number(item.availableSeats) < 0 || Number(item.availableSeats) > Number(item.sellableSeats) ||
     typeof item.enabled !== 'boolean' ||
-    typeof item.createdAt !== 'string' ||
-    typeof item.updatedAt !== 'string'
+    !isSafeIsoTimestamp(item.createdAt) ||
+    !isSafeIsoTimestamp(item.updatedAt)
   ) return null;
   return {
-    id: item.id,
-    label: item.label,
+    id,
+    label,
     managerEmailMasked: item.managerEmailMasked,
     subscriptionEndDate,
     sellableSeats: Number(item.sellableSeats),
@@ -91,6 +143,59 @@ export function parseYouTubeFamilyGroupsResponse(value: unknown): YouTubeFamilyG
   const familyGroups = response.familyGroups.map(parseSafeFamilyGroup);
   if (familyGroups.some((group) => group === null)) return null;
   return { enabled: response.enabled, familyGroups: familyGroups as YouTubeFamilyGroupDto[] };
+}
+
+const YOUTUBE_INVITATION_STATUSES = new Set<YouTubeInvitationStatus>([
+  'waiting_for_group_assignment', 'waiting_for_buyer_email', 'email_candidate_found', 'email_confirmed',
+  'invite_sent', 'delivery_completion_pending', 'delivered_waiting_inspection', 'active', 'failed', 'ended',
+]);
+
+function parseSafeInvitation(value: unknown): YouTubeInvitationSummaryDto | null {
+  if (!value || typeof value !== 'object') return null;
+  const item = value as Record<string, unknown>;
+  const id = safeDtoText(item.id, 200);
+  const familyGroupId = safeDtoText(item.familyGroupId, 200);
+  const buyerName = safeDtoText(item.buyerName, 200);
+  const status = item.status as YouTubeInvitationStatus;
+  const updatedAt = item.updatedAt;
+  const buyerEmailMasked = item.buyerEmailMasked;
+  const endDateTime = item.endDateTime;
+  if (!id || !familyGroupId || !buyerName || !isSafeIsoTimestamp(updatedAt) || !YOUTUBE_INVITATION_STATUSES.has(status)
+    || !(buyerEmailMasked === null || isMaskedEmail(buyerEmailMasked))
+    || !(endDateTime === null || isSafeIsoTimestamp(endDateTime))) return null;
+  return { id, familyGroupId, buyerName, buyerEmailMasked, endDateTime, status, updatedAt };
+}
+
+export function parseYouTubeInvitationsResponse(value: unknown): YouTubeInvitationsResult | null {
+  if (!value || typeof value !== 'object') return null;
+  const response = value as Record<string, unknown>;
+  if (response.ok !== true || typeof response.enabled !== 'boolean' || !Array.isArray(response.invitations)) return null;
+  const invitations = response.invitations.map(parseSafeInvitation);
+  if (invitations.some((invitation) => invitation === null)) return null;
+  return { enabled: response.enabled, invitations: invitations as YouTubeInvitationSummaryDto[] };
+}
+
+const PENDING_INVITATION_STATUSES = new Set<YouTubeInvitationStatus>([
+  'waiting_for_group_assignment', 'waiting_for_buyer_email', 'email_candidate_found', 'email_confirmed',
+  'invite_sent', 'delivery_completion_pending',
+]);
+
+export function summarizeYouTubeFamilyGroup(
+  group: YouTubeFamilyGroupDto,
+  invitations: readonly YouTubeInvitationSummaryDto[],
+): YouTubeFamilyGroupSummary {
+  const members = invitations
+    .filter((invitation) => invitation.familyGroupId === group.id && invitation.status !== 'ended')
+    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt) || left.id.localeCompare(right.id));
+  return {
+    ...group,
+    activeCount: members.filter((member) => member.status === 'active').length,
+    pendingCount: members.filter((member) => PENDING_INVITATION_STATUSES.has(member.status)).length,
+    acceptedCount: members.filter((member) => member.status === 'delivered_waiting_inspection').length,
+    failedCount: members.filter((member) => member.status === 'failed').length,
+    occupiedSeats: Math.max(0, group.sellableSeats - group.availableSeats),
+    members,
+  };
 }
 
 function parseSeats(value: string): number | null {

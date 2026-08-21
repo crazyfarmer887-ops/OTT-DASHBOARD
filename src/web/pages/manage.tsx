@@ -16,7 +16,7 @@ import { parseJsonResponse } from "../lib/fetch-json";
 import { buildWithdrawnPartyMembers, GRAYTAG_CANCEL_COUNTING_START_DATE } from "../lib/withdrawn-party-members";
 import { getAdminToken } from "../lib/admin-auth";
 import { getVisibleManagementAccounts, type FilterMode } from "../lib/management-account-order";
-import { buildYouTubeFamilyGroupCreateBody, buildYouTubeFamilyGroupPatchBody, parseYouTubeFamilyGroupsResponse, partitionYouTubeManagementServices, validateYouTubeFamilyGroupDraft, type YouTubeFamilyGroupDraft, type YouTubeFamilyGroupDto } from "../lib/youtube-family-groups";
+import { buildYouTubeFamilyGroupCreateBody, buildYouTubeFamilyGroupPatchBody, parseYouTubeFamilyGroupsResponse, parseYouTubeInvitationsResponse, partitionYouTubeManagementServices, summarizeYouTubeFamilyGroup, validateYouTubeFamilyGroupDraft, type YouTubeFamilyGroupDraft, type YouTubeFamilyGroupDto, type YouTubeInvitationStatus, type YouTubeInvitationSummaryDto } from "../lib/youtube-family-groups";
 import { RefreshCw, KeyRound, Mail, ChevronDown, ChevronRight, TrendingUp, Loader2, AlertCircle, ExternalLink, Calendar, UserX, Megaphone, PlusCircle, X, UserPlus, Trash2, Wifi, WifiOff, Eye, EyeOff, Youtube, Pencil, Users } from "lucide-react";
 
 interface OnSaleProduct {
@@ -124,6 +124,19 @@ const isNetflixManagementService = (serviceType: string) => {
   const normalized = String(serviceType || '').trim().toLowerCase().replace(/\s+/g, '');
   return normalized === '넷플릭스' || normalized === 'netflix';
 };
+
+const YOUTUBE_INVITATION_STATUS_LABELS: Record<YouTubeInvitationStatus, string> = {
+  waiting_for_group_assignment: '그룹 배정 대기', waiting_for_buyer_email: '이메일 대기',
+  email_candidate_found: '이메일 후보', email_confirmed: '이메일 확인 완료', invite_sent: '초대 발송',
+  delivery_completion_pending: '전달 확인 중', delivered_waiting_inspection: '수락/검수 대기',
+  active: '이용 중', failed: '초대 실패', ended: '이용 종료',
+};
+const YOUTUBE_EMAIL_CONFIRMED_STATUSES = new Set<YouTubeInvitationStatus>([
+  'email_confirmed', 'invite_sent', 'delivery_completion_pending', 'delivered_waiting_inspection', 'active',
+]);
+const youtubeEmailConfirmed = (status: YouTubeInvitationStatus) => YOUTUBE_EMAIL_CONFIRMED_STATUSES.has(status);
+const youtubeEmailConfirmationLabel = (status: YouTubeInvitationStatus) => status === 'failed'
+  ? '확인 여부 불명' : youtubeEmailConfirmed(status) ? '확인 완료' : '확인 대기';
 
 // 파티 기간 계산 (startDateTime ~ endDateTime)
 const calcPartyDuration = (members: Member[]): { startDate: string | null; endDate: string | null; totalDays: number } => {
@@ -274,6 +287,8 @@ export default function ManagePage() {
   const [toast, setToast] = useState<{ message: string; tone: 'success' | 'error' | 'info'; id: number } | null>(null);
   const [cancelledRecentOpen, setCancelledRecentOpen] = useState(false);
   const [youtubeFamilyGroups, setYouTubeFamilyGroups] = useState<YouTubeFamilyGroupDto[]>([]);
+  const [youtubeInvitations, setYouTubeInvitations] = useState<YouTubeInvitationSummaryDto[]>([]);
+  const [openYouTubeGroup, setOpenYouTubeGroup] = useState<string | null>(null);
   const [youtubeGroupsLoading, setYouTubeGroupsLoading] = useState(true);
   const [youtubeGroupsError, setYouTubeGroupsError] = useState<string | null>(null);
   const [youtubeGroupsFeatureEnabled, setYouTubeGroupsFeatureEnabled] = useState<boolean | null>(null);
@@ -297,12 +312,20 @@ export default function ManagePage() {
     setYouTubeGroupsLoading(true);
     setYouTubeGroupsError(null);
     try {
-      const response = await fetch('/api/youtube/family-groups', { headers: adminHeaders() });
-      if (!response.ok) throw new Error('request failed');
-      const parsed = parseYouTubeFamilyGroupsResponse(await response.json());
-      if (!parsed) throw new Error('invalid response');
-      setYouTubeFamilyGroups(parsed.familyGroups);
-      setYouTubeGroupsFeatureEnabled(parsed.enabled);
+      const headers = adminHeaders();
+      const [groupsResponse, invitationsResponse] = await Promise.all([
+        fetch('/api/youtube/family-groups', { headers }),
+        fetch('/api/youtube/invitations', { headers }),
+      ]);
+      if (!groupsResponse.ok || !invitationsResponse.ok) throw new Error('request failed');
+      const [parsedGroups, parsedInvitations] = await Promise.all([
+        groupsResponse.json().then(parseYouTubeFamilyGroupsResponse),
+        invitationsResponse.json().then(parseYouTubeInvitationsResponse),
+      ]);
+      if (!parsedGroups || !parsedInvitations) throw new Error('invalid response');
+      setYouTubeFamilyGroups(parsedGroups.familyGroups);
+      setYouTubeInvitations(parsedInvitations.invitations);
+      setYouTubeGroupsFeatureEnabled(parsedGroups.enabled && parsedInvitations.enabled);
     } catch {
       setYouTubeGroupsError('가족 그룹 정보를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.');
     } finally {
@@ -1705,6 +1728,13 @@ export default function ManagePage() {
       .map((m) => ({ id:`manual-cancel:${m.id}`, memberName:m.memberName, serviceType:svc.serviceType, accountEmail:acct.email, date:dateFromAny(m.endDate), dateLabel:m.endDate.replace(/-/g,'/'), statusLabel:'수동 취소' })),
   ])).filter((row) => row.date && row.date >= cancelCountingStart && row.date <= todayStart).sort((a, b) => (b.date!.getTime() - a.date!.getTime())).slice(0, 20) : [];
   const { credentialServices, unmappedYouTubeServices } = partitionYouTubeManagementServices(data?.services || []);
+  const youtubeGroupSummaries = youtubeFamilyGroups.map(group => summarizeYouTubeFamilyGroup(group, youtubeInvitations));
+  const youtubeCurrentCount = youtubeGroupSummaries.reduce((sum, group) => sum + group.activeCount, 0);
+  const youtubePendingCount = youtubeGroupSummaries.reduce((sum, group) => sum + group.pendingCount + group.acceptedCount, 0);
+  const youtubeFailedCount = youtubeGroupSummaries.reduce((sum, group) => sum + group.failedCount, 0);
+  const youtubeVacancyCount = youtubeGroupSummaries.reduce((sum, group) => sum + group.availableSeats, 0);
+  const unmappedYouTubeTransactionCount = unmappedYouTubeServices.reduce((sum, service) => sum + service.accounts.reduce((count, account) => count + account.members.length, 0), 0);
+  const isYouTubeServiceOpen = openService === '유튜브 프리미엄';
 
   return (
     <div className="account-management-page">
@@ -1783,65 +1813,6 @@ export default function ManagePage() {
           </div>
         </div>
       )}
-
-      {/* 유튜브 프리미엄 관리 */}
-      <section className="youtube-premium-management-card" aria-labelledby="youtube-premium-management-title" style={{ background:'#fff', border:'1.5px solid #FCA5A5', borderRadius:18, padding:14, marginBottom:14, boxShadow:'0 5px 18px rgba(239,68,68,0.06)' }}>
-        <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:10, flexWrap:'wrap', marginBottom:12 }}>
-          <div style={{ minWidth:0 }}>
-            <h2 id="youtube-premium-management-title" style={{ display:'flex', alignItems:'center', gap:7, margin:0, color:'#991B1B', fontSize:15, fontWeight:900 }}><Youtube size={18} /> 유튜브 프리미엄 관리</h2>
-            <p style={{ margin:'4px 0 0', color:'#6B7280', fontSize:11, fontWeight:700 }}>가족 그룹 · 좌석 · 초대를 한곳에서 관리하세요.</p>
-          </div>
-          <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
-            <button type="button" aria-label="유튜브 프리미엄 초대 관리로 이동" onClick={() => navigate('/youtube-invites')} style={{ border:'1px solid #FECACA', borderRadius:10, padding:'7px 10px', background:'#FFF7F7', color:'#B91C1C', fontSize:11, fontWeight:900, cursor:'pointer', display:'inline-flex', alignItems:'center', gap:5 }}>
-              초대 관리 <ExternalLink size={12} />
-            </button>
-            <button type="button" aria-label="새 유튜브 프리미엄 가족 그룹 추가" onClick={openYouTubeGroupCreateForm} disabled={youtubeGroupsFeatureEnabled !== true || youtubeGroupMutationLoading} style={{ border:'none', borderRadius:10, padding:'7px 10px', background:youtubeGroupsFeatureEnabled !== true?'#D1D5DB':'#EF4444', color:'#fff', fontSize:11, fontWeight:900, cursor:youtubeGroupsFeatureEnabled !== true?'not-allowed':'pointer', display:'inline-flex', alignItems:'center', gap:5 }}>
-              <PlusCircle size={12} /> 그룹 추가
-            </button>
-          </div>
-        </div>
-
-        {youtubeGroupsLoading && <div role="status" style={{ display:'flex', alignItems:'center', gap:7, borderRadius:12, padding:'11px 12px', background:'#FFF7F7', color:'#B91C1C', fontSize:12, fontWeight:800 }}><Loader2 size={14} style={{ animation:'spin 1s linear infinite' }} /> 가족 그룹을 불러오는 중...</div>}
-        {!youtubeGroupsLoading && youtubeGroupsError && (
-          <div role="alert" style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, borderRadius:12, padding:'10px 12px', background:'#FFF0F0', color:'#B91C1C', fontSize:11, fontWeight:800 }}>
-            <span>{youtubeGroupsError}</span>
-            <button type="button" onClick={fetchYouTubeFamilyGroups} style={{ border:'none', borderRadius:8, padding:'6px 8px', background:'#fff', color:'#B91C1C', fontWeight:900, cursor:'pointer' }}>다시 시도</button>
-          </div>
-        )}
-        {!youtubeGroupsLoading && !youtubeGroupsError && youtubeGroupsFeatureEnabled !== true && (
-          <div style={{ borderRadius:12, padding:'9px 11px', marginBottom:10, background:'#FFFBEB', color:'#92400E', fontSize:11, fontWeight:900 }}>유튜브 초대 판매 기능이 비활성화되어 있습니다. 조회만 가능합니다.</div>
-        )}
-        {!youtubeGroupsLoading && !youtubeGroupsError && youtubeFamilyGroups.length === 0 && (
-          <div style={{ borderRadius:12, padding:'12px', background:'#F9FAFB', color:'#6B7280', fontSize:11, textAlign:'center' }}>등록된 가족 그룹이 없습니다.</div>
-        )}
-        {!youtubeGroupsLoading && !youtubeGroupsError && youtubeFamilyGroups.length > 0 && (
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(min(100%,280px),1fr))', gap:10 }}>
-            {youtubeFamilyGroups.map(group => {
-              const occupiedSeats = group.sellableSeats - group.availableSeats;
-              return (
-                <article key={group.id} style={{ minWidth:0, border:'1px solid #FEE2E2', borderRadius:14, padding:12, background:group.enabled?'#fff':'#F9FAFB' }}>
-                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:8 }}>
-                    <div style={{ minWidth:0 }}>
-                      <div style={{ color:'#1E1B4B', fontSize:13, fontWeight:900, overflowWrap:'anywhere' }}>{group.label}</div>
-                      <div style={{ color:'#6B7280', fontSize:11, marginTop:3, overflowWrap:'anywhere' }}>{group.managerEmailMasked}</div>
-                    </div>
-                    <span style={{ flexShrink:0, borderRadius:999, padding:'3px 7px', background:group.enabled?'#ECFDF5':'#E5E7EB', color:group.enabled?'#047857':'#6B7280', fontSize:9, fontWeight:900 }}>{group.enabled?'활성':'비활성'}</span>
-                  </div>
-                  <div style={{ display:'grid', gridTemplateColumns:'repeat(2,minmax(0,1fr))', gap:7, marginTop:10 }}>
-                    <div style={{ borderRadius:9, background:'#FFF7F7', padding:'7px 8px' }}><div style={{ color:'#9CA3AF', fontSize:9, fontWeight:800 }}>구독 종료일</div><div style={{ color:'#991B1B', fontSize:11, fontWeight:900, marginTop:2 }}>{group.subscriptionEndDate || '미설정'}</div></div>
-                    <div style={{ borderRadius:9, background:'#FFF7F7', padding:'7px 8px' }}><div style={{ color:'#9CA3AF', fontSize:9, fontWeight:800 }}>판매 가능 좌석</div><div style={{ color:'#991B1B', fontSize:11, fontWeight:900, marginTop:2 }}>{group.availableSeats}/{group.sellableSeats}석</div></div>
-                  </div>
-                  <div style={{ color:'#9CA3AF', fontSize:9, marginTop:6 }}><Users size={10} style={{ verticalAlign:'-2px', marginRight:3 }} />사용 중인 좌석 {occupiedSeats}석</div>
-                  <div style={{ display:'flex', gap:6, marginTop:10 }}>
-                    <button type="button" onClick={() => openYouTubeGroupEditForm(group)} disabled={youtubeGroupsFeatureEnabled !== true || youtubeGroupMutationLoading} style={{ flex:1, border:'none', borderRadius:9, padding:'7px 8px', background:'#FEF2F2', color:'#B91C1C', fontSize:10, fontWeight:900, cursor:youtubeGroupsFeatureEnabled !== true?'not-allowed':'pointer' }}><Pencil size={11} style={{ verticalAlign:'-2px', marginRight:4 }} />수정</button>
-                    {group.enabled && <button type="button" onClick={() => disableYouTubeFamilyGroup(group)} disabled={youtubeGroupsFeatureEnabled !== true || youtubeGroupMutationLoading} style={{ flex:1, border:'none', borderRadius:9, padding:'7px 8px', background:'#F3F4F6', color:'#6B7280', fontSize:10, fontWeight:900, cursor:youtubeGroupsFeatureEnabled !== true?'not-allowed':'pointer' }}>비활성화</button>}
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-        )}
-      </section>
 
       {/* 초기 안내 */}
       {!data && !loading && !error && (
@@ -1987,18 +1958,75 @@ export default function ManagePage() {
           </div>
 
           {/* 서비스별 */}
-          {unmappedYouTubeServices.length > 0 && (
-            <section aria-labelledby="unmapped-youtube-transactions" style={{ background:'#FFF7ED', border:'1.5px solid #FED7AA', borderRadius:16, padding:14, marginBottom:12 }}>
-              <h2 id="unmapped-youtube-transactions" style={{ margin:0, color:'#9A3412', fontSize:14 }}>그룹 매핑 필요 · 기존 유튜브 거래</h2>
-              <p style={{ margin:'5px 0 10px', color:'#C2410C', fontSize:11, lineHeight:1.5 }}>기존 거래를 가족 그룹에 추측 연결하지 않습니다. 초대 관리에서 확인해 수동 매핑하세요. 이 안전 섹션은 ID/PW · PIN · 프로필 · 접근 링크 작업을 제공하지 않습니다.</p>
-              {unmappedYouTubeServices.map(service => (
-                <div key={service.serviceType} style={{ background:'#fff', borderRadius:10, padding:'8px 10px', color:'#7C2D12', fontSize:11, fontWeight:800 }}>
-                  {service.serviceType} · 거래 {service.accounts.reduce((count, account) => count + account.members.length, 0)}건 · 계정 후보 {service.accounts.length}개
-                </div>
-              ))}
-            </section>
-          )}
           <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+            <section className="management-service-group youtube-management-service" style={{ borderColor:isYouTubeServiceOpen?'#EF4444':'#FEE2E2' }}>
+              <div className="management-service-header">
+                <button type="button" className="management-service-toggle management-touch-target" onClick={() => setOpenService(isYouTubeServiceOpen ? null : '유튜브 프리미엄')} aria-expanded={isYouTubeServiceOpen} aria-controls="management-service-youtube">
+                  <div className="youtube-management-logo" aria-hidden="true"><Youtube size={24} /></div>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontSize:15, fontWeight:800, color:'#1E1B4B' }}>유튜브 프리미엄</div>
+                    <div style={{ fontSize:11, color:'#6B7280', marginTop:2 }}>가족 그룹 {youtubeFamilyGroups.length}개 · 현재 파티원 {youtubeCurrentCount}명 · 초대 대기 {youtubePendingCount}명{youtubeFailedCount > 0 ? ` · 실패 ${youtubeFailedCount}명` : ''}</div>
+                  </div>
+                  <div className="youtube-service-vacancy"><strong>{youtubeVacancyCount}</strong><span>빈자리</span></div>
+                  {isYouTubeServiceOpen ? <ChevronDown size={16} color="#DC2626" /> : <ChevronRight size={16} color="#DC2626" />}
+                </button>
+                <button type="button" className="management-service-fill management-touch-target youtube-invite-link" aria-label="유튜브 프리미엄 초대 관리로 이동" onClick={() => navigate('/youtube-invites')}>초대 관리 <ExternalLink size={12} /></button>
+              </div>
+
+              {isYouTubeServiceOpen && (
+                <div id="management-service-youtube" role="region" aria-label="유튜브 프리미엄 가족 그룹 목록" className="youtube-service-panel">
+                  <div className="youtube-service-toolbar">
+                    <p>관리자 계정과 가족 그룹 초대 상태를 관리합니다. ID/PW · PIN · 프로필은 전달하지 않습니다.</p>
+                    <button type="button" className="management-touch-target" onClick={openYouTubeGroupCreateForm} disabled={youtubeGroupsFeatureEnabled !== true || youtubeGroupMutationLoading}><PlusCircle size={14} /> 그룹 추가</button>
+                  </div>
+                  {youtubeGroupsFeatureEnabled !== true && !youtubeGroupsLoading && !youtubeGroupsError && <div className="youtube-service-notice">유튜브 초대 판매 기능이 비활성화되어 있습니다. 조회만 가능합니다.</div>}
+                  {youtubeGroupsLoading && <div role="status" className="youtube-service-notice"><Loader2 size={14} style={{ animation:'spin 1s linear infinite' }} /> 가족 그룹을 불러오는 중...</div>}
+                  {!youtubeGroupsLoading && youtubeGroupsError && <div role="alert" className="youtube-service-notice is-error"><span>{youtubeGroupsError}</span><button type="button" className="management-touch-target" onClick={fetchYouTubeFamilyGroups}>다시 시도</button></div>}
+                  {unmappedYouTubeTransactionCount > 0 && (
+                    <div className="youtube-unmapped-notice"><strong>그룹 매핑 필요 · 기존 거래 {unmappedYouTubeTransactionCount}건</strong><span>가족 그룹을 추측 연결하지 않습니다. 초대 관리에서 수동 매핑하세요. ID/PW · PIN · 프로필 · 접근 링크 작업을 제공하지 않습니다.</span></div>
+                  )}
+                  {!youtubeGroupsLoading && !youtubeGroupsError && youtubeGroupSummaries.length === 0 && <div className="youtube-service-empty">등록된 가족 그룹이 없습니다.</div>}
+                  {!youtubeGroupsLoading && !youtubeGroupsError && youtubeGroupSummaries.length > 0 && (
+                    <div className="youtube-family-group-grid">
+                      {youtubeGroupSummaries.map(group => {
+                        const isGroupOpen = openYouTubeGroup === group.id;
+                        const groupPanelId = `youtube-family-group-${encodeURIComponent(group.id)}`;
+                        return (
+                          <article key={group.id} className="youtube-family-group-card management-account-card">
+                            <div className="youtube-family-group-head">
+                              <div style={{ minWidth:0 }}><strong>{group.label}</strong><span>{group.managerEmailMasked}</span></div>
+                              <span className={group.enabled?'is-enabled':'is-disabled'}>{group.enabled?'활성':'비활성'}</span>
+                            </div>
+                            <dl className="management-account-metrics youtube-family-metrics">
+                              <div><dt>현재 파티원</dt><dd>{group.activeCount}명</dd></div>
+                              <div><dt>초대 대기</dt><dd>{group.pendingCount}명</dd></div>
+                              <div><dt>수락/검수</dt><dd>{group.acceptedCount}명</dd></div>
+                              <div><dt>실패</dt><dd>{group.failedCount}명</dd></div>
+                              <div><dt>정원 · 빈자리</dt><dd>{group.occupiedSeats}/{group.sellableSeats} · {group.availableSeats}석</dd></div>
+                              <div><dt>이용 종료일</dt><dd>{group.subscriptionEndDate || '미설정'}</dd></div>
+                            </dl>
+                            <div className="youtube-family-actions">
+                              <button type="button" className="youtube-family-group-toggle management-touch-target" onClick={() => setOpenYouTubeGroup(isGroupOpen ? null : group.id)} aria-expanded={isGroupOpen} aria-controls={groupPanelId}>{isGroupOpen?<ChevronDown size={14}/>:<ChevronRight size={14}/>} 파티원/초대 {group.members.length}명</button>
+                              <button type="button" className="management-touch-target" onClick={() => openYouTubeGroupEditForm(group)} disabled={youtubeGroupsFeatureEnabled !== true || youtubeGroupMutationLoading}><Pencil size={13}/> 수정</button>
+                              {group.enabled && <button type="button" className="management-touch-target" onClick={() => disableYouTubeFamilyGroup(group)} disabled={youtubeGroupsFeatureEnabled !== true || youtubeGroupMutationLoading}>비활성화</button>}
+                            </div>
+                            {isGroupOpen && <div id={groupPanelId} role="region" aria-label={`${group.label} 파티원 및 초대 상세`} className="youtube-family-member-list">
+                              {group.members.length === 0 ? <div className="youtube-family-member-empty">현재 파티원 또는 초대 작업이 없습니다.</div> : group.members.map(member => (
+                                <div key={member.id} className={`youtube-family-member status-${member.status}`}>
+                                  <div><strong>{member.buyerName}</strong><span>{YOUTUBE_INVITATION_STATUS_LABELS[member.status]}</span></div>
+                                  <dl><div><dt>구매자 이메일</dt><dd>{member.buyerEmailMasked || '미확인'} <span className={youtubeEmailConfirmed(member.status)?'email-confirmed':'email-pending'}>{youtubeEmailConfirmationLabel(member.status)}</span></dd></div><div><dt>이용 종료일</dt><dd>{member.endDateTime ? fmtDate(member.endDateTime) : '미설정'}</dd></div></dl>
+                                </div>
+                              ))}
+                              <button type="button" className="youtube-open-invites management-touch-target" onClick={() => navigate('/youtube-invites')}>초대 상세 운영 열기 <ExternalLink size={12}/></button>
+                            </div>}
+                          </article>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+            </section>
             {credentialServices.map(svc => {
               const visibleAccounts = getVisibleManagementAccounts(svc.accounts, filter);
               if (visibleAccounts.length === 0) return null;
@@ -3008,3 +3036,4 @@ export default function ManagePage() {
     </div>
   );
 }
+
