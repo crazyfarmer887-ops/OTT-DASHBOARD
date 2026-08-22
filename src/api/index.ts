@@ -50,6 +50,8 @@ import { buildRegistrationEvidenceSnapshot } from '../renewal/graytag-registrati
 import { buildMultipartJsonBody, curlFetch } from './http-transport';
 import chatNotificationStreamApp from './chat-notification-stream';
 import { createYouTubeInvitationsApp } from './youtube-invitations';
+import { YouTubeFamilyGroupsStore, YouTubeInvitationJobsStore } from '../lib/youtube-invitations';
+import { buildYouTubeEmailExtractionPrompt, buildYouTubeInvitationAlert, buildYouTubeNewSaleCandidate, isYouTubeAutoReplyProduct, parseYouTubeEmailExtractionJson, resolveYouTubeEmailModel, sendHumanReviewAlertIfEnabled, sendYouTubeInvitationAlert, shouldIncludeOffHoursNotice, YOUTUBE_EMAIL_INVITATION_ALERT_CATEGORY, YOUTUBE_NEW_SALE_GUIDE, YOUTUBE_NEW_SALE_GUIDE_CATEGORY } from './youtube-auto-reply';
 import { normalizeYouTubeAuditReason } from '../lib/youtube-audit-reason';
 import { readAuthoritativeYouTubeSellerProducts, reconcileYouTubeProductRegistration, type YouTubeProductRegistrationReconciliationClaim } from '../lib/youtube-product-registration-reconciliation';
 import { ChatRoomOrganizationValidationError, createChatRoomCategory, deleteChatRoomCategory, loadChatRoomOrganization, renameChatRoomCategory, updateChatRoomOrganizationEntry } from '../lib/chat-room-organization';
@@ -2693,6 +2695,7 @@ function autoReplyJobsPath(): string {
   return process.env.AUTO_REPLY_JOBS_PATH || DEFAULT_AUTO_REPLY_JOBS_PATH;
 }
 let AUTO_REPLY_MEMORY_STORE: AutoReplyJobStore = loadAutoReplyJobStore(autoReplyJobsPath());
+const AUTO_REPLY_PROCESS_STARTED_AT = new Date();
 
 function persistAutoReplyJobs(): void {
   saveAutoReplyJobStore(autoReplyJobsPath(), AUTO_REPLY_MEMORY_STORE);
@@ -2752,10 +2755,10 @@ function templateAutoReply(category: string): HermesAutoReplyResult {
   };
 }
 
-async function runHermesJsonPrompt(prompt: string): Promise<string> {
+async function runHermesJsonPrompt(prompt: string, options: { provider?: string; model?: string } = {}): Promise<string> {
   const hermesCli = process.env.HERMES_CLI_PATH || '/home/ubuntu/.local/bin/hermes';
-  const provider = String(process.env.AUTO_REPLY_HERMES_PROVIDER || 'openrouter').trim() || 'openrouter';
-  const model = String(process.env.AUTO_REPLY_HERMES_MODEL || process.env.AUTO_REPLY_OPENROUTER_MODEL || 'nvidia/nemotron-3-super-120b-a12b:free').trim() || 'nvidia/nemotron-3-super-120b-a12b:free';
+  const provider = String(options.provider || process.env.AUTO_REPLY_HERMES_PROVIDER || 'openrouter').trim() || 'openrouter';
+  const model = String(options.model || process.env.AUTO_REPLY_HERMES_MODEL || process.env.AUTO_REPLY_OPENROUTER_MODEL || 'nvidia/nemotron-3-super-120b-a12b:free').trim() || 'nvidia/nemotron-3-super-120b-a12b:free';
   const { stdout } = await execFileAsync(hermesCli, ['chat', '-q', prompt, '--provider', provider, '--model', model, '--quiet'], {
     timeout: Number(process.env.HERMES_AUTO_REPLY_TIMEOUT_MS || 45000),
     maxBuffer: 1024 * 1024,
@@ -3114,6 +3117,109 @@ async function createAutoReplyPartyAccessUrl(job: any, persist = true): Promise<
   return partyAccessUrlFromToken(token);
 }
 
+async function processYouTubeNewSaleGuide(job: any, dryRun: boolean): Promise<{ status: 'drafted' | 'sent' | 'blocked' | 'error' } | null> {
+  if (job.internalCategory !== YOUTUBE_NEW_SALE_GUIDE_CATEGORY) return null;
+  if (dryRun || process.env.AUTO_REPLY_ENABLE_SEND !== 'true') {
+    updateAutoReplyJobPersisted(AUTO_REPLY_MEMORY_STORE, job.id, {
+      status: 'drafted', category: YOUTUBE_NEW_SALE_GUIDE_CATEGORY, risk: 'low',
+      draftReply: YOUTUBE_NEW_SALE_GUIDE,
+      blockReason: dryRun ? 'dry-run' : 'AUTO_REPLY_ENABLE_SEND 꺼짐',
+    });
+    return { status: 'drafted' };
+  }
+  if (loadSafeModeConfig().enabled) {
+    updateAutoReplyJobPersisted(AUTO_REPLY_MEMORY_STORE, job.id, {
+      status: 'blocked', category: YOUTUBE_NEW_SALE_GUIDE_CATEGORY, risk: 'low',
+      draftReply: YOUTUBE_NEW_SALE_GUIDE, blockReason: 'safe-mode enabled',
+    });
+    return { status: 'blocked' };
+  }
+  try {
+    const result = await sendGraytagChatMessage({
+      chatRoomUuid: job.chatRoomUuid,
+      dealUsid: job.dealUsid,
+      message: YOUTUBE_NEW_SALE_GUIDE,
+    });
+    const ok = result?.ok !== false;
+    updateAutoReplyJobPersisted(AUTO_REPLY_MEMORY_STORE, job.id, {
+      status: ok ? 'sent' : 'error', category: YOUTUBE_NEW_SALE_GUIDE_CATEGORY, risk: 'low',
+      draftReply: YOUTUBE_NEW_SALE_GUIDE, blockReason: ok ? undefined : (result.error || 'Graytag send failed'),
+    });
+    return { status: ok ? 'sent' : 'error' };
+  } catch (error: any) {
+    updateAutoReplyJobPersisted(AUTO_REPLY_MEMORY_STORE, job.id, {
+      status: 'error', category: YOUTUBE_NEW_SALE_GUIDE_CATEGORY, risk: 'low',
+      draftReply: YOUTUBE_NEW_SALE_GUIDE, blockReason: error?.message || 'YouTube guide send failed',
+    });
+    return { status: 'error' };
+  }
+}
+
+async function processYouTubeBuyerEmail(job: any): Promise<{ status: 'ignored' } | null> {
+  if (job.internalCategory === YOUTUBE_NEW_SALE_GUIDE_CATEGORY || !isYouTubeAutoReplyProduct(job)) return null;
+  let output = '';
+  try {
+    output = process.env.NODE_ENV === 'test' && process.env.AUTO_REPLY_YOUTUBE_EMAIL_TEST_OUTPUT !== undefined
+      ? process.env.AUTO_REPLY_YOUTUBE_EMAIL_TEST_OUTPUT
+      : await runHermesJsonPrompt(buildYouTubeEmailExtractionPrompt(job.buyerMessage), {
+        provider: 'openrouter',
+        model: resolveYouTubeEmailModel(),
+      });
+  } catch {
+    updateAutoReplyJobPersisted(AUTO_REPLY_MEMORY_STORE, job.id, {
+      status: 'ignored', category: YOUTUBE_EMAIL_INVITATION_ALERT_CATEGORY, risk: 'low',
+      draftReply: '', blockReason: 'YouTube 이메일 추출 실패',
+    });
+    return { status: 'ignored' };
+  }
+  const buyerEmail = parseYouTubeEmailExtractionJson(output).email;
+  if (!buyerEmail) {
+    updateAutoReplyJobPersisted(AUTO_REPLY_MEMORY_STORE, job.id, {
+      status: 'ignored', category: YOUTUBE_EMAIL_INVITATION_ALERT_CATEGORY, risk: 'low',
+      draftReply: '', blockReason: '명시적인 단일 이메일 없음',
+    });
+    return { status: 'ignored' };
+  }
+
+  try {
+    const jobsPath = process.env.YOUTUBE_INVITATIONS_PATH || 'data/youtube-invitations.json';
+    const groupsPath = process.env.YOUTUBE_FAMILY_GROUPS_PATH || 'data/youtube-family-groups.json';
+    const invitationJobs = new YouTubeInvitationJobsStore(jobsPath, { capacityValidation: false }).read().jobs;
+    const familyGroups = new YouTubeFamilyGroupsStore(groupsPath, { capacityValidation: false }).read().familyGroups;
+    const alert = buildYouTubeInvitationAlert(String(job.dealUsid || ''), buyerEmail, invitationJobs, familyGroups);
+    if (!alert) {
+      updateAutoReplyJobPersisted(AUTO_REPLY_MEMORY_STORE, job.id, {
+        status: 'ignored', category: YOUTUBE_EMAIL_INVITATION_ALERT_CATEGORY, risk: 'low',
+        draftReply: '', blockReason: '정확한 초대 작업/가족 그룹 매핑 없음',
+      });
+      return { status: 'ignored' };
+    }
+
+    // Reserve the durable message job before the external alert for at-most-once delivery.
+    updateAutoReplyJobPersisted(AUTO_REPLY_MEMORY_STORE, job.id, {
+      status: 'ignored', category: YOUTUBE_EMAIL_INVITATION_ALERT_CATEGORY, risk: 'low',
+      draftReply: '', blockReason: 'YouTube 초대 알림 예약됨',
+    });
+    const result = await sendYouTubeInvitationAlert({
+      alert,
+      messageFingerprint: job.fingerprint,
+      alreadySentAt: job.telegramAlertSentAt,
+      sender: sendSellerAlert,
+    });
+    if (result.sent) {
+      updateAutoReplyJobPersisted(AUTO_REPLY_MEMORY_STORE, job.id, {
+        telegramAlertSentAt: new Date().toISOString(), blockReason: 'YouTube 초대 알림 전송 완료',
+      });
+    }
+  } catch {
+    updateAutoReplyJobPersisted(AUTO_REPLY_MEMORY_STORE, job.id, {
+      status: 'ignored', category: YOUTUBE_EMAIL_INVITATION_ALERT_CATEGORY, risk: 'low',
+      draftReply: '', blockReason: 'YouTube 초대 저장소 확인 실패',
+    });
+  }
+  return { status: 'ignored' };
+}
+
 async function processDailyAutomatedNotice(job: any, dryRun: boolean): Promise<{ status: 'drafted' | 'sent' | 'blocked' | 'error' | 'ignored' } | null> {
   if (!autoReplyDailyGuideEnabled()) return null;
   const now = process.env.AUTO_REPLY_TEST_NOW ? new Date(process.env.AUTO_REPLY_TEST_NOW) : new Date();
@@ -3153,7 +3259,7 @@ async function processDailyAutomatedNotice(job: any, dryRun: boolean): Promise<{
 
   const parts: string[] = [];
   const categories: string[] = [];
-  if (shouldSendOffHoursNotice(AUTO_REPLY_MEMORY_STORE, job.chatRoomUuid, now)) {
+  if (shouldIncludeOffHoursNotice() && shouldSendOffHoursNotice(AUTO_REPLY_MEMORY_STORE, job.chatRoomUuid, now)) {
     parts.push(buildOffHoursNoticeReply());
     categories.push(OFF_HOURS_NOTICE_CATEGORY);
   }
@@ -3214,7 +3320,7 @@ async function processDailyAutomatedNotice(job: any, dryRun: boolean): Promise<{
 }
 
 async function notifyAutoReplyHuman(job: any, reason: string, severity: 'warning' | 'critical' = 'warning') {
-  await sendSellerAlert({
+  await sendHumanReviewAlertIfEnabled(process.env, sendSellerAlert, {
     key: `auto-reply-human-${job.chatRoomUuid}-${reason}`,
     title: '자동응답 사람 확인 필요',
     body: [
@@ -3257,6 +3363,12 @@ ${String(draftReply || '').slice(0, 1200)}` : '',
 }
 
 async function processAutoReplyJob(job: any, dryRun: boolean) {
+  const youtubeSaleGuide = await processYouTubeNewSaleGuide(job, dryRun);
+  if (youtubeSaleGuide) return youtubeSaleGuide;
+
+  const youtubeBuyerEmail = await processYouTubeBuyerEmail(job);
+  if (youtubeBuyerEmail) return youtubeBuyerEmail;
+
   const dailyNotice = await processDailyAutomatedNotice(job, dryRun);
   if (dailyNotice) return dailyNotice;
 
@@ -3496,6 +3608,19 @@ async function scanAutoReplyCandidates(maxRooms = 10): Promise<any[]> {
   const profileNameByMember = buildPartyAccessDeliverySnapshotByMember(loadPartyAccessLinkStore());
   const seen = new Set<string>();
   const candidates: any[] = [];
+
+  // New YouTube purchases are deterministic sale events and do not require buyer unread state.
+  // The process-start timestamp gate prevents replaying historical current deals after restart.
+  for (const deal of allDeals) {
+    if (candidates.length >= maxRooms) break;
+    const candidate = buildYouTubeNewSaleCandidate(deal, AUTO_REPLY_PROCESS_STARTED_AT);
+    if (!candidate) continue;
+    const fingerprint = messageFingerprint(candidate as any);
+    if (AUTO_REPLY_MEMORY_STORE.fingerprintToJobId[fingerprint]) continue;
+    candidates.push(candidate);
+    seen.add(String(candidate.chatRoomUuid || ''));
+  }
+
   for (const deal of allDeals) {
     if (candidates.length >= maxRooms) break;
     if (!deal.chatRoomUuid || seen.has(deal.chatRoomUuid)) continue;
@@ -3601,6 +3726,7 @@ const autoReplyTickHandler = async (c: any) => {
       threadMessages: Array.isArray(candidate.threadMessages) ? candidate.threadMessages : [{ role: 'buyer', content: text, time: messageTimestamp(candidate), imageUrls: Array.isArray(candidate.imageUrls) ? candidate.imageUrls : [] }],
       imageUrls: Array.isArray(candidate.imageUrls) ? candidate.imageUrls : extractImageUrlsFromHtml(candidate.message || ''),
       dashboardUrl: candidate.dashboardUrl || dashboardChatRoomUrl(candidate.chatRoomUuid),
+      internalCategory: candidate.internalCategory,
     });
     const isNewJob = !existingJobId;
     if (isNewJob) {

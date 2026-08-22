@@ -33,6 +33,7 @@ export interface AutoReplyJob {
   imageUrls?: string[];
   dashboardUrl?: string;
   aiModel?: string;
+  internalCategory?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -64,6 +65,7 @@ export interface CreateAutoReplyJobInput {
   imageUrls?: string[];
   dashboardUrl?: string;
   aiModel?: string;
+  internalCategory?: string;
   createdAt?: string;
 }
 
@@ -107,6 +109,7 @@ export function createAutoReplyJob(store: AutoReplyJobStore, input: CreateAutoRe
     imageUrls: input.imageUrls,
     dashboardUrl: input.dashboardUrl,
     aiModel: input.aiModel,
+    internalCategory: input.internalCategory,
     status: 'queued',
     createdAt: now,
     updatedAt: now,

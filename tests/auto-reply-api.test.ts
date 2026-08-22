@@ -1,5 +1,5 @@
 import { describe, expect, test, beforeEach, afterEach, vi } from 'vitest';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import apiApp from '../src/api/index';
@@ -38,6 +38,8 @@ describe('auto reply API', () => {
     process.env.AUTO_REPLY_JOBS_PATH = join(tempDir, 'jobs.json');
     process.env.AUTO_REPLY_CONFIG_PATH = join(tempDir, 'config.json');
     process.env.PARTY_ACCESS_LINKS_PATH = join(tempDir, 'party-access-links.json');
+    process.env.YOUTUBE_INVITATIONS_PATH = join(tempDir, 'youtube-invitations.json');
+    process.env.YOUTUBE_FAMILY_GROUPS_PATH = join(tempDir, 'youtube-family-groups.json');
     process.env.AUTO_REPLY_ENABLED = 'true';
     process.env.AUTO_REPLY_DRAFT_ONLY = 'true';
     process.env.AUTO_REPLY_USE_HERMES = 'false';
@@ -53,11 +55,16 @@ describe('auto reply API', () => {
     delete process.env.AUTO_REPLY_JOBS_PATH;
     delete process.env.AUTO_REPLY_CONFIG_PATH;
     delete process.env.PARTY_ACCESS_LINKS_PATH;
+    delete process.env.YOUTUBE_INVITATIONS_PATH;
+    delete process.env.YOUTUBE_FAMILY_GROUPS_PATH;
     delete process.env.AUTO_REPLY_ENABLED;
     delete process.env.AUTO_REPLY_DRAFT_ONLY;
     delete process.env.AUTO_REPLY_USE_HERMES;
     delete process.env.AUTO_REPLY_ENABLE_SEND;
     delete process.env.AUTO_REPLY_TEST_NOW;
+    delete process.env.AUTO_REPLY_YOUTUBE_EMAIL_TEST_OUTPUT;
+    delete process.env.AUTO_REPLY_OFF_HOURS_NOTICE_ENABLED;
+    delete process.env.AUTO_REPLY_HUMAN_ALERT_ENABLED;
     delete process.env.SELLER_ALERT_TELEGRAM_BOT_TOKEN;
     delete process.env.SELLER_ALERT_TELEGRAM_CHAT_ID;
     delete process.env.SELLER_ALERT_TELEGRAM_DRY_RUN;
@@ -202,6 +209,89 @@ describe('auto reply API', () => {
     expect(data.jobs[0].category).toContain('off_hours_notice');
     expect(data.jobs[0].draftReply).toContain('문의 가능 시간은 14:00 ~ 21:00입니다');
     expect(data.jobs[0].draftReply.trim().startsWith('문의 가능 시간은 14:00 ~ 21:00입니다')).toBe(true);
+  });
+
+  test('YouTube new sale guide is exact and deduped without a buyer unread message', async () => {
+    const youtubeSale = {
+      internalCategory: 'youtube_new_sale_guide',
+      chatRoomUuid: `youtube-sale-room-${Date.now()}`,
+      dealUsid: 'youtube-sale-deal',
+      buyerName: '구매자',
+      productType: '유튜브',
+      productName: 'YouTube Premium',
+      message: '유튜브 프리미엄 초대장 이용 안내입니다.\n\n이메일을 남겨주시면 구매 당일 안으로는 초대해드리고 있습니다.  \n\n만약 초대 수락 오류 발생 시 아래 링크를 꼭 확인해주세요\n\nhttps://zrr.kr/xTL6y9',
+      registeredDateTime: '2026-08-22T00:00:01Z',
+    };
+    const body = JSON.stringify({ dryRun: true, candidates: [youtubeSale] });
+    const first = await authed('/chat/auto-reply/tick', { method: 'POST', body });
+    expect((await first.json() as any).drafted).toBe(1);
+    const log = await authed('/chat/auto-reply-log?limit=1');
+    const job = (await log.json() as any).jobs[0];
+    expect(job.category).toBe('youtube_new_sale_guide');
+    expect(job.draftReply).toBe(youtubeSale.message);
+
+    const second = await authed('/chat/auto-reply/tick', { method: 'POST', body });
+    const secondJson = await second.json() as any;
+    expect(secondJson.newJobs).toBe(0);
+    expect(secondJson.skipped).toBe(1);
+  });
+
+  test('YouTube unread buyer email creates only the exact invitation Telegram alert', async () => {
+    writeFileSync(process.env.YOUTUBE_INVITATIONS_PATH!, JSON.stringify({
+      version: 1,
+      jobs: [{
+        id: 'youtube-invitation:deal-email', dealUsid: 'deal-email', productUsid: 'product-email',
+        chatRoomUuid: 'room-email', familyGroupId: 'group-email', buyerName: '구매자',
+        buyerGoogleEmail: null, endDateTime: null, status: 'waiting_for_group_assignment',
+        createdAt: '2026-08-22T00:00:00.000Z', updatedAt: '2026-08-22T00:00:00.000Z', history: [],
+      }],
+    }));
+    writeFileSync(process.env.YOUTUBE_FAMILY_GROUPS_PATH!, JSON.stringify({
+      version: 1,
+      familyGroups: [{
+        id: 'group-email', label: '그룹', managerEmail: 'manager@example.com', subscriptionEndDate: null,
+        sellableSeats: 5, enabled: true, createdAt: '2026-08-22T00:00:00.000Z', updatedAt: '2026-08-22T00:00:00.000Z',
+      }],
+    }));
+    process.env.AUTO_REPLY_YOUTUBE_EMAIL_TEST_OUTPUT = '{"email":"Buyer.Invite@Example.com"}';
+
+    const res = await authed('/chat/auto-reply/tick', {
+      method: 'POST',
+      body: JSON.stringify({ dryRun: false, candidates: [{
+        ...candidate('room-email', '제 이메일은 Buyer.Invite@Example.com 이에요'),
+        dealUsid: 'deal-email', productType: '유튜브', productName: '유튜브 프리미엄',
+        registeredDateTime: '2026-08-22T00:01:00Z',
+      }] }),
+    });
+    const json = await res.json() as any;
+    expect(json.ignored).toBe(1);
+    expect(json.sent).toBe(0);
+    expect(json.drafted).toBe(0);
+    const log = await authed('/chat/auto-reply-log?limit=1');
+    const job = (await log.json() as any).jobs[0];
+    expect(job.category).toBe('youtube_email_invitation_alert');
+    expect(job.telegramAlertSentAt).toBeTruthy();
+    expect(job.draftReply).toBe('');
+  });
+
+  test('off-hours flag removes only off-hours text while retaining the daily account guide', async () => {
+    process.env.AUTO_REPLY_ENABLE_SEND = 'true';
+    process.env.AUTO_REPLY_OFF_HOURS_NOTICE_ENABLED = 'false';
+    process.env.AUTO_REPLY_TEST_NOW = '2026-05-04T13:00:00Z';
+    const res = await authed('/chat/auto-reply/tick', {
+      method: 'POST',
+      body: JSON.stringify({ dryRun: true, candidates: [{
+        ...candidate(`api-offhours-disabled-${Date.now()}`),
+        keepAcct: 'buyer-account@example.com', keepPasswd: 'pw', dealStatus: 'Using',
+      }] }),
+    });
+    expect((await res.json() as any).drafted).toBe(1);
+    const log = await authed('/chat/auto-reply-log?limit=1');
+    const job = (await log.json() as any).jobs[0];
+    expect(job.category).toContain('daily_account_access_notice');
+    expect(job.category).not.toContain('off_hours_notice');
+    expect(job.draftReply).toContain('우선 아래 계정 업데이트 주소');
+    expect(job.draftReply).not.toContain('문의 가능 시간은 14:00 ~ 21:00입니다');
   });
 
   test('manual AI reply endpoint uses Hermes path or safe fallback, not OpenAI/PicoClaw', async () => {

@@ -89,14 +89,16 @@ function normalizeInvitationIdentity(value: string | null): string {
 
 const YOUTUBE_EMAIL_PATTERN = /^[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/i;
 
-function normalizeYouTubeEmail(value: unknown): string | null {
+export function normalizeYouTubeInvitationEmail(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const normalized = value.trim().toLowerCase();
   return normalized.length <= 254 && YOUTUBE_EMAIL_PATTERN.test(normalized) ? normalized : null;
 }
 
+const normalizeYouTubeEmail = normalizeYouTubeInvitationEmail;
+
 export function normalizeYouTubeManagerEmail(value: unknown): string | null {
-  return normalizeYouTubeEmail(value);
+  return normalizeYouTubeInvitationEmail(value);
 }
 
 export function ensureYouTubeInvitationJob(
