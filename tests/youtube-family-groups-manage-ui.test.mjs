@@ -4,10 +4,16 @@ import test from 'node:test';
 
 const manage = readFileSync(new URL('../src/web/pages/manage.tsx', import.meta.url), 'utf8');
 
-test('manage page integrates YouTube Premium into the service folder list instead of a top standalone area', () => {
+test('manage page integrates YouTube Premium into the CATEGORIES-ordered service section map', () => {
   assert.doesNotMatch(manage, /youtube-premium-management-card/);
-  assert.match(manage, /className="management-service-group youtube-management-service"/);
+  assert.doesNotMatch(manage, /youtube-management-service/);
+  assert.match(manage, /const serviceSections: ManagementServiceSection\[\]/);
+  assert.match(manage, /CATEGORIES\.findIndex/);
+  assert.match(manage, /kind: 'youtube'/);
+  assert.match(manage, /serviceSections\.map\(section =>/);
+  assert.match(manage, /className="management-service-group"/);
   assert.match(manage, /className="management-service-toggle management-touch-target"/);
+  assert.match(manage, /className="management-account-grid youtube-family-group-grid"/);
   assert.match(manage, /유튜브 프리미엄/);
   assert.match(manage, /가족 그룹 \{youtubeFamilyGroups\.length\}개/);
   assert.match(manage, /aria-expanded=\{isYouTubeServiceOpen\}/);
@@ -85,7 +91,8 @@ test('YouTube cards show listing registrations, title code, linkage, totals, and
 
 test('manage page keeps YouTube out of credential and quick-account flows', () => {
   assert.match(manage, /partitionYouTubeManagementServices/);
-  assert.match(manage, /credentialServices\.map/);
+  assert.match(manage, /kind: 'credentials'/);
+  assert.match(manage, /serviceSections\.map/);
   assert.match(manage, /unmappedYouTubeServices/);
   assert.match(manage, /그룹 매핑 필요/);
   assert.match(manage, /ID\/PW · PIN · 프로필 · 접근 링크 작업을 제공하지 않습니다/);
@@ -95,7 +102,8 @@ test('manage page keeps YouTube out of credential and quick-account flows', () =
 
 test('YouTube service folder and family cards preserve responsive 44px accessibility contracts', () => {
   const css = readFileSync(new URL('../src/web/styles.css', import.meta.url), 'utf8');
-  assert.match(css, /\.youtube-management-service[^}]*min-width:\s*0/s);
+  assert.match(css, /\.management-service-group[^}]*min-width:\s*0/s);
+  assert.doesNotMatch(css, /\.youtube-management-service/);
   assert.match(css, /\.youtube-family-group-grid[^}]*repeat\(3,\s*minmax\(0,\s*1fr\)\)/s);
   assert.match(css, /\.youtube-family-group-toggle[^}]*min-height:\s*44px/s);
   assert.match(css, /\.youtube-family-member[^}]*overflow-wrap:\s*anywhere/s);

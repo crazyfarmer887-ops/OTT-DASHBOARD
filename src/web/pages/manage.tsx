@@ -54,6 +54,9 @@ interface Account {
   };
 }
 interface ServiceGroup { serviceType: string; accounts: Account[]; totalUsingMembers: number; totalActiveMembers: number; totalIncome: number; totalRealized: number; }
+type ManagementServiceSection =
+  | { kind: 'youtube'; serviceType: '유튜브 프리미엄' }
+  | { kind: 'credentials'; serviceType: string; service: ServiceGroup };
 interface EmailAlias { id: number | string; email: string; enabled?: boolean; }
 interface ManagementHiddenAccount { serviceType: string; accountEmail: string; reason?: string; hiddenAt?: string; updatedAt?: string; }
 interface ManagementPaymentCard { serviceType: string; accountEmail: string; label?: string; cardIssuer?: string; last4?: string; renewalDay?: number; updatedAt: string; }
@@ -118,6 +121,12 @@ const bge = (s: string, n: string) => (String(n || '').includes('계정확인중
   : (STATUS_BADGE[s] || { label:n||s, color:'#6B7280', bg:'#F3F4F6' });
 const svcLogo = (s: string) => CATEGORIES.find(c => c.label===s || s.includes(c.label.slice(0,3)))?.logo;
 const svcColors = (s: string) => { const c = CATEGORIES.find(c => c.label===s || s.includes(c.label.slice(0,3))); return { color: c?.color||'#6B7280', bg: c?.bg||'#F3F4F6' }; };
+const managementServiceCategoryIndex = (serviceType: string) => {
+  const categoryIndex = CATEGORIES.findIndex(category => category.key === 'youtube'
+    ? String(serviceType || '').includes('유튜브') || String(serviceType || '').toLowerCase().includes('youtube')
+    : category.label === serviceType || serviceType.includes(category.label.slice(0, 3)));
+  return categoryIndex < 0 ? CATEGORIES.length : categoryIndex;
+};
 const fmtMoney = (n: number) => n > 0 ? n.toLocaleString()+'원' : '-';
 const fmtDate = (s: string|null) => s ? s.replace(/\s/g,'').replace(/\.(?=\S)/g,'/').replace(/\.$/, '') : '-';
 const isNetflixManagementService = (serviceType: string) => {
@@ -1754,6 +1763,10 @@ export default function ManagePage() {
   const unmappedYouTubeRegistrationCount = youtubeProductRegistrations.filter(registration => !youtubeFamilyGroupIds.has(registration.familyGroupId)).length;
   const unmappedYouTubeTransactionCount = unmappedYouTubeServices.reduce((sum, service) => sum + service.accounts.reduce((count, account) => count + account.members.length, 0), 0);
   const isYouTubeServiceOpen = openService === '유튜브 프리미엄';
+  const serviceSections: ManagementServiceSection[] = [
+    ...credentialServices.map((service): ManagementServiceSection => ({ kind: 'credentials', serviceType: service.serviceType, service })),
+    { kind: 'youtube', serviceType: '유튜브 프리미엄' },
+  ].sort((left, right) => managementServiceCategoryIndex(left.serviceType) - managementServiceCategoryIndex(right.serviceType));
 
   return (
     <div className="account-management-page">
@@ -1979,7 +1992,10 @@ export default function ManagePage() {
 
           {/* 서비스별 */}
           <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-            <section className="management-service-group youtube-management-service" style={{ borderColor:isYouTubeServiceOpen?'#EF4444':'#FEE2E2' }}>
+            {serviceSections.map(section => {
+              if (section.kind === 'youtube') {
+                return (
+                  <section key={section.serviceType} className="management-service-group" style={{ borderColor:isYouTubeServiceOpen?'#EF4444':'#FEE2E2' }}>
               <div className="management-service-header">
                 <button type="button" className="management-service-toggle management-touch-target" onClick={() => setOpenService(isYouTubeServiceOpen ? null : '유튜브 프리미엄')} aria-expanded={isYouTubeServiceOpen} aria-controls="management-service-youtube">
                   <div className="youtube-management-logo" aria-hidden="true"><Youtube size={24} /></div>
@@ -2010,7 +2026,7 @@ export default function ManagePage() {
                   )}
                   {!youtubeGroupsLoading && !youtubeGroupsError && youtubeGroupSummaries.length === 0 && <div className="youtube-service-empty">등록된 가족 그룹이 없습니다.</div>}
                   {!youtubeGroupsLoading && !youtubeGroupsError && youtubeGroupSummaries.length > 0 && (
-                    <div className="youtube-family-group-grid">
+                    <div className="management-account-grid youtube-family-group-grid">
                       {youtubeGroupSummaries.map(group => {
                         const isGroupOpen = openYouTubeGroup === group.id;
                         const groupPanelId = `youtube-family-group-${encodeURIComponent(group.id)}`;
@@ -2066,8 +2082,10 @@ export default function ManagePage() {
                   )}
                 </div>
               )}
-            </section>
-            {credentialServices.map(svc => {
+                  </section>
+                );
+              }
+              const svc = section.service;
               const visibleAccounts = getVisibleManagementAccounts(svc.accounts, filter);
               if (visibleAccounts.length === 0) return null;
               const sc = svcColors(svc.serviceType);
