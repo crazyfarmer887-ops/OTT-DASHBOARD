@@ -11,6 +11,7 @@ export interface ChatRoomCategory {
 
 export interface ChatRoomOrganizationEntry {
   categoryId?: string;
+  pinned?: boolean;
   unresolved: boolean;
   updatedAt: string;
 }
@@ -100,11 +101,13 @@ function normalizeStore(value: unknown): ChatRoomOrganizationStore {
   for (const [roomId, entry] of Object.entries(raw.rooms)) {
     if (!isValidRoomId(roomId) || !entry || typeof entry !== 'object' || Array.isArray(entry)
       || typeof entry.unresolved !== 'boolean' || typeof entry.updatedAt !== 'string'
+      || (entry.pinned !== undefined && typeof entry.pinned !== 'boolean')
       || (entry.categoryId !== undefined && (typeof entry.categoryId !== 'string' || !validCategoryIds.has(entry.categoryId)))) {
       invalidStore(`채팅방 폴더 저장소 채팅방 항목(${roomId})이 올바르지 않습니다.`);
     }
     rooms[roomId] = {
       ...(entry.categoryId !== undefined ? { categoryId: entry.categoryId } : {}),
+      ...(entry.pinned === true ? { pinned: true } : {}),
       unresolved: entry.unresolved,
       updatedAt: entry.updatedAt,
     };
@@ -189,7 +192,7 @@ export function deleteChatRoomCategory(categoryId: string, now = new Date().toIS
 
 export function updateChatRoomOrganizationEntry(
   roomIdValue: unknown,
-  patch: { categoryId?: unknown; unresolved?: unknown },
+  patch: { categoryId?: unknown; pinned?: unknown; unresolved?: unknown },
   now = new Date().toISOString(),
 ): ChatRoomOrganizationEntry | null {
   const roomId = validateChatRoomId(roomIdValue);
@@ -201,17 +204,21 @@ export function updateChatRoomOrganizationEntry(
     else if (typeof patch.categoryId === 'string' && store.categories.some((category) => category.id === patch.categoryId)) categoryId = patch.categoryId;
     else invalidInput('카테고리를 찾을 수 없습니다.');
   }
+  const pinned = Object.prototype.hasOwnProperty.call(patch, 'pinned')
+    ? patch.pinned === true
+    : current.pinned === true;
   const unresolved = Object.prototype.hasOwnProperty.call(patch, 'unresolved')
     ? patch.unresolved === true
     : current.unresolved;
   const rooms = reconstructRooms(Object.entries(store.rooms));
-  if (!categoryId && !unresolved) {
+  if (!categoryId && !pinned && !unresolved) {
     delete rooms[roomId];
     saveChatRoomOrganization({ ...store, rooms });
     return null;
   }
   const updated: ChatRoomOrganizationEntry = {
     ...(categoryId ? { categoryId } : {}),
+    ...(pinned ? { pinned: true } : {}),
     unresolved,
     updatedAt: now,
   };

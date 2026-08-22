@@ -340,10 +340,11 @@ test('OTT home and navigation use the refreshed UI structure', () => {
   assert.doesNotMatch(manage, /일주일 이내 만료되는 파티원 명단/);
   assert.doesNotMatch(manage, /expiringSoonMembers/);
   assert.doesNotMatch(manage, /weekEnd\.setDate\(weekEnd\.getDate\(\) \+ 7\)/);
-  assert.match(manage, /최근 7일 거래 취소 명단/);
-  assert.match(manage, /cancelledRecentOpen/);
-  assert.match(manage, /setCancelledRecentOpen\(v => !v\)/);
-  assert.match(manage, /cancellationDateTime/);
+  // 취소 데이터·백엔드는 유지하고 화면 블록만 제거 (absence contract)
+  assert.doesNotMatch(manage, /최근 7일 거래 취소 명단/);
+  assert.doesNotMatch(manage, /cancelledRecent/);
+  assert.doesNotMatch(manage, /cancellationDateTime/);
+  assert.doesNotMatch(manage, /isCancelledStatus/);
   assert.doesNotMatch(manage, /<ProfileAuditPanel/);
   assert.doesNotMatch(manage, /프로필 수 검증/);
   assert.doesNotMatch(manage, /수동 고객\/카카오톡 응대 큐/);
@@ -456,9 +457,8 @@ test('OTT home and navigation use the refreshed UI structure', () => {
   assert.match(manage, /\/api\/chat\/notice\/send/);
   assert.match(manage, /excludeDealUsids/);
   assert.match(manage, /checklistKey/);
-  assert.match(manage, /최근 7일 거래 취소 명단/);
-  assert.match(manage, /cancelledRecentMembers/);
-  assert.match(manage, /isCancelledStatus/);
+  assert.doesNotMatch(manage, /최근 7일 거래 취소 명단/);
+  assert.doesNotMatch(manage, /cancelledRecentMembers/);
   assert.match(manage, /선택한 파티원에게 공지 발송/);
   assert.match(manage, /생성계정 게시글 작성/);
   assert.match(manage, /\$\{vi\.unfilled\}자리 게시글 작성/);

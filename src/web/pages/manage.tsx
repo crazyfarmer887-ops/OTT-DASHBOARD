@@ -28,7 +28,7 @@ interface OnSaleProduct {
 interface Member {
   dealUsid: string; productUsid?: string; name: string | null; profileName?: string | null; status: string; statusName: string;
   price: string; purePrice: number; realizedSum: number; progressRatio: string;
-  startDateTime: string | null; inflowDateTime?: string | null; cancellationDateTime?: string | null; endDateTime: string | null; remainderDays: number; source: 'after'|'before';
+  startDateTime: string | null; inflowDateTime?: string | null; endDateTime: string | null; remainderDays: number; source: 'after'|'before';
   lastPassword?: string; lastPin?: string;
   lastAccessDeliveredAt?: string | null; lastAccessRevokedAt?: string | null;
 }
@@ -297,8 +297,7 @@ export default function ManagePage() {
   const [noticeSending, setNoticeSending] = useState(false);
   const [noticeResult, setNoticeResult] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; tone: 'success' | 'error' | 'info'; id: number } | null>(null);
-  const [cancelledRecentOpen, setCancelledRecentOpen] = useState(false);
-  const [youtubeFamilyGroups, setYouTubeFamilyGroups] = useState<YouTubeFamilyGroupDto[]>([]);
+    const [youtubeFamilyGroups, setYouTubeFamilyGroups] = useState<YouTubeFamilyGroupDto[]>([]);
   const [youtubeInvitations, setYouTubeInvitations] = useState<YouTubeInvitationSummaryDto[]>([]);
   const [youtubeProductRegistrations, setYouTubeProductRegistrations] = useState<YouTubeProductRegistrationSummaryDto[]>([]);
   const [openYouTubeGroup, setOpenYouTubeGroup] = useState<string | null>(null);
@@ -1735,19 +1734,6 @@ export default function ManagePage() {
     const iso = parseGraytagDate(value || '');
     return iso ? new Date(`${iso}T00:00:00`) : null;
   };
-  const cancelCountingStart = dateFromAny(GRAYTAG_CANCEL_COUNTING_START_DATE) || weekAgo;
-  const isCancelledStatus = (status?: string, statusName?: string) => /^Cancel/i.test(String(status || '')) || /취소|거래취소/.test(String(statusName || ''));
-  const cancelledRecentMembers = data ? data.services.flatMap((svc) => svc.accounts.flatMap((acct) => [
-    ...acct.members
-      .filter((m) => isCancelledStatus(m.status, m.statusName))
-      .map((m) => {
-        const cancellationDate = m.cancellationDateTime || m.inflowDateTime || m.startDateTime || m.endDateTime;
-        return { id:`graytag-cancel:${m.dealUsid}`, memberName:m.name || '(미확인)', serviceType:svc.serviceType, accountEmail:acct.email, date:dateFromAny(cancellationDate), dateLabel:fmtDate(cancellationDate), statusLabel:m.statusName || '취소' };
-      }),
-    ...getManualForAccount(acct.email, acct.serviceType)
-      .filter((m) => m.status === 'cancelled')
-      .map((m) => ({ id:`manual-cancel:${m.id}`, memberName:m.memberName, serviceType:svc.serviceType, accountEmail:acct.email, date:dateFromAny(m.endDate), dateLabel:m.endDate.replace(/-/g,'/'), statusLabel:'수동 취소' })),
-  ])).filter((row) => row.date && row.date >= cancelCountingStart && row.date <= todayStart).sort((a, b) => (b.date!.getTime() - a.date!.getTime())).slice(0, 20) : [];
   const { credentialServices, unmappedYouTubeServices } = partitionYouTubeManagementServices(data?.services || []);
   const youtubeGroupSummaries = youtubeFamilyGroups.map(group => summarizeYouTubeFamilyGroup(group, youtubeInvitations, youtubeProductRegistrations));
   const youtubeCurrentCount = youtubeGroupSummaries.reduce((sum, group) => sum + group.activeCount, 0);
@@ -1955,30 +1941,6 @@ export default function ManagePage() {
             {accountCreateLoading && accountCreateStage && <div className="quick-account-generator-status" role="status">{accountCreateStage}</div>}
             {accountCreateResult && <div className={`quick-account-generator-result ${accountCreateResult.startsWith('오류') ? 'is-error' : ''}`}>{accountCreateResult}</div>}
           </section>
-
-          {cancelledRecentMembers.length > 0 && (
-            <div style={{ display:'grid', gridTemplateColumns:'1fr', gap:10, marginBottom:14 }}>
-              <div style={{ background:'#FFF0F0', border:'1.5px solid #FCA5A5', borderRadius:16, padding:13 }}>
-                <button onClick={() => setCancelledRecentOpen(v => !v)} style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, marginBottom:cancelledRecentOpen ? 8 : 0, background:'none', border:'none', padding:0, cursor:'pointer', fontFamily:'inherit', textAlign:'left' }}>
-                  <div style={{ display:'flex', alignItems:'center', gap:6, minWidth:0 }}>
-                    {cancelledRecentOpen ? <ChevronDown size={15} color="#991B1B" /> : <ChevronRight size={15} color="#991B1B" />}
-                    <div style={{ fontSize:13, fontWeight:900, color:'#991B1B' }}>최근 7일 거래 취소 명단</div>
-                  </div>
-                  <span style={{ fontSize:10, fontWeight:900, color:'#B91C1C', background:'#FEE2E2', borderRadius:999, padding:'3px 8px', flexShrink:0 }}>{cancelledRecentMembers.length}명</span>
-                </button>
-                {cancelledRecentOpen && (cancelledRecentMembers.length === 0 ? <div style={{ fontSize:11, color:'#B91C1C' }}>최근 7일 기준으로 표시할 취소 명단이 없어요.</div> : (
-                  <div style={{ display:'grid', gap:6 }}>
-                    {cancelledRecentMembers.map(row => (
-                      <div key={row.id} style={{ display:'grid', gridTemplateColumns:'1fr auto', gap:8, background:'#fff', borderRadius:10, padding:'7px 9px', alignItems:'center' }}>
-                        <div style={{ minWidth:0 }}><span style={{ fontSize:12, color:'#1E1B4B', fontWeight:900 }}>{row.memberName}</span><span style={{ marginLeft:6, fontSize:10, color:'#991B1B', fontWeight:800 }}>{row.serviceType}</span><div style={{ fontSize:9, color:'#9CA3AF', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{row.accountEmail}</div></div>
-                        <div style={{ textAlign:'right', fontSize:10, color:'#B91C1C', fontWeight:900 }}>{row.dateLabel}<div style={{ color:'#9CA3AF' }}>{row.statusLabel}</div></div>
-                      </div>
-                    ))}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
 
           {/* 필터 */}
           <div style={{ display:'flex', gap:6, marginBottom:14 }}>

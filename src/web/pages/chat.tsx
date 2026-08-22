@@ -1,9 +1,9 @@
-import { useState, useEffect, useRef, useCallback } from "react";
-import { MessageCircle, RefreshCw, Loader2, Send, ChevronLeft, ArrowDown, Sparkles, ChevronDown, Bell, Settings, ToggleLeft, ToggleRight, ExternalLink, Folder, FolderPlus, AlertCircle, CheckCircle2, Pencil, Trash2 } from "lucide-react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { MessageCircle, RefreshCw, Loader2, Send, ChevronLeft, ArrowDown, Sparkles, ChevronDown, Bell, Settings, ToggleLeft, ToggleRight, ExternalLink, Folder, FolderPlus, AlertCircle, CheckCircle2, Pencil, Trash2, Pin } from "lucide-react";
 import { autoReplyStatusLabel, autoReplyStatusTone, summarizeAutoReplyJobs, type AutoReplyLogJob } from "../lib/auto-reply-log";
 import { groupChatRoomsByAccount, sortChatRoomsByLatestBuyerMessage, type ChatSortMode } from "../lib/chat-room-sort";
 import { buildGraytagChatUrl } from "../lib/graytag-chat-url";
-import { buildChatRoomOrganizationCounts, captureChatRoomOrganizationRead, emptyChatRoomOrganization, filterRoomsByOrganizationView, invalidateChatRoomOrganizationReads, isChatRoomOrganizationReadCurrent, type ChatRoomOrganization, type ChatRoomOrganizationView } from "../lib/chat-room-organization";
+import { buildChatRoomOrganizationCounts, buildChatRoomServiceFolders, captureChatRoomOrganizationRead, countPinnedRooms, emptyChatRoomOrganization, filterRoomsByOrganizationView, invalidateChatRoomOrganizationReads, isChatRoomOrganizationReadCurrent, type ChatRoomOrganization, type ChatRoomOrganizationView } from "../lib/chat-room-organization";
 
 interface ChatRoom {
   dealUsid: string; chatRoomUuid: string; borrowerName: string;
@@ -60,7 +60,6 @@ export default function ChatPage() {
   const [sendText, setSendText] = useState('');
   const [sending, setSending] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
-  const [pollCount, setPollCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
   const [sidebarWidth, setSidebarWidth] = useState(400);
@@ -324,7 +323,6 @@ export default function ChatPage() {
     pollRef.current = setInterval(() => {
       loadRooms({ quiet: true });
       loadRoomOrganization(true);
-      setPollCount(c => c + 1);
       if (selectedRoom) loadMessages(selectedRoom.chatRoomUuid, 1);
     }, 60000);
     return () => {
@@ -445,18 +443,20 @@ export default function ChatPage() {
     return date.toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' });
   };
 
-  const visibleRooms = () => {
+  const visibleRooms = useMemo(() => {
     const organizedRooms = filterRoomsByOrganizationView(rooms, roomOrganization, organizationView);
     const sourceRooms = unreadOnly ? organizedRooms.filter(r => r.lenderChatUnread) : organizedRooms;
     return sortChatRoomsByLatestBuyerMessage(sourceRooms);
-  };
+  }, [rooms, roomOrganization, organizationView, unreadOnly]);
 
-  const groupedRooms = () => groupChatRoomsByAccount(visibleRooms());
-  const organizationCounts = buildChatRoomOrganizationCounts(rooms, roomOrganization);
-  const selectedRoomOutsideFilter = selectedRoom
-    && !visibleRooms().some(room => room.chatRoomUuid === selectedRoom.chatRoomUuid)
+  const groupedRooms = useMemo(() => groupChatRoomsByAccount(visibleRooms), [visibleRooms]);
+  const organizationCounts = useMemo(() => buildChatRoomOrganizationCounts(rooms, roomOrganization), [rooms, roomOrganization]);
+  const pinnedRoomCount = useMemo(() => countPinnedRooms(rooms, roomOrganization), [rooms, roomOrganization]);
+  const serviceFolders = useMemo(() => buildChatRoomServiceFolders(rooms), [rooms]);
+  const selectedRoomOutsideFilter = useMemo(() => (selectedRoom
+    && !visibleRooms.some(room => room.chatRoomUuid === selectedRoom.chatRoomUuid)
     ? selectedRoom
-    : null;
+    : null), [selectedRoom, visibleRooms]);
 
   // 자동응답 액션
   const toggleAr = async () => {
@@ -653,6 +653,17 @@ export default function ChatPage() {
           <div style={{background:room.lenderChatUnread?"#EF4444":"#F3F4F6",color:room.lenderChatUnread?"#fff":"#6B7280",borderRadius:10,padding:"2px 6px",fontSize:9,fontWeight:800}}>{room.lenderChatUnread?"안읽음":"읽음"}</div>
         </div>
       </button>
+      <button
+        type="button"
+        aria-label={`${room.borrowerName} ${organizationEntry?.pinned ? '고정 해제' : '고정'}`}
+        aria-pressed={organizationEntry?.pinned === true}
+        title={organizationEntry?.pinned ? '고정 해제' : '고정'}
+        disabled={organizationSaving}
+        onClick={() => updateRoomOrganization(room, { pinned: !organizationEntry?.pinned })}
+        style={{width:36,display:'grid',placeItems:'center',background:'transparent',border:'none',cursor:organizationSaving?'wait':'pointer',flexShrink:0,color:organizationEntry?.pinned?'#7C3AED':'#C4B5FD'}}
+      >
+        <Pin size={14} fill={organizationEntry?.pinned ? '#7C3AED' : 'none'}/>
+      </button>
       <a href={buildGraytagChatUrl(room.chatRoomUuid)} target="_blank" rel="noreferrer" aria-label={`${room.borrowerName} 그레이태그 채팅방 바로가기`} title="그레이태그 채팅방 바로가기"
         style={{width:42,display:'grid',placeItems:'center',color:'#7C3AED',textDecoration:'none',background:'rgba(255,255,255,.55)',flexShrink:0}}>
         <ExternalLink size={15}/>
@@ -719,12 +730,20 @@ export default function ChatPage() {
         <div style={{display:'flex',gap:6,overflowX:'auto',paddingBottom:8}}>
           {([
             ['all', `전체 ${organizationCounts.total}`],
+            ['pinned', `고정 ${pinnedRoomCount}`],
             ['unresolved', `미해결 ${organizationCounts.unresolved}`],
             ['unassigned', `미분류 ${organizationCounts.unassigned}`],
           ] as Array<[ChatRoomOrganizationView, string]>).map(([view,label]) => (
             <button key={view} type="button" aria-pressed={organizationView===view} onClick={()=>setOrganizationView(view)}
               style={{border:'none',borderRadius:999,padding:'6px 10px',whiteSpace:'nowrap',cursor:'pointer',fontSize:11,fontWeight:800,background:organizationView===view?'#7C3AED':'#F3F4F6',color:organizationView===view?'#fff':'#6B7280'}}>{label}</button>
           ))}
+          {serviceFolders.map(folder => {
+            const view: ChatRoomOrganizationView = `service:${folder.service}`;
+            return <button key={view} type="button" aria-pressed={organizationView===view} title={`${folder.service} 자동 폴더`} onClick={()=>setOrganizationView(view)}
+              style={{border:'none',borderRadius:999,padding:'6px 10px',whiteSpace:'nowrap',cursor:'pointer',fontSize:11,fontWeight:800,background:organizationView===view?'#7C3AED':'#F3F4F6',color:organizationView===view?'#fff':'#6B7280'}}>
+              {folder.service} {folder.count}
+            </button>;
+          })}
           {roomOrganization.categories.map(category => {
             const view: ChatRoomOrganizationView = `category:${category.id}`;
             return <div key={category.id} style={{display:'flex',alignItems:'center',borderRadius:999,background:organizationView===view?'#7C3AED':'#F3F4F6',overflow:'hidden',flexShrink:0}}>
@@ -778,9 +797,9 @@ export default function ChatPage() {
       )}
       {chatSortMode==='latest' ? (
         <div>
-          {visibleRooms().map(room => renderRoomButton(room, false))}
+          {visibleRooms.map(room => renderRoomButton(room, false))}
         </div>
-      ) : Object.entries(groupedRooms()).map(([svc,acctGroups])=>{
+      ) : Object.entries(groupedRooms).map(([svc,acctGroups])=>{
         const unread=Object.values(acctGroups).flat().filter(r=>r.lenderChatUnread).length;
         const expanded=expandedCategories[svc]!==false;
         return(
@@ -818,7 +837,7 @@ export default function ChatPage() {
           </div>
         );
       })}
-      {visibleRooms().length===0&&!loading&&(
+      {visibleRooms.length===0&&!loading&&(
         <div style={{textAlign:"center",padding:"48px 20px",color:"#9CA3AF",fontSize:13}}>
           <MessageCircle size={28} color="#C4B5FD" style={{margin:"0 auto 10px"}}/>
           {rooms.length===0?'채팅방 없음':'조건에 맞는 채팅방 없음'}

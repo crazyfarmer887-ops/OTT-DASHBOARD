@@ -2075,11 +2075,14 @@ for (const prefix of ['', '/api']) {
     try {
       const body = await parseOrganizationBody(c);
       const keys = Object.keys(body);
-      if (keys.length === 0 || keys.some((key) => key !== 'categoryId' && key !== 'unresolved')) {
+      if (keys.length === 0 || keys.some((key) => key !== 'categoryId' && key !== 'unresolved' && key !== 'pinned')) {
         throw new ChatRoomOrganizationValidationError('변경할 채팅방 상태가 올바르지 않습니다.');
       }
       if ('unresolved' in body && typeof body.unresolved !== 'boolean') {
         throw new ChatRoomOrganizationValidationError('미해결 상태는 true 또는 false여야 합니다.');
+      }
+      if ('pinned' in body && typeof body.pinned !== 'boolean') {
+        throw new ChatRoomOrganizationValidationError('고정 상태는 true 또는 false여야 합니다.');
       }
       if ('categoryId' in body && body.categoryId !== null && typeof body.categoryId !== 'string') {
         throw new ChatRoomOrganizationValidationError('카테고리 식별자가 올바르지 않습니다.');

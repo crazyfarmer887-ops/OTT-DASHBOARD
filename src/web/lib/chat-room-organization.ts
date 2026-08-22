@@ -7,6 +7,7 @@ export interface ChatRoomOrganizationCategory {
 
 export interface ChatRoomOrganizationEntry {
   categoryId?: string;
+  pinned?: boolean;
   unresolved: boolean;
   updatedAt: string;
 }
@@ -17,11 +18,18 @@ export interface ChatRoomOrganization {
   rooms: Record<string, ChatRoomOrganizationEntry>;
 }
 
-export type ChatRoomOrganizationView = 'all' | 'unresolved' | 'unassigned' | `category:${string}`;
+export type ChatRoomOrganizationView = 'all' | 'pinned' | 'unresolved' | 'unassigned' | `category:${string}` | `service:${string}`;
 
-type IdentifiedChatRoom = { chatRoomUuid: string };
+type IdentifiedChatRoom = { chatRoomUuid: string; productType?: string };
+
+export interface ChatRoomServiceFolder {
+  service: string;
+  count: number;
+}
 
 export type ChatRoomOrganizationGenerationRef = { current: number };
+
+const SERVICE_VIEW_PREFIX = 'service:';
 
 export function captureChatRoomOrganizationRead(generation: ChatRoomOrganizationGenerationRef): number {
   return generation.current;
@@ -39,11 +47,15 @@ export function emptyChatRoomOrganization(): ChatRoomOrganization {
   return { version: 1, categories: [], rooms: {} };
 }
 
+function validCategoryIdsOf(organization: ChatRoomOrganization): Set<string> {
+  return new Set(organization.categories.map((category) => category.id));
+}
+
 export function buildChatRoomOrganizationCounts<T extends IdentifiedChatRoom>(
   rooms: T[],
   organization: ChatRoomOrganization,
 ): { total: number; unresolved: number; unassigned: number; byCategory: Record<string, number> } {
-  const validCategoryIds = new Set(organization.categories.map((category) => category.id));
+  const validCategoryIds = validCategoryIdsOf(organization);
   const byCategory = Object.fromEntries(organization.categories.map((category) => [category.id, 0]));
   let unresolved = 0;
   let unassigned = 0;
@@ -56,13 +68,44 @@ export function buildChatRoomOrganizationCounts<T extends IdentifiedChatRoom>(
   return { total: rooms.length, unresolved, unassigned, byCategory };
 }
 
+export function countPinnedRooms<T extends IdentifiedChatRoom>(rooms: T[], organization: ChatRoomOrganization): number {
+  return rooms.reduce((count, room) => (organization.rooms[room.chatRoomUuid]?.pinned === true ? count + 1 : count), 0);
+}
+
+export function filterRoomsByPinned<T extends IdentifiedChatRoom>(rooms: T[], organization: ChatRoomOrganization): T[] {
+  return rooms.filter((room) => organization.rooms[room.chatRoomUuid]?.pinned === true);
+}
+
+export function buildChatRoomServiceFolders<T extends IdentifiedChatRoom>(rooms: T[] = []): ChatRoomServiceFolder[] {
+  const counts = new Map<string, number>();
+  for (const room of rooms) {
+    const service = room.productType?.trim();
+    if (!service) continue;
+    counts.set(service, (counts.get(service) || 0) + 1);
+  }
+  return Array.from(counts.entries())
+    .map(([service, count]) => ({ service, count }))
+    .sort((a, b) => b.count - a.count || a.service.localeCompare(b.service, 'ko'));
+}
+
+export function filterRoomsByServiceView<T extends IdentifiedChatRoom>(rooms: T[], view: `service:${string}`): T[] {
+  const service = view.slice(SERVICE_VIEW_PREFIX.length);
+  return rooms.filter((room) => room.productType?.trim() === service);
+}
+
+export function isServiceChatRoomOrganizationView(view: ChatRoomOrganizationView): view is `service:${string}` {
+  return view.startsWith(SERVICE_VIEW_PREFIX);
+}
+
 export function filterRoomsByOrganizationView<T extends IdentifiedChatRoom>(
   rooms: T[],
   organization: ChatRoomOrganization,
   view: ChatRoomOrganizationView,
 ): T[] {
   if (view === 'all') return rooms;
-  const validCategoryIds = new Set(organization.categories.map((category) => category.id));
+  if (view === 'pinned') return filterRoomsByPinned(rooms, organization);
+  if (isServiceChatRoomOrganizationView(view)) return filterRoomsByServiceView(rooms, view);
+  const validCategoryIds = validCategoryIdsOf(organization);
   if (view === 'unresolved') return rooms.filter((room) => organization.rooms[room.chatRoomUuid]?.unresolved === true);
   if (view === 'unassigned') {
     return rooms.filter((room) => {
