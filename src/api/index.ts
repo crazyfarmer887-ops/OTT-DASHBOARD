@@ -42,6 +42,7 @@ import { evaluateAutoReplySafety } from './auto-reply-safety';
 import { decideAutonomousReply } from './auto-reply-autonomy';
 import { buildOperationsCenter, createManualResponseQueueItem, mergeManualResponseQueueItem, summarizeManualResponseQueue, type ManualResponseQueueItem } from '../lib/operations-center';
 import { buildPartyAccessDeliverySnapshotByMember, buildPartyAccessPublicPayload, createPartyAccessLinkRecord, enrichPartyAccessRecordWithKnownCredentials, extractPartyAccessTokensFromText, isPartyAccessAllowed, isValidPartyAccessConsent, mergeRecoverablePartyAccessBackupStores, normalizePartyAccessToken, partyAccessAccountKey, partyAccessTokenHash, redactPartyAccessPayloadForConsent, resolvePartyAccessDeliverySnapshotByListing, resolvePartyAccessDeliverySnapshotForDeal, syncPartyAccessStoreWithGraytagDeals, type PartyAccessDeliverySnapshot, type PartyAccessLinkRecord, type PartyAccessLinkStore } from '../lib/party-access';
+import { loadPartyAccessStoreForPublicView as loadPartyAccessStoreForPublicViewWithPolicy } from '../lib/party-access-public-view';
 import { CLOSING_ACKNOWLEDGEMENT_CATEGORY, DAILY_ACCOUNT_ACCESS_NOTICE_CATEGORY, OFF_HOURS_NOTICE_CATEGORY, buildClosingAcknowledgementReply, buildDailyAccountAccessNoticeReply, buildOffHoursNoticeReply, combineNoticeReplies, hasDailyAccountAccessNoticeToday, isSimpleAcknowledgement, shouldSendClosingAcknowledgement, shouldSendDailyAccountAccessNotice, shouldSendOffHoursNotice } from './auto-reply-daily-notice';
 import { JsonRenewalJobStore, type RenewalJob, type RenewalReviewAction } from '../renewal/job-store';
 import { buildRenewalMessage, buildRenewalPreviewRows, type ExtensionProductModel } from '../renewal/core';
@@ -5746,8 +5747,12 @@ function isFillPartyAccessRecord(record: PartyAccessLinkRecord | null | undefine
 async function loadPartyAccessStoreForPublicView(token: string): Promise<PartyAccessLinkStore> {
   const localStore = loadPartyAccessLinkStoreForToken(token);
   const localRecord = localStore[partyAccessTokenHash(token)] || null;
-  if (isFillPartyAccessRecord(localRecord)) return localStore;
-  return refreshPartyAccessStoreWithLiveDealStatuses(localStore).catch((e) => {
+  return loadPartyAccessStoreForPublicViewWithPolicy({
+    localStore,
+    isFillRecord: isFillPartyAccessRecord(localRecord),
+    liveRefreshSetting: process.env.PARTY_ACCESS_LIVE_REFRESH_ENABLED,
+    refresh: refreshPartyAccessStoreWithLiveDealStatuses,
+  }).catch((e) => {
     console.warn(`[party-access] live status refresh failed: ${e?.message || e}`);
     return loadPartyAccessLinkStoreForToken(token);
   });
