@@ -43,8 +43,10 @@ test('YouTube family-group account cards expose invitation-specific capacity and
 test('manage page fetches family groups and invitation members with admin auth', () => {
   assert.match(manage, /fetch\('\/api\/youtube\/family-groups'/);
   assert.match(manage, /fetch\('\/api\/youtube\/invitations'/);
+  assert.match(manage, /fetch\('\/api\/youtube\/products\/registrations'/);
   assert.match(manage, /Promise\.all/);
   assert.match(manage, /parseYouTubeInvitationsResponse/);
+  assert.match(manage, /parseYouTubeProductRegistrationsResponse/);
   assert.match(manage, /buildYouTubeFamilyGroupCreateBody/);
   assert.match(manage, /buildYouTubeFamilyGroupPatchBody/);
   assert.match(manage, /operator family group create/);
@@ -54,6 +56,31 @@ test('manage page fetches family groups and invitation members with admin auth',
   assert.match(manage, /사용 중인 좌석/);
   assert.match(manage, /window\.confirm\('이 가족 그룹을 비활성화할까요\?/);
   assert.doesNotMatch(manage, /console\.(?:log|warn|error)\([^\n]*managerEmail/);
+});
+
+test('overlapping YouTube refreshes allow only the latest generation to update request state', () => {
+  assert.match(manage, /useRef/);
+  assert.match(manage, /youtubeGroupsFetchGeneration\.current \+= 1/);
+  assert.match(manage, /generation !== youtubeGroupsFetchGeneration\.current/);
+});
+
+test('YouTube cards show listing registrations, title code, linkage, totals, and unmatched warnings without raw identifiers', () => {
+  assert.match(manage, /제목 코드 \{group\.listingCode\}/);
+  assert.match(manage, /youtubeRegisteredListingCount/);
+  assert.match(manage, /youtubeRegistrationRecordCount/);
+  assert.match(manage, /등록 판매 글 \{group\.registeredRegistrationCount\}개/);
+  assert.doesNotMatch(manage, /등록 판매 글 \{group\.registrations\.length\}/);
+  assert.match(manage, /판매 글 \{group\.registeredRegistrationCount\}/);
+  assert.match(manage, /등록 기록 \{group\.registrations\.length\}/);
+  assert.match(manage, />등록 기록<\/h3>/);
+  assert.match(manage, /파티원\/초대/);
+  assert.match(manage, /getYouTubeRegistrationDisplayLabel/);
+  assert.match(manage, /등록일/);
+  assert.match(manage, /상품 그룹 매칭 필요 · 등록 기록 \{unmappedYouTubeRegistrationCount\}건/);
+  assert.match(manage, /처리중/);
+  assert.match(manage, /확인필요/);
+  assert.doesNotMatch(manage, /registration\.productUsid/);
+  assert.doesNotMatch(manage, /registration\.idempotencyKey/);
 });
 
 test('manage page keeps YouTube out of credential and quick-account flows', () => {

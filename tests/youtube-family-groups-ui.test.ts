@@ -4,6 +4,8 @@ import {
   buildYouTubeFamilyGroupPatchBody,
   parseYouTubeFamilyGroupsResponse,
   parseYouTubeInvitationsResponse,
+  parseYouTubeProductRegistrationsResponse,
+  getYouTubeRegistrationDisplayLabel,
   summarizeYouTubeFamilyGroup,
   validateYouTubeFamilyGroupDraft,
   isYouTubeManagementService,
@@ -75,6 +77,7 @@ describe('YouTube family-group management UI helpers', () => {
   test('parses privacy-safe invitation rows and rejects raw or malformed email data', () => {
     const invitation = {
       id: 'invitation-safe', familyGroupId: group.id, buyerName: '구매자',
+      productDisplayId: 'product-123456789abc',
       buyerEmailMasked: 'b***r@example.com', endDateTime: '2027-08-01T00:00:00.000Z',
       status: 'email_confirmed', updatedAt: '2026-08-11T00:00:00.000Z',
     };
@@ -95,18 +98,90 @@ describe('YouTube family-group management UI helpers', () => {
     ] })).toBeNull();
   });
 
-  test('summarizes active, pending, accepted, failed, vacancy, and email confirmation per family group', () => {
+  test('allowlists privacy-safe registration rows and rejects malformed or unknown values', () => {
+    const registration = {
+      registrationDisplayId: 'registration-123456789abc',
+      productDisplayId: 'product-123456789abc',
+      familyGroupId: group.id,
+      status: 'registered' as const,
+      createdAt: '2026-08-11T00:00:00.000Z',
+      updatedAt: '2026-08-11T00:00:01.000Z',
+    };
+    expect(parseYouTubeProductRegistrationsResponse({ ok: true, enabled: true, registrations: [{
+      ...registration,
+      idempotencyKey: 'raw-request-key', actor: 'raw-actor', productUsid: 'raw-product', unexpected: 'secret',
+    }] })).toEqual({ enabled: true, registrations: [registration] });
+    expect(parseYouTubeProductRegistrationsResponse({ ok: true, enabled: true, registrations: [{ ...registration, status: 'unknown' }] })).toBeNull();
+    expect(parseYouTubeProductRegistrationsResponse({ ok: true, enabled: true, registrations: [{ ...registration, registrationDisplayId: 'unsafe' }] })).toBeNull();
+    expect(parseYouTubeProductRegistrationsResponse({ ok: true, enabled: true, registrations: [{ ...registration, productDisplayId: null, status: 'submitting' }] })).not.toBeNull();
+    expect(parseYouTubeProductRegistrationsResponse({ ok: true, enabled: true, registrations: [{ ...registration, createdAt: 'not-a-date' }] })).toBeNull();
+  });
+
+  test('summarizes registrations newest-first and links invitations only within the exact family group', () => {
     const invitations = [
-      { id:'active', familyGroupId:group.id, buyerName:'활성', buyerEmailMasked:'a***e@example.com', endDateTime:'2027-08-01T00:00:00.000Z', status:'active' as const, updatedAt:'2026-08-12T00:00:00.000Z' },
-      { id:'accepted', familyGroupId:group.id, buyerName:'수락', buyerEmailMasked:'o***k@example.com', endDateTime:null, status:'delivered_waiting_inspection' as const, updatedAt:'2026-08-11T00:00:00.000Z' },
-      { id:'pending', familyGroupId:group.id, buyerName:'대기', buyerEmailMasked:null, endDateTime:null, status:'waiting_for_buyer_email' as const, updatedAt:'2026-08-10T00:00:00.000Z' },
-      { id:'failed', familyGroupId:group.id, buyerName:'실패', buyerEmailMasked:'f***d@example.com', endDateTime:null, status:'failed' as const, updatedAt:'2026-08-09T00:00:00.000Z' },
-      { id:'other', familyGroupId:'other-group', buyerName:'다른 그룹', buyerEmailMasked:null, endDateTime:null, status:'active' as const, updatedAt:'2026-08-13T00:00:00.000Z' },
+      { id:'active', productDisplayId:'product-aaaaaaaaaaaa', familyGroupId:group.id, buyerName:'활성', buyerEmailMasked:'a***e@example.com', endDateTime:'2027-08-01T00:00:00.000Z', status:'active' as const, updatedAt:'2026-08-12T00:00:00.000Z' },
+      { id:'accepted', productDisplayId:'product-accepted000', familyGroupId:group.id, buyerName:'수락', buyerEmailMasked:'o***k@example.com', endDateTime:null, status:'delivered_waiting_inspection' as const, updatedAt:'2026-08-11T00:00:00.000Z' },
+      { id:'pending', productDisplayId:'product-pending0000', familyGroupId:group.id, buyerName:'대기', buyerEmailMasked:null, endDateTime:null, status:'waiting_for_buyer_email' as const, updatedAt:'2026-08-10T00:00:00.000Z' },
+      { id:'failed', productDisplayId:'product-failed00000', familyGroupId:group.id, buyerName:'실패', buyerEmailMasked:'f***d@example.com', endDateTime:null, status:'failed' as const, updatedAt:'2026-08-09T00:00:00.000Z' },
+      { id:'other', productDisplayId:'product-aaaaaaaaaaaa', familyGroupId:'other-group', buyerName:'다른 그룹', buyerEmailMasked:null, endDateTime:null, status:'active' as const, updatedAt:'2026-08-13T00:00:00.000Z' },
     ];
-    expect(summarizeYouTubeFamilyGroup(group, invitations)).toMatchObject({
+    const registrations = [
+      { registrationDisplayId:'registration-aaaaaaaaaaaa', productDisplayId:'product-aaaaaaaaaaaa', familyGroupId:group.id, status:'registered' as const, createdAt:'2026-08-09T00:00:00.000Z', updatedAt:'2026-08-09T00:00:01.000Z' },
+      { registrationDisplayId:'registration-bbbbbbbbbbbb', productDisplayId:null, familyGroupId:group.id, status:'submitting' as const, createdAt:'2026-08-12T00:00:00.000Z', updatedAt:'2026-08-12T00:00:01.000Z' },
+      { registrationDisplayId:'registration-cccccccccccc', productDisplayId:null, familyGroupId:group.id, status:'uncertain' as const, createdAt:'2026-08-11T00:00:00.000Z', updatedAt:'2026-08-11T00:00:01.000Z' },
+      { registrationDisplayId:'registration-dddddddddddd', productDisplayId:'product-dddddddddddd', familyGroupId:group.id, status:'failed' as const, createdAt:'2026-08-10T00:00:00.000Z', updatedAt:'2026-08-10T00:00:01.000Z' },
+      { registrationDisplayId:'registration-eeeeeeeeeeee', productDisplayId:'product-aaaaaaaaaaaa', familyGroupId:'other-group', status:'registered' as const, createdAt:'2026-08-13T00:00:00.000Z', updatedAt:'2026-08-13T00:00:01.000Z' },
+    ];
+    expect(summarizeYouTubeFamilyGroup(group, invitations, registrations)).toMatchObject({
       activeCount: 1, pendingCount: 1, acceptedCount: 1, failedCount: 1,
       occupiedSeats: 2, availableSeats: 3,
       members: [invitations[0], invitations[1], invitations[2], invitations[3]],
+      registeredRegistrationCount: 1, pendingRegistrationCount: 1,
+      uncertainRegistrationCount: 1, failedRegistrationCount: 1,
+      registrations: [
+        { ...registrations[1], invitation: null },
+        { ...registrations[2], invitation: null },
+        { ...registrations[3], invitation: null },
+        { ...registrations[0], invitation: invitations[0] },
+      ],
     });
+  });
+
+  test('counts only registered attempts as sales listings and keeps all attempts as registration records', () => {
+    const registrations = (['registered', 'submitting', 'uncertain', 'failed'] as const).map((status, index) => ({
+      registrationDisplayId: `registration-${String(index + 1).repeat(12)}`,
+      productDisplayId: status === 'registered' ? 'product-111111111111' : null,
+      familyGroupId: group.id,
+      status,
+      createdAt: `2026-08-1${index}T00:00:00.000Z`,
+      updatedAt: `2026-08-1${index}T00:00:01.000Z`,
+    }));
+
+    const summary = summarizeYouTubeFamilyGroup(group, [], registrations);
+    expect(summary.registeredRegistrationCount).toBe(1);
+    expect(summary.registrations).toHaveLength(4);
+  });
+
+  test('labels unlinked registration attempts by lifecycle state', () => {
+    expect(getYouTubeRegistrationDisplayLabel('registered')).toBe('구매 대기');
+    expect(getYouTubeRegistrationDisplayLabel('submitting')).toBe('등록 처리 중');
+    expect(getYouTubeRegistrationDisplayLabel('uncertain')).toBe('등록 결과 확인 필요');
+    expect(getYouTubeRegistrationDisplayLabel('failed')).toBe('등록 실패');
+  });
+
+  test('keeps an all-registered five-listing target as five sales and five purchase waits', () => {
+    const registrations = Array.from({ length: 5 }, (_, index) => ({
+      registrationDisplayId: `registration-${String(index + 1).repeat(12)}`,
+      productDisplayId: `product-${String(index + 1).repeat(12)}`,
+      familyGroupId: group.id,
+      status: 'registered' as const,
+      createdAt: `2026-08-1${index}T00:00:00.000Z`,
+      updatedAt: `2026-08-1${index}T00:00:01.000Z`,
+    }));
+    const summary = summarizeYouTubeFamilyGroup(group, [], registrations);
+
+    expect(summary.registeredRegistrationCount).toBe(5);
+    expect(summary.registrations.map(registration => getYouTubeRegistrationDisplayLabel(registration.status)))
+      .toEqual(Array(5).fill('구매 대기'));
   });
 });

@@ -626,7 +626,17 @@ app.post('/products', async (c) => {
 
 app.get('/products/registrations', (c) => {
   try {
-    const registrations = productRegistrationsStore().list().map(({ idempotencyKey, familyGroupId, status, productUsid, actor, createdAt, updatedAt }) => ({ idempotencyKey, familyGroupId, status, productUsid, actor, createdAt, updatedAt }));
+    const registrations = productRegistrationsStore().list().map(({ idempotencyKey, familyGroupId, status, productUsid, actor, createdAt, updatedAt }) => ({
+      idempotencyKey,
+      registrationDisplayId: privacySafeIdentifier('registration', idempotencyKey),
+      familyGroupId,
+      status,
+      productUsid,
+      productDisplayId: productUsid ? privacySafeIdentifier('product', productUsid) : null,
+      actor,
+      createdAt,
+      updatedAt,
+    }));
     return c.json({ ok: true, enabled: enabled(), registrations });
   } catch { return unavailable(c); }
 });

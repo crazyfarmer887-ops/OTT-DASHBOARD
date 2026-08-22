@@ -37,6 +37,7 @@ export type YouTubeInvitationStatus =
 
 export interface YouTubeInvitationSummaryDto {
   id: string;
+  productDisplayId: string;
   familyGroupId: string;
   buyerName: string;
   buyerEmailMasked: string | null;
@@ -50,6 +51,35 @@ export interface YouTubeInvitationsResult {
   invitations: YouTubeInvitationSummaryDto[];
 }
 
+export type YouTubeProductRegistrationStatus = 'submitting' | 'registered' | 'uncertain' | 'failed';
+
+export function getYouTubeRegistrationDisplayLabel(status: YouTubeProductRegistrationStatus): string {
+  return {
+    registered: '구매 대기',
+    submitting: '등록 처리 중',
+    uncertain: '등록 결과 확인 필요',
+    failed: '등록 실패',
+  }[status];
+}
+
+export interface YouTubeProductRegistrationSummaryDto {
+  registrationDisplayId: string;
+  productDisplayId: string | null;
+  familyGroupId: string;
+  status: YouTubeProductRegistrationStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface YouTubeProductRegistrationsResult {
+  enabled: boolean;
+  registrations: YouTubeProductRegistrationSummaryDto[];
+}
+
+export interface YouTubeLinkedProductRegistration extends YouTubeProductRegistrationSummaryDto {
+  invitation: YouTubeInvitationSummaryDto | null;
+}
+
 export interface YouTubeFamilyGroupSummary extends YouTubeFamilyGroupDto {
   activeCount: number;
   pendingCount: number;
@@ -57,6 +87,11 @@ export interface YouTubeFamilyGroupSummary extends YouTubeFamilyGroupDto {
   failedCount: number;
   occupiedSeats: number;
   members: YouTubeInvitationSummaryDto[];
+  registrations: YouTubeLinkedProductRegistration[];
+  registeredRegistrationCount: number;
+  pendingRegistrationCount: number;
+  uncertainRegistrationCount: number;
+  failedRegistrationCount: number;
 }
 
 export type YouTubeFamilyGroupCreateBody = {
@@ -114,6 +149,10 @@ function isListingCode(value: unknown): value is string {
     && !/[\x00-\x20\x7f]/.test(value) && value === value.toLowerCase();
 }
 
+function isPrivacySafeIdentifier(value: unknown, prefix: 'product' | 'registration'): value is string {
+  return typeof value === 'string' && new RegExp(`^${prefix}-[a-f0-9]{12}$`).test(value);
+}
+
 function parseSafeFamilyGroup(value: unknown): YouTubeFamilyGroupDto | null {
   if (!value || typeof value !== 'object') return null;
   const item = value as Record<string, unknown>;
@@ -161,16 +200,18 @@ function parseSafeInvitation(value: unknown): YouTubeInvitationSummaryDto | null
   if (!value || typeof value !== 'object') return null;
   const item = value as Record<string, unknown>;
   const id = safeDtoText(item.id, 200);
+  const productDisplayId = item.productDisplayId;
   const familyGroupId = safeDtoText(item.familyGroupId, 200);
   const buyerName = safeDtoText(item.buyerName, 200);
   const status = item.status as YouTubeInvitationStatus;
   const updatedAt = item.updatedAt;
   const buyerEmailMasked = item.buyerEmailMasked;
   const endDateTime = item.endDateTime;
-  if (!id || !familyGroupId || !buyerName || !isSafeIsoTimestamp(updatedAt) || !YOUTUBE_INVITATION_STATUSES.has(status)
+  if (!id || !isPrivacySafeIdentifier(productDisplayId, 'product') || !familyGroupId || !buyerName
+    || !isSafeIsoTimestamp(updatedAt) || !YOUTUBE_INVITATION_STATUSES.has(status)
     || !(buyerEmailMasked === null || isMaskedEmail(buyerEmailMasked))
     || !(endDateTime === null || isSafeIsoTimestamp(endDateTime))) return null;
-  return { id, familyGroupId, buyerName, buyerEmailMasked, endDateTime, status, updatedAt };
+  return { id, productDisplayId, familyGroupId, buyerName, buyerEmailMasked, endDateTime, status, updatedAt };
 }
 
 export function parseYouTubeInvitationsResponse(value: unknown): YouTubeInvitationsResult | null {
@@ -182,6 +223,33 @@ export function parseYouTubeInvitationsResponse(value: unknown): YouTubeInvitati
   return { enabled: response.enabled, invitations: invitations as YouTubeInvitationSummaryDto[] };
 }
 
+const YOUTUBE_PRODUCT_REGISTRATION_STATUSES = new Set<YouTubeProductRegistrationStatus>([
+  'submitting', 'registered', 'uncertain', 'failed',
+]);
+
+function parseSafeProductRegistration(value: unknown): YouTubeProductRegistrationSummaryDto | null {
+  if (!value || typeof value !== 'object') return null;
+  const item = value as Record<string, unknown>;
+  const registrationDisplayId = item.registrationDisplayId;
+  const productDisplayId = item.productDisplayId;
+  const familyGroupId = safeDtoText(item.familyGroupId, 200);
+  const status = item.status as YouTubeProductRegistrationStatus;
+  if (!isPrivacySafeIdentifier(registrationDisplayId, 'registration') || !familyGroupId
+    || !(productDisplayId === null || isPrivacySafeIdentifier(productDisplayId, 'product'))
+    || !YOUTUBE_PRODUCT_REGISTRATION_STATUSES.has(status)
+    || !isSafeIsoTimestamp(item.createdAt) || !isSafeIsoTimestamp(item.updatedAt)) return null;
+  return { registrationDisplayId, productDisplayId, familyGroupId, status, createdAt: item.createdAt, updatedAt: item.updatedAt };
+}
+
+export function parseYouTubeProductRegistrationsResponse(value: unknown): YouTubeProductRegistrationsResult | null {
+  if (!value || typeof value !== 'object') return null;
+  const response = value as Record<string, unknown>;
+  if (response.ok !== true || typeof response.enabled !== 'boolean' || !Array.isArray(response.registrations)) return null;
+  const registrations = response.registrations.map(parseSafeProductRegistration);
+  if (registrations.some((registration) => registration === null)) return null;
+  return { enabled: response.enabled, registrations: registrations as YouTubeProductRegistrationSummaryDto[] };
+}
+
 const PENDING_INVITATION_STATUSES = new Set<YouTubeInvitationStatus>([
   'waiting_for_group_assignment', 'waiting_for_buyer_email', 'email_candidate_found', 'email_confirmed',
   'invite_sent', 'delivery_completion_pending',
@@ -190,10 +258,22 @@ const PENDING_INVITATION_STATUSES = new Set<YouTubeInvitationStatus>([
 export function summarizeYouTubeFamilyGroup(
   group: YouTubeFamilyGroupDto,
   invitations: readonly YouTubeInvitationSummaryDto[],
+  productRegistrations: readonly YouTubeProductRegistrationSummaryDto[] = [],
 ): YouTubeFamilyGroupSummary {
   const members = invitations
     .filter((invitation) => invitation.familyGroupId === group.id && invitation.status !== 'ended')
     .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt) || left.id.localeCompare(right.id));
+  const registrations = productRegistrations
+    .filter((registration) => registration.familyGroupId === group.id)
+    .sort((left, right) => right.createdAt.localeCompare(left.createdAt)
+      || right.updatedAt.localeCompare(left.updatedAt)
+      || left.registrationDisplayId.localeCompare(right.registrationDisplayId))
+    .map((registration) => ({
+      ...registration,
+      invitation: registration.productDisplayId
+        ? members.find((member) => member.productDisplayId === registration.productDisplayId) || null
+        : null,
+    }));
   return {
     ...group,
     activeCount: members.filter((member) => member.status === 'active').length,
@@ -202,6 +282,11 @@ export function summarizeYouTubeFamilyGroup(
     failedCount: members.filter((member) => member.status === 'failed').length,
     occupiedSeats: Math.max(0, group.sellableSeats - group.availableSeats),
     members,
+    registrations,
+    registeredRegistrationCount: registrations.filter((registration) => registration.status === 'registered').length,
+    pendingRegistrationCount: registrations.filter((registration) => registration.status === 'submitting').length,
+    uncertainRegistrationCount: registrations.filter((registration) => registration.status === 'uncertain').length,
+    failedRegistrationCount: registrations.filter((registration) => registration.status === 'failed').length,
   };
 }
 
