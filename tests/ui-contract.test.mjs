@@ -492,17 +492,16 @@ test('OTT home and navigation use the refreshed UI structure', () => {
   assert.match(manage, /min=\{1\}/);
   assert.match(manage, /max=\{31\}/);
   assert.match(manage, /renewalDay:/);
-  assert.match(manage, /탈퇴한 파티원 · 파티별 정리/);
-  assert.match(manage, /탈퇴 날짜 최신순 · 퇴장 당시 저장된 PW\/PIN 확인용/);
-  assert.match(manage, /buildWithdrawnPartyMembers/);
+  assert.doesNotMatch(manage, /탈퇴한 파티원 · 파티별 정리/);
+  assert.doesNotMatch(manage, /탈퇴 날짜 최신순/);
+  assert.doesNotMatch(manage, /buildWithdrawnPartyMembers/);
   assert.doesNotMatch(manage, /password: credentialRows\[1\]\.value/);
   assert.doesNotMatch(manage, /pin: credentialRows\[2\]\.value/);
   assert.match(read('src/api/index.ts'), /lastPassword: mappedPassword/);
   assert.match(read('src/api/index.ts'), /lastPin: mappedPin/);
   assert.match(read('src/api/index.ts'), /resolveEmailAliasFill\(\{ accountEmail: enriched\.accountEmail, serviceType: enriched\.serviceType, aliases \}\)/);
-  assert.match(manage, /마지막 PW/);
-  assert.match(manage, /마지막 PIN/);
-  assert.match(manage, /제안 후보/);
+  // 탈퇴한 파티원 정리 UI 삭제 (데이터·백엔드 유지) — 마지막 PW/PIN/제안후보는 계정 카드 자격증명 행에서 계속 사용
+
   assert.match(read('src/web/lib/withdrawn-party-members.ts'), /credentialAdvice/);
   assert.match(manage, /PIN 번호 재설정/);
   assert.match(manage, /handleGeneratePasswordDraft/);
@@ -522,8 +521,22 @@ test('OTT home and navigation use the refreshed UI structure', () => {
   assert.match(manage, /수정한 정보로 저장하기/);
   assert.match(manage, /최신 비밀번호 저장/);
   assert.match(manage, /파티원 전용 계정정보 링크/);
-  assert.match(manage, /퇴장 정리 체크리스트/);
-  assert.match(manage, /updateAccountExitChecklist/);
+  assert.doesNotMatch(manage, /퇴장 정리 체크리스트/);
+  assert.doesNotMatch(manage, /updateAccountExitChecklist/);
+  // 만료 · 보관 계정: 하단 collapsed <details> 접힘 UI 계약
+  assert.match(manage, /<details className="management-archived-accounts"/);
+  assert.match(manage, /만료 · 보관 계정 \(\{archivedAccounts\.length\}\)/);
+  assert.match(manage, /archivedAccounts\.map\(acct => archivedAccountSummaryRow\(acct\)\)/);
+  // 빠른 계정 생성 즉시반영 + 실패 시에만 재조회 fallback
+  const quickCreateBlock = manage.slice(manage.indexOf('const handleCreateGeneratedAccount'), manage.indexOf('const markQuickCreatedAccountPaid'));
+  assert.match(quickCreateBlock, /mergeGeneratedAccountsIntoManagement\(prev, \{ \[account\.id\]: account \}\)/);
+  const quickCreateSuccessPath = quickCreateBlock.slice(0, quickCreateBlock.indexOf('} catch'));
+  assert.doesNotMatch(quickCreateSuccessPath, /doFetch/);
+  assert.match(quickCreateBlock, /빠른 계정 생성 반영 실패/);
+  // 매꾸기 성공 응답 optimistic 반영 pure helper
+  assert.match(manage, /applyCreatedProductsToManageData/);
+  assert.match(manage, /rollbackCreatedProductsFromManageData/);
+  assert.match(manage, /void doFetch\(undefined, \{ forceRefresh: true, silent: true \}\)/);
   assert.match(manage, /수동 전달 템플릿 복사/);
   assert.match(manage, /copyMode: 'url' \| 'admin-url' \| 'template'/);
   assert.match(manage, /manualTemplateKey/);

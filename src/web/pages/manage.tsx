@@ -4,7 +4,7 @@ import QuickAccountCreatedModal from "../components/quick-account-created-modal"
 import { findQuickPostAccount, type QuickGeneratedAccount } from "../lib/quick-generated-account-flow";
 import { CATEGORIES } from "../lib/constants";
 import { buildAccountSlotStates, calculateAccountVacancy, canAccountReceiveAutoFill, mergeRecruitingProducts, type SlotState } from "../lib/account-slots";
-import { removeRecruitingProductFromManageData } from "../lib/manage-optimistic";
+import { applyCreatedProductsToManageData, rollbackCreatedProductsFromManageData, removeRecruitingProductFromManageData } from "../lib/manage-optimistic";
 import { assertAutoDeliveryInput, buildAutoFillDeliveryMemo, buildFillPartyAccessMember, buildFillProductModel, findExactPasswordForAccount, GRAYTAG_ACCESS_NOTICE_ID, GRAYTAG_ACCESS_NOTICE_PW, requireExactAliasMemoForAutoFill } from "../../lib/graytag-fill";
 import { generateProfileNickname, generateUniqueProfileNicknames, isValidProfileNickname, normalizeProfileNickname, stableRandomFromSeed } from "../../lib/profile-nickname";
 import { generateMaintenancePassword, type PartyMaintenanceChecklistStore } from "../../lib/party-maintenance-checklist";
@@ -13,7 +13,6 @@ import { resolveDoublePassBundleNo } from "../../lib/tving-wavve-bundle";
 import { buildPartyAccessDeliveryTemplate, PARTY_ACCESS_URL_PLACEHOLDER } from "../../lib/party-access-template";
 import { makeDefaultProductDescription, makeDefaultProductTitle } from "../../lib/write-default-template";
 import { parseJsonResponse } from "../lib/fetch-json";
-import { buildWithdrawnPartyMembers, GRAYTAG_CANCEL_COUNTING_START_DATE } from "../lib/withdrawn-party-members";
 import { getAdminToken } from "../lib/admin-auth";
 import { getVisibleManagementAccounts, type FilterMode } from "../lib/management-account-order";
 import { buildYouTubeFamilyGroupCreateBody, buildYouTubeFamilyGroupPatchBody, getYouTubeRegistrationDisplayLabel, parseYouTubeFamilyGroupsResponse, parseYouTubeInvitationsResponse, parseYouTubeProductRegistrationsResponse, partitionYouTubeManagementServices, summarizeYouTubeFamilyGroup, validateYouTubeFamilyGroupDraft, type YouTubeFamilyGroupDraft, type YouTubeFamilyGroupDto, type YouTubeInvitationStatus, type YouTubeInvitationSummaryDto, type YouTubeProductRegistrationStatus, type YouTubeProductRegistrationSummaryDto } from "../lib/youtube-family-groups";
@@ -756,20 +755,6 @@ export default function ManagePage() {
     }
   };
 
-  const updateAccountExitChecklist = async (acct: Account, patch: Record<string, unknown>) => {
-    const key = `${acct.serviceType}:${acct.email}`;
-    try {
-      const res = await fetch(`/api/party-maintenance-checklists/${encodeURIComponent(key)}`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ recruitAgain: true, ...patch }),
-      });
-      const json = await res.json() as any;
-      if (!res.ok || !json.ok) throw new Error(json.error || '퇴장 체크리스트 저장 실패');
-      setMaintenanceChecklistStore(json.store || { ...maintenanceChecklistStore, [key]: json.item });
-    } catch (e: any) {
-      alert(e.message || '퇴장 체크리스트 저장 실패');
-    }
-  };
 
   const noticeEligibleMembers = (acct: Account) => acct.members
     .filter((m) => (USING_SET.has(m.status) || isAccountCheckingMember(m)) && m.dealUsid)
@@ -924,10 +909,14 @@ export default function ManagePage() {
         ? prev
         : [{ id: account.emailId, email: account.email, enabled: true }, ...prev]);
       setAccountCreateResult(`${account.email} 생성 완료 · 계정 관리에 바로 표시됨 · 결제 체크 대기`);
+      // 즉시 반영 완료 — 성공 경로에서는 재조회하지 않음
       setAccountCreatePrefix('');
       setAccountCreateLoading(false); setAccountCreateStage('');
+    } catch (e: any) {
+      setAccountCreateResult(`오류: ${e.message}`);
+      // 빠른 계정 생성 반영 실패 시에만 전체 재조회 fallback
       void doFetch(undefined, { forceRefresh: true, silent: true });
-    } catch (e: any) { setAccountCreateResult(`오류: ${e.message}`); }
+    }
     finally { window.clearTimeout(slowTimer); setAccountCreateLoading(false); setAccountCreateStage(''); }
   };
 
@@ -1446,13 +1435,7 @@ export default function ManagePage() {
     if (createdProducts.length > 0) {
       setData(prev => {
         if (!prev) return prev;
-        return {
-          ...prev,
-          onSaleByKeepAcct: {
-            ...prev.onSaleByKeepAcct,
-            [fillModal.keepAcct]: mergeRecruitingProducts(prev.onSaleByKeepAcct?.[fillModal.keepAcct] || [], createdProducts),
-          },
-        };
+        return applyCreatedProductsToManageData(prev, fillModal.keepAcct, createdProducts);
       });
     }
     if (success > 0) setTimeout(() => { setFillModal(null); setFillResult(null); void doFetch(undefined, { forceRefresh: true, silent: true }); }, 3000);
@@ -1753,6 +1736,18 @@ export default function ManagePage() {
     ...credentialServices.map((service): ManagementServiceSection => ({ kind: 'credentials', serviceType: service.serviceType, service })),
     { kind: 'youtube', serviceType: '유튜브 프리미엄' },
   ].sort((left, right) => managementServiceCategoryIndex(left.serviceType) - managementServiceCategoryIndex(right.serviceType));
+
+  const archivedAccounts = (data?.services || []).flatMap(svc => svc.accounts).filter(acct => acct.archivedAccount === true);
+
+  const archivedAccountSummaryRow = (acct: Account) => (
+    <div key={`${acct.serviceType}:${acct.email}`} style={{ background:'#fff', border:'1.5px solid #E5E7EB', borderRadius:12, padding:'9px 11px', display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}>
+      <div style={{ minWidth:0 }}>
+        <div style={{ fontSize:12, fontWeight:900, color:'#1E1B4B', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{acct.email}</div>
+        <div style={{ fontSize:10, color:'#9CA3AF' }}>{acct.serviceType}{acct.expiryDate ? ` · 만료 ${acct.expiryDate}` : ''}</div>
+      </div>
+      <span style={{ fontSize:10, fontWeight:900, color:'#6B7280', background:'#F3F4F6', borderRadius:999, padding:'3px 8px', flexShrink:0 }}>보관</span>
+    </div>
+  );
 
   return (
     <div className="account-management-page">
@@ -2167,10 +2162,6 @@ export default function ManagePage() {
                           { label: 'PW', value: isAccessNoticeCredentialValue(credential?.password || acct.keepPasswd || '') ? '' : (credential?.password || acct.keepPasswd || '') },
                           { label: 'PIN', value: credential?.pin || '' },
                         ];
-                        const withdrawnPartyMembers = buildWithdrawnPartyMembers({
-                          account: acct,
-                        });
-                        const withdrawnPartyKeys = Array.from(new Set(withdrawnPartyMembers.map(row => row.partyKey)));
                         const currentAccountIdDraft = accountIdDrafts[credentialKey] ?? credentialRows[0].value;
                         const currentPasswordDraft = passwordDrafts[credentialKey] ?? credentialRows[1].value;
                         const paymentCardDraft = paymentCardDrafts[credentialKey] ?? {
@@ -2446,63 +2437,6 @@ export default function ManagePage() {
                                   )}
                                 </div>
 
-                                <div style={{ background:'#FFFFFF', border:'1.5px solid #EDE9FE', borderRadius:14, padding:12, marginBottom:10 }}>
-                                  <div style={{ fontSize:13, fontWeight:900, color:'#1E1B4B', marginBottom:7 }}>퇴장 정리 체크리스트</div>
-                                  <div style={{ fontSize:10, color:'#9CA3AF', marginBottom:8 }}>파티원이 나갔을 때 프로필/기기/PW/PIN/공지 상태를 계정별로 표시해요.</div>
-                                  <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
-                                    {([
-                                      ['프로필 삭제', 'profileRemoved', true],
-                                      ['기기 로그아웃', 'devicesLoggedOut', true],
-                                      ['PW 변경', 'passwordChanged', true],
-                                      ['PIN 변경', 'pinStillUnchanged', false],
-                                      ['남은 파티원 공지', 'noticeSent', true],
-                                    ] as const).map(([label, field, doneValue]) => {
-                                      const done = (exitChecklist as any)?.[field] === doneValue;
-                                      return <button key={field} onClick={(e) => { e.stopPropagation(); updateAccountExitChecklist(acct, { [field]: doneValue }); }} style={{ border:'none', borderRadius:999, padding:'6px 9px', background:done?'#ECFDF5':'#F3F4F6', color:done?'#059669':'#6B7280', fontSize:10, fontWeight:900, cursor:'pointer' }}>{done ? '✓ ' : ''}{label}</button>;
-                                    })}
-                                  </div>
-                                </div>
-
-                                <div style={{ background:'#FFFFFF', border:'1.5px solid #FED7AA', borderRadius:14, padding:12, marginBottom:10 }}>
-                                  <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, marginBottom:7 }}>
-                                    <div>
-                                      <div style={{ fontSize:13, fontWeight:900, color:'#1E1B4B' }}>탈퇴한 파티원 · 파티별 정리</div>
-                                      <div style={{ fontSize:10, color:'#9CA3AF', marginTop:2 }}>탈퇴 날짜 최신순 · 퇴장 당시 저장된 PW/PIN 확인용</div>
-                                    </div>
-                                    <span style={{ fontSize:10, color:'#C2410C', background:'#FFF7ED', borderRadius:999, padding:'4px 8px', fontWeight:900 }}>{withdrawnPartyMembers.length}명 · {withdrawnPartyKeys.length}파티</span>
-                                  </div>
-                                  {withdrawnPartyMembers.length === 0 ? (
-                                    <div style={{ fontSize:11, color:'#9CA3AF', background:'#F9FAFB', borderRadius:10, padding:'8px 9px' }}>탈퇴/종료로 정리할 파티원이 아직 없어요.</div>
-                                  ) : (
-                                    <div style={{ display:'grid', gap:7 }}>
-                                      {withdrawnPartyMembers.map(row => (
-                                        <div key={row.id} style={{ background:'#FFF7ED', border:'1px solid #FED7AA', borderRadius:11, padding:'8px 9px' }}>
-                                          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, marginBottom:5 }}>
-                                            <div style={{ minWidth:0 }}>
-                                              <span style={{ fontSize:12, color:'#1E1B4B', fontWeight:900 }}>{row.memberName}</span>
-                                              <span style={{ marginLeft:6, fontSize:9, color:'#C2410C', background:'#FFEDD5', borderRadius:6, padding:'2px 6px', fontWeight:900 }}>{row.statusLabel}</span>
-                                            </div>
-                                            <span style={{ fontSize:10, color:'#92400E', fontWeight:900 }}>{row.withdrawnDate}</span>
-                                          </div>
-                                          <div style={{ fontSize:10, color:'#9A3412', fontWeight:800, marginBottom:5 }}>파티 {row.partyKey} · {row.periodLabel} · {row.price}</div>
-                                          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:5 }}>
-                                            {([{ label:'마지막 PW', value:row.password }, { label:'마지막 PIN', value:row.pin }] as const).map(secret => (
-                                              <div key={secret.label} style={{ background:'#fff', borderRadius:8, padding:'6px 7px', minWidth:0 }}>
-                                                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:4 }}>
-                                                  <span style={{ fontSize:8, color:'#9CA3AF', fontWeight:900 }}>{secret.label}</span>
-                                                  <button onClick={(e) => { e.stopPropagation(); copyText(secret.value); }} disabled={!secret.value} style={{ border:'none', background:'transparent', color:secret.value?'#C2410C':'#D1D5DB', fontSize:8, fontWeight:900, cursor:secret.value?'pointer':'not-allowed' }}>복사</button>
-                                                </div>
-                                                <div style={{ fontSize:10, color:'#1E1B4B', fontWeight:900, marginTop:2, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{secret.value || '-'}</div>
-                                              </div>
-                                            ))}
-                                          </div>
-                                          <div style={{ marginTop:5, fontSize:10, color:'#C2410C', fontWeight:900 }}>제안 후보: {row.credentialAdvice}</div>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  )}
-                                </div>
-
                                 {acct.generatedAccount && (
                                   <div style={{ background:acct.generatedAccount.paymentStatus==='paid'?'#ECFDF5':'#FFF7ED', border:`1.5px solid ${acct.generatedAccount.paymentStatus==='paid'?'#A7F3D0':'#FED7AA'}`, borderRadius:14, padding:12, marginBottom:10 }}>
                                     <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:10, marginBottom:8 }}>
@@ -2695,6 +2629,16 @@ export default function ManagePage() {
               );
             })}
           </div>
+          {archivedAccounts.length > 0 && (
+            <details className="management-archived-accounts" style={{ marginTop:14 }}>
+              <summary style={{ cursor:'pointer', fontSize:12, fontWeight:900, color:'#6B7280', padding:'10px 12px', background:'#F9FAFB', border:'1.5px solid #E5E7EB', borderRadius:12 }}>
+                만료 · 보관 계정 ({archivedAccounts.length})
+              </summary>
+              <div style={{ display:'grid', gap:10, marginTop:8 }}>
+                {archivedAccounts.map(acct => archivedAccountSummaryRow(acct))}
+              </div>
+            </details>
+          )}
         </>
       )}
       {/* 메꾸기 모달 */}
