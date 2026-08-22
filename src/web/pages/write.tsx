@@ -8,6 +8,7 @@ import { makeDefaultProductDescription, makeDefaultProductTitle } from "../../li
 import { buildProfileAssignment, generateProfileNickname, isValidProfileNickname, normalizeProfileNickname } from "../../lib/profile-nickname";
 import {
   buildYouTubeProductRequest,
+  buildYouTubeListingTitle,
   clampYouTubeRepeat,
   createYouTubeIdempotencyKey,
   getSeoulTomorrow,
@@ -164,6 +165,9 @@ export default function WritePage() {
   }, [service]);
 
   const selectedYoutubeGroup = youtubeGroups.find(group => group.id === selectedYoutubeGroupId) || null;
+  const youtubeFinalTitle = selectedYoutubeGroup
+    ? buildYouTubeListingTitle(title, selectedYoutubeGroup.listingCode)
+    : title.trim();
   const youtubeRepeatMax = selectedYoutubeGroup ? Math.min(20, Math.max(0, selectedYoutubeGroup.availableSeats)) : 0;
   const youtubeSubmitDisabled = service === 'youtube' && (
     youtubeGroupsLoading || youtubeEnabled !== true || !selectedYoutubeGroup || youtubeRepeatMax === 0
@@ -319,7 +323,8 @@ export default function WritePage() {
             familyGroupId: selectedYoutubeGroup.id,
             endDate,
             price: finalTotalPrice,
-            name: title.trim(),
+            name: title,
+            listingCode: selectedYoutubeGroup.listingCode,
             sellingGuide: description.trim(),
             idempotencyKey: createYouTubeIdempotencyKey(),
           });
@@ -921,6 +926,11 @@ export default function WritePage() {
           onChange={e => setTitle(e.target.value)}
           placeholder="상품 제목을 입력하세요" style={inputStyle} />
         <div style={{ fontSize: 10, color: '#C4B5FD', textAlign: 'right', marginTop: -6 }}>{title.length}자</div>
+        {service === 'youtube' && selectedYoutubeGroup && (
+          <div style={{ marginTop: 8, borderRadius: 8, padding: '8px 10px', background: '#FFF1F1', color: '#B91C1C', fontSize: 11, lineHeight: 1.5 }}>
+            최종 등록 제목: <strong>{youtubeFinalTitle}</strong>
+          </div>
+        )}
       </div>
 
       {/* ③ 기간 + 가격 */}

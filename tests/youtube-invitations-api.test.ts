@@ -111,6 +111,7 @@ describe('YouTube family-group API', () => {
     expect(created.familyGroup.id).toMatch(/^youtube-family-group:/);
     expect(created.familyGroup.createdAt).toBe(created.familyGroup.updatedAt);
     expect(created.familyGroup).not.toHaveProperty('managerEmail');
+    expect(created.familyGroup.listingCode).toBe('manger');
     expect(createdResponse.headers.get('cache-control')).toBe('no-store');
 
     const listResponse = await request('/youtube/family-groups');
@@ -147,6 +148,11 @@ describe('YouTube family-group API', () => {
     });
     expect(customDomain.response.status).toBe(201);
     expect(customDomain.body.familyGroup.managerEmailMasked).toBe('m***r@custom-domain.example');
+    expect(customDomain.body.familyGroup.listingCode).toBe('mannor');
+    const shortLocal = await createGroup({ label: '짧은 코드', managerEmail: 'ABCDEF@short.example' });
+    expect(shortLocal.response.status).toBe(201);
+    expect(shortLocal.body.familyGroup.listingCode).toBe('abcdef');
+    expect(shortLocal.body.familyGroup).not.toHaveProperty('managerEmail');
   });
 
   test('updates accepted fields, rejects invalid patches, and soft deletes idempotently', async () => {

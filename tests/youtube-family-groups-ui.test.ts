@@ -14,6 +14,7 @@ const group = {
   id: 'youtube-family-group:1',
   label: '운영 그룹',
   managerEmailMasked: 'm***r@example.com',
+  listingCode: 'manger',
   subscriptionEndDate: '2027-08-11',
   sellableSeats: 5,
   availableSeats: 3,

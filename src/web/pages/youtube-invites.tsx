@@ -47,6 +47,7 @@ export type YouTubeInvitationDto = {
 type FamilyGroupDto = {
   id: string;
   label: string;
+  listingCode: string;
   enabled: boolean;
   availableSeats: number;
 };
@@ -157,8 +158,9 @@ function normalizeFamilyGroup(value: unknown): FamilyGroupDto | null {
   const item = record(value);
   const id = safeText(item?.id, 200);
   const label = safeText(item?.label, 120);
-  if (!item || !id || !label) return null;
-  return { id, label, enabled: item.enabled === true, availableSeats: Number.isFinite(item.availableSeats) ? Number(item.availableSeats) : 0 };
+  const listingCode = safeText(item?.listingCode, 6);
+  if (!item || !id || !label || !listingCode || listingCode !== listingCode.toLowerCase() || /\s/.test(listingCode)) return null;
+  return { id, label, listingCode, enabled: item.enabled === true, availableSeats: Number.isFinite(item.availableSeats) ? Number(item.availableSeats) : 0 };
 }
 
 async function jsonRecord(response: Response): Promise<Record<string, unknown>> {

@@ -1,7 +1,16 @@
+import { appendYouTubeListingCode } from '../../lib/youtube-listing-code';
+
+export { appendYouTubeListingCode } from '../../lib/youtube-listing-code';
+
+export function buildYouTubeListingTitle(name: string, listingCode: string): string {
+  return appendYouTubeListingCode(name.trim(), listingCode);
+}
+
 export interface YouTubeFamilyGroupDto {
   id: string;
   label: string;
   managerEmailMasked: string;
+  listingCode: string;
   subscriptionEndDate: string | null;
   sellableSeats: number;
   availableSeats: number;
@@ -76,6 +85,7 @@ interface YouTubeProductRequestInput {
   endDate: string;
   price: number;
   name: string;
+  listingCode: string;
   sellingGuide: string;
   idempotencyKey: string;
 }
@@ -94,7 +104,7 @@ export function buildYouTubeProductRequest(input: YouTubeProductRequestInput): {
         familyGroupId: input.familyGroupId,
         endDate: toGraytagYouTubeDate(input.endDate),
         price: Math.trunc(input.price),
-        name: input.name,
+        name: buildYouTubeListingTitle(input.name, input.listingCode),
         sellingGuide: input.sellingGuide,
       }),
     },

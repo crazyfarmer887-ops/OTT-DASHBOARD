@@ -52,6 +52,26 @@ describe('YouTube product registration journal', () => {
     expect(store.claim(input).kind).toBe('blocked');
   }));
 
+  test('accepts an explicitly compatible stored fingerprint without changing the primary fingerprint for new claims', () => withTemp((_root, path) => {
+    const store = new YouTubeProductRegistrationsStore(path, { allowUnsafeIsolatedClaim: true });
+    const legacyFingerprint = '4'.repeat(64);
+    const currentFingerprint = '5'.repeat(64);
+    const legacy = { idempotencyKey: 'request-key-compatible-legacy', requestFingerprint: legacyFingerprint, familyGroupId: 'group-1', actor: 'admin', reasonCode: 'create', at };
+    expect(store.claim(legacy).kind).toBe('claimed');
+    store.complete(legacy.idempotencyKey, 'registered', { actor: 'admin', reasonCode: 'done', productUsid: 'product-legacy', at: '2026-08-11T00:00:01.000Z' });
+
+    expect(store.claimWithCapacity(
+      { ...legacy, requestFingerprint: currentFingerprint, compatibleRequestFingerprints: [legacyFingerprint], at: '2026-08-11T00:00:02.000Z' },
+      { familyCapacity: 0, externalOccupiedProductUsids: new Set(), externalOccupiedFallbackCount: 0 },
+    )).toMatchObject({ kind: 'replay', record: { requestFingerprint: legacyFingerprint } });
+
+    const fresh = store.claimWithCapacity(
+      { ...legacy, idempotencyKey: 'request-key-compatible-fresh', requestFingerprint: currentFingerprint, compatibleRequestFingerprints: [legacyFingerprint], at: '2026-08-11T00:00:03.000Z' },
+      { familyCapacity: 2, externalOccupiedProductUsids: new Set(), externalOccupiedFallbackCount: 0 },
+    );
+    expect(fresh).toMatchObject({ kind: 'claimed', record: { requestFingerprint: currentFingerprint } });
+  }));
+
   test('leases a submitting attempt and permits only lookup recovery after expiry', () => withTemp((_root, path) => {
     const store = new YouTubeProductRegistrationsStore(path, { allowUnsafeIsolatedClaim: true });
     const input = { idempotencyKey: 'request-key-leased-1', requestFingerprint: '7'.repeat(64), familyGroupId: 'group-1', actor: 'admin', reasonCode: 'create', at };

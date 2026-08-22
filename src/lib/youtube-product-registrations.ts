@@ -150,6 +150,16 @@ export interface YouTubeProductRegistrationCapacity {
   externalOccupiedFallbackCount: number;
 }
 
+interface YouTubeProductRegistrationClaimInput {
+  idempotencyKey: string;
+  requestFingerprint: string;
+  compatibleRequestFingerprints?: readonly string[];
+  familyGroupId: string;
+  actor: string;
+  reasonCode: string;
+  at?: string;
+}
+
 export class YouTubeProductRegistrationsBusyError extends Error {
   constructor() { super('YouTube product registrations journal is busy or unavailable'); this.name = 'YouTubeProductRegistrationsBusyError'; }
 }
@@ -205,15 +215,19 @@ export class YouTubeProductRegistrationsStore {
     }
     return [...data!.records];
   }
-  claim(input: { idempotencyKey: string; requestFingerprint: string; familyGroupId: string; actor: string; reasonCode: string; at?: string }): YouTubeProductRegistrationClaim {
+  claim(input: YouTubeProductRegistrationClaimInput): YouTubeProductRegistrationClaim {
     if (!this.options.allowUnsafeIsolatedClaim) {
       throw new TypeError('Raw claim requires coherent capacity validation');
     }
     return this.claimWithCapacity(input, { familyCapacity: Number.MAX_SAFE_INTEGER, externalOccupiedProductUsids: new Set(), externalOccupiedFallbackCount: 0 });
   }
-  claimWithCapacity(input: { idempotencyKey: string; requestFingerprint: string; familyGroupId: string; actor: string; reasonCode: string; at?: string }, capacity: YouTubeProductRegistrationCapacity): YouTubeProductRegistrationClaim {
+  claimWithCapacity(input: YouTubeProductRegistrationClaimInput, capacity: YouTubeProductRegistrationCapacity): YouTubeProductRegistrationClaim {
     const at = input.at ?? new Date().toISOString();
-    if (!SAFE_KEY.test(input.idempotencyKey) || !HEX_64.test(input.requestFingerprint) || !text(input.familyGroupId, 200) || !text(input.actor, 200) || !text(input.reasonCode, 200) || !iso(at)) throw new TypeError('Invalid YouTube product registration claim');
+    const compatibleRequestFingerprints = input.compatibleRequestFingerprints ?? [];
+    if (!SAFE_KEY.test(input.idempotencyKey) || !HEX_64.test(input.requestFingerprint)
+      || !Array.isArray(compatibleRequestFingerprints) || compatibleRequestFingerprints.length > 10
+      || !compatibleRequestFingerprints.every((fingerprint) => HEX_64.test(fingerprint))
+      || !text(input.familyGroupId, 200) || !text(input.actor, 200) || !text(input.reasonCode, 200) || !iso(at)) throw new TypeError('Invalid YouTube product registration claim');
     if (!Number.isSafeInteger(capacity.familyCapacity) || capacity.familyCapacity < 0
       || !Number.isSafeInteger(capacity.externalOccupiedFallbackCount) || capacity.externalOccupiedFallbackCount < 0
       || !(capacity.externalOccupiedProductUsids instanceof Set)) throw new TypeError('Invalid YouTube product registration capacity');
@@ -221,7 +235,9 @@ export class YouTubeProductRegistrationsStore {
       const data = readStore(this.filePath, true) ?? { version: 1 as const, records: [] };
       const existing = data.records.find((row) => row.idempotencyKey === input.idempotencyKey);
       if (existing) {
-        if (existing.requestFingerprint !== input.requestFingerprint) return { kind: 'conflict', record: existing };
+        const compatible = existing.requestFingerprint === input.requestFingerprint
+          || compatibleRequestFingerprints.includes(existing.requestFingerprint);
+        if (!compatible || existing.familyGroupId !== input.familyGroupId) return { kind: 'conflict', record: existing };
         if (existing.status === 'submitting' && existing.leaseExpiresAt <= at) {
           const renewed = { ...existing, leaseExpiresAt: new Date(new Date(at).getTime() + 60_000).toISOString(), updatedAt: at };
           const records = [...data.records]; records[data.records.indexOf(existing)] = renewed;

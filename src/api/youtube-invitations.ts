@@ -24,6 +24,7 @@ import { withYouTubeCapacityLock } from '../lib/youtube-capacity-lock';
 import { maskYouTubeInviteEmail, parseYouTubeInviteEmailCandidates } from '../lib/youtube-invite-email';
 import { normalizeYouTubeAuditReason } from '../lib/youtube-audit-reason';
 import { assertYouTubeCapacityInvariant, occupiedYouTubeFamilyGroupSeats, YouTubeCapacityInvariantError } from '../lib/youtube-capacity-invariant';
+import { appendYouTubeListingCode, removeYouTubeListingCode, youtubeListingCodeFromManagerEmail } from '../lib/youtube-listing-code';
 
 const DEFAULT_FAMILY_GROUPS_PATH = 'data/youtube-family-groups.json';
 const DEFAULT_INVITATIONS_PATH = 'data/youtube-invitations.json';
@@ -116,6 +117,7 @@ function familyGroupDto(familyGroup: YouTubeFamilyGroup) {
     id: familyGroup.id,
     label: familyGroup.label,
     managerEmailMasked: maskManagerEmail(familyGroup.managerEmail),
+    listingCode: youtubeListingCodeFromManagerEmail(familyGroup.managerEmail),
     subscriptionEndDate: familyGroup.subscriptionEndDate,
     sellableSeats: familyGroup.sellableSeats,
     enabled: familyGroup.enabled,
@@ -504,18 +506,19 @@ app.post('/products', async (c) => {
     || typeof body.price !== 'number') {
     return c.json({ ok: false, error: 'invalid request' }, 400);
   }
-  let model: YouTubeSharingNoKeepProductModel;
+  let submittedModel: YouTubeSharingNoKeepProductModel;
   try {
-    model = buildYouTubeSharingNoKeepProductModel({ endDate: body.endDate as string, price: body.price as number, name: body.name as string, sellingGuide: body.sellingGuide as string });
+    submittedModel = buildYouTubeSharingNoKeepProductModel({ endDate: body.endDate as string, price: body.price as number, name: body.name as string, sellingGuide: body.sellingGuide as string });
   } catch { return c.json({ ok: false, error: 'invalid request' }, 400); }
   const seoulParts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit',
   }).formatToParts(dependencies.now?.() ?? new Date()).map((part) => [part.type, part.value]));
   const todayCompact = `${seoulParts.year}${seoulParts.month}${seoulParts.day}`;
-  if (model.endDate.slice(0, 8) <= todayCompact) return c.json({ ok: false, error: 'end date must be after today' }, 400);
+  if (submittedModel.endDate.slice(0, 8) <= todayCompact) return c.json({ ok: false, error: 'end date must be after today' }, 400);
   const familyGroupId = body.familyGroupId;
   const actor = dependencies.actor?.(c)?.trim() || 'admin:authenticated';
-  const requestFingerprint = fingerprintYouTubeProductRegistration(familyGroupId, model);
+  let model = submittedModel;
+  let requestFingerprint = '';
   let claim;
   try {
     const atomicResult = withYouTubeCapacityLock(() => {
@@ -525,8 +528,22 @@ app.post('/products', async (c) => {
       if (familyGroup.subscriptionEndDate && familyGroup.subscriptionEndDate.replaceAll('-', '') < todayCompact) {
         return { response: c.json({ ok: false, error: 'family group expired' }, 409) };
       }
-      if (familyGroup.subscriptionEndDate && model.endDate.slice(0, 8) > familyGroup.subscriptionEndDate.replaceAll('-', '')) {
+      if (familyGroup.subscriptionEndDate && submittedModel.endDate.slice(0, 8) > familyGroup.subscriptionEndDate.replaceAll('-', '')) {
         return { response: c.json({ ok: false, error: 'end date exceeds family group subscription' }, 400) };
+      }
+      const listingCode = youtubeListingCodeFromManagerEmail(familyGroup.managerEmail);
+      model = {
+        ...submittedModel,
+        name: appendYouTubeListingCode(submittedModel.name, listingCode),
+      };
+      requestFingerprint = fingerprintYouTubeProductRegistration(familyGroupId, model);
+      const compatibleRequestFingerprints = [fingerprintYouTubeProductRegistration(familyGroupId, submittedModel)];
+      const nameWithoutListingCode = removeYouTubeListingCode(submittedModel.name, listingCode);
+      if (nameWithoutListingCode !== submittedModel.name) {
+        compatibleRequestFingerprints.push(fingerprintYouTubeProductRegistration(
+          familyGroupId,
+          { ...submittedModel, name: nameWithoutListingCode },
+        ));
       }
       const jobs = readInvitationJobs().jobs;
       const externalOccupiedProductUsids = new Set<string>();
@@ -543,7 +560,7 @@ app.post('/products', async (c) => {
       }
       return {
         claim: productRegistrationsStore().claimWithCapacity(
-          { idempotencyKey, requestFingerprint, familyGroupId, actor, reasonCode: 'registration-requested', at: dependencies.now?.().toISOString() },
+          { idempotencyKey, requestFingerprint, compatibleRequestFingerprints, familyGroupId, actor, reasonCode: 'registration-requested', at: dependencies.now?.().toISOString() },
           {
             familyCapacity: familyGroup.sellableSeats,
             externalOccupiedProductUsids,
@@ -566,7 +583,7 @@ app.post('/products', async (c) => {
 
   if (claim.kind === 'recovery') {
     let observation: { status: 'registered'; productUsid: string } | { status: 'uncertain' } = { status: 'uncertain' };
-    try { observation = await dependencies.reconcileProductRegistration?.({ attemptId: claim.record.attemptId, requestFingerprint, familyGroupId }) ?? observation; } catch {}
+    try { observation = await dependencies.reconcileProductRegistration?.({ attemptId: claim.record.attemptId, requestFingerprint: claim.record.requestFingerprint, familyGroupId }) ?? observation; } catch {}
     const productUsid = observation.status === 'registered' && typeof observation.productUsid === 'string'
       ? observation.productUsid.trim() : '';
     if (observation.status === 'registered' && productUsid && productUsid.length <= 200) {

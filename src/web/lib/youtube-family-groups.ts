@@ -2,6 +2,7 @@ export interface YouTubeFamilyGroupDto {
   id: string;
   label: string;
   managerEmailMasked: string;
+  listingCode: string;
   subscriptionEndDate: string | null;
   sellableSeats: number;
   availableSeats: number;
@@ -108,6 +109,11 @@ function isMaskedEmail(value: unknown): value is string {
     && value.includes('@') && !/\s/.test(value);
 }
 
+function isListingCode(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0 && value.length <= 6
+    && !/[\x00-\x20\x7f]/.test(value) && value === value.toLowerCase();
+}
+
 function parseSafeFamilyGroup(value: unknown): YouTubeFamilyGroupDto | null {
   if (!value || typeof value !== 'object') return null;
   const item = value as Record<string, unknown>;
@@ -115,7 +121,7 @@ function parseSafeFamilyGroup(value: unknown): YouTubeFamilyGroupDto | null {
   const label = safeDtoText(item.label, 120);
   const subscriptionEndDate = item.subscriptionEndDate;
   if (
-    !id || !label || !isMaskedEmail(item.managerEmailMasked) ||
+    !id || !label || !isMaskedEmail(item.managerEmailMasked) || !isListingCode(item.listingCode) ||
     !(subscriptionEndDate === null || (typeof subscriptionEndDate === 'string' && isRealIsoDate(subscriptionEndDate))) ||
     !Number.isInteger(item.sellableSeats) || Number(item.sellableSeats) < 1 || Number(item.sellableSeats) > 20 ||
     !Number.isInteger(item.availableSeats) || Number(item.availableSeats) < 0 || Number(item.availableSeats) > Number(item.sellableSeats) ||
@@ -127,6 +133,7 @@ function parseSafeFamilyGroup(value: unknown): YouTubeFamilyGroupDto | null {
     id,
     label,
     managerEmailMasked: item.managerEmailMasked,
+    listingCode: item.listingCode,
     subscriptionEndDate,
     sellableSeats: Number(item.sellableSeats),
     availableSeats: Number(item.availableSeats),
