@@ -17,7 +17,7 @@ import { buildWithdrawnPartyMembers, GRAYTAG_CANCEL_COUNTING_START_DATE } from "
 import { getAdminToken } from "../lib/admin-auth";
 import { getVisibleManagementAccounts, type FilterMode } from "../lib/management-account-order";
 import { buildYouTubeFamilyGroupCreateBody, buildYouTubeFamilyGroupPatchBody, getYouTubeRegistrationDisplayLabel, parseYouTubeFamilyGroupsResponse, parseYouTubeInvitationsResponse, parseYouTubeProductRegistrationsResponse, partitionYouTubeManagementServices, summarizeYouTubeFamilyGroup, validateYouTubeFamilyGroupDraft, type YouTubeFamilyGroupDraft, type YouTubeFamilyGroupDto, type YouTubeInvitationStatus, type YouTubeInvitationSummaryDto, type YouTubeProductRegistrationStatus, type YouTubeProductRegistrationSummaryDto } from "../lib/youtube-family-groups";
-import { RefreshCw, KeyRound, Mail, ChevronDown, ChevronRight, TrendingUp, Loader2, AlertCircle, ExternalLink, Calendar, UserX, Megaphone, PlusCircle, X, UserPlus, Trash2, Wifi, WifiOff, Eye, EyeOff, Youtube, Pencil, Users } from "lucide-react";
+import { RefreshCw, KeyRound, Mail, ChevronDown, ChevronRight, TrendingUp, Loader2, AlertCircle, ExternalLink, Calendar, UserX, Megaphone, PlusCircle, X, UserPlus, Trash2, Wifi, WifiOff, Eye, EyeOff, Youtube, Users } from "lucide-react";
 
 interface OnSaleProduct {
   productUsid: string; productName: string; productType: string;
@@ -2030,27 +2030,57 @@ export default function ManagePage() {
                       {youtubeGroupSummaries.map(group => {
                         const isGroupOpen = openYouTubeGroup === group.id;
                         const groupPanelId = `youtube-family-group-${encodeURIComponent(group.id)}`;
+                        const registeredListings = group.registrations
+                          .filter(registration => registration.status === 'registered')
+                          .filter(registration => registration.productUsid !== null);
+                        const youtubeSlotStates = buildAccountSlotStates({
+                          totalSlots: group.sellableSeats,
+                          usingCount: group.activeCount,
+                          verifyingCount: 0,
+                          manualCount: 0,
+                          recruitingCount: registeredListings.length,
+                          activeCount: 0,
+                        });
                         return (
                           <article key={group.id} className="youtube-family-group-card management-account-card">
-                            <div className="youtube-family-group-head">
-                              <div style={{ minWidth:0 }}><strong>{group.label}</strong><span>{group.managerEmailMasked}</span><span>제목 코드 {group.listingCode}</span></div>
-                              <span className={group.enabled?'is-enabled':'is-disabled'}>{group.enabled?'활성':'비활성'}</span>
+                            <div className="management-account-header">
+                              <div className="management-account-logo" style={{ background:'#FEF2F2', color:'#DC2626' }} aria-hidden="true"><Youtube size={24} /></div>
+                              <div style={{ flexShrink:0, display:'flex', flexDirection:'column', alignItems:'center', gap:3, minWidth:36 }}>
+                                <div style={{ display:'flex', gap:3 }}>
+                                  {youtubeSlotStates.map((state, index) => <div key={index} title={state === 'using' ? '이용중' : state === 'recruiting' ? '모집 게시글 등록됨' : '비어있음'} style={{ width:state === 'empty'?6:7, height:state === 'empty'?14:18, borderRadius:3, alignSelf:'flex-end', background:state === 'using'?'#A78BFA':state === 'recruiting'?'#D1D5DB':'#E9E4FF' }} />)}
+                                </div>
+                                <div style={{ fontSize:9, color:'#9CA3AF' }}>{group.activeCount}/{group.sellableSeats}</div>
+                              </div>
+                              <div style={{ flex:1, textAlign:'left', minWidth:0 }}>
+                                <div style={{ display:'flex', alignItems:'center', gap:6 }}><Mail size={12} color="#9CA3AF"/><span className="management-account-email">{group.managerEmailMasked}</span></div>
+                                <div style={{ marginTop:3, color:'#6B7280', fontSize:10, fontWeight:800 }}>{group.label} · 제목 코드 {group.listingCode}</div>
+                                <div style={{ display:'flex', gap:5, marginTop:4, flexWrap:'wrap' }}>
+                                  <span className={group.enabled?'is-enabled':'is-disabled'}>{group.enabled?'활성':'비활성'}</span>
+                                  <span className="youtube-expiry-status">만료 {group.subscriptionEndDate || '미설정'}</span>
+                                </div>
+                              </div>
                             </div>
-                            <dl className="management-account-metrics youtube-family-metrics">
-                              <div><dt>현재 파티원</dt><dd>{group.activeCount}명</dd></div>
-                              <div><dt>초대 대기</dt><dd>{group.pendingCount}명</dd></div>
-                              <div><dt>수락/검수</dt><dd>{group.acceptedCount}명</dd></div>
-                              <div><dt>실패</dt><dd>{group.failedCount}명</dd></div>
-                              <div><dt>등록 판매 글 {group.registeredRegistrationCount}개</dt><dd>등록 기록 {group.registrations.length} · 완료 {group.registeredRegistrationCount} · 처리중 {group.pendingRegistrationCount} · 확인필요 {group.uncertainRegistrationCount} · 실패 {group.failedRegistrationCount}</dd></div>
-                              <div><dt>정원 · 빈자리</dt><dd>{group.occupiedSeats}/{group.sellableSeats} · {group.availableSeats}석</dd></div>
-                              <div><dt>이용 종료일</dt><dd>{group.subscriptionEndDate || '미설정'}</dd></div>
+                            {registeredListings.length > 0 && <div className="youtube-registered-product-links" aria-label={`${group.label} 등록 게시물`}>
+                              {registeredListings.map((registration, index) => <a key={registration.registrationDisplayId} href={`https://graytag.co.kr/product/detail?productUsid=${encodeURIComponent(registration.productUsid!)}`} target="_blank" rel="noreferrer"><ExternalLink size={10}/> 유튜브 프리미엄 {group.listingCode} · 게시물 {index + 1}</a>)}
+                            </div>}
+                            {(group.pendingRegistrationCount > 0 || group.uncertainRegistrationCount > 0 || group.failedRegistrationCount > 0) && <div className="youtube-registration-statuses" aria-label="등록 기록 상태">
+                              {group.pendingRegistrationCount > 0 && <span>처리중 {group.pendingRegistrationCount}</span>}
+                              {group.uncertainRegistrationCount > 0 && <span>확인필요 {group.uncertainRegistrationCount}</span>}
+                              {group.failedRegistrationCount > 0 && <span>실패 {group.failedRegistrationCount}</span>}
+                            </div>}
+                            <dl className="management-account-metrics">
+                              <div><dt>사용 / 슬롯</dt><dd>{group.activeCount} / {group.sellableSeats}</dd></div>
+                              <div><dt>만료일</dt><dd>{group.subscriptionEndDate || '-'}</dd></div>
+                              <div><dt>등록 판매글</dt><dd>{group.registeredRegistrationCount}개</dd></div>
+                              <div><dt>초대 / 파티원</dt><dd>{group.members.length}명</dd></div>
                             </dl>
-                            <div className="youtube-family-actions">
-                              <button type="button" className="youtube-family-group-toggle management-touch-target" onClick={() => setOpenYouTubeGroup(isGroupOpen ? null : group.id)} aria-expanded={isGroupOpen} aria-controls={groupPanelId}>{isGroupOpen?<ChevronDown size={14}/>:<ChevronRight size={14}/>} 판매 글 {group.registeredRegistrationCount} · 등록 기록 {group.registrations.length} · 파티원/초대 {group.members.length}</button>
-                              <button type="button" className="management-touch-target" onClick={() => openYouTubeGroupEditForm(group)} disabled={youtubeGroupsFeatureEnabled !== true || youtubeGroupMutationLoading}><Pencil size={13}/> 수정</button>
-                              {group.enabled && <button type="button" className="management-touch-target" onClick={() => disableYouTubeFamilyGroup(group)} disabled={youtubeGroupsFeatureEnabled !== true || youtubeGroupMutationLoading}>비활성화</button>}
+                            <div className="management-account-actions youtube-family-group-actions">
+                              <button type="button" className="management-touch-target" onClick={() => setOpenYouTubeGroup(isGroupOpen ? null : group.id)} aria-expanded={isGroupOpen} aria-controls={groupPanelId}>상세보기</button>
+                              <button type="button" className="management-touch-target" onClick={() => navigate('/youtube-invites')}>초대 관리</button>
+                              <button type="button" className="management-touch-target" onClick={() => openYouTubeGroupEditForm(group)} disabled={youtubeGroupsFeatureEnabled !== true || youtubeGroupMutationLoading}>수정</button>
+                              <button type="button" className="management-touch-target" onClick={() => disableYouTubeFamilyGroup(group)} disabled={!group.enabled || youtubeGroupsFeatureEnabled !== true || youtubeGroupMutationLoading}>{group.enabled?'비활성화':'비활성'}</button>
                             </div>
-                            {isGroupOpen && <div id={groupPanelId} role="region" aria-label={`${group.label} 판매 글 및 파티원/초대 상세`} className="youtube-family-member-list">
+                            {isGroupOpen && <div id={groupPanelId} role="region" aria-label={`${group.label} 판매 글 및 파티원/초대 상세`} className="management-account-details youtube-family-member-list">
                               <section aria-labelledby={`${groupPanelId}-registrations`} style={{ display:'grid', gap:8 }}>
                                 <h3 id={`${groupPanelId}-registrations`} style={{ margin:0, color:'#991B1B', fontSize:12 }}>등록 기록</h3>
                                 {group.registrations.length === 0 ? <div className="youtube-family-member-empty">등록 기록이 없습니다.</div> : group.registrations.map((registration, index) => (

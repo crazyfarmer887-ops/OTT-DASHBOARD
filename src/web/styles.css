@@ -332,20 +332,18 @@ body {
 .youtube-unmapped-notice span { line-height: 1.5; font-weight: 700; }
 .youtube-service-empty { justify-content: center; background: #F9FAFB; color: #6B7280; }
 .youtube-family-group-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; padding: 0; border-top: 0; align-items: start; }
-.youtube-family-group-card { border-color: #FECACA; }
-.youtube-family-group-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; padding: 14px 14px 7px; }
-.youtube-family-group-head strong, .youtube-family-group-head > div > span { display: block; overflow-wrap: anywhere; }
-.youtube-family-group-head strong { color: #1E1B4B; font-size: 13px; }
-.youtube-family-group-head > div > span { margin-top: 3px; color: #6B7280; font-size: 11px; }
-.youtube-family-group-head > span { flex: 0 0 auto; border-radius: 999px; padding: 3px 7px; font-size: 9px; font-weight: 900; }
-.youtube-family-group-head .is-enabled { background: #ECFDF5; color: #047857; }
-.youtube-family-group-head .is-disabled { background: #E5E7EB; color: #6B7280; }
-.youtube-family-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); background: #FEE2E2; }
-.youtube-family-metrics > div { background: #FFF7F7; }
-.youtube-family-actions { display: grid; grid-template-columns: minmax(0, 1.5fr) repeat(2, minmax(0, 1fr)); gap: 7px; padding: 0 14px 14px; }
-.youtube-family-actions button, .youtube-open-invites { display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-width: 0; border: 1px solid #FECACA; border-radius: 10px; padding: 8px; background: #fff; color: #B91C1C; font: inherit; font-size: 10px; font-weight: 900; cursor: pointer; }
-.youtube-family-actions button:disabled { cursor: not-allowed; opacity: .48; }
-.youtube-family-group-toggle { min-height: 44px; background: #FEF2F2 !important; }
+.youtube-family-group-card .is-enabled,
+.youtube-family-group-card .is-disabled,
+.youtube-expiry-status { border-radius: 999px; padding: 2px 6px; font-size: 9px; font-weight: 900; }
+.youtube-family-group-card .is-enabled { background: #ECFDF5; color: #047857; }
+.youtube-family-group-card .is-disabled { background: #E5E7EB; color: #6B7280; }
+.youtube-expiry-status { background: #F3F4F6; color: #6B7280; }
+.youtube-registered-product-links { display: grid; gap: 5px; margin: 0 14px 8px; }
+.youtube-registered-product-links a { display: flex; align-items: center; gap: 4px; min-width: 0; padding: 6px 8px; border-radius: 8px; background: #F3F4F6; color: #4F46E5; font-size: 10px; font-weight: 800; overflow-wrap: anywhere; }
+.youtube-registration-statuses { display: flex; gap: 5px; margin: 0 14px 8px; flex-wrap: wrap; }
+.youtube-registration-statuses span { border-radius: 999px; padding: 2px 6px; background: #FFF7ED; color: #9A3412; font-size: 9px; font-weight: 900; }
+.management-account-actions.youtube-family-group-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.youtube-open-invites { display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-width: 0; border: 1px solid #FECACA; border-radius: 10px; padding: 8px; background: #fff; color: #B91C1C; font: inherit; font-size: 10px; font-weight: 900; cursor: pointer; }
 .youtube-family-member-list { display: grid; gap: 8px; padding: 12px 14px 14px; border-top: 1px solid #FEE2E2; background: #FFF7F7; }
 .youtube-family-member { min-width: 0; padding: 9px 10px; border: 1px solid #FEE2E2; border-radius: 10px; background: #fff; overflow-wrap: anywhere; }
 .youtube-family-member > div { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
@@ -394,7 +392,6 @@ body {
   .youtube-service-panel { padding: 10px; }
   .youtube-service-toolbar { align-items: stretch; flex-direction: column; }
   .youtube-family-group-grid { padding: 0; }
-  .youtube-family-actions { grid-template-columns: minmax(0, 1fr); }
   .youtube-family-member dl > div { grid-template-columns: minmax(0, 1fr); }
 
   .management-service-header {

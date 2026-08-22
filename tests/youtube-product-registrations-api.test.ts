@@ -346,29 +346,35 @@ describe('YouTube product registration API', () => {
     expect(await registrations.json()).toMatchObject({ enabled: false, registrations: [] });
   });
 
-  test('lists only reconciliation-safe summaries', async () => {
+  test('lists only admin UI allowlisted summaries with validated raw productUsid', async () => {
     const app = createYouTubeInvitationsApp({ registerProduct: async () => new Response(JSON.stringify({ succeeded: true, data: 'product-5' }), { status: 200 }) });
     await post(app, 'request-key-5000');
     const response = await app.request('/products/registrations'); expect(response.status).toBe(200);
     const payload = await response.json() as any;
-    expect(payload.registrations[0]).toMatchObject({
-      idempotencyKey: 'request-key-5000',
+    expect(payload.registrations[0]).toEqual({
       registrationDisplayId: expect.stringMatching(/^registration-[a-f0-9]{12}$/),
       productUsid: 'product-5',
       productDisplayId: expect.stringMatching(/^product-[a-f0-9]{12}$/),
-      familyGroupId: 'group-1', status: 'registered',
+      familyGroupId: 'group-1', status: 'registered', createdAt: expect.any(String), updatedAt: expect.any(String),
     });
-    const text = JSON.stringify(payload); expect(text).not.toContain('sellingGuide'); expect(text).not.toContain('manager@example.com'); expect(text).not.toContain('requestFingerprint');
+    const text = JSON.stringify(payload);
+    expect(text).not.toContain('request-key-5000');
+    expect(text).not.toContain('admin:authenticated');
+    expect(text).not.toContain('sellingGuide');
+    expect(text).not.toContain('manager@example.com');
+    expect(text).not.toContain('requestFingerprint');
   });
 
-  test('keeps legacy registration fields and adds nullable privacy-safe display identifiers', async () => {
+  test('uses nullable product identifiers for non-registered records without exposing durable keys or actors', async () => {
     const store = new YouTubeProductRegistrationsStore(process.env.YOUTUBE_PRODUCT_REGISTRATIONS_PATH!, { allowUnsafeIsolatedClaim: true });
     store.claim({ idempotencyKey: 'request-key-submitting', requestFingerprint: 'a'.repeat(64), familyGroupId: 'group-1', actor: 'admin', reasonCode: 'create', at: now });
     const payload = await (await createYouTubeInvitationsApp().request('/products/registrations')).json() as any;
-    expect(payload.registrations[0]).toEqual(expect.objectContaining({
-      idempotencyKey: 'request-key-submitting', familyGroupId: 'group-1', status: 'submitting',
-      productUsid: null, actor: 'admin', createdAt: now, updatedAt: now,
+    expect(payload.registrations[0]).toEqual({
+      familyGroupId: 'group-1', status: 'submitting', productUsid: null,
       registrationDisplayId: expect.stringMatching(/^registration-[a-f0-9]{12}$/), productDisplayId: null,
-    }));
+      createdAt: now, updatedAt: now,
+    });
+    expect(JSON.stringify(payload)).not.toContain('request-key-submitting');
+    expect(JSON.stringify(payload)).not.toContain('"actor"');
   });
 });

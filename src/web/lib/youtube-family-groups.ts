@@ -65,6 +65,7 @@ export function getYouTubeRegistrationDisplayLabel(status: YouTubeProductRegistr
 export interface YouTubeProductRegistrationSummaryDto {
   registrationDisplayId: string;
   productDisplayId: string | null;
+  productUsid: string | null;
   familyGroupId: string;
   status: YouTubeProductRegistrationStatus;
   createdAt: string;
@@ -226,19 +227,22 @@ export function parseYouTubeInvitationsResponse(value: unknown): YouTubeInvitati
 const YOUTUBE_PRODUCT_REGISTRATION_STATUSES = new Set<YouTubeProductRegistrationStatus>([
   'submitting', 'registered', 'uncertain', 'failed',
 ]);
+const YOUTUBE_PRODUCT_USID_PATTERN = /^[A-Za-z0-9_-]{1,200}$/;
 
 function parseSafeProductRegistration(value: unknown): YouTubeProductRegistrationSummaryDto | null {
   if (!value || typeof value !== 'object') return null;
   const item = value as Record<string, unknown>;
   const registrationDisplayId = item.registrationDisplayId;
   const productDisplayId = item.productDisplayId;
+  const productUsid = item.productUsid;
   const familyGroupId = safeDtoText(item.familyGroupId, 200);
   const status = item.status as YouTubeProductRegistrationStatus;
   if (!isPrivacySafeIdentifier(registrationDisplayId, 'registration') || !familyGroupId
     || !(productDisplayId === null || isPrivacySafeIdentifier(productDisplayId, 'product'))
+    || !(productUsid === null || (typeof productUsid === 'string' && YOUTUBE_PRODUCT_USID_PATTERN.test(productUsid)))
     || !YOUTUBE_PRODUCT_REGISTRATION_STATUSES.has(status)
     || !isSafeIsoTimestamp(item.createdAt) || !isSafeIsoTimestamp(item.updatedAt)) return null;
-  return { registrationDisplayId, productDisplayId, familyGroupId, status, createdAt: item.createdAt, updatedAt: item.updatedAt };
+  return { registrationDisplayId, productDisplayId, productUsid, familyGroupId, status, createdAt: item.createdAt, updatedAt: item.updatedAt };
 }
 
 export function parseYouTubeProductRegistrationsResponse(value: unknown): YouTubeProductRegistrationsResult | null {

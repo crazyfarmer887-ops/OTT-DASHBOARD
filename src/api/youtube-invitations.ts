@@ -626,14 +626,12 @@ app.post('/products', async (c) => {
 
 app.get('/products/registrations', (c) => {
   try {
-    const registrations = productRegistrationsStore().list().map(({ idempotencyKey, familyGroupId, status, productUsid, actor, createdAt, updatedAt }) => ({
-      idempotencyKey,
+    const registrations = productRegistrationsStore().list().map(({ idempotencyKey, familyGroupId, status, productUsid, createdAt, updatedAt }) => ({
       registrationDisplayId: privacySafeIdentifier('registration', idempotencyKey),
       familyGroupId,
       status,
       productUsid,
       productDisplayId: productUsid ? privacySafeIdentifier('product', productUsid) : null,
-      actor,
       createdAt,
       updatedAt,
     }));

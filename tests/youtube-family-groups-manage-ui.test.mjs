@@ -22,22 +22,29 @@ test('manage page integrates YouTube Premium into the CATEGORIES-ordered service
   assert.match(manage, /role="region" aria-label="유튜브 프리미엄 가족 그룹 목록"/);
 });
 
-test('YouTube family-group account cards expose invitation-specific capacity and party state', () => {
+test('YouTube family-group cards use the generic account-card header, metrics, actions, and details structure', () => {
   assert.match(manage, /managerEmailMasked/);
   assert.match(manage, /summarizeYouTubeFamilyGroup/);
-  assert.match(manage, /현재 파티원/);
-  assert.match(manage, /초대 대기/);
-  assert.match(manage, /수락\/검수/);
-  assert.match(manage, /실패/);
-  assert.match(manage, /빈자리/);
-  assert.match(manage, /이용 종료일/);
-  assert.match(manage, /구매자 이메일/);
-  assert.match(manage, /확인 완료/);
-  assert.match(manage, /확인 대기/);
-  assert.match(manage, /확인 여부 불명/);
-  assert.match(manage, /YOUTUBE_EMAIL_CONFIRMED_STATUSES/);
   assert.match(manage, /className="youtube-family-group-card management-account-card"/);
-  assert.match(manage, /className="youtube-family-member-list"/);
+  assert.match(manage, /className="management-account-header"/);
+  assert.match(manage, /className="management-account-logo"/);
+  assert.match(manage, /youtubeSlotStates\.map/);
+  assert.match(manage, /\{group\.activeCount\}\/\{group\.sellableSeats\}/);
+  assert.match(manage, /className="management-account-metrics"/);
+  assert.match(manage, />사용 \/ 슬롯</);
+  assert.match(manage, />만료일</);
+  assert.match(manage, />등록 판매글</);
+  assert.match(manage, />초대 \/ 파티원</);
+  assert.match(manage, /className="management-account-actions youtube-family-group-actions"/);
+  assert.match(manage, />상세보기</);
+  assert.match(manage, />초대 관리</);
+  assert.match(manage, />수정</);
+  assert.match(manage, /비활성화/);
+  assert.match(manage, /className="management-account-details youtube-family-member-list"/);
+  assert.doesNotMatch(manage, /className="youtube-family-group-head"/);
+  assert.doesNotMatch(manage, /className="youtube-family-actions"/);
+  assert.match(manage, /구매자 이메일/);
+  assert.match(manage, /YOUTUBE_EMAIL_CONFIRMED_STATUSES/);
   assert.match(manage, /aria-expanded=\{isGroupOpen\}/);
   assert.match(manage, /aria-controls=\{groupPanelId\}/);
   assert.match(manage, /navigate\('\/youtube-invites'\)/);
@@ -70,22 +77,22 @@ test('overlapping YouTube refreshes allow only the latest generation to update r
   assert.match(manage, /generation !== youtubeGroupsFetchGeneration\.current/);
 });
 
-test('YouTube cards show listing registrations, title code, linkage, totals, and unmatched warnings without raw identifiers', () => {
+test('YouTube cards show only registered Graytag product links and separate non-link registration states', () => {
   assert.match(manage, /제목 코드 \{group\.listingCode\}/);
   assert.match(manage, /youtubeRegisteredListingCount/);
   assert.match(manage, /youtubeRegistrationRecordCount/);
-  assert.match(manage, /등록 판매 글 \{group\.registeredRegistrationCount\}개/);
-  assert.doesNotMatch(manage, /등록 판매 글 \{group\.registrations\.length\}/);
-  assert.match(manage, /판매 글 \{group\.registeredRegistrationCount\}/);
-  assert.match(manage, /등록 기록 \{group\.registrations\.length\}/);
+  assert.match(manage, /group\.registrations\s*\.filter\(registration => registration\.status === 'registered'\)/);
+  assert.match(manage, /https:\/\/graytag\.co\.kr\/product\/detail\?productUsid=\$\{encodeURIComponent\(registration\.productUsid/);
+  assert.match(manage, /유튜브 프리미엄 \{group\.listingCode\} · 게시물 \{index \+ 1\}/);
+  assert.match(manage, /className="youtube-registration-statuses"/);
+  assert.match(manage, /처리중/);
+  assert.match(manage, /확인필요/);
+  assert.match(manage, /실패/);
   assert.match(manage, />등록 기록<\/h3>/);
   assert.match(manage, /파티원\/초대/);
   assert.match(manage, /getYouTubeRegistrationDisplayLabel/);
   assert.match(manage, /등록일/);
   assert.match(manage, /상품 그룹 매칭 필요 · 등록 기록 \{unmappedYouTubeRegistrationCount\}건/);
-  assert.match(manage, /처리중/);
-  assert.match(manage, /확인필요/);
-  assert.doesNotMatch(manage, /registration\.productUsid/);
   assert.doesNotMatch(manage, /registration\.idempotencyKey/);
 });
 
@@ -105,7 +112,7 @@ test('YouTube service folder and family cards preserve responsive 44px accessibi
   assert.match(css, /\.management-service-group[^}]*min-width:\s*0/s);
   assert.doesNotMatch(css, /\.youtube-management-service/);
   assert.match(css, /\.youtube-family-group-grid[^}]*repeat\(3,\s*minmax\(0,\s*1fr\)\)/s);
-  assert.match(css, /\.youtube-family-group-toggle[^}]*min-height:\s*44px/s);
+  assert.match(css, /\.management-touch-target[^}]*min-height:\s*44px/s);
   assert.match(css, /\.youtube-family-member[^}]*overflow-wrap:\s*anywhere/s);
   assert.match(css, /@media\s*\(max-width:\s*1100px\)[\s\S]*\.youtube-family-group-grid[^}]*repeat\(2,/);
   assert.match(css, /@media\s*\(max-width:\s*700px\)[\s\S]*\.youtube-family-group-grid[^}]*minmax\(0,\s*1fr\)/);

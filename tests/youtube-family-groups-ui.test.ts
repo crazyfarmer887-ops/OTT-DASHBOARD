@@ -98,10 +98,11 @@ describe('YouTube family-group management UI helpers', () => {
     ] })).toBeNull();
   });
 
-  test('allowlists privacy-safe registration rows and rejects malformed or unknown values', () => {
+  test('allowlists validated raw productUsid for admin links and rejects malformed values', () => {
     const registration = {
       registrationDisplayId: 'registration-123456789abc',
       productDisplayId: 'product-123456789abc',
+      productUsid: 'raw-product_123',
       familyGroupId: group.id,
       status: 'registered' as const,
       createdAt: '2026-08-11T00:00:00.000Z',
@@ -109,11 +110,13 @@ describe('YouTube family-group management UI helpers', () => {
     };
     expect(parseYouTubeProductRegistrationsResponse({ ok: true, enabled: true, registrations: [{
       ...registration,
-      idempotencyKey: 'raw-request-key', actor: 'raw-actor', productUsid: 'raw-product', unexpected: 'secret',
+      idempotencyKey: 'raw-request-key', actor: 'raw-actor', unexpected: 'secret',
     }] })).toEqual({ enabled: true, registrations: [registration] });
+    expect(parseYouTubeProductRegistrationsResponse({ ok: true, enabled: true, registrations: [{ ...registration, productUsid: 'bad/value' }] })).toBeNull();
+    expect(parseYouTubeProductRegistrationsResponse({ ok: true, enabled: true, registrations: [{ ...registration, productUsid: 'a'.repeat(201) }] })).toBeNull();
     expect(parseYouTubeProductRegistrationsResponse({ ok: true, enabled: true, registrations: [{ ...registration, status: 'unknown' }] })).toBeNull();
     expect(parseYouTubeProductRegistrationsResponse({ ok: true, enabled: true, registrations: [{ ...registration, registrationDisplayId: 'unsafe' }] })).toBeNull();
-    expect(parseYouTubeProductRegistrationsResponse({ ok: true, enabled: true, registrations: [{ ...registration, productDisplayId: null, status: 'submitting' }] })).not.toBeNull();
+    expect(parseYouTubeProductRegistrationsResponse({ ok: true, enabled: true, registrations: [{ ...registration, productDisplayId: null, productUsid: null, status: 'submitting' }] })).not.toBeNull();
     expect(parseYouTubeProductRegistrationsResponse({ ok: true, enabled: true, registrations: [{ ...registration, createdAt: 'not-a-date' }] })).toBeNull();
   });
 
