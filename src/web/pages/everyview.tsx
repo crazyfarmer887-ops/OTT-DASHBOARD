@@ -95,6 +95,10 @@ export default function EveryviewPage() {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [editing, setEditing] = useState<{ partyId: number; svcId: number; shareType: string; accountId: string; accountPassword: string; sharingDescription: string; additionalInfo: string } | null>(null);
   const [savingLogin, setSavingLogin] = useState(false);
+  const [invites, setInvites] = useState<Record<string, string[]> | null>(null);
+  const [loadingInvites, setLoadingInvites] = useState(false);
+  const [recruitEditing, setRecruitEditing] = useState<{ partyId: number; value: number } | null>(null);
+  const [savingRecruit, setSavingRecruit] = useState(false);
 
   const fetchSessionStatus = () => {
     fetch('/api/everyview/session/status').then(r => r.json()).then(setSessionStatus).catch(() => {});
@@ -314,7 +318,65 @@ export default function EveryviewPage() {
                                 <strong style={{ color: '#0369A1' }}>{acct.expectedSettlementLabel || `${(acct.expectedSettlement || 0).toLocaleString()}원`}</strong>
                               </div>
                               {acct.depositDate && <div style={{ textAlign: 'right', fontSize: 10, color: MUTED, marginTop: 3 }}>입금일 {acct.depositDate}</div>}
+                              {/* 초대메일 보기 — 요청 시에만 조회/노출 */}
+                              <button
+                                onClick={() => {
+                                  if (invites) { setInvites(null); return; }
+                                  setLoadingInvites(true);
+                                  fetch('/api/everyview/party-detail', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ partyId: Number(partyIdStr) }) })
+                                    .then(r => r.json())
+                                    .then((d: any) => {
+                                      const emails: string[] = (d?.party?.members || []).map((m: any) => m.inviteEmail).filter(Boolean);
+                                      if (!emails.length) throw new Error('초대메일을 찾을 수 없어요');
+                                      setInvites({ [partyIdStr]: emails });
+                                    })
+                                    .catch(e => alert(e.message))
+                                    .finally(() => setLoadingInvites(false));
+                                }}
+                                style={{ marginTop: 8, width: '100%', background: '#fff', color: '#0369A1', border: '1px solid #BAE6FD', borderRadius: 8, padding: '7px 0', fontWeight: 800, fontSize: 11, cursor: 'pointer' }}>
+                                {loadingInvites ? '조회 중…' : invites ? '초대메일 숨기기' : '✉️ 초대메일 보기'}
+                              </button>
+                              {invites?.[partyIdStr]?.map((email, i) => (
+                                <div key={i} onClick={() => { navigator.clipboard.writeText(email).catch(() => {}); alert('복사됐어요'); }}
+                                  style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 5, background: '#fff', border: '1px dashed #93C5FD', borderRadius: 8, padding: '6px 9px', cursor: 'pointer' }}>
+                                  <span style={{ fontSize: 11, color: INK }}>{email}</span>
+                                  <span style={{ fontSize: 10, color: MUTED }}>탭하여 복사</span>
+                                </div>
+                              ))}
                             </div>
+                          )}
+
+                          {/* 자유파티 모집 인원 변경 */}
+                          {acct.partyType === 'free' && (
+                            recruitEditing?.partyId === Number(partyIdStr) ? (
+                              <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
+                                <input type="number" min={0} max={20} value={recruitEditing.value}
+                                  onChange={e => setRecruitEditing({ partyId: Number(partyIdStr), value: parseInt(e.target.value || '0', 10) })}
+                                  style={{ flex: 1, boxSizing: 'border-box', border: `1px solid ${LINE}`, borderRadius: 8, padding: '8px 10px', fontSize: 13 }} />
+                                <button disabled={savingRecruit}
+                                  onClick={() => {
+                                    setSavingRecruit(true);
+                                    fetch('/api/everyview/update-recruit-cnt', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ partyId: recruitEditing.partyId, recruitCnt: recruitEditing.value }) })
+                                      .then(r => r.json())
+                                      .then(d => { if (d.error) throw new Error(d.error); loadManagement(true); })
+                                      .then(() => setRecruitEditing(null))
+                                      .catch(e => alert(e.message))
+                                      .finally(() => setSavingRecruit(false));
+                                  }}
+                                  style={{ background: VIOLET, color: '#fff', border: 'none', borderRadius: 8, padding: '0 14px', fontWeight: 800, fontSize: 12, cursor: 'pointer' }}>
+                                  {savingRecruit ? '저장 중…' : '저장'}
+                                </button>
+                                <button onClick={() => setRecruitEditing(null)}
+                                  style={{ background: '#F3F4F6', color: MUTED, border: 'none', borderRadius: 8, padding: '0 14px', fontWeight: 800, fontSize: 12, cursor: 'pointer' }}>
+                                  취소
+                                </button>
+                              </div>
+                            ) : (
+                              <button onClick={() => setRecruitEditing({ partyId: Number(partyIdStr), value: acct.totalSlots - acct.usingCount })}
+                                style={{ marginTop: 10, width: '100%', background: '#F9FAFB', color: MUTED, border: `1px solid ${LINE}`, borderRadius: 10, padding: '8px 0', fontWeight: 700, fontSize: 11, cursor: 'pointer' }}>
+                                👥 모집 인원 변경 (현재 빈자리 {acct.totalSlots - acct.usingCount})
+                              </button>
+                            )
                           )}
 
                           {/* 자유파티만 로그인 정보 수정 — 검증파티는 에브리뷰가 관리 */}

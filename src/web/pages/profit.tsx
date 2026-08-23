@@ -549,6 +549,15 @@ export default function ProfitPage() {
   const now = new Date();
   const [calYear, setCalYear] = useState(now.getFullYear());
   const [calMonth, setCalMonth] = useState(now.getMonth());
+
+  // 에브리뷰 정산 (관리형 파티 정산예정액)
+  const [evSettlement, setEvSettlement] = useState<any>(null);
+  useEffect(() => {
+    fetch('/api/everyview/settlement-summary', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d && d.provider === 'everyview') setEvSettlement(d); })
+      .catch(() => {});
+  }, []);
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
   const [openSvc, setOpenSvc] = useState<string | null>(null);
   const [openAcct, setOpenAcct] = useState<string | null>(null);
@@ -773,6 +782,20 @@ export default function ProfitPage() {
               <div style={{ marginTop: 6, background: '#ECFDF5', borderRadius: 8, padding: '6px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ fontSize: 11, color: '#059669', fontWeight: 600 }}>✓ 확정 수입 (정산완료)</span>
                 <span style={{ fontSize: 12, fontWeight: 700, color: '#059669' }}>+{totalRealizedIncome.toLocaleString()}원</span>
+              </div>
+            )}
+            {evSettlement && evSettlement.totalExpected > 0 && (
+              <div style={{ marginTop: 6, background: '#F0F9FF', border: '1px solid #BAE6FD', borderRadius: 8, padding: '8px 10px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: 11, color: '#0369A1', fontWeight: 700 }}>에브리뷰 정산예정</span>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: '#0369A1' }}>+{evSettlement.totalExpected.toLocaleString()}원</span>
+                </div>
+                {evSettlement.parties?.map((p: any) => (
+                  <div key={p.partyId} style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4, fontSize: 10, color: '#64748B' }}>
+                    <span>#{p.partyId} {p.serviceName}{p.settlementPeriod ? ` · ${p.settlementPeriod}` : ''}</span>
+                    <span>{p.expectedSettlement.toLocaleString()}원{p.depositDate ? ` → ${p.depositDate}` : ''}</span>
+                  </div>
+                ))}
               </div>
             )}
           </div>

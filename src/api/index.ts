@@ -764,6 +764,7 @@ import {
   fetchEveryviewSettlement,
   updateEveryviewLoginInfo,
   updateEveryviewNotice,
+  updateEveryviewRecruitCnt,
   toManagementAccount,
   toManagementGeneralAccount,
   type EveryviewLoginDataItem,
@@ -919,6 +920,76 @@ app.post('/everyview/update-notice', async (c) => {
   return c.json({ ok: true });
 });
 
+// 모집 인원 변경 (자유파티 빈자리 수)
+app.post('/everyview/update-recruit-cnt', async (c) => {
+  const body = await c.req.json().catch(() => ({}) as any);
+  const cookieStr = resolveEveryviewCookies(body);
+  if (!cookieStr) return c.json({ error: '에브리뷰 세션 쿠키가 없어요' }, 400);
+  const partyId = parseInt(String(body?.partyId || ''), 10);
+  const recruitCnt = parseInt(String(body?.recruitCnt ?? ''), 10);
+  if (!Number.isFinite(partyId)) return c.json({ error: 'partyId가 필요합니다' }, 400);
+  if (!Number.isFinite(recruitCnt) || recruitCnt < 0 || recruitCnt > 20) return c.json({ error: 'recruitCnt는 0~20 사이 숫자여야 해요' }, 400);
+  const res = await updateEveryviewRecruitCnt(cookieStr, partyId, recruitCnt);
+  if (!res.ok) return c.json({ error: res.msg || '저장 실패' }, res.msg?.includes('만료') ? 401 : 502);
+  everyviewManagementCache = null;
+  return c.json({ ok: true });
+});
+
+// 초대메일 조회 (관리형 파티 상세 — 요청 시에만 노출)
+
+// 에브리뷰 정산 자동 집계 (수익 페이지 연동)
+const EVERYVIEW_SETTLEMENT_CACHE_TTL_MS = 10 * 60 * 1000;
+let everyviewSettlementCache: { data: any; updatedAt: number } | null = null;
+
+app.post('/everyview/settlement-summary', async (c) => {
+  const body = await c.req.json().catch(() => ({}) as any);
+  const cookieStr = resolveEveryviewCookies(body);
+  if (!cookieStr) return c.json({ error: '에브리뷰 세션 쿠키가 없어요' }, 400);
+  const forceRefresh = String(c.req.query('refresh') || '') === '1';
+  try {
+    const now = Date.now();
+    if (!forceRefresh && everyviewSettlementCache && now - everyviewSettlementCache.updatedAt < EVERYVIEW_SETTLEMENT_CACHE_TTL_MS) {
+      return c.json(everyviewSettlementCache.data);
+    }
+    const parties = await fetchEveryviewHostParties(cookieStr);
+    let totalExpected = 0;
+    const byService: Record<string, number> = {};
+    const details: Array<{ partyId: number; serviceName: string; settlementPeriod: string | null; expectedSettlement: number; depositDate: string | null }> = [];
+    for (const party of parties) {
+      if (party.partyType !== 'general') continue;
+      try {
+        const detail = await fetchEveryviewGeneralPartyDetail(cookieStr, party.partyId);
+        totalExpected += detail.expectedSettlement;
+        byService[detail.serviceName] = (byService[detail.serviceName] || 0) + detail.expectedSettlement;
+        details.push({ partyId: detail.partyId, serviceName: detail.serviceName, settlementPeriod: detail.settlementPeriod, expectedSettlement: detail.expectedSettlement, depositDate: detail.depositDate });
+      } catch (e: any) {
+        if (e?.message?.includes('만료')) throw e;
+      }
+    }
+    const data = {
+      provider: 'everyview',
+      totalExpected,
+      byService,
+      parties: details.sort((a, b) => b.expectedSettlement - a.expectedSettlement),
+      updatedAt: new Date().toISOString(),
+    };
+    everyviewSettlementCache = { data, updatedAt: now };
+    return c.json(data);
+  } catch (e: any) {
+    if (e?.message?.includes('만료')) {
+      // 세션 만료 → 판매자 알림 (30분 스로틀)
+      await sendSellerAlert({
+        key: 'everyview-cookie-expired',
+        title: '에브리뷰 세션 만료',
+        body: '에브리뷰 쿠키가 만료됐어요. 세션 키퍼 확인 또는 수동 쿠키 갱신이 필요해요.',
+        severity: 'critical',
+        category: 'system',
+      }).catch(() => {});
+      return c.json({ error: e.message, code: 'COOKIE_EXPIRED' }, 401);
+    }
+    return c.json({ error: e.message }, 500);
+  }
+});
 
 // ─── 세션 상태 (session-keeper v3 상태 파일) ────────────────
 app.get('/session/status', (c) => {
