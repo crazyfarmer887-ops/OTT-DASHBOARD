@@ -3,6 +3,7 @@ const AUTH_FAILURE_EVENT="aio-admin-auth-failure";
 const ADMIN_REQUIRED_GET_PREFIXES = [
   "/api/session/cookies",
   "/api/session/status",
+  "/api/everyview/session/status",
   "/api/chat/rooms",
   "/api/chat/messages",
   "/api/chat/poll",

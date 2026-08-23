@@ -67,6 +67,7 @@ const PUBLIC_API_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 const ADMIN_REQUIRED_GET_PREFIXES = [
   '/session/cookies',
   '/session/status',
+  '/everyview/session/status',
   '/chat/rooms',
   '/chat/messages',
   '/chat/poll',
@@ -674,6 +675,83 @@ app.get('/session/cookies', (c) => {
     AWSALB: cookies.AWSALB ? '✅' : '',
     AWSALBCORS: cookies.AWSALBCORS ? '✅' : '',
   });
+});
+
+// ─── 에브리뷰 세션 상태 (everyview session-keeper v1 상태 파일) ──
+const EVERYVIEW_SESSION_COOKIE_PATH = '/home/ubuntu/everyview-session/cookies.json';
+const EVERYVIEW_SESSION_STATUS_PATH = '/tmp/everyview-session-status.json';
+
+function loadEveryviewCookieHeader(): string | null {
+  try {
+    if (!existsSync(EVERYVIEW_SESSION_COOKIE_PATH)) return null;
+    const arr = JSON.parse(readFileSync(EVERYVIEW_SESSION_COOKIE_PATH, 'utf8')) as Array<{ name?: string; value?: string }>;
+    const header = arr.map((c) => `${c.name}=${c.value}`).join('; ');
+    return header || null;
+  } catch { return null; }
+}
+
+app.get('/everyview/session/status', (c) => {
+  try {
+    const raw = readFileSync(EVERYVIEW_SESSION_STATUS_PATH, 'utf8');
+    const status = JSON.parse(raw);
+    const updatedAtMs = Date.now() - new Date(status.updatedAt).getTime();
+    return c.json({
+      provider: 'everyview',
+      status: typeof status.status === 'string' ? status.status : 'unknown',
+      detail: typeof status.detail === 'string' ? status.detail : '',
+      updatedAt: typeof status.updatedAt === 'string' ? status.updatedAt : null,
+      elapsedSinceCheck: Math.round(updatedAtMs / 1000),
+      // everyview keeper는 10분 주기 확인이므로 최근 15분 내 확인이면 healthy
+      isHealthy: status.status === 'ok' && updatedAtMs < 15 * 60 * 1000,
+    });
+  } catch {
+    return c.json({ provider: 'everyview', status: 'unknown', detail: '상태 파일 없음', isHealthy: false });
+  }
+});
+
+// 에브리뷰 쿠키 수동 등록 (브라우저에서 복사한 JSON 배열 또는 JSESSIONID 문자열)
+app.post('/everyview/session/cookies/import', async (c) => {
+  let payload: any;
+  try { payload = await c.req.json(); } catch { return c.json({ ok: false, error: 'JSON 파싱 실패' }, 400); }
+
+  // 지원 형식: (1) 브라우저 쿠키 export 배열 [{name,value,domain,...}], (2) { JSESSIONID: "..." }, (3) "JSESSIONID=...; ..." 문자열
+  let cookiePairs: Array<{ name: string; value: string }> = [];
+  if (Array.isArray(payload)) {
+    cookiePairs = payload.filter((x) => x?.name && x?.value).map((x) => ({ name: String(x.name), value: String(x.value) }));
+  } else if (payload && typeof payload === 'object') {
+    cookiePairs = Object.entries(payload).map(([name, value]) => ({ name, value: String(value) }));
+  } else if (typeof payload === 'string') {
+    cookiePairs = payload.split(';').map((p) => {
+      const eq = p.indexOf('=');
+      return eq > 0 ? { name: p.slice(0, eq).trim(), value: p.slice(eq + 1).trim() } : null;
+    }).filter(Boolean) as Array<{ name: string; value: string }>;
+  }
+
+  const hasSession = cookiePairs.some((c) => c.name === 'JSESSIONID' && c.value.trim());
+  if (!hasSession) return c.json({ ok: false, error: 'JSESSIONID를 찾을 수 없어요' }, 400);
+
+  const dir = EVERYVIEW_SESSION_COOKIE_PATH.replace(/\/[^/]+$/, '');
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+  writeFileSync(EVERYVIEW_SESSION_COOKIE_PATH, JSON.stringify(cookiePairs, null, 2));
+
+  // 즉시 유효성 검증
+  const header = cookiePairs.map((c2) => `${c2.name}=${c2.value}`).join('; ');
+  let valid = false;
+  let detail = '';
+  try {
+    const res = await fetch('https://everyview.kr/api/user/userCreatePartyCnt', {
+      headers: { Cookie: header, 'User-Agent': 'Mozilla/5.0', 'X-Requested-With': 'XMLHttpRequest' },
+      signal: AbortSignal.timeout(15000),
+    });
+    const json = await res.json().catch(() => null) as any;
+    valid = json?.result === '200';
+    detail = valid ? '등록 즉시 검증 성공' : String(json?.msg || '검증 실패');
+  } catch (e: any) {
+    detail = `검증 요청 실패: ${e.message}`;
+  }
+
+  writeFileSync(EVERYVIEW_SESSION_STATUS_PATH, JSON.stringify({ status: valid ? 'ok' : 'expired', detail, updatedAt: new Date().toISOString() }, null, 2));
+  return c.json({ ok: true, valid, detail, cookies: cookiePairs.length });
 });
 
 // ─── 세션 상태 (session-keeper v3 상태 파일) ────────────────
