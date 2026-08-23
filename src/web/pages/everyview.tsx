@@ -43,6 +43,14 @@ interface EvAccount {
   activeCount: number;
   totalSlots: number;
   keepPasswd?: string;
+  expiryDate?: string | null;
+  partyId: number;
+  partyType: 'free' | 'general';
+  title: string;
+  expectedSettlement?: number;
+  expectedSettlementLabel?: string | null;
+  settlementPeriod?: string | null;
+  depositDate?: string | null;
 }
 
 interface EvService {
@@ -247,7 +255,7 @@ export default function EveryviewPage() {
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {sv.accounts.map(acct => {
-                  const partyIdStr = acct.email.replace('everyview:', '');
+                  const partyIdStr = String(acct.partyId || acct.email.replace('everyview:', ''));
                   const open = !!expanded[partyIdStr];
                   const firstMemberEnd = acct.members[0]?.endDateTime ?? null;
                   return (
@@ -255,7 +263,12 @@ export default function EveryviewPage() {
                       <button onClick={() => setExpanded(p => ({ ...p, [partyIdStr]: !open }))}
                         style={{ width: '100%', background: 'none', border: 'none', textAlign: 'left', padding: '12px 14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10 }}>
                         <div style={{ flex: 1 }}>
-                          <div style={{ fontSize: 14, fontWeight: 800, color: INK }}>파티 #{partyIdStr}</div>
+                          <div style={{ fontSize: 14, fontWeight: 800, color: INK }}>
+                            파티 #{partyIdStr}
+                            <span style={{ marginLeft: 7, fontSize: 9, padding: '2px 6px', borderRadius: 999, background: acct.partyType === 'general' ? '#E0F2FE' : '#F5F3FF', color: acct.partyType === 'general' ? '#0369A1' : VIOLET }}>
+                              {acct.partyType === 'general' ? '에브리뷰 관리형' : '자유파티'}
+                            </span>
+                          </div>
                           <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>
                             이용중 {acct.usingCount}/{acct.totalSlots}
                             {firstMemberEnd && <> · 종료 {fmtDate(firstMemberEnd)}</>}
@@ -286,14 +299,26 @@ export default function EveryviewPage() {
                                 <span style={{ fontSize: 13, fontWeight: 700, color: INK }}>{m.profileName || m.name || '(미확인)'}</span>
                                 <span style={{ fontSize: 10, color: MUTED, marginLeft: 8 }}>{m.statusName}</span>
                               </div>
-                              <div style={{ fontSize: 11, color: m.remainderDays <= 7 ? RED : MUTED }}>
-                                ~ {fmtDate(m.endDateTime)} {m.remainderDays > 0 && `(D-${m.remainderDays})`}
+                              <div style={{ fontSize: 11, color: m.endDateTime && m.remainderDays <= 7 ? RED : MUTED }}>
+                                {m.endDateTime ? <>~ {fmtDate(m.endDateTime)} {m.remainderDays > 0 && `(D-${m.remainderDays})`}</> : <>참여 {fmtDate(m.startDateTime)}</>}
                               </div>
                             </div>
                           ))}
 
-                          {/* 로그인 정보 + 수정 버튼 */}
-                          <button
+                          {acct.partyType === 'general' && (
+                            <div style={{ marginTop: 10, background: '#F0F9FF', border: '1px solid #BAE6FD', borderRadius: 10, padding: 10 }}>
+                              <div style={{ fontSize: 11, fontWeight: 800, color: '#0369A1' }}>에브리뷰 관리형 파티</div>
+                              <div style={{ fontSize: 11, color: MUTED, marginTop: 4 }}>초대·프로필은 에브리뷰가 직접 관리해요. 결제 상태만 유지하면 됩니다.</div>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, fontSize: 12 }}>
+                                <span>{acct.settlementPeriod || '정산기간 확인 중'}</span>
+                                <strong style={{ color: '#0369A1' }}>{acct.expectedSettlementLabel || `${(acct.expectedSettlement || 0).toLocaleString()}원`}</strong>
+                              </div>
+                              {acct.depositDate && <div style={{ textAlign: 'right', fontSize: 10, color: MUTED, marginTop: 3 }}>입금일 {acct.depositDate}</div>}
+                            </div>
+                          )}
+
+                          {/* 자유파티만 로그인 정보 수정 — 검증파티는 에브리뷰가 관리 */}
+                          {acct.partyType === 'free' && <button
                             onClick={() => {
                               // 상세 재조회 후 편집 모달 구성 — 여기선 keeper 쿠키로 즉시 조회
                               fetch('/api/everyview/party-detail', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ partyId: Number(partyIdStr) }) })
@@ -315,7 +340,7 @@ export default function EveryviewPage() {
                             }}
                             style={{ marginTop: 10, width: '100%', background: '#F5F3FF', color: VIOLET, border: `1px solid #DDD6FE`, borderRadius: 10, padding: '9px 0', fontWeight: 800, fontSize: 12, cursor: 'pointer' }}>
                             🔑 로그인 정보 변경
-                          </button>
+                          </button>}
                         </div>
                       )}
                     </div>

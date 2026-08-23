@@ -151,6 +151,17 @@ export interface EveryviewPartyDetail {
   serviceName: string | null;
 }
 
+export interface EveryviewGeneralPartyDetail {
+  partyId: number;
+  serviceName: string;
+  servicePlan: string | null;
+  members: Array<{ name: string; joinedAt: string | null; inviteEmail: string | null }>;
+  settlementPeriod: string | null;
+  expectedSettlement: number;
+  expectedSettlementLabel: string | null;
+  depositDate: string | null;
+}
+
 function stripTags(s: string): string {
   return s.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
 }
@@ -217,6 +228,25 @@ export function parsePartyDetail(html: string, partyId: number): EveryviewPartyD
   };
 }
 
+/** 검증파티(e*) 상세: 초대/프로필은 에브리뷰가 관리하고 파티장은 결제·정산을 관리한다. */
+export function parseGeneralPartyDetail(html: string, partyId: number): EveryviewGeneralPartyDetail {
+  const serviceName = stripTags(html.match(/<div class="platform">[\s\S]*?<h2>([\s\S]*?)<\/h2>/)?.[1] || '') || '기타';
+  const members = [...html.matchAll(/<div class="detail-card-common">([\s\S]*?)<\/div>/g)].map((match) => {
+    const block = match[1];
+    const name = stripTags(block.match(/<a[^>]*>([\s\S]*?)<\/a>/)?.[1] || '') || '(미확인)';
+    const joinedAt = stripTags(block.match(/참여일\s*<span[^>]*>([^<]+)<\/span>/)?.[1] || '') || null;
+    return { name, joinedAt, inviteEmail: null as string | null };
+  });
+  const inviteEmails = [...html.matchAll(/<strong id="ott_email\d+">([^<]+)<\/strong>/g)].map((match) => stripTags(match[1]));
+  members.forEach((member, index) => { member.inviteEmail = inviteEmails[index] || null; });
+  const servicePlan = stripTags(html.match(/<li><span>이용권 종류<\/span><strong>([^<]+)<\/strong><\/li>/)?.[1] || '') || null;
+  const settlementPeriod = stripTags(html.match(/<li><span>정산대상기간<\/span><strong[^>]*>([^<]+)<\/strong><\/li>/)?.[1] || '') || null;
+  const expectedSettlementLabel = stripTags(html.match(/<span>정산예정액<\/span>\s*<strong[^>]*>([\s\S]*?)<\/strong>/)?.[1] || '') || null;
+  const expectedSettlement = parseInt(String(expectedSettlementLabel || '').replace(/[^0-9]/g, '') || '0', 10);
+  const depositDate = stripTags(html.match(/<li><span>입금일<\/span><strong[^>]*>([^<]+)<\/strong><\/li>/)?.[1] || '') || null;
+  return { partyId, serviceName, servicePlan, members, settlementPeriod, expectedSettlement, expectedSettlementLabel, depositDate };
+}
+
 function unescapeHtml(s: string | null): string | null {
   if (s == null) return s;
   return s.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'");
@@ -248,6 +278,17 @@ export async function fetchEveryviewPartyDetail(cookieStr: string, partyId: numb
   const html = await res.text();
   if (!html.includes('pld-slot')) throw new Error('에브리뷰 쿠키가 만료됐어요.');
   return parsePartyDetail(html, partyId);
+}
+
+export async function fetchEveryviewGeneralPartyDetail(cookieStr: string, partyId: number): Promise<EveryviewGeneralPartyDetail> {
+  const res = await fetch(`${EVERYVIEW_BASE}/partyLeader/${partyId}`, {
+    headers: { ...evHeaders(cookieStr), Accept: 'text/html' },
+    signal: AbortSignal.timeout(20_000),
+  });
+  if (res.status >= 300 && res.status < 400) throw new Error('에브리뷰 쿠키가 만료됐어요.');
+  const html = await res.text();
+  if (!html.includes('myPartyA') || !html.includes('파티장 정산 정보')) throw new Error('에브리뷰 검증파티 상세를 읽지 못했어요.');
+  return parseGeneralPartyDetail(html, partyId);
 }
 
 async function postForm(
@@ -362,6 +403,13 @@ export interface EveryviewManagementAccount {
   totalRealizedIncome: number;
   expiryDate: string | null;
   keepPasswd?: string;
+  partyId: number;
+  partyType: 'free' | 'general';
+  title: string;
+  expectedSettlement?: number;
+  expectedSettlementLabel?: string | null;
+  settlementPeriod?: string | null;
+  depositDate?: string | null;
 }
 
 export interface EveryviewManagementService {
@@ -435,5 +483,46 @@ export function toManagementAccount(detail: EveryviewPartyDetail, summary: Every
     totalRealizedIncome: 0,
     expiryDate: endIso,
     keepPasswd: svc?.accountPassword ?? undefined,
+    partyId: detail.partyId,
+    partyType: 'free',
+    title: summary.title,
+  };
+}
+
+function parseShortJoinedAt(label: string | null): string | null {
+  const match = String(label || '').match(/^(\d{2})\/(\d{2})\/(\d{2})$/);
+  if (!match) return null;
+  return new Date(Date.UTC(2000 + Number(match[1]), Number(match[2]) - 1, Number(match[3]))).toISOString();
+}
+
+/** 검증파티 → 관리 카드. 초대 메일은 민감정보라 기본 스냅샷에 싣지 않는다. */
+export function toManagementGeneralAccount(detail: EveryviewGeneralPartyDetail, summary: EveryviewHostPartySummary): EveryviewManagementAccount {
+  return {
+    email: `everyview:${detail.partyId}`,
+    serviceType: summary.serviceName || detail.serviceName || '기타',
+    members: detail.members.map((member, index) => ({
+      memberId: `everyview:${detail.partyId}:${index}`,
+      productUsid: String(detail.partyId),
+      name: member.name,
+      profileName: member.name,
+      status: 'Using',
+      statusName: '이용 중',
+      price: '0', purePrice: 0, realizedSum: 0, progressRatio: '100',
+      startDateTime: parseShortJoinedAt(member.joinedAt),
+      endDateTime: null, remainderDays: 0, source: 'after',
+    })),
+    usingCount: detail.members.length,
+    activeCount: detail.members.length,
+    totalSlots: Math.max(detail.members.length, 1),
+    totalIncome: detail.expectedSettlement,
+    totalRealizedIncome: 0,
+    expiryDate: null,
+    partyId: detail.partyId,
+    partyType: 'general',
+    title: summary.title,
+    expectedSettlement: detail.expectedSettlement,
+    expectedSettlementLabel: detail.expectedSettlementLabel,
+    settlementPeriod: detail.settlementPeriod,
+    depositDate: detail.depositDate,
   };
 }

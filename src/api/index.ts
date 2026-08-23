@@ -760,10 +760,12 @@ import {
   checkEveryviewSession,
   fetchEveryviewHostParties,
   fetchEveryviewPartyDetail,
+  fetchEveryviewGeneralPartyDetail,
   fetchEveryviewSettlement,
   updateEveryviewLoginInfo,
   updateEveryviewNotice,
   toManagementAccount,
+  toManagementGeneralAccount,
   type EveryviewLoginDataItem,
 } from '../lib/everyview-api';
 
@@ -797,6 +799,16 @@ app.post('/everyview/party-detail', async (c) => {
       const parties = await fetchEveryviewHostParties(cookieStr);
       summary = parties.find((p) => p.partyId === partyId);
     } catch { /* 목록 조회 실패해도 상세는 시도 */ }
+    const partyType = summary?.partyType || 'free';
+    if (partyType === 'general') {
+      const detail = await fetchEveryviewGeneralPartyDetail(cookieStr, partyId);
+      const fallback = summary || { partyId, partyType: 'general' as const, title: detail.serviceName, serviceCode: null, serviceName: detail.serviceName };
+      return c.json({ provider: 'everyview', party: detail, account: toManagementGeneralAccount(detail, fallback), settlement: {
+        totalSettled: 0,
+        unsettledAccrual: detail.expectedSettlement,
+        unsettledFee: 0,
+      } });
+    }
     const detail = await fetchEveryviewPartyDetail(cookieStr, partyId);
     const account = toManagementAccount(detail, summary || { partyId, partyType: 'free', title: detail.serviceName || '', serviceCode: null, serviceName: detail.serviceName });
     const settlement = await fetchEveryviewSettlement(cookieStr, partyId).catch(() => null);
@@ -823,13 +835,11 @@ let everyviewManagementCache: { data: any; updatedAt: number } | null = null;
 async function loadEveryviewManagementFresh(cookieStr: string) {
   const parties = await fetchEveryviewHostParties(cookieStr);
   const services: Record<string, ReturnType<typeof toManagementAccount>[]> = {};
-  const details: any[] = [];
   for (const party of parties) {
-    if (party.partyType !== 'free') continue; // 검증파티(e*)는 everyview 운영분이라 미지원
     try {
-      const detail = await fetchEveryviewPartyDetail(cookieStr, party.partyId);
-      details.push(detail);
-      const account = toManagementAccount(detail, party);
+      const account = party.partyType === 'general'
+        ? toManagementGeneralAccount(await fetchEveryviewGeneralPartyDetail(cookieStr, party.partyId), party)
+        : toManagementAccount(await fetchEveryviewPartyDetail(cookieStr, party.partyId), party);
       const svc = account.serviceType;
       (services[svc] ||= []).push(account);
     } catch (e: any) {
