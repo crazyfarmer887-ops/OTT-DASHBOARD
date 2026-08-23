@@ -70,6 +70,7 @@ describe('dashboard password session', () => {
     expect(isDashboardHtmlPath('/manage')).toBe(true);
     expect(isDashboardHtmlPath('/youtube-invites')).toBe(true);
     expect(isDashboardHtmlPath('/renewals')).toBe(true);
+    expect(isDashboardHtmlPath('/everyview')).toBe(true);
     expect(isDashboardHtmlPath('/dashboard/access/test-token')).toBe(false);
     expect(isDashboardHtmlPath('/access/test-token')).toBe(false);
     expect(isDashboardHtmlPath('/dashboard/assets/index-abc123.js')).toBe(false);
