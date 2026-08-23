@@ -744,3 +744,39 @@ test('dashboard startup stays lightweight and serves subpath assets directly', (
   assert.match(server, /normalizeDashboardAssetPath/);
   assert.match(server, /pathname\.startsWith\('\/dashboard\/assets\/'\)/);
 });
+
+test('everyview management: adapter, endpoints, page and nav are wired', () => {
+  const api = read('src/api/index.ts');
+  const lib = read('src/lib/everyview-api.ts');
+  const app = read('src/web/app.tsx');
+  const page = read('src/web/pages/everyview.tsx');
+  const nav = read('src/web/components/bottom-nav.tsx');
+  const pageTitle = read('src/web/lib/page-title.ts');
+  const adminAuth = read('src/web/lib/admin-auth.ts');
+
+  // API 엔드포인트 (graytag /my/management 대응)
+  assert.match(api, /app\.post\('\/everyview\/management'/);
+  assert.match(api, /app\.post\('\/everyview\/parties'/);
+  assert.match(api, /app\.post\('\/everyview\/party-detail'/);
+  assert.match(api, /app\.post\('\/everyview\/update-login-info'/);
+  assert.match(api, /app\.post\('\/everyview\/update-notice'/);
+  // 쿠키 만료 시 그레이태그와 동일한 COOKIE_EXPIRED 계약
+  assert.match(api, /code: 'COOKIE_EXPIRED'/);
+
+  // 어댑터: everyview 세션 확인 + 파티 파싱 + graytag management 호환 변환
+  assert.match(lib, /checkEveryviewSession/);
+  assert.match(lib, /userCreatePartyCnt/);
+  assert.match(lib, /parseHostParties/);
+  assert.match(lib, /toManagementAccount/);
+
+  // 페이지 라우트/내비
+  assert.match(app, /Route path="\/everyview" component=\{EveryviewWrapped\}/);
+  assert.match(page, /에브리뷰 관리/);
+  assert.match(page, /COOKIE_EXPIRED|쿠키 등록/);
+  assert.match(nav, /path: "\/everyview", label: "에브리뷰"/);
+  assert.match(pageTitle, /에브리뷰 관리/);
+
+  // 세션 상태 GET은 관리자 토큰 보호 (서버+클라 allowlist 동기화)
+  assert.match(api, /'\/everyview\/session\/status',/);
+  assert.match(adminAuth, /"\/api\/everyview\/session\/status",/);
+});

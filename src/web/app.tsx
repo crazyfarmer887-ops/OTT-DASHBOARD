@@ -21,6 +21,7 @@ const PartyInfoPage = lazy(() => import("./pages/party-info"));
 const PartyAccessPage = lazy(() => import("./pages/party-access"));
 const RenewalsPage = lazy(() => import("./pages/renewals"));
 const YouTubeInvitesPage = lazy(() => import("./pages/youtube-invites"));
+const EveryviewPage = lazy(() => import("./pages/everyview"));
 
 const RouteFallback = () => (
   <div style={{ padding: 20, color: '#7C3AED', fontSize: 13, fontWeight: 900 }}>대시보드 불러오는 중...</div>
@@ -39,6 +40,7 @@ const AccessWrapped  = () => <ErrorBoundary><PartyAccessPage /></ErrorBoundary>;
 const MyWrapped      = () => <ErrorBoundary><MyAccountPage /></ErrorBoundary>;
 const RenewalsWrapped = () => <ErrorBoundary><RenewalsPage /></ErrorBoundary>;
 const YouTubeInvitesWrapped = () => <ErrorBoundary><YouTubeInvitesPage /></ErrorBoundary>;
+const EveryviewWrapped = () => <ErrorBoundary><EveryviewPage /></ErrorBoundary>;
 
 function App() {
   const [location] = useLocation();
@@ -59,6 +61,7 @@ function App() {
             <Route path="/manage"        component={ManageWrapped} />
             <Route path="/renewals" component={RenewalsWrapped} />
             <Route path="/youtube-invites" component={YouTubeInvitesWrapped} />
+            <Route path="/everyview" component={EveryviewWrapped} />
             <Route path="/profit"        component={ProfitWrapped} />
             <Route path="/write"         component={WriteWrapped} />
             <Route path="/chat"          component={ChatWrapped} />

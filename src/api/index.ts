@@ -685,10 +685,10 @@ function loadEveryviewCookieHeader(): string | null {
   try {
     if (!existsSync(EVERYVIEW_SESSION_COOKIE_PATH)) return null;
     const arr = JSON.parse(readFileSync(EVERYVIEW_SESSION_COOKIE_PATH, 'utf8')) as Array<{ name?: string; value?: string }>;
-    const header = arr.map((c) => `${c.name}=${c.value}`).join('; ');
-    return header || null;
+    return arr.map((c) => `${c.name}=${c.value}`).join('; ') || null;
   } catch { return null; }
 }
+void loadEveryviewCookieHeader;
 
 app.get('/everyview/session/status', (c) => {
   try {
@@ -753,6 +753,162 @@ app.post('/everyview/session/cookies/import', async (c) => {
   writeFileSync(EVERYVIEW_SESSION_STATUS_PATH, JSON.stringify({ status: valid ? 'ok' : 'expired', detail, updatedAt: new Date().toISOString() }, null, 2));
   return c.json({ ok: true, valid, detail, cookies: cookiePairs.length });
 });
+
+// ─── 에브리뷰 파티 관리 (그레이태그 /my/management 대응) ─────
+import {
+  resolveEveryviewCookies,
+  checkEveryviewSession,
+  fetchEveryviewHostParties,
+  fetchEveryviewPartyDetail,
+  fetchEveryviewSettlement,
+  updateEveryviewLoginInfo,
+  updateEveryviewNotice,
+  toManagementAccount,
+  type EveryviewLoginDataItem,
+} from '../lib/everyview-api';
+
+// 내가 개설한 에브리뷰 파티 목록 (파티ID/서비스/빈자리 요약)
+app.post('/everyview/parties', async (c) => {
+  const body = await c.req.json().catch(() => ({}) as any);
+  const cookieStr = resolveEveryviewCookies(body);
+  if (!cookieStr) return c.json({ error: '에브리뷰 세션 쿠키가 없어요 (수동 등록 또는 keeper 확인)' }, 400);
+  const session = await checkEveryviewSession(cookieStr);
+  if (!session.valid) return c.json({ error: '에브리뷰 쿠키가 만료됐어요.', code: 'COOKIE_EXPIRED' }, 401);
+  try {
+    const parties = await fetchEveryviewHostParties(cookieStr);
+    return c.json({ parties, session: { valid: true, detail: session.detail } });
+  } catch (e: any) {
+    if (e?.message?.includes('만료')) return c.json({ error: e.message, code: 'COOKIE_EXPIRED' }, 401);
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+// 파티 상세 + graytag management 호환 스냅샷 (단일 파티)
+app.post('/everyview/party-detail', async (c) => {
+  const body = await c.req.json().catch(() => ({}) as any);
+  const cookieStr = resolveEveryviewCookies(body);
+  if (!cookieStr) return c.json({ error: '에브리뷰 세션 쿠키가 없어요' }, 400);
+  const partyId = parseInt(String(body?.partyId || ''), 10);
+  if (!Number.isFinite(partyId)) return c.json({ error: 'partyId가 필요합니다' }, 400);
+  try {
+    // partyType 판별을 위해 목록에서 매칭 (fallback: free 상세 직접 시도)
+    let summary;
+    try {
+      const parties = await fetchEveryviewHostParties(cookieStr);
+      summary = parties.find((p) => p.partyId === partyId);
+    } catch { /* 목록 조회 실패해도 상세는 시도 */ }
+    const detail = await fetchEveryviewPartyDetail(cookieStr, partyId);
+    const account = toManagementAccount(detail, summary || { partyId, partyType: 'free', title: detail.serviceName || '', serviceCode: null, serviceName: detail.serviceName });
+    const settlement = await fetchEveryviewSettlement(cookieStr, partyId).catch(() => null);
+    return c.json({
+      provider: 'everyview',
+      party: detail,
+      account,
+      settlement: settlement ? {
+        totalSettled: settlement.totalSettled?.totalSettled ?? 0,
+        unsettledAccrual: settlement.unsettled?.totalAccrual ?? 0,
+        unsettledFee: settlement.unsettled?.totalFee ?? 0,
+      } : null,
+    });
+  } catch (e: any) {
+    if (e?.message?.includes('만료')) return c.json({ error: e.message, code: 'COOKIE_EXPIRED' }, 401);
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+// 전체 에브리뷰 관리 스냅샷 (graytag /my/management와 동일한 services[] 구조)
+const EVERYVIEW_MANAGEMENT_CACHE_TTL_MS = 60_000;
+let everyviewManagementCache: { data: any; updatedAt: number } | null = null;
+
+async function loadEveryviewManagementFresh(cookieStr: string) {
+  const parties = await fetchEveryviewHostParties(cookieStr);
+  const services: Record<string, ReturnType<typeof toManagementAccount>[]> = {};
+  const details: any[] = [];
+  for (const party of parties) {
+    if (party.partyType !== 'free') continue; // 검증파티(e*)는 everyview 운영분이라 미지원
+    try {
+      const detail = await fetchEveryviewPartyDetail(cookieStr, party.partyId);
+      details.push(detail);
+      const account = toManagementAccount(detail, party);
+      const svc = account.serviceType;
+      (services[svc] ||= []).push(account);
+    } catch (e: any) {
+      if (e?.message?.includes('만료')) throw e;
+      // 개별 파티 실패는 건너뛰고 계속
+    }
+  }
+  const serviceList = Object.entries(services).map(([serviceType, accounts]) => ({
+    serviceType,
+    accounts,
+    totalUsingMembers: accounts.reduce((s, a) => s + a.usingCount, 0),
+    totalActiveMembers: accounts.reduce((s, a) => s + a.activeCount, 0),
+    totalIncome: accounts.reduce((s, a) => s + a.totalIncome, 0),
+    totalRealized: accounts.reduce((s, a) => s + a.totalRealizedIncome, 0),
+  })).sort((a, b) => b.totalUsingMembers - a.totalUsingMembers);
+
+  return {
+    provider: 'everyview',
+    services: serviceList,
+    onSaleByKeepAcct: {},   // 에브리뷰는 OnSale(판매글) 개념이 없음 — 모집중 슬롯으로 대체
+    parties,
+    summary: {
+      totalUsingMembers: serviceList.reduce((s, sv) => s + sv.totalUsingMembers, 0),
+      totalActiveMembers: serviceList.reduce((s, sv) => s + sv.totalActiveMembers, 0),
+      totalIncome: serviceList.reduce((s, sv) => s + sv.totalIncome, 0),
+      totalRealized: serviceList.reduce((s, sv) => s + sv.totalRealized, 0),
+      totalAccounts: serviceList.reduce((sum, sv) => sum + sv.accounts.length, 0),
+    },
+    cookieSource: 'session-keeper',
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+app.post('/everyview/management', async (c) => {
+  const body = await c.req.json().catch(() => ({}) as any);
+  const cookieStr = resolveEveryviewCookies(body);
+  if (!cookieStr) return c.json({ error: '에브리뷰 세션 쿠키가 없어요' }, 400);
+  const forceRefresh = String(c.req.query('refresh') || '') === '1';
+  try {
+    const now = Date.now();
+    if (!forceRefresh && everyviewManagementCache && now - everyviewManagementCache.updatedAt < EVERYVIEW_MANAGEMENT_CACHE_TTL_MS) {
+      return c.json({ ...everyviewManagementCache.data, cache: { status: 'hit', updatedAt: new Date(everyviewManagementCache.updatedAt).toISOString(), ttlMs: EVERYVIEW_MANAGEMENT_CACHE_TTL_MS } });
+    }
+    const data = await loadEveryviewManagementFresh(cookieStr);
+    everyviewManagementCache = { data, updatedAt: now };
+    return c.json(data);
+  } catch (e: any) {
+    if (e?.message?.includes('만료')) return c.json({ error: e.message, code: 'COOKIE_EXPIRED' }, 401);
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+// 로그인정보 수정 (계정 ID/PW 변경 → 파티원 알림은 everyview 측 sendLoginInfoNoti 별도 호출)
+app.post('/everyview/update-login-info', async (c) => {
+  const body = await c.req.json().catch(() => ({}) as any);
+  const cookieStr = resolveEveryviewCookies(body);
+  if (!cookieStr) return c.json({ error: '에브리뷰 세션 쿠키가 없어요' }, 400);
+  const partyId = parseInt(String(body?.partyId || ''), 10);
+  const loginData = Array.isArray(body?.loginData) ? body.loginData as EveryviewLoginDataItem[] : null;
+  if (!Number.isFinite(partyId) || !loginData?.length) return c.json({ error: 'partyId와 loginData가 필요합니다' }, 400);
+  const res = await updateEveryviewLoginInfo(cookieStr, partyId, loginData);
+  if (!res.ok) return c.json({ error: res.msg || '저장 실패' }, res.msg?.includes('만료') ? 401 : 502);
+  everyviewManagementCache = null; // 캐시 무효화
+  return c.json({ ok: true });
+});
+
+// 공지사항 수정
+app.post('/everyview/update-notice', async (c) => {
+  const body = await c.req.json().catch(() => ({}) as any);
+  const cookieStr = resolveEveryviewCookies(body);
+  if (!cookieStr) return c.json({ error: '에브리뷰 세션 쿠키가 없어요' }, 400);
+  const partyId = parseInt(String(body?.partyId || ''), 10);
+  const notice = String(body?.notice ?? '');
+  if (!Number.isFinite(partyId)) return c.json({ error: 'partyId가 필요합니다' }, 400);
+  const res = await updateEveryviewNotice(cookieStr, partyId, notice);
+  if (!res.ok) return c.json({ error: res.msg || '저장 실패' }, res.msg?.includes('만료') ? 401 : 502);
+  return c.json({ ok: true });
+});
+
 
 // ─── 세션 상태 (session-keeper v3 상태 파일) ────────────────
 app.get('/session/status', (c) => {

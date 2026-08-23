@@ -10,6 +10,7 @@ const ROUTE_TITLES: Array<{ pattern: RegExp; title: string }> = [
   { pattern: /^\/edit-price\/?$/, title: "게시물 관리" },
   { pattern: /^\/party-info\/?$/, title: "파티 정보" },
   { pattern: /^\/youtube-invites\/?$/, title: "유튜브 초대 운영" },
+  { pattern: /^\/everyview\/?$/, title: "에브리뷰 관리" },
   { pattern: /^\/my\/?$/, title: "내 계정" },
   { pattern: /^\/(?:dashboard\/)?access\/[^/?#]+\/?$/, title: "계정 정보 접근" },
 ];
