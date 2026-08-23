@@ -323,6 +323,131 @@ export interface EveryviewLoginDataItem {
   additionalInfo?: string | null;
 }
 
+// ─── 파티 개설 (글 작성) ─────────────────────────────────────
+// everyview /party/make/makeParty_free_make → POST /api/generalParty/create (multipart)
+// partyData JSON: { payment, party, services } — 2026-08 실제 폼 수집 로직과 동일한 스키마.
+
+/** 에브리뷰 파티개설 셀렉터에 노출되는 서비스 목록 (v3-ss SS_SERVICES 스냅샷) */
+export const EVERYVIEW_CREATE_SERVICES = [
+  { code: 'youtube', name: '유튜브', id: 1, category: '영상' },
+  { code: 'netflix', name: '넷플릭스', id: 2, category: '영상' },
+  { code: 'tving', name: '티빙', id: 3, category: '영상' },
+  { code: 'disney_plus', name: '디즈니+', id: 4, category: '영상' },
+  { code: 'wavve', name: '웨이브', id: 15, category: '영상' },
+  { code: 'laftel', name: '라프텔', id: 5, category: '영상' },
+  { code: 'watcha', name: '왓챠', id: 6, category: '영상' },
+  { code: 'apple', name: '애플', id: 9, category: '영상' },
+  { code: 'coupang', name: '쿠팡플레이', id: 7, category: '영상' },
+  { code: 'chatgpt', name: 'ChatGPT', id: 14, category: 'AI' },
+  { code: 'google', name: 'Google AI', id: 13, category: 'AI' },
+  { code: 'prime_video', name: '프라임비디오', id: 8, category: '영상' },
+  { code: 'ms365', name: 'MS오피스365', id: 11, category: '생산성' },
+  { code: 'spotify', name: '스포티파이', id: 12, category: '음악' },
+] as const;
+
+export interface EveryviewCreateServiceInput {
+  serviceCode: string;          // EVERYVIEW_CREATE_SERVICES.code 또는 'direct'
+  serviceName: string;
+  serviceOptionCode?: string;   // 없으면 'direct'
+  serviceOptionName?: string;
+  shareType: 'ACCOUNT' | 'INVITE' | 'OTHER';
+  userId?: string;
+  userPassword?: string;
+  sharingDescription?: string;
+  additionalInfo?: string;
+}
+
+export interface EveryviewCreatePartyInput {
+  recruitTitle: string;         // 최대 25자
+  recruitInfo: string;          // 최대 1000자
+  disallowRules?: string[];
+  paymentType: 'PERIOD' | 'RECURRING';
+  oneDayUsageFee: number;
+  monthUsageFee: number;
+  shareEndDate?: string | null; // PERIOD일 때 YYYY-MM-DD
+  shareUserCnt: number;         // 모집 인원
+  services: EveryviewCreateServiceInput[];
+}
+
+function validateEveryviewCreateParty(input: EveryviewCreatePartyInput): string | null {
+  if (!input.recruitTitle.trim()) return '모집 제목을 입력해주세요.';
+  if (input.recruitTitle.length > 25) return '모집 제목은 최대 25자예요.';
+  if (!input.recruitInfo.trim()) return '파티 소개를 입력해주세요.';
+  if (input.recruitInfo.length > 1000) return '파티 소개는 최대 1000자예요.';
+  if (!Number.isFinite(input.shareUserCnt) || input.shareUserCnt < 1 || input.shareUserCnt > 20) return '모집 인원은 1~20명이어야 해요.';
+  if (!input.services.length) return '공유 서비스를 1개 이상 등록해주세요.';
+  if (input.services.length > 5) return '공유 서비스는 최대 5개까지 등록할 수 있어요.';
+  for (const svc of input.services) {
+    if (!svc.serviceCode || !svc.serviceName.trim()) return '서비스명을 선택하거나 입력해주세요.';
+    if (svc.shareType === 'ACCOUNT') {
+      if (!svc.userId?.trim() || !svc.userPassword?.trim()) return `${svc.serviceName}의 아이디/비밀번호를 입력해주세요.`;
+    } else if ((svc.shareType === 'INVITE' || svc.shareType === 'OTHER') && !svc.sharingDescription?.trim()) {
+      return `${svc.serviceName}의 공유 안내를 입력해주세요.`;
+    }
+  }
+  if (input.paymentType === 'PERIOD') {
+    if (!input.shareEndDate) return '공유 종료일을 선택해주세요.';
+    if (!(input.oneDayUsageFee >= 0 && input.monthUsageFee >= 0)) return '요금을 확인해주세요.';
+  } else if (!(input.monthUsageFee > 0)) return '월 요금을 입력해주세요.';
+  return null;
+}
+
+export async function createEveryviewParty(
+  cookieStr: string,
+  input: EveryviewCreatePartyInput,
+): Promise<{ ok: boolean; partyId?: number; msg?: string }> {
+  const validationError = validateEveryviewCreateParty(input);
+  if (validationError) return { ok: false, msg: validationError };
+
+  const partyData = {
+    payment: {
+      paymentType: input.paymentType,
+      oneDayUsageFee: Math.round(input.oneDayUsageFee),
+      monthUsageFee: Math.round(input.monthUsageFee),
+      shareEndDate: input.paymentType === 'RECURRING' ? null : input.shareEndDate,
+      shareUserCnt: input.shareUserCnt,
+    },
+    party: {
+      recruitTitle: input.recruitTitle.trim(),
+      recruitInfo: input.recruitInfo.trim(),
+      notice: '',
+      disallowRule: (input.disallowRules || []).filter((rule) => rule.trim()),
+    },
+    services: input.services.map((svc) => ({
+      serviceCode: svc.serviceCode,
+      serviceName: svc.serviceName.trim(),
+      serviceId: svc.serviceCode === 'direct' ? 0 : (EVERYVIEW_CREATE_SERVICES.find((s) => s.code === svc.serviceCode)?.id ?? 0),
+      serviceOptionCode: svc.serviceOptionCode || 'direct',
+      serviceOptionName: svc.serviceOptionName || '',
+      serviceOptionId: parseInt(String(svc.serviceOptionCode || ''), 10) || 0,
+      shareType: svc.shareType,
+      userId: svc.shareType === 'ACCOUNT' ? (svc.userId || '') : '',
+      userPassword: svc.shareType === 'ACCOUNT' ? (svc.userPassword || '') : '',
+      sharingDescription: svc.shareType !== 'ACCOUNT' ? (svc.sharingDescription || '') : '',
+      additionalInfo: svc.additionalInfo || '',
+    })),
+  };
+
+  const formData = new FormData();
+  formData.append('partyData', JSON.stringify(partyData));
+  const res = await fetch(`${EVERYVIEW_BASE}/api/generalParty/create`, {
+    method: 'POST',
+    headers: { ...evHeaders(cookieStr, '/party/make/makeParty_free_make') },
+    body: formData,
+    signal: AbortSignal.timeout(30_000),
+  });
+  const text = await res.text();
+  try {
+    const json = JSON.parse(text) as { result?: string; msg?: string; partyId?: number };
+    if (json.result === '200' && json.partyId) return { ok: true, partyId: json.partyId };
+    if (json.result === '401') return { ok: false, msg: '에브리뷰 쿠키가 만료됐어요.' };
+    return { ok: false, msg: json.msg || `파티 생성 실패 (${json.result})` };
+  } catch {
+    if (text.includes('로그인 되어 있지 않')) return { ok: false, msg: '에브리뷰 쿠키가 만료됐어요.' };
+    return { ok: false, msg: `응답 파싱 실패 (${res.status})` };
+  }
+}
+
 export async function updateEveryviewLoginInfo(
   cookieStr: string,
   partyId: number,

@@ -99,6 +99,59 @@ export default function EveryviewPage() {
   const [loadingInvites, setLoadingInvites] = useState(false);
   const [recruitEditing, setRecruitEditing] = useState<{ partyId: number; value: number } | null>(null);
   const [savingRecruit, setSavingRecruit] = useState(false);
+  const [showWrite, setShowWrite] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [createResult, setCreateResult] = useState<{ ok: boolean; msg: string; partyId?: number } | null>(null);
+  const [wForm, setWForm] = useState<{
+    recruitTitle: string; recruitInfo: string; disallowRules: string;
+    paymentType: 'PERIOD' | 'RECURRING'; monthFee: string; dailyFee: string; endDate: string; slots: number;
+    serviceCode: string; serviceNameDirect: string; shareType: 'ACCOUNT' | 'INVITE' | 'OTHER';
+    userId: string; userPassword: string; sharingDescription: string; additionalInfo: string;
+  }>({
+    recruitTitle: '', recruitInfo: '', disallowRules: '※ 개인 사정으로 중도 환불 불가\n※ 비번이나 계정 정보 변경 시, 강제 탈퇴 조치\n※ 본인 프로필 외 타인 프로필 사용 불가',
+    paymentType: 'PERIOD', monthFee: '', dailyFee: '', endDate: '', slots: 2,
+    serviceCode: 'youtube', serviceNameDirect: '', shareType: 'ACCOUNT',
+    userId: '', userPassword: '', sharingDescription: '', additionalInfo: '',
+  });
+
+  const submitCreateParty = () => {
+    if (creating) return;
+    if (!confirm('파티를 개설할까요? 에브리뷰에 실제 등록돼요.')) return;
+    setCreating(true); setCreateResult(null);
+    const svcName = wForm.serviceCode === 'direct' ? wForm.serviceNameDirect : ({ youtube: '유튜브', netflix: '넷플릭스', tving: '티빙', disney_plus: '디즈니+', wavve: '웨이브', laftel: '라프텔', watcha: '왓챠', apple: '애플', coupang: '쿠팡플레이', chatgpt: 'ChatGPT', google: 'Google AI', prime_video: '프라임비디오', ms365: 'MS오피스365', spotify: '스포티파이' } as Record<string, string>)[wForm.serviceCode] || wForm.serviceCode;
+    const monthlyFee = parseInt(wForm.monthFee.replace(/[^0-9]/g, '') || '0', 10);
+    const dailyFee = wForm.paymentType === 'PERIOD'
+      ? parseInt(wForm.dailyFee.replace(/[^0-9]/g, '') || String(Math.round(monthlyFee / 30)), 10)
+      : Math.round(monthlyFee / 30);
+    fetch('/api/everyview/create-party', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        recruitTitle: wForm.recruitTitle,
+        recruitInfo: wForm.recruitInfo,
+        disallowRules: wForm.disallowRules.split('\n').map(s => s.trim()).filter(Boolean),
+        paymentType: wForm.paymentType,
+        oneDayUsageFee: dailyFee,
+        monthUsageFee: monthlyFee,
+        shareEndDate: wForm.paymentType === 'PERIOD' ? wForm.endDate || null : null,
+        shareUserCnt: wForm.slots,
+        services: [{
+          serviceCode: wForm.serviceCode, serviceName: svcName,
+          serviceOptionCode: 'direct', serviceOptionName: '',
+          shareType: wForm.shareType,
+          userId: wForm.userId, userPassword: wForm.userPassword,
+          sharingDescription: wForm.sharingDescription, additionalInfo: wForm.additionalInfo,
+        }],
+      }),
+    })
+      .then(async r => {
+        const d = await r.json() as any;
+        if (!r.ok) throw new Error(d.error || '등록 실패');
+        setCreateResult({ ok: true, msg: `파티 #${d.partyId} 개설 완료!`, partyId: d.partyId });
+        loadManagement(true);
+      })
+      .catch(e => setCreateResult({ ok: false, msg: e.message }))
+      .finally(() => setCreating(false));
+  };
 
   const fetchSessionStatus = () => {
     fetch('/api/everyview/session/status').then(r => r.json()).then(setSessionStatus).catch(() => {});
@@ -216,6 +269,120 @@ export default function EveryviewPage() {
           <button onClick={importCookies} disabled={importing || !cookieInput.trim()}
             style={{ marginTop: 8, background: VIOLET, color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', fontWeight: 800, fontSize: 12, cursor: 'pointer', opacity: importing || !cookieInput.trim() ? .5 : 1 }}>
             {importing ? '등록 중...' : '쿠키 등록'}
+          </button>
+        </div>
+      )}
+
+      {/* ─── 글 작성 (파티 개설) ─── */}
+      <button onClick={() => setShowWrite(s => !s)}
+        style={{ width: '100%', background: VIOLET, color: '#fff', border: 'none', borderRadius: 12, padding: '12px 0', fontWeight: 800, fontSize: 13, cursor: 'pointer', marginBottom: 12 }}>
+        {showWrite ? '✕ 글 작성 닫기' : '✏️ 새 파티 글 작성'}
+      </button>
+
+      {showWrite && (
+        <div style={{ background: '#fff', borderRadius: 14, border: `1px solid ${LINE}`, padding: 16, marginBottom: 14 }}>
+          <div style={{ fontSize: 15, fontWeight: 900, marginBottom: 12 }}>✏️ 새 파티 글 작성</div>
+          {createResult && (
+            <div style={{ background: createResult.ok ? '#ECFDF5' : '#FFF0F0', color: createResult.ok ? '#059669' : '#991B1B', borderRadius: 10, padding: 10, fontSize: 12, fontWeight: 700, marginBottom: 12 }}>
+              {createResult.msg}
+            </div>
+          )}
+
+          {/* 서비스 선택 */}
+          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>공유 서비스</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+            {(['youtube', 'netflix', 'tving', 'disney_plus', 'wavve', 'watcha', 'coupang', 'chatgpt', 'spotify', 'direct'] as const).map(code => {
+              const label = code === 'direct' ? '직접입력' : ({ youtube: '유튜브', netflix: '넷플릭스', tving: '티빙', disney_plus: '디즈니+', wavve: '웨이브', watcha: '왓챠', coupang: '쿠팡플레이', chatgpt: 'ChatGPT', spotify: '스포티파이' } as Record<string, string>)[code];
+              const active = wForm.serviceCode === code;
+              return (
+                <button key={code} onClick={() => setWForm(f => ({ ...f, serviceCode: code }))}
+                  style={{ padding: '6px 12px', borderRadius: 999, border: `1px solid ${active ? VIOLET : LINE}`, background: active ? '#F5F3FF' : '#fff', color: active ? VIOLET : MUTED, fontWeight: active ? 800 : 600, fontSize: 11, cursor: 'pointer' }}>
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+          {wForm.serviceCode === 'direct' && (
+            <input value={wForm.serviceNameDirect} onChange={e => setWForm(f => ({ ...f, serviceNameDirect: e.target.value }))}
+              placeholder="공유할 서비스명 직접 입력 (최대 100자)" maxLength={100}
+              style={{ width: '100%', boxSizing: 'border-box', border: `1px solid ${LINE}`, borderRadius: 8, padding: '9px 10px', fontSize: 13, marginBottom: 10 }} />
+          )}
+
+          {/* 공유방식 */}
+          <div style={{ fontSize: 12, fontWeight: 700, margin: '10px 0 6px' }}>공유방식</div>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+            {([['ACCOUNT', '아이디/비번'], ['INVITE', '초대'], ['OTHER', '기타']] as const).map(([v, label]) => (
+              <button key={v} onClick={() => setWForm(f => ({ ...f, shareType: v }))}
+                style={{ flex: 1, padding: '8px 0', borderRadius: 8, border: `1px solid ${wForm.shareType === v ? VIOLET : LINE}`, background: wForm.shareType === v ? '#F5F3FF' : '#fff', color: wForm.shareType === v ? VIOLET : MUTED, fontWeight: 800, fontSize: 11, cursor: 'pointer' }}>
+                {label}
+              </button>
+            ))}
+          </div>
+          {wForm.shareType === 'ACCOUNT' ? (
+            <>
+              <input value={wForm.userId} onChange={e => setWForm(f => ({ ...f, userId: e.target.value }))} placeholder="아이디를 입력해주세요" maxLength={200}
+                style={{ width: '100%', boxSizing: 'border-box', border: `1px solid ${LINE}`, borderRadius: 8, padding: '9px 10px', fontSize: 13, marginBottom: 8 }} />
+              <input value={wForm.userPassword} onChange={e => setWForm(f => ({ ...f, userPassword: e.target.value }))} placeholder="비밀번호를 입력해주세요" maxLength={200}
+                style={{ width: '100%', boxSizing: 'border-box', border: `1px solid ${LINE}`, borderRadius: 8, padding: '9px 10px', fontSize: 13 }} />
+            </>
+          ) : (
+            <input value={wForm.sharingDescription} onChange={e => setWForm(f => ({ ...f, sharingDescription: e.target.value }))} placeholder="(ex) 파티 참여 후, 초대 계정 정보를 채팅창으로 보내주세요." maxLength={300}
+              style={{ width: '100%', boxSizing: 'border-box', border: `1px solid ${LINE}`, borderRadius: 8, padding: '9px 10px', fontSize: 13 }} />
+          )}
+          <textarea value={wForm.additionalInfo} onChange={e => setWForm(f => ({ ...f, additionalInfo: e.target.value }))} rows={2}
+            placeholder="접속방법 / 성인인증 방법 / 주의사항 등 (선택)" maxLength={1500}
+            style={{ width: '100%', boxSizing: 'border-box', border: `1px solid ${LINE}`, borderRadius: 8, padding: 9, fontSize: 12, marginTop: 8, resize: 'vertical' }} />
+
+          {/* 요금 */}
+          <div style={{ fontSize: 12, fontWeight: 700, margin: '14px 0 6px' }}>요금</div>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+            <button onClick={() => setWForm(f => ({ ...f, paymentType: 'PERIOD' }))}
+              style={{ flex: 1, padding: '8px 0', borderRadius: 8, border: `1px solid ${wForm.paymentType === 'PERIOD' ? VIOLET : LINE}`, background: wForm.paymentType === 'PERIOD' ? '#F5F3FF' : '#fff', color: wForm.paymentType === 'PERIOD' ? VIOLET : MUTED, fontWeight: 800, fontSize: 11, cursor: 'pointer' }}>
+              기간 공유
+            </button>
+            <button onClick={() => setWForm(f => ({ ...f, paymentType: 'RECURRING' }))}
+              style={{ flex: 1, padding: '8px 0', borderRadius: 8, border: `1px solid ${wForm.paymentType === 'RECURRING' ? VIOLET : LINE}`, background: wForm.paymentType === 'RECURRING' ? '#F5F3FF' : '#fff', color: wForm.paymentType === 'RECURRING' ? VIOLET : MUTED, fontWeight: 800, fontSize: 11, cursor: 'pointer' }}>
+              정기 결제 (월 단위)
+            </button>
+          </div>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 11, color: MUTED, marginBottom: 4 }}>월 요금 (원)</div>
+              <input inputMode="numeric" value={wForm.monthFee} onChange={e => setWForm(f => ({ ...f, monthFee: e.target.value }))} placeholder="예: 5000"
+                style={{ width: '100%', boxSizing: 'border-box', border: `1px solid ${LINE}`, borderRadius: 8, padding: '9px 10px', fontSize: 13 }} />
+            </div>
+            {wForm.paymentType === 'PERIOD' && (
+              <>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 11, color: MUTED, marginBottom: 4 }}>종료일</div>
+                  <input type="date" value={wForm.endDate} onChange={e => setWForm(f => ({ ...f, endDate: e.target.value }))}
+                    style={{ width: '100%', boxSizing: 'border-box', border: `1px solid ${LINE}`, borderRadius: 8, padding: '8px 10px', fontSize: 13 }} />
+                </div>
+                <div style={{ width: 90 }}>
+                  <div style={{ fontSize: 11, color: MUTED, marginBottom: 4 }}>모집 인원</div>
+                  <input type="number" min={1} max={20} value={wForm.slots} onChange={e => setWForm(f => ({ ...f, slots: Math.max(1, Math.min(20, parseInt(e.target.value || '1', 10) || 1)) }))}
+                    style={{ width: '100%', boxSizing: 'border-box', border: `1px solid ${LINE}`, borderRadius: 8, padding: '9px 10px', fontSize: 13 }} />
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* 모집공고 */}
+          <div style={{ fontSize: 12, fontWeight: 700, margin: '14px 0 6px' }}>모집 제목 (최대 25자)</div>
+          <input value={wForm.recruitTitle} onChange={e => setWForm(f => ({ ...f, recruitTitle: e.target.value }))} maxLength={25}
+            placeholder="예) 유튜브 프리미엄 4인 팟"
+            style={{ width: '100%', boxSizing: 'border-box', border: `1px solid ${LINE}`, borderRadius: 8, padding: '9px 10px', fontSize: 13 }} />
+          <div style={{ fontSize: 12, fontWeight: 700, margin: '10px 0 6px' }}>파티 소개 (최대 1000자)</div>
+          <textarea value={wForm.recruitInfo} onChange={e => setWForm(f => ({ ...f, recruitInfo: e.target.value }))} rows={4} maxLength={1000}
+            placeholder="사용자가 파티 참여를 결정할 수 있는 상세 정보를 작성해주세요."
+            style={{ width: '100%', boxSizing: 'border-box', border: `1px solid ${LINE}`, borderRadius: 8, padding: 9, fontSize: 12, resize: 'vertical' }} />
+          <div style={{ fontSize: 12, fontWeight: 700, margin: '10px 0 6px' }}>금지사항 (줄바꿈으로 구분)</div>
+          <textarea value={wForm.disallowRules} onChange={e => setWForm(f => ({ ...f, disallowRules: e.target.value }))} rows={3}
+            style={{ width: '100%', boxSizing: 'border-box', border: `1px solid ${LINE}`, borderRadius: 8, padding: 9, fontSize: 12, resize: 'vertical' }} />
+
+          <button onClick={submitCreateParty} disabled={creating || !wForm.recruitTitle.trim()}
+            style={{ marginTop: 14, width: '100%', background: creating || !wForm.recruitTitle.trim() ? '#C4B5FD' : VIOLET, color: '#fff', border: 'none', borderRadius: 10, padding: '12px 0', fontWeight: 800, fontSize: 13, cursor: creating ? 'wait' : 'pointer' }}>
+            {creating ? '등록 중…' : '🚀 개설하기'}
           </button>
         </div>
       )}

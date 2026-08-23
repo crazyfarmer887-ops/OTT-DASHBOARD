@@ -765,6 +765,7 @@ import {
   updateEveryviewLoginInfo,
   updateEveryviewNotice,
   updateEveryviewRecruitCnt,
+  createEveryviewParty,
   toManagementAccount,
   toManagementGeneralAccount,
   type EveryviewLoginDataItem,
@@ -936,6 +937,26 @@ app.post('/everyview/update-recruit-cnt', async (c) => {
 });
 
 // 초대메일 조회 (관리형 파티 상세 — 요청 시에만 노출)
+
+// 파티 개설 (글 작성)
+app.post('/everyview/create-party', async (c) => {
+  const body = await c.req.json().catch(() => null);
+  if (!body || typeof body !== 'object') return c.json({ error: '요청 본문이 필요합니다' }, 400);
+  const cookieStr = resolveEveryviewCookies(body);
+  if (!cookieStr) return c.json({ error: '에브리뷰 세션 쿠키가 없어요' }, 400);
+  try {
+    const res = await createEveryviewParty(cookieStr, body as any);
+    if (!res.ok) {
+      const expired = res.msg?.includes('만료');
+      return c.json({ error: res.msg || '파티 생성 실패', ...(expired ? { code: 'COOKIE_EXPIRED' } : {}) }, expired ? 401 : 400);
+    }
+    everyviewManagementCache = null;
+    return c.json({ ok: true, partyId: res.partyId });
+  } catch (e: any) {
+    if (e?.message?.includes('만료')) return c.json({ error: e.message, code: 'COOKIE_EXPIRED' }, 401);
+    return c.json({ error: e.message }, 500);
+  }
+});
 
 // 에브리뷰 정산 자동 집계 (수익 페이지 연동)
 const EVERYVIEW_SETTLEMENT_CACHE_TTL_MS = 10 * 60 * 1000;
