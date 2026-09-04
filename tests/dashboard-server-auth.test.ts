@@ -9,6 +9,7 @@ vi.mock('../src/scheduler/renewal-automation-daemon.ts', () => ({ startRenewalAu
 
 const originalPassword = process.env.DASHBOARD_ADMIN_PASSWORD;
 const originalSecret = process.env.DASHBOARD_SESSION_SECRET;
+const originalAdminToken = process.env.AIO_ADMIN_TOKEN;
 let app: Awaited<typeof import('../server.ts')>['app'];
 
 beforeAll(async () => {
@@ -20,6 +21,8 @@ afterAll(() => {
   else process.env.DASHBOARD_ADMIN_PASSWORD = originalPassword;
   if (originalSecret === undefined) delete process.env.DASHBOARD_SESSION_SECRET;
   else process.env.DASHBOARD_SESSION_SECRET = originalSecret;
+  if (originalAdminToken === undefined) delete process.env.AIO_ADMIN_TOKEN;
+  else process.env.AIO_ADMIN_TOKEN = originalAdminToken;
 });
 
 function unsetDashboardAuth() {
@@ -71,5 +74,53 @@ describe('dashboard server authentication configuration', () => {
 
     expect(dashboardPartyAccess.status).toBe(200);
     expect(rootPartyAccess.status).toBe(200);
+  });
+
+  test('bridges a valid dashboard session to same-origin protected API requests', async () => {
+    process.env.DASHBOARD_ADMIN_PASSWORD = 'configured-dashboard-password';
+    process.env.DASHBOARD_SESSION_SECRET = 'separate-session-secret-at-least-32-characters';
+    process.env.AIO_ADMIN_TOKEN = 'internal-admin-token';
+
+    const login = await app.request('/dashboard/login', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: 'password=configured-dashboard-password',
+    });
+    const sessionCookie = login.headers.get('set-cookie')?.split(';', 1)[0];
+    expect(sessionCookie).toBeTruthy();
+
+    const response = await app.request('/api/session/cookies', {
+      headers: {
+        cookie: sessionCookie!,
+        origin: 'https://email-verify.one',
+        'sec-fetch-site': 'same-origin',
+        'x-forwarded-host': 'email-verify.one',
+        'x-forwarded-proto': 'https',
+      },
+    });
+
+    expect(response.status).toBe(200);
+  });
+
+  test('does not bridge missing, invalid, or cross-origin dashboard sessions', async () => {
+    process.env.DASHBOARD_ADMIN_PASSWORD = 'configured-dashboard-password';
+    process.env.DASHBOARD_SESSION_SECRET = 'separate-session-secret-at-least-32-characters';
+    process.env.AIO_ADMIN_TOKEN = 'internal-admin-token';
+
+    const login = await app.request('/dashboard/login', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: 'password=configured-dashboard-password',
+    });
+    const sessionCookie = login.headers.get('set-cookie')?.split(';', 1)[0];
+    expect(sessionCookie).toBeTruthy();
+
+    await expect(app.request('/api/session/cookies')).resolves.toHaveProperty('status', 403);
+    await expect(app.request('/api/session/cookies', {
+      headers: { cookie: 'graytag_dashboard_session=invalid' },
+    })).resolves.toHaveProperty('status', 403);
+    await expect(app.request('/api/session/cookies', {
+      headers: { cookie: sessionCookie!, origin: 'https://attacker.example' },
+    })).resolves.toHaveProperty('status', 403);
   });
 });

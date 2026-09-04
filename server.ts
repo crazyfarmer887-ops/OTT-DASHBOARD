@@ -41,6 +41,20 @@ const MIME_TYPES: Record<string, string> = {
 
 export const app = new Hono();
 
+app.use('/api/*', async (c, next) => {
+  const configuration = dashboardAuthConfiguration();
+  const adminToken = process.env.AIO_ADMIN_TOKEN?.trim();
+  if (
+    configuration
+    && adminToken
+    && isSameOriginRequest(c)
+    && verifyDashboardSessionCookie(c.req.header('cookie'), configuration.password, configuration.secret)
+  ) {
+    c.req.raw.headers.set('x-admin-token', adminToken);
+  }
+  return next();
+});
+
 app.route('/api', apiApp);
 
 const DASHBOARD_CONFIGURATION_ERROR = 'Dashboard authentication is not configured.';
@@ -68,6 +82,25 @@ function isHttpsRequest(c: any): boolean {
   const forwardedProto = String(c.req.header('x-forwarded-proto') || '').split(',')[0]?.trim().toLowerCase();
   if (forwardedProto === 'https') return true;
   return new URL(c.req.url).protocol === 'https:';
+}
+
+function isSameOriginRequest(c: any): boolean {
+  const fetchSite = String(c.req.header('sec-fetch-site') || '').trim().toLowerCase();
+  if (fetchSite && fetchSite !== 'same-origin') return false;
+
+  const origin = String(c.req.header('origin') || '').trim();
+  if (!origin) return true;
+
+  const requestUrl = new URL(c.req.url);
+  const protocol = String(c.req.header('x-forwarded-proto') || '').split(',')[0]?.trim().toLowerCase()
+    || requestUrl.protocol.replace(/:$/, '');
+  const host = String(c.req.header('x-forwarded-host') || c.req.header('host') || requestUrl.host)
+    .split(',')[0]?.trim();
+  try {
+    return new URL(origin).origin === `${protocol}://${host}`;
+  } catch {
+    return false;
+  }
 }
 
 function dashboardLoginHtml(error = ''): string {
