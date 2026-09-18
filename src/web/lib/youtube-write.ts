@@ -1,10 +1,10 @@
-import { appendYouTubeListingCode } from '../../lib/youtube-listing-code';
+import { removeYouTubeListingCode } from '../../lib/youtube-listing-code';
 import { MAX_YOUTUBE_SELLING_GUIDE_CHARACTERS } from '../../lib/graytag-fill';
 
 export { appendYouTubeListingCode } from '../../lib/youtube-listing-code';
 
 export function buildYouTubeListingTitle(name: string, listingCode: string): string {
-  return appendYouTubeListingCode(name.trim(), listingCode);
+  return removeYouTubeListingCode(name, listingCode).trim();
 }
 
 export interface YouTubeFamilyGroupDto {

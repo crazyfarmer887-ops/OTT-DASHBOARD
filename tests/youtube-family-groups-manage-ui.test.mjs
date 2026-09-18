@@ -78,12 +78,12 @@ test('overlapping YouTube refreshes allow only the latest generation to update r
 });
 
 test('YouTube cards show only registered Graytag product links and separate non-link registration states', () => {
-  assert.match(manage, /제목 코드 \{group\.listingCode\}/);
+  assert.doesNotMatch(manage, /제목 코드 \{group\.listingCode\}/);
   assert.match(manage, /youtubeRegisteredListingCount/);
   assert.match(manage, /youtubeRegistrationRecordCount/);
   assert.match(manage, /group\.registrations\s*\.filter\(registration => registration\.status === 'registered'\)/);
   assert.match(manage, /https:\/\/graytag\.co\.kr\/product\/detail\?productUsid=\$\{encodeURIComponent\(registration\.productUsid/);
-  assert.match(manage, /유튜브 프리미엄 \{group\.listingCode\} · 게시물 \{index \+ 1\}/);
+  assert.match(manage, /\{group\.label\} · 게시물 \{index \+ 1\}/);
   assert.match(manage, /className="youtube-registration-statuses"/);
   assert.match(manage, /처리중/);
   assert.match(manage, /확인필요/);

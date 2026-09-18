@@ -57,7 +57,7 @@ test('buildYouTubeProductRequest emits the exact safe endpoint, headers and body
       familyGroupId: 'youtube-family-group:1',
       endDate: '20261231T2359',
       price: 4500,
-      name: '유튜브 프리미엄 abc123',
+      name: '유튜브 프리미엄',
       sellingGuide: '초대 안내',
     }),
   });
@@ -82,8 +82,8 @@ test('write page blocks invalid YouTube descriptions before progress and stops r
   assert.match(source, /입력 수정하기/);
 });
 
-test('preview title and request name share trimmed edge handling while preserving internal spaces', () => {
-  const name = '  유튜브!!  프리미엄  ';
+test('preview title and request name remove a legacy Gmail marker while preserving the clean title', () => {
+  const name = '  유튜브!!  ABC123  프리미엄  ';
   const listingCode = 'abc123';
   const previewTitle = buildYouTubeListingTitle(name, listingCode);
   const request = buildYouTubeProductRequest({
@@ -97,7 +97,7 @@ test('preview title and request name share trimmed edge handling while preservin
   });
   const requestBody = JSON.parse(String(request.init.body)) as { name: string };
 
-  assert.equal(previewTitle, '유튜브!!  프리미엄 abc123');
+  assert.equal(previewTitle, '유튜브!! 프리미엄');
   assert.equal(requestBody.name, previewTitle);
 });
 
@@ -146,7 +146,7 @@ test('appendYouTubeListingCode surgically cleans Unicode separators around a sta
   assert.equal(appendYouTubeListingCode('유튜브（abc123）프리미엄', 'abc123'), '유튜브 프리미엄 abc123');
 });
 
-test('write page previews the generated YouTube title but persists only the raw title preset', () => {
+test('write page previews the marker-free YouTube title but persists only the raw title preset', () => {
   const source = readFileSync(new URL('../src/web/pages/write.tsx', import.meta.url), 'utf8');
   assert.match(source, /const youtubeFinalTitle = selectedYoutubeGroup[\s\S]*buildYouTubeListingTitle\(title, selectedYoutubeGroup\.listingCode\)/);
   assert.match(source, /buildYouTubeProductRequest\(\{[\s\S]*name: title,[\s\S]*listingCode: selectedYoutubeGroup\.listingCode/);

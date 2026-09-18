@@ -2026,7 +2026,7 @@ export default function ManagePage() {
                               </div>
                               <div style={{ flex:1, textAlign:'left', minWidth:0 }}>
                                 <div style={{ display:'flex', alignItems:'center', gap:6 }}><Mail size={12} color="#9CA3AF"/><span className="management-account-email">{group.managerEmailMasked}</span></div>
-                                <div style={{ marginTop:3, color:'#6B7280', fontSize:10, fontWeight:800 }}>{group.label} · 제목 코드 {group.listingCode}</div>
+                                <div style={{ marginTop:3, color:'#6B7280', fontSize:10, fontWeight:800 }}>{group.label}</div>
                                 <div style={{ display:'flex', gap:5, marginTop:4, flexWrap:'wrap' }}>
                                   <span className={group.enabled?'is-enabled':'is-disabled'}>{group.enabled?'활성':'비활성'}</span>
                                   <span className="youtube-expiry-status">만료 {group.subscriptionEndDate || '미설정'}</span>
@@ -2034,7 +2034,7 @@ export default function ManagePage() {
                               </div>
                             </div>
                             {registeredListings.length > 0 && <div className="youtube-registered-product-links" aria-label={`${group.label} 등록 게시물`}>
-                              {registeredListings.map((registration, index) => <a key={registration.registrationDisplayId} href={`https://graytag.co.kr/product/detail?productUsid=${encodeURIComponent(registration.productUsid!)}`} target="_blank" rel="noreferrer"><ExternalLink size={10}/> 유튜브 프리미엄 {group.listingCode} · 게시물 {index + 1}</a>)}
+                              {registeredListings.map((registration, index) => <a key={registration.registrationDisplayId} href={`https://graytag.co.kr/product/detail?productUsid=${encodeURIComponent(registration.productUsid!)}`} target="_blank" rel="noreferrer"><ExternalLink size={10}/> {group.label} · 게시물 {index + 1}</a>)}
                             </div>}
                             {(group.pendingRegistrationCount > 0 || group.uncertainRegistrationCount > 0 || group.failedRegistrationCount > 0) && <div className="youtube-registration-statuses" aria-label="등록 기록 상태">
                               {group.pendingRegistrationCount > 0 && <span>처리중 {group.pendingRegistrationCount}</span>}

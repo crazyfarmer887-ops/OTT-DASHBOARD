@@ -18,12 +18,12 @@ beforeEach(() => {
   process.env.YOUTUBE_INVITATIONS_PATH = join(root, 'jobs.json');
   process.env.YOUTUBE_PRODUCT_REGISTRATIONS_PATH = join(root, 'registrations.json');
   process.env.YOUTUBE_CAPACITY_LOCK_PATH = join(root, 'capacity.lock');
-  new YouTubeFamilyGroupsStore(process.env.YOUTUBE_FAMILY_GROUPS_PATH).write({ version: 1, familyGroups: [{ id: 'group-1', label: '그룹', managerEmail: 'manager@example.com', subscriptionEndDate: '2026-08-31', sellableSeats: 1, enabled: true, createdAt: now, updatedAt: now }] });
+  new YouTubeFamilyGroupsStore(process.env.YOUTUBE_FAMILY_GROUPS_PATH).write({ version: 1, familyGroups: [{ id: 'group-1', label: '그룹', managerEmail: 'manager@example.com', subscriptionEndDate: '2027-08-31', sellableSeats: 1, enabled: true, createdAt: now, updatedAt: now }] });
   new YouTubeInvitationJobsStore(process.env.YOUTUBE_INVITATIONS_PATH).write({ version: 1, jobs: [] });
 });
 afterEach(() => { rmSync(root, { recursive: true, force: true }); for (const key of ['YOUTUBE_INVITE_SALES_ENABLED','YOUTUBE_FAMILY_GROUPS_PATH','YOUTUBE_INVITATIONS_PATH','YOUTUBE_PRODUCT_REGISTRATIONS_PATH','YOUTUBE_CAPACITY_LOCK_PATH','AIO_ADMIN_TOKEN','AIO_ADMIN_ACTOR']) saved[key] === undefined ? delete process.env[key] : process.env[key] = saved[key]; });
 
-const body = { familyGroupId: 'group-1', endDate: '20260831T2359', price: 7900, name: ' 유튜브 ', sellingGuide: ' 안내 ' };
+const body = { familyGroupId: 'group-1', endDate: '20270831T2359', price: 7900, name: ' 유튜브 ', sellingGuide: ' 안내 ' };
 function post(app: ReturnType<typeof createYouTubeInvitationsApp>, key = 'request-key-1000', value: unknown = body, reason = 'product registration') {
   return app.request('/products', { method: 'POST', headers: { 'content-type': 'application/json', 'Idempotency-Key': key, 'x-audit-reason': encodeURIComponent(reason) }, body: JSON.stringify(value) });
 }
@@ -78,7 +78,7 @@ describe('YouTube product registration API', () => {
     const app = createYouTubeInvitationsApp({ registerProduct, actor: () => 'admin:test', audit });
     const first = await post(app); expect(first.status).toBe(201);
     expect(await first.json()).toEqual({ ok: true, productUsid: 'product-1', familyGroupId: 'group-1', status: 'registered' });
-    expect(registerProduct).toHaveBeenCalledWith({ tempProductCategory: 'youtube', endDate: '20260831T2359', priceType: 'Normal', price: '7900', name: '유튜브 manger', sellingGuide: '안내' });
+    expect(registerProduct).toHaveBeenCalledWith({ tempProductCategory: 'youtube', endDate: '20270831T2359', priceType: 'Normal', price: '7900', name: '유튜브', sellingGuide: '안내' });
     const second = await post(app); expect(second.status).toBe(200);
     expect(await second.json()).toMatchObject({ replayed: true, productUsid: 'product-1', status: 'registered' });
     expect(registerProduct).toHaveBeenCalledTimes(1);
@@ -86,9 +86,9 @@ describe('YouTube product registration API', () => {
     expect(audit).toHaveBeenCalledWith(expect.objectContaining({ outcome: 'registered', actor: 'admin:test', reason: 'product registration' }));
   });
 
-  test('forces the current family-group listing code into the final model and fingerprints that model', async () => {
+  test('strips the family-group Gmail marker from the final model and fingerprints the clean title', async () => {
     new YouTubeFamilyGroupsStore(process.env.YOUTUBE_FAMILY_GROUPS_PATH!).write({ version: 1, familyGroups: [{
-      id: 'group-1', label: '그룹', managerEmail: 'abcde123@gmail.com', subscriptionEndDate: '2026-08-31',
+      id: 'group-1', label: '그룹', managerEmail: 'abcde123@gmail.com', subscriptionEndDate: '2027-08-31',
       sellableSeats: 1, enabled: true, createdAt: now, updatedAt: now,
     }] });
     const registerProduct = vi.fn(async () => new Response(JSON.stringify({ succeeded: true, data: 'product-coded' }), { status: 200 }));
@@ -96,10 +96,10 @@ describe('YouTube product registration API', () => {
 
     const first = await post(app, 'request-key-listing-code', { ...body, name: '유튜브 프리미엄' });
     expect(first.status).toBe(201);
-    expect(registerProduct).toHaveBeenCalledWith(expect.objectContaining({ name: '유튜브 프리미엄 abc123' }));
-    const enrichedModel = buildYouTubeSharingNoKeepProductModel({ ...body, name: '유튜브 프리미엄 abc123' });
+    expect(registerProduct).toHaveBeenCalledWith(expect.objectContaining({ name: '유튜브 프리미엄' }));
+    const cleanModel = buildYouTubeSharingNoKeepProductModel({ ...body, name: '유튜브 프리미엄' });
     expect(new YouTubeProductRegistrationsStore(process.env.YOUTUBE_PRODUCT_REGISTRATIONS_PATH!).list()[0].requestFingerprint)
-      .toBe(fingerprintYouTubeProductRegistration('group-1', enrichedModel));
+      .toBe(fingerprintYouTubeProductRegistration('group-1', cleanModel));
 
     const replay = await post(app, 'request-key-listing-code', { ...body, name: '유튜브 프리미엄 abc123' });
     expect(replay.status).toBe(200);
@@ -107,12 +107,12 @@ describe('YouTube product registration API', () => {
     expect(registerProduct).toHaveBeenCalledTimes(1);
   });
 
-  test('replays a registered legacy uncoded fingerprint when the new frontend resends the coded title', async () => {
+  test('replays a registered legacy coded fingerprint when the new frontend sends a clean title', async () => {
     new YouTubeFamilyGroupsStore(process.env.YOUTUBE_FAMILY_GROUPS_PATH!).write({ version: 1, familyGroups: [{
-      id: 'group-1', label: '그룹', managerEmail: 'abcde123@gmail.com', subscriptionEndDate: '2026-08-31',
+      id: 'group-1', label: '그룹', managerEmail: 'abcde123@gmail.com', subscriptionEndDate: '2027-08-31',
       sellableSeats: 1, enabled: true, createdAt: now, updatedAt: now,
     }] });
-    const legacyModel = buildYouTubeSharingNoKeepProductModel({ ...body, name: '유튜브 프리미엄' });
+    const legacyModel = buildYouTubeSharingNoKeepProductModel({ ...body, name: '유튜브 프리미엄 abc123' });
     const legacyFingerprint = fingerprintYouTubeProductRegistration('group-1', legacyModel);
     const store = new YouTubeProductRegistrationsStore(process.env.YOUTUBE_PRODUCT_REGISTRATIONS_PATH!, { allowUnsafeIsolatedClaim: true });
     store.claim({ idempotencyKey: 'request-key-legacy-replay', requestFingerprint: legacyFingerprint, familyGroupId: 'group-1', actor: 'admin', reasonCode: 'legacy-create', at: now });
@@ -120,19 +120,19 @@ describe('YouTube product registration API', () => {
     const registerProduct = vi.fn();
     const app = createYouTubeInvitationsApp({ registerProduct });
 
-    const replay = await post(app, 'request-key-legacy-replay', { ...body, name: '유튜브 프리미엄 ABC123' });
+    const replay = await post(app, 'request-key-legacy-replay', { ...body, name: '유튜브 프리미엄' });
     expect(replay.status).toBe(200);
     expect(await replay.json()).toMatchObject({ replayed: true, productUsid: 'product-legacy' });
     expect(registerProduct).not.toHaveBeenCalled();
 
-    const changed = await post(app, 'request-key-legacy-replay', { ...body, name: '유튜브 프리미엄 ABC123', sellingGuide: '변경된 안내' });
+    const changed = await post(app, 'request-key-legacy-replay', { ...body, name: '유튜브 프리미엄', sellingGuide: '변경된 안내' });
     expect(changed.status).toBe(409);
     expect(await changed.json()).toMatchObject({ code: 'YOUTUBE_PRODUCT_IDEMPOTENCY_CONFLICT' });
   });
 
   test('replays the exact legacy submitted-title fingerprint without normalizing punctuation or spaces', async () => {
     new YouTubeFamilyGroupsStore(process.env.YOUTUBE_FAMILY_GROUPS_PATH!).write({ version: 1, familyGroups: [{
-      id: 'group-1', label: '그룹', managerEmail: 'abcde123@gmail.com', subscriptionEndDate: '2026-08-31',
+      id: 'group-1', label: '그룹', managerEmail: 'abcde123@gmail.com', subscriptionEndDate: '2027-08-31',
       sellableSeats: 1, enabled: true, createdAt: now, updatedAt: now,
     }] });
     const exactLegacyModel = buildYouTubeSharingNoKeepProductModel({ ...body, name: '유튜브!!  프리미엄' });
@@ -155,7 +155,7 @@ describe('YouTube product registration API', () => {
 
   test('always accepts the exact submitted fingerprint when a legacy title already contains the code', async () => {
     new YouTubeFamilyGroupsStore(process.env.YOUTUBE_FAMILY_GROUPS_PATH!).write({ version: 1, familyGroups: [{
-      id: 'group-1', label: '그룹', managerEmail: 'abcde123@gmail.com', subscriptionEndDate: '2026-08-31',
+      id: 'group-1', label: '그룹', managerEmail: 'abcde123@gmail.com', subscriptionEndDate: '2027-08-31',
       sellableSeats: 1, enabled: true, createdAt: now, updatedAt: now,
     }] });
     const exactLegacyModel = buildYouTubeSharingNoKeepProductModel({ ...body, name: '유튜브!!  프리미엄 ABC123' });
@@ -184,7 +184,7 @@ describe('YouTube product registration API', () => {
     const registerProduct = vi.fn();
     const reconcileProductRegistration = vi.fn();
     const app = createYouTubeInvitationsApp({ registerProduct, reconcileProductRegistration, now: () => new Date('2026-08-11T00:00:30.000Z') });
-    const model = buildYouTubeSharingNoKeepProductModel({ ...body, name: '유튜브 manger' });
+    const model = buildYouTubeSharingNoKeepProductModel({ ...body, name: '유튜브' });
     new YouTubeProductRegistrationsStore(process.env.YOUTUBE_PRODUCT_REGISTRATIONS_PATH!, { allowUnsafeIsolatedClaim: true }).claim({ idempotencyKey: 'request-key-active-lease', requestFingerprint: fingerprintYouTubeProductRegistration('group-1', model), familyGroupId: 'group-1', actor: 'admin', reasonCode: 'create', at: now });
     const response = await post(app, 'request-key-active-lease');
     expect(response.status).toBe(409);
@@ -197,7 +197,7 @@ describe('YouTube product registration API', () => {
     const registerProduct = vi.fn();
     const reconcileProductRegistration = vi.fn(async () => ({ status: 'registered' as const, productUsid: 'product-recovered' }));
     const app = createYouTubeInvitationsApp({ registerProduct, reconcileProductRegistration, now: () => new Date('2026-08-11T00:02:00.000Z') });
-    const model = buildYouTubeSharingNoKeepProductModel({ ...body, name: '유튜브 manger' });
+    const model = buildYouTubeSharingNoKeepProductModel({ ...body, name: '유튜브' });
     const store = new YouTubeProductRegistrationsStore(process.env.YOUTUBE_PRODUCT_REGISTRATIONS_PATH!, { allowUnsafeIsolatedClaim: true });
     const claim = store.claim({ idempotencyKey: 'request-key-stale-found', requestFingerprint: fingerprintYouTubeProductRegistration('group-1', model), familyGroupId: 'group-1', actor: 'admin', reasonCode: 'create', at: now });
     if (claim.kind !== 'claimed') throw new Error('expected claim');
@@ -208,9 +208,9 @@ describe('YouTube product registration API', () => {
     expect(reconcileProductRegistration).toHaveBeenCalledWith({ attemptId: claim.record.attemptId, requestFingerprint: claim.record.requestFingerprint, familyGroupId: 'group-1' });
   });
 
-  test('recovers an expired legacy uncoded claim and reconciles with its durable fingerprint', async () => {
+  test('recovers an expired clean-title claim and reconciles with its durable fingerprint', async () => {
     new YouTubeFamilyGroupsStore(process.env.YOUTUBE_FAMILY_GROUPS_PATH!).write({ version: 1, familyGroups: [{
-      id: 'group-1', label: '그룹', managerEmail: 'abcde123@gmail.com', subscriptionEndDate: '2026-08-31',
+      id: 'group-1', label: '그룹', managerEmail: 'abcde123@gmail.com', subscriptionEndDate: '2027-08-31',
       sellableSeats: 1, enabled: true, createdAt: now, updatedAt: now,
     }] });
     const legacyModel = buildYouTubeSharingNoKeepProductModel({ ...body, name: '유튜브 프리미엄' });
@@ -222,7 +222,7 @@ describe('YouTube product registration API', () => {
     const reconcileProductRegistration = vi.fn(async () => ({ status: 'registered' as const, productUsid: 'product-legacy-recovered' }));
     const app = createYouTubeInvitationsApp({ registerProduct, reconcileProductRegistration, now: () => new Date('2026-08-11T00:02:00.000Z') });
 
-    const response = await post(app, 'request-key-legacy-recovery', { ...body, name: '유튜브 프리미엄 abc123' });
+    const response = await post(app, 'request-key-legacy-recovery', { ...body, name: '유튜브 프리미엄' });
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ replayed: true, productUsid: 'product-legacy-recovered' });
     expect(registerProduct).not.toHaveBeenCalled();
@@ -237,7 +237,7 @@ describe('YouTube product registration API', () => {
     const registerProduct = vi.fn();
     const reconcileProductRegistration = vi.fn(async () => ({ status: 'uncertain' as const }));
     const app = createYouTubeInvitationsApp({ registerProduct, reconcileProductRegistration, now: () => new Date('2026-08-11T00:02:00.000Z') });
-    const model = buildYouTubeSharingNoKeepProductModel({ ...body, name: '유튜브 manger' });
+    const model = buildYouTubeSharingNoKeepProductModel({ ...body, name: '유튜브' });
     new YouTubeProductRegistrationsStore(process.env.YOUTUBE_PRODUCT_REGISTRATIONS_PATH!, { allowUnsafeIsolatedClaim: true }).claim({ idempotencyKey: 'request-key-stale-unknown', requestFingerprint: fingerprintYouTubeProductRegistration('group-1', model), familyGroupId: 'group-1', actor: 'admin', reasonCode: 'create', at: now });
     const response = await post(app, 'request-key-stale-unknown');
     expect(response.status).toBe(409);
@@ -266,7 +266,7 @@ describe('YouTube product registration API', () => {
   });
 
   test.each([
-    ['endDate', 20260831], ['endDate', true], ['name', 123], ['name', false], ['sellingGuide', 123], ['sellingGuide', true], ['price', '7900'], ['price', false],
+    ['endDate', 20270831], ['endDate', true], ['name', 123], ['name', false], ['sellingGuide', 123], ['sellingGuide', true], ['price', '7900'], ['price', false],
   ])('rejects strict product body type for %s=%j before claim or provider', async (field, invalid) => {
     const registerProduct = vi.fn();
     const app = createYouTubeInvitationsApp({ registerProduct });

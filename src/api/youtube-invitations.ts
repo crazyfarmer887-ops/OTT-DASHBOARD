@@ -537,17 +537,18 @@ app.post('/products', async (c) => {
         return { response: c.json({ ok: false, error: 'end date exceeds family group subscription' }, 400) };
       }
       const listingCode = youtubeListingCodeFromManagerEmail(familyGroup.managerEmail);
+      const nameWithoutListingCode = removeYouTubeListingCode(submittedModel.name, listingCode);
       model = {
         ...submittedModel,
-        name: appendYouTubeListingCode(submittedModel.name, listingCode),
+        name: nameWithoutListingCode,
       };
       requestFingerprint = fingerprintYouTubeProductRegistration(familyGroupId, model);
       const compatibleRequestFingerprints = [fingerprintYouTubeProductRegistration(familyGroupId, submittedModel)];
-      const nameWithoutListingCode = removeYouTubeListingCode(submittedModel.name, listingCode);
-      if (nameWithoutListingCode !== submittedModel.name) {
+      const legacyCodedName = appendYouTubeListingCode(nameWithoutListingCode, listingCode);
+      if (legacyCodedName !== submittedModel.name) {
         compatibleRequestFingerprints.push(fingerprintYouTubeProductRegistration(
           familyGroupId,
-          { ...submittedModel, name: nameWithoutListingCode },
+          { ...submittedModel, name: legacyCodedName },
         ));
       }
       const jobs = readInvitationJobs().jobs;
