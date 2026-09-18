@@ -8,6 +8,7 @@ import {
   buildNewChatAlertCandidate,
   buildNewDealStatusAlerts,
   createSingleFlightRunner,
+  extractSingleYouTubeBuyerEmail,
   extractAuthoritativeLenderDeals,
   isPollSessionAlertEnabled,
   parseGraytagMessageTime,
@@ -328,5 +329,30 @@ describe('PollDaemon Graytag deal list URL', () => {
 
     expect(updated['deal-on-sale']).toBe('OnSale');
     expect(alerts).toEqual([]);
+  });
+
+  test('alerts for a fresh first-seen YouTube delivery purchase', () => {
+    const { alerts, updated } = buildNewDealStatusAlerts([
+      {
+        productUsid: 'youtube-product-new',
+        dealStatus: 'Delivering',
+        registeredDateTime: '2026-09-19T00:00:00.000Z',
+        productTypeString: '유튜브',
+        productName: '유튜브 프리미엄 초대',
+        borrowerName: '구매자',
+      },
+    ], {}, { nowMs: Date.parse('2026-09-19T00:05:00.000Z') });
+
+    expect(updated['youtube-product-new']).toBe('Delivering');
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0]).toContain('새 구매 발생');
+  });
+
+  test('extracts exactly one explicit buyer email for an invitation alert', () => {
+    expect(extractSingleYouTubeBuyerEmail('초대 메일은 Buyer.Name+family@Example.COM 입니다'))
+      .toBe('buyer.name+family@example.com');
+    expect(extractSingleYouTubeBuyerEmail('first@example.com 말고 second@example.com'))
+      .toBeNull();
+    expect(extractSingleYouTubeBuyerEmail('이메일은 나중에 드릴게요')).toBeNull();
   });
 });

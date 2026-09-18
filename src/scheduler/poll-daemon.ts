@@ -6,12 +6,20 @@ import { messageFingerprint, normalizeBuyerMessage, type AutoReplyCandidateMessa
 import { chatNotificationBroker } from '../realtime/chat-notification-broker';
 import { observeYouTubeInvitationPollSources } from '../lib/youtube-invitation-poller';
 import { buildGraytagCookieHeader, loadGraytagAuthCookies } from '../lib/graytag-sales-session';
+import { buildYouTubeInvitationAlert, sendYouTubeInvitationAlert } from '../api/youtube-auto-reply';
+import {
+  normalizeYouTubeInvitationEmail,
+  YouTubeFamilyGroupsStore,
+  YouTubeInvitationJobsStore,
+} from '../lib/youtube-invitations';
 
 const POLL_SESSION_PATH = '/home/ubuntu/graytag-session/cookies.json';
 const POLL_INTERVAL_MS = 30 * 1000;
 const POLL_SESSION_MAX_AGE_MS = Number(process.env.POLL_SESSION_MAX_AGE_MS || 10 * 60 * 1000);
 const KNOWN_DEALS_PATH = '/home/ubuntu/.hermes/hermes-agent/graytag-aio-manager-0606/data/known-deals.json';
 const KNOWN_CHAT_MESSAGES_PATH = '/home/ubuntu/.hermes/hermes-agent/graytag-aio-manager-0606/data/known-chat-messages.json';
+const YOUTUBE_SALES_KNOWN_DEALS_PATH = '/home/ubuntu/.hermes/hermes-agent/graytag-aio-manager-0606/data/youtube-sales-known-deals.json';
+const YOUTUBE_SALES_KNOWN_CHAT_MESSAGES_PATH = '/home/ubuntu/.hermes/hermes-agent/graytag-aio-manager-0606/data/youtube-sales-known-chat-messages.json';
 const POLL_DAEMON_STATUS_PATH = '/home/ubuntu/.hermes/hermes-agent/graytag-aio-manager-0606/data/poll-daemon-status.json';
 const POLL_FAILURE_ALERT_THRESHOLD = Number(process.env.POLL_FAILURE_ALERT_THRESHOLD || 3);
 const DEFAULT_CHAT_ALERT_MAX_AGE_MS = 15 * 60 * 1000;
@@ -67,6 +75,7 @@ async function fetchYouTubeSalesDealSources(): Promise<{
   after: any[];
   beforeAuthoritative: boolean;
   afterAuthoritative: boolean;
+  headers: Record<string, string>;
 } | null> {
   const cookies = loadGraytagAuthCookies();
   if (!cookies) return null;
@@ -85,16 +94,17 @@ async function fetchYouTubeSalesDealSources(): Promise<{
       after: after.deals,
       beforeAuthoritative: before.authoritative,
       afterAuthoritative: after.authoritative,
+      headers,
     };
   } catch {
     return null;
   }
 }
 
-function loadKnownDeals(): Record<string, string> {
+function loadKnownDeals(path = KNOWN_DEALS_PATH): Record<string, string> {
   try {
-    if (!existsSync(KNOWN_DEALS_PATH)) return {};
-    return JSON.parse(readFileSync(KNOWN_DEALS_PATH, 'utf8'));
+    if (!existsSync(path)) return {};
+    return JSON.parse(readFileSync(path, 'utf8'));
   } catch { return {}; }
 }
 
@@ -116,14 +126,14 @@ export function saveKnownDealsAtomically(path: string, d: Record<string, string>
   return saveRecordStateAtomically(path, d);
 }
 
-function saveKnownDeals(d: Record<string, string>): boolean {
-  return saveKnownDealsAtomically(KNOWN_DEALS_PATH, d);
+function saveKnownDeals(d: Record<string, string>, path = KNOWN_DEALS_PATH): boolean {
+  return saveKnownDealsAtomically(path, d);
 }
 
-function loadKnownChatMessages(): Record<string, string> {
+function loadKnownChatMessages(path = KNOWN_CHAT_MESSAGES_PATH): Record<string, string> {
   try {
-    if (!existsSync(KNOWN_CHAT_MESSAGES_PATH)) return {};
-    const parsed = JSON.parse(readFileSync(KNOWN_CHAT_MESSAGES_PATH, 'utf8'));
+    if (!existsSync(path)) return {};
+    const parsed = JSON.parse(readFileSync(path, 'utf8'));
     return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
   } catch { return {}; }
 }
@@ -132,8 +142,8 @@ export function saveKnownChatMessagesAtomically(path: string, d: Record<string, 
   return saveRecordStateAtomically(path, d);
 }
 
-function saveKnownChatMessages(d: Record<string, string>): boolean {
-  return saveKnownChatMessagesAtomically(KNOWN_CHAT_MESSAGES_PATH, d);
+function saveKnownChatMessages(d: Record<string, string>, path = KNOWN_CHAT_MESSAGES_PATH): boolean {
+  return saveKnownChatMessagesAtomically(path, d);
 }
 
 export interface PollChatDeal {
@@ -165,7 +175,13 @@ function buildPurchaseAlertMessage(deal: PollChatDeal, status: string): string {
 }
 
 function isFirstSeenPurchaseStatus(status: string): boolean {
-  return ['Delivered', 'ExtensionWaiting', 'OccupationWaiting'].includes(status);
+  return ['Delivering', 'Delivered', 'ExtensionWaiting', 'OccupationWaiting'].includes(status);
+}
+
+export function extractSingleYouTubeBuyerEmail(message: string): string | null {
+  const matches = String(message || '').match(/[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)+/gi) ?? [];
+  const emails = [...new Set(matches.map(normalizeYouTubeInvitationEmail).filter((email): email is string => Boolean(email)))];
+  return emails.length === 1 ? emails[0] : null;
 }
 
 export function buildNewDealStatusAlerts(
@@ -433,8 +449,40 @@ export function extractAuthoritativeLenderDeals(payload: unknown): Authoritative
     : { authoritative: false, deals: [] };
 }
 
-async function sendNewChatMessageAlerts(deals: PollChatDeal[], headers: Record<string, string>): Promise<number> {
-  const known = loadKnownChatMessages();
+interface ChatAlertAccountOptions {
+  accountId?: 'primary' | 'youtube-invite-sales';
+  accountLabel?: string;
+  statePath?: string;
+  sendInvitationEmailAlert?: boolean;
+}
+
+function youtubeInvitationAlertForMessage(dealUsid: string, message: string) {
+  const buyerEmail = extractSingleYouTubeBuyerEmail(message);
+  if (!buyerEmail || !dealUsid) return null;
+  try {
+    const jobs = new YouTubeInvitationJobsStore(
+      process.env.YOUTUBE_INVITATIONS_PATH || 'data/youtube-invitations.json',
+      { capacityValidation: false },
+    ).read().jobs;
+    const groups = new YouTubeFamilyGroupsStore(
+      process.env.YOUTUBE_FAMILY_GROUPS_PATH || 'data/youtube-family-groups.json',
+      { capacityValidation: false },
+    ).read().familyGroups;
+    return buildYouTubeInvitationAlert(dealUsid, buyerEmail, jobs, groups);
+  } catch {
+    return null;
+  }
+}
+
+async function sendNewChatMessageAlerts(
+  deals: PollChatDeal[],
+  headers: Record<string, string>,
+  options: ChatAlertAccountOptions = {},
+): Promise<number> {
+  const statePath = options.statePath || KNOWN_CHAT_MESSAGES_PATH;
+  const accountId = options.accountId || 'primary';
+  const accountLabel = String(options.accountLabel || '').trim();
+  const known = loadKnownChatMessages(statePath);
   const updated = { ...known };
   let sent = 0;
   const seenRooms = new Set<string>();
@@ -459,13 +507,29 @@ async function sendNewChatMessageAlerts(deals: PollChatDeal[], headers: Record<s
       if (!alert) continue;
       const accountLine = alert.keepAcct ? `\n계정: ${alert.keepAcct}` : '';
       const dealLine = alert.dealUsid ? `\nUSID: ${alert.dealUsid}` : '';
-      const didSend = await reserveAndSendChatAlert(alert, updated, saveKnownChatMessages, () => sendSellerAlert({
-        key: `graytag-chat-${alert.fingerprint}`,
-        title: '새 문의 도착',
-        body: `${alert.productType} · ${alert.borrowerName}${accountLine}${dealLine}\n시간: ${alert.timestamp}\n메시지: ${alert.text}\n바로가기: https://email-verify.one/dashboard/chat?room=${encodeURIComponent(alert.chatRoomUuid)}`,
-        category: 'inquiry',
-        throttleMs: 0,
-      }), () => {
+      const alertPrefix = accountLabel ? `${accountLabel} · ` : '';
+      const didSend = await reserveAndSendChatAlert(alert, updated, (state) => saveKnownChatMessages(state, statePath), async () => {
+        if (options.sendInvitationEmailAlert) {
+          const invitation = youtubeInvitationAlertForMessage(alert.dealUsid, alert.text);
+          if (invitation) {
+            return sendYouTubeInvitationAlert({
+              alert: {
+                ...invitation,
+                body: `${accountLabel ? `운영 계정: ${accountLabel}\n` : ''}${invitation.body}`,
+              },
+              messageFingerprint: `${accountId}:${alert.fingerprint}`,
+              sender: sendSellerAlert,
+            });
+          }
+        }
+        return sendSellerAlert({
+          key: `graytag-chat-${accountId}-${alert.fingerprint}`,
+          title: `${alertPrefix}새 문의 도착`,
+          body: `${accountLabel ? `운영 계정: ${accountLabel}\n` : ''}${alert.productType} · ${alert.borrowerName}${accountLine}${dealLine}\n시간: ${alert.timestamp}\n메시지: ${alert.text}\n바로가기: https://email-verify.one/dashboard/chat?room=${encodeURIComponent(alert.chatRoomUuid)}`,
+          category: 'inquiry',
+          throttleMs: 0,
+        });
+      }, () => {
         chatNotificationBroker.publish({
           chatRoomUuid: alert.chatRoomUuid,
           dealUsid: alert.dealUsid,
@@ -483,13 +547,59 @@ async function sendNewChatMessageAlerts(deals: PollChatDeal[], headers: Record<s
     }
   }
 
-  saveKnownChatMessages(updated);
+  saveKnownChatMessages(updated, statePath);
   return sent;
+}
+
+async function pollDedicatedYouTubeAccount(): Promise<void> {
+  if (!loadGraytagAuthCookies()) return;
+  const dedicatedYouTubeSources = await fetchYouTubeSalesDealSources();
+  if (!dedicatedYouTubeSources?.beforeAuthoritative || !dedicatedYouTubeSources.afterAuthoritative) {
+    console.warn('[PollDaemon] YouTube 전용 세션 조회 실패 — 기본 계정으로 대체하지 않음');
+    return;
+  }
+
+  observeYouTubeInvitationPollSources(
+    dedicatedYouTubeSources.before,
+    dedicatedYouTubeSources.after,
+    true,
+    true,
+  );
+  const youtubeKnown = loadKnownDeals(YOUTUBE_SALES_KNOWN_DEALS_PATH);
+  const youtubePurchaseAlerts = buildNewDealStatusAlerts(dedicatedYouTubeSources.before, youtubeKnown);
+  await persistAndSendDealAlerts(
+    youtubePurchaseAlerts.updated,
+    (state) => saveKnownDeals(state, YOUTUBE_SALES_KNOWN_DEALS_PATH),
+    youtubePurchaseAlerts.alerts.map((message) => () => sendSellerAlert({
+      key: `poll-daemon-youtube-sales-deal-${message.slice(-80)}`,
+      title: '유튜브 판매 전용 · 구매/판매 이벤트',
+      body: `운영 계정: 유튜브 판매 전용\n${message.replace(/<[^>]+>/g, '')}`,
+      category: 'purchase',
+    })),
+  );
+  const youtubeChatAlertCount = await sendNewChatMessageAlerts(
+    [...dedicatedYouTubeSources.before, ...dedicatedYouTubeSources.after],
+    dedicatedYouTubeSources.headers,
+    {
+      accountId: 'youtube-invite-sales',
+      accountLabel: '유튜브 판매 전용',
+      statePath: YOUTUBE_SALES_KNOWN_CHAT_MESSAGES_PATH,
+      sendInvitationEmailAlert: true,
+    },
+  );
+  if (youtubeChatAlertCount > 0) {
+    console.log('[PollDaemon] 유튜브 전용 계정 채팅 알림 전송:', youtubeChatAlertCount);
+  }
 }
 
 async function pollGraytag() {
   process.stderr.write('[PollDaemon] 폴링 실행 ' + new Date().toISOString() + '\n');
   try {
+    try {
+      await pollDedicatedYouTubeAccount();
+    } catch {
+      console.error('[PollDaemon] YouTube 전용 계정 알림 폴링 실패');
+    }
     const cookies = loadSessionCookies();
     if (!cookies) {
       console.log('[PollDaemon] 세션 쿠키 없음 — 스킵');
@@ -554,19 +664,7 @@ async function pollGraytag() {
     if (afterAuthoritative) {
       try {
         const dedicatedYouTubeSessionConfigured = Boolean(loadGraytagAuthCookies());
-        const dedicatedYouTubeSources = dedicatedYouTubeSessionConfigured ? await fetchYouTubeSalesDealSources() : null;
-        if (dedicatedYouTubeSessionConfigured) {
-          if (dedicatedYouTubeSources?.beforeAuthoritative && dedicatedYouTubeSources.afterAuthoritative) {
-            observeYouTubeInvitationPollSources(
-              dedicatedYouTubeSources.before,
-              dedicatedYouTubeSources.after,
-              true,
-              true,
-            );
-          } else {
-            console.warn('[PollDaemon] YouTube 전용 세션 조회 실패 — 기본 계정으로 대체하지 않음');
-          }
-        } else {
+        if (!dedicatedYouTubeSessionConfigured) {
           observeYouTubeInvitationPollSources(deals, afterDeals, beforeSource.authoritative, afterAuthoritative);
         }
       } catch {
