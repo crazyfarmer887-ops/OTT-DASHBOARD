@@ -45,6 +45,8 @@ export interface YouTubeSharingNoKeepProductModel {
   sellingGuide: string;
 }
 
+export const MAX_YOUTUBE_SELLING_GUIDE_CHARACTERS = 300;
+
 function normalizeGraytagEndDate(value: string): string {
   const endDate = String(value ?? '').trim();
   const match = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})$/.exec(endDate);
@@ -85,7 +87,7 @@ export function buildYouTubeSharingNoKeepProductModel(
     priceType: 'Normal',
     price: normalizePositivePrice(input.price),
     name: normalizeRequiredText(input.name, 'name'),
-    sellingGuide: normalizeRequiredText(input.sellingGuide, 'sellingGuide', 300),
+    sellingGuide: normalizeRequiredText(input.sellingGuide, 'sellingGuide', MAX_YOUTUBE_SELLING_GUIDE_CHARACTERS),
   };
 }
 

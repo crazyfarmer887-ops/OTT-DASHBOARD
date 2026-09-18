@@ -29,6 +29,20 @@ function post(app: ReturnType<typeof createYouTubeInvitationsApp>, key = 'reques
 }
 
 describe('YouTube product registration API', () => {
+  test('returns an actionable validation error without claiming or calling the provider', async () => {
+    const registerProduct = vi.fn();
+    const app = createYouTubeInvitationsApp({ registerProduct });
+    const response = await post(app, 'overlong-guide-request', { ...body, sellingGuide: '가'.repeat(301) });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      ok: false,
+      error: '유튜브 상품 설명은 300자 이하여야 해요.',
+      code: 'YOUTUBE_PRODUCT_VALIDATION_FAILED',
+    });
+    expect(registerProduct).not.toHaveBeenCalled();
+    expect(await (await app.request('/products/registrations')).json()).toMatchObject({ registrations: [] });
+  });
+
   test('uses an injected clock to reject today/past dates and expired groups before provider or claim', async () => {
     const registerProduct = vi.fn();
     const app = createYouTubeInvitationsApp({ registerProduct, now: () => new Date('2026-08-14T15:30:00.000Z') }); // Seoul: 2026-08-15

@@ -15,6 +15,8 @@ import {
   getYouTubePostRegistrationStep,
   normalizeYouTubeEndDate,
   summarizeYouTubeRegistration,
+  validateYouTubeSellingGuide,
+  youtubeSellingGuideLength,
   type YouTubeFamilyGroupDto,
   type YouTubeFamilyGroupsDto,
 } from "../lib/youtube-write";
@@ -169,9 +171,10 @@ export default function WritePage() {
     ? buildYouTubeListingTitle(title, selectedYoutubeGroup.listingCode)
     : title.trim();
   const youtubeRepeatMax = selectedYoutubeGroup ? Math.min(20, Math.max(0, selectedYoutubeGroup.availableSeats)) : 0;
+  const youtubeSellingGuideError = service === 'youtube' ? validateYouTubeSellingGuide(description) : null;
   const youtubeSubmitDisabled = service === 'youtube' && (
     youtubeGroupsLoading || youtubeEnabled !== true || !selectedYoutubeGroup || youtubeRepeatMax === 0
-    || repeat > youtubeRepeatMax || !endDate
+    || repeat > youtubeRepeatMax || !endDate || Boolean(youtubeSellingGuideError)
   );
 
   const getCurrentPreset = (serviceKey = service) => getPresetForService(serviceKey, productPresetStore);
@@ -296,6 +299,8 @@ export default function WritePage() {
       if (selectedYoutubeGroup.subscriptionEndDate && endDate > selectedYoutubeGroup.subscriptionEndDate) {
         setError(`종료일은 구독 만료일 ${selectedYoutubeGroup.subscriptionEndDate}을 넘을 수 없어요.`); return;
       }
+      const sellingGuideError = validateYouTubeSellingGuide(description);
+      if (sellingGuideError) { setError(sellingGuideError); return; }
     }
     if (!endDate) { setError('종료일을 입력해주세요'); return; }
     if (isYoutube && endDate < getSeoulTomorrow()) { setError('종료일은 내일 이후로 선택해주세요.'); return; }
@@ -344,6 +349,7 @@ export default function WritePage() {
               stopSafely = true;
               throw new Error('등록 결과가 불확실합니다. 자동 재시도 금지 · 초대 관리 확인 후 처리해주세요.');
             }
+            if (response.status >= 400 && response.status < 500) stopSafely = true;
             throw new Error(payload.error || '유튜브 초대형 상품 등록에 실패했어요.');
           }
           results.push(payload.productUsid!);
@@ -495,6 +501,9 @@ export default function WritePage() {
   if (step === 'done') {
     const successItems = progressList.filter(p => p.status === 'done');
     const youtubeSummary = summarizeYouTubeRegistration(progressList);
+    const youtubeFailureMessages = [...new Set(progressList
+      .filter(item => item.status === 'error' && item.error && !item.error.includes('후속 등록을 중단'))
+      .map(item => item.error!))];
     return (
       <div style={{ padding: '20px 16px' }}>
         <div style={{ background: '#fff', borderRadius: 20, padding: 28, textAlign: 'center', boxShadow: '0 4px 20px rgba(167,139,250,0.15)' }}>
@@ -516,7 +525,10 @@ export default function WritePage() {
           )}
           {progressList.some(item => item.status === 'error') && (
             <div style={{ background: '#FFF0F0', color: '#DC2626', borderRadius: 10, padding: '9px 12px', marginBottom: 14, fontSize: 11, textAlign: 'left' }}>
-              일부 등록이 완료되지 않았어요. 자동 재시도 금지 · 초대 관리에서 결과를 확인해주세요.
+              <strong>실패 원인</strong><br />
+              {youtubeFailureMessages.length > 0
+                ? youtubeFailureMessages.map(message => <span key={message}>{message}<br /></span>)
+                : '일부 등록이 완료되지 않았어요. 자동 재시도 금지 · 초대 관리에서 결과를 확인해주세요.'}
             </div>
           )}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20 }}>
@@ -529,7 +541,12 @@ export default function WritePage() {
               </a>
             ))}
           </div>
-          <button onClick={reset} style={{ width: '100%', ...btnStyle('#A78BFA', '#fff') }}>새 글 작성</button>
+          <button
+            onClick={service === 'youtube' && successItems.length === 0 ? () => setStep('form') : reset}
+            style={{ width: '100%', ...btnStyle('#A78BFA', '#fff') }}
+          >
+            {service === 'youtube' && successItems.length === 0 ? '입력 수정하기' : '새 글 작성'}
+          </button>
         </div>
       </div>
     );
@@ -1030,7 +1047,16 @@ export default function WritePage() {
         <textarea value={description} onChange={e => setDescription(e.target.value)}
           placeholder={'예:\n- 본인 프로필만 접속해 주세요.\n- 여러 기기 동시 접속 불가합니다.\n- 인증 요청 시 채팅방 이용해주세요.'}
           style={{ ...inputStyle, height: 120, resize: 'vertical' }} />
-        <div style={{ fontSize: 11, color: '#C4B5FD', textAlign: 'right', marginTop: -6 }}>{description.length}자</div>
+        <div style={{ fontSize: 11, color: youtubeSellingGuideError ? '#DC2626' : '#C4B5FD', textAlign: 'right', marginTop: -6 }}>
+          {service === 'youtube'
+            ? `${youtubeSellingGuideLength(description)}/300자`
+            : `${description.length}자`}
+        </div>
+        {youtubeSellingGuideError && (
+          <div role="alert" style={{ marginTop: 6, color: '#DC2626', fontSize: 11, fontWeight: 700 }}>
+            {youtubeSellingGuideError}
+          </div>
+        )}
       </div>
 
       {/* ⑤ 반복 횟수 */}

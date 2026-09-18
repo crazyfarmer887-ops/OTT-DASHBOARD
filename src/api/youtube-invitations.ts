@@ -509,7 +509,12 @@ app.post('/products', async (c) => {
   let submittedModel: YouTubeSharingNoKeepProductModel;
   try {
     submittedModel = buildYouTubeSharingNoKeepProductModel({ endDate: body.endDate as string, price: body.price as number, name: body.name as string, sellingGuide: body.sellingGuide as string });
-  } catch { return c.json({ ok: false, error: 'invalid request' }, 400); }
+  } catch (error) {
+    const validationMessage = error instanceof TypeError && /sellingGuide.*300/.test(error.message)
+      ? '유튜브 상품 설명은 300자 이하여야 해요.'
+      : '입력값을 다시 확인해주세요.';
+    return c.json({ ok: false, error: validationMessage, code: 'YOUTUBE_PRODUCT_VALIDATION_FAILED' }, 400);
+  }
   const seoulParts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit',
   }).formatToParts(dependencies.now?.() ?? new Date()).map((part) => [part.type, part.value]));

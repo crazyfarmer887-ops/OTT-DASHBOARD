@@ -1,4 +1,5 @@
 import { appendYouTubeListingCode } from '../../lib/youtube-listing-code';
+import { MAX_YOUTUBE_SELLING_GUIDE_CHARACTERS } from '../../lib/graytag-fill';
 
 export { appendYouTubeListingCode } from '../../lib/youtube-listing-code';
 
@@ -52,6 +53,16 @@ export function summarizeYouTubeRegistration(items: YouTubeRegistrationProgress[
 
 export function getYouTubePostRegistrationStep(_successCount: number): 'done' {
   return 'done';
+}
+
+export function youtubeSellingGuideLength(value: string): number {
+  return Array.from(value.trim()).length;
+}
+
+export function validateYouTubeSellingGuide(value: string): string | null {
+  const length = youtubeSellingGuideLength(value);
+  if (length <= MAX_YOUTUBE_SELLING_GUIDE_CHARACTERS) return null;
+  return `유튜브 상품 설명은 ${MAX_YOUTUBE_SELLING_GUIDE_CHARACTERS}자 이하여야 해요. 현재 ${length}자입니다.`;
 }
 
 export function clampYouTubeRepeat(requested: number, availableSeats: number): number {

@@ -7,6 +7,7 @@ import {
   clampYouTubeRepeat,
   createYouTubeIdempotencyKey,
   normalizeYouTubeEndDate,
+  validateYouTubeSellingGuide,
   getSeoulTomorrow,
   summarizeYouTubeRegistration,
   getYouTubePostRegistrationStep,
@@ -60,6 +61,25 @@ test('buildYouTubeProductRequest emits the exact safe endpoint, headers and body
       sellingGuide: '초대 안내',
     }),
   });
+});
+
+test('YouTube selling guide validation matches the 300-character server contract', () => {
+  assert.equal(validateYouTubeSellingGuide('가'.repeat(300)), null);
+  assert.equal(
+    validateYouTubeSellingGuide(` ${'가'.repeat(301)} `),
+    '유튜브 상품 설명은 300자 이하여야 해요. 현재 301자입니다.',
+  );
+  assert.equal(validateYouTubeSellingGuide('😀'.repeat(301)), '유튜브 상품 설명은 300자 이하여야 해요. 현재 301자입니다.');
+});
+
+test('write page blocks invalid YouTube descriptions before progress and stops repeated client errors', () => {
+  const source = readFileSync(new URL('../src/web/pages/write.tsx', import.meta.url), 'utf8');
+  const validationIndex = source.indexOf('validateYouTubeSellingGuide(description)');
+  const progressIndex = source.indexOf("setStep('progress')");
+  assert.ok(validationIndex >= 0 && validationIndex < progressIndex);
+  assert.match(source, /response\.status\s*>=\s*400\s*&&\s*response\.status\s*<\s*500[\s\S]*stopSafely\s*=\s*true/);
+  assert.match(source, /실패 원인/);
+  assert.match(source, /입력 수정하기/);
 });
 
 test('preview title and request name share trimmed edge handling while preserving internal spaces', () => {
