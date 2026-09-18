@@ -28,6 +28,7 @@ import { mergeOnSaleAccountsIntoManagement } from '../lib/on-sale-accounts';
 import { mergeArchivedAccountsIntoManagement } from '../lib/management-archived-accounts';
 import { deleteManagementPaymentCard, isManagementPaymentCardAccountKeyKnown, loadManagementPaymentCards, managementPaymentCardKey, mergeManagementPaymentCards, replaceManagementPaymentCardAccountKeys, upsertManagementPaymentCard } from '../lib/management-payment-cards';
 import { applyManagementHiddenAccounts, hideManagementAccount, loadManagementHiddenAccounts, unhideManagementAccount } from '../lib/management-hidden-accounts';
+import { managementAccountScope } from '../lib/management-account-scope';
 import { buildAccountCheckInflowStore, isAccountCheckStatus, type AccountCheckInflowStore } from '../lib/account-check-inflow';
 import { resolveManagementAccount } from '../lib/management-account-resolution';
 import { resolveCreatedSimpleLoginAliasId } from '../lib/simplelogin-alias-id';
@@ -1618,6 +1619,7 @@ app.delete('/generated-accounts/:id', async (c) => {
 app.post('/my/management', async (c) => {
   const body = await c.req.json() as any;
   const accountId = graytagAccountIdFromRequest(c);
+  const managementScope = managementAccountScope(accountId);
   const cookies = resolveCookies(body, accountId);
   if (!cookies) return c.json({ error: 'JSESSIONID가 필요합니다 (수동 입력 또는 session-keeper 쿠키 없음)' }, 400);
 
@@ -1677,8 +1679,11 @@ app.post('/my/management', async (c) => {
     // 일별 파티 유입: 계정확인중 최초 반영일을 저장한다.
     // 계정 사용중으로 바뀌면 최초 반영일을 유지해서 중복 유입으로 잡지 않고,
     // 취소/삭제되면 저장소에서 제거해서 유입 그래프에서도 빠지게 한다.
-    const accountCheckInflow = buildAccountCheckInflowStore(allDeals, readAccountCheckInflowStore());
-    writeAccountCheckInflowStore(accountCheckInflow.store);
+    const accountCheckInflow = buildAccountCheckInflowStore(
+      allDeals,
+      managementScope.useLocalAccountRecords ? readAccountCheckInflowStore() : {},
+    );
+    if (managementScope.persistLocalAccountState) writeAccountCheckInflowStore(accountCheckInflow.store);
 
     // 계정확인중 거래: keepAcct가 없으면 채팅방에서 판매자가 전달한 계정 ID를 파싱해서 계정 관리에 반영
     {
@@ -1756,10 +1761,10 @@ app.post('/my/management', async (c) => {
 
     // email(keepAcct) 기준으로 그룹핑
     const accountMap: Record<string, AccountEntry> = {};
-    const profileNameByProductUsid = buildProfileNameByProductUsid();
-    const profileAssignmentByProductUsid = buildProfileAssignmentByProductUsid();
-    const generatedStore = readGeneratedAccountStore();
-    const checklistStore = loadPartyMaintenanceChecklistStore();
+    const profileNameByProductUsid = managementScope.useLocalAccountRecords ? buildProfileNameByProductUsid() : new Map();
+    const profileAssignmentByProductUsid = managementScope.useLocalAccountRecords ? buildProfileAssignmentByProductUsid() : new Map();
+    const generatedStore = managementScope.useLocalAccountRecords ? readGeneratedAccountStore() : {};
+    const checklistStore = managementScope.useLocalAccountRecords ? loadPartyMaintenanceChecklistStore() : {};
     const findGeneratedAccountForManagement = (serviceType: string, accountEmail: string) => {
       const normalizedService = String(serviceType || '').trim();
       const normalizedEmail = String(accountEmail || '').trim().toLowerCase();
@@ -1772,13 +1777,13 @@ app.post('/my/management', async (c) => {
         return accountService === '티빙+웨이브' && (normalizedService === '웨이브' || normalizedService === '티빙');
       }) as any;
     };
-    const partyAccessStoreBeforeSync = loadPartyAccessLinkStore();
+    const partyAccessStoreBeforeSync = managementScope.useLocalAccountRecords ? loadPartyAccessLinkStore() : {};
     const syncedPartyAccess = syncPartyAccessStoreWithGraytagDeals({
       store: partyAccessStoreBeforeSync,
       deals: allDeals,
-      renewalJobs: renewalJobsForPartyAccessSync(),
+      renewalJobs: managementScope.useLocalAccountRecords ? renewalJobsForPartyAccessSync() : [],
     });
-    if (syncedPartyAccess.changed) savePartyAccessLinkStore(syncedPartyAccess.store);
+    if (managementScope.persistLocalAccountState && syncedPartyAccess.changed) savePartyAccessLinkStore(syncedPartyAccess.store);
     const deliverySnapshotByMember = buildPartyAccessDeliverySnapshotByMember(
       syncedPartyAccess.store,
       { includeManagementSynthetic: false },
@@ -1800,6 +1805,7 @@ app.post('/my/management', async (c) => {
     });
 
     const findPartyAccessSnapshotsFromText = (text: string, serviceType: string): PartyAccessDeliverySnapshot[] => {
+      if (!managementScope.useLocalAccountRecords) return [];
       const records: PartyAccessLinkRecord[] = [];
       for (const token of extractPartyAccessTokensFromText(text)) {
         const tokenScopedStore = syncedPartyAccess.store[partyAccessTokenHash(token)]
@@ -2103,7 +2109,7 @@ app.post('/my/management', async (c) => {
           }
         }
       }
-      if (partyAccessStoreChanged) savePartyAccessLinkStore(nextPartyAccessStore);
+      if (managementScope.persistLocalAccountState && partyAccessStoreChanged) savePartyAccessLinkStore(nextPartyAccessStore);
     }
 
     // 서비스 타입별로 계정 묶기
@@ -2187,12 +2193,12 @@ app.post('/my/management', async (c) => {
       cookieSource: body?.JSESSIONID?.trim() ? 'manual' : 'session-keeper',
       updatedAt: new Date().toISOString(),
     };
-    const withGeneratedAccounts = mergeGeneratedAccountsIntoManagement(management, generatedStore);
+    const withGeneratedAccounts = managementScope.useLocalAccountRecords ? mergeGeneratedAccountsIntoManagement(management, generatedStore) : management;
     const withOnSaleAccounts = mergeOnSaleAccountsIntoManagement(withGeneratedAccounts, onSaleByKeepAcct);
-    const withArchivedAccounts = mergeArchivedAccountsIntoManagement(withOnSaleAccounts, syncedPartyAccess.store, checklistStore);
-    replaceManagementPaymentCardAccountKeys(withArchivedAccounts);
-    const withPaymentCards = mergeManagementPaymentCards(withArchivedAccounts);
-    return applyManagementHiddenAccounts(withPaymentCards);
+    const withArchivedAccounts = managementScope.useLocalAccountRecords ? mergeArchivedAccountsIntoManagement(withOnSaleAccounts, syncedPartyAccess.store, checklistStore) : withOnSaleAccounts;
+    if (managementScope.persistLocalAccountState) replaceManagementPaymentCardAccountKeys(withArchivedAccounts);
+    const withPaymentCards = managementScope.useLocalAccountRecords ? mergeManagementPaymentCards(withArchivedAccounts) : withArchivedAccounts;
+    return managementScope.useLocalAccountRecords ? applyManagementHiddenAccounts(withPaymentCards) : withPaymentCards;
   };
 
   try {
