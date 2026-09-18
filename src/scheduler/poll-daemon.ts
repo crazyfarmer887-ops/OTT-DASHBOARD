@@ -5,6 +5,7 @@ import { extractGraytagChats, findLatestBuyerInquiryMessage, type GraytagChatMes
 import { messageFingerprint, normalizeBuyerMessage, type AutoReplyCandidateMessage } from '../api/auto-reply-message';
 import { chatNotificationBroker } from '../realtime/chat-notification-broker';
 import { observeYouTubeInvitationPollSources } from '../lib/youtube-invitation-poller';
+import { buildGraytagCookieHeader, loadGraytagAuthCookies } from '../lib/graytag-sales-session';
 
 const POLL_SESSION_PATH = '/home/ubuntu/graytag-session/cookies.json';
 const POLL_INTERVAL_MS = 30 * 1000;
@@ -59,6 +60,35 @@ function loadSessionCookies(): { AWSALB: string; AWSALBCORS: string; JSESSIONID:
     if (!raw.JSESSIONID) return null;
     return { AWSALB: raw.AWSALB || '', AWSALBCORS: raw.AWSALBCORS || '', JSESSIONID: raw.JSESSIONID };
   } catch { return null; }
+}
+
+async function fetchYouTubeSalesDealSources(): Promise<{
+  before: any[];
+  after: any[];
+  beforeAuthoritative: boolean;
+  afterAuthoritative: boolean;
+} | null> {
+  const cookies = loadGraytagAuthCookies();
+  if (!cookies) return null;
+  const headers = { ...BASE_HEADERS, Cookie: buildGraytagCookieHeader(cookies) };
+  try {
+    const [beforeResponse, afterResponse] = await Promise.all([
+      fetch(buildPollDealsUrl(), { headers }),
+      fetch(buildPollAfterUsingDealsUrl(), { headers: { ...headers, Referer: 'https://graytag.co.kr/lender/deal/listAfterUsing' } }),
+    ]);
+    if (!beforeResponse.ok || !afterResponse.ok) return null;
+    const [beforePayload, afterPayload] = await Promise.all([beforeResponse.json(), afterResponse.json()]);
+    const before = extractAuthoritativeLenderDeals(beforePayload);
+    const after = extractAuthoritativeLenderDeals(afterPayload);
+    return {
+      before: before.deals,
+      after: after.deals,
+      beforeAuthoritative: before.authoritative,
+      afterAuthoritative: after.authoritative,
+    };
+  } catch {
+    return null;
+  }
 }
 
 function loadKnownDeals(): Record<string, string> {
@@ -523,12 +553,22 @@ async function pollGraytag() {
     }
     if (afterAuthoritative) {
       try {
-        observeYouTubeInvitationPollSources(
-          deals,
-          afterDeals,
-          beforeSource.authoritative,
-          afterAuthoritative,
-        );
+        const dedicatedYouTubeSessionConfigured = Boolean(loadGraytagAuthCookies());
+        const dedicatedYouTubeSources = dedicatedYouTubeSessionConfigured ? await fetchYouTubeSalesDealSources() : null;
+        if (dedicatedYouTubeSessionConfigured) {
+          if (dedicatedYouTubeSources?.beforeAuthoritative && dedicatedYouTubeSources.afterAuthoritative) {
+            observeYouTubeInvitationPollSources(
+              dedicatedYouTubeSources.before,
+              dedicatedYouTubeSources.after,
+              true,
+              true,
+            );
+          } else {
+            console.warn('[PollDaemon] YouTube 전용 세션 조회 실패 — 기본 계정으로 대체하지 않음');
+          }
+        } else {
+          observeYouTubeInvitationPollSources(deals, afterDeals, beforeSource.authoritative, afterAuthoritative);
+        }
       } catch {
         // Provider/store errors can carry identifiers. Keep daemon logs count/shape-only.
         console.error('[PollDaemon] YouTube invitation observation failed');

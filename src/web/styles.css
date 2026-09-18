@@ -321,6 +321,35 @@ body {
 .youtube-service-vacancy span { color: #6B7280; font-size: 9px; font-weight: 800; }
 .youtube-invite-link { background: #B91C1C; }
 .youtube-service-panel { min-width: 0; padding: 14px; border-top: 1px solid #FEE2E2; background: #FFFBFB; }
+.youtube-sales-session-card { margin-bottom: 12px; border: 1px solid #FCA5A5; border-radius: 14px; padding: 13px; background: linear-gradient(135deg, #fff 0%, #FFF7F7 100%); box-shadow: 0 5px 18px rgba(127,29,29,.07); }
+.youtube-sales-session-heading { display: flex; align-items: flex-start; gap: 10px; }
+.youtube-sales-session-icon { display: grid; place-items: center; flex: 0 0 38px; width: 38px; height: 38px; border-radius: 11px; background: #FEE2E2; color: #B91C1C; }
+.youtube-sales-session-heading > div:nth-child(2) { min-width: 0; flex: 1; }
+.youtube-sales-session-badge { display: inline-flex; border-radius: 999px; padding: 3px 7px; background: #B91C1C; color: #fff; font-size: 9px; font-weight: 900; letter-spacing: .02em; }
+.youtube-sales-session-heading h3 { margin: 5px 0 2px; color: #1F2937; font-size: 14px; }
+.youtube-sales-session-heading p { margin: 0; color: #6B7280; font-size: 10px; font-weight: 700; line-height: 1.55; }
+.youtube-session-refresh { display: grid; place-items: center; flex: 0 0 34px; width: 34px; height: 34px; border: 1px solid #FECACA; border-radius: 9px; background: #fff; color: #B91C1C; cursor: pointer; }
+.youtube-session-refresh:disabled { cursor: wait; opacity: .55; }
+.youtube-sales-session-status { display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 8px; margin-top: 11px; border-radius: 10px; padding: 9px 10px; }
+.youtube-sales-session-status.is-healthy { background: #ECFDF5; color: #047857; }
+.youtube-sales-session-status.needs-attention { background: #FFF7ED; color: #C2410C; }
+.youtube-sales-session-status strong, .youtube-sales-session-status span { display: block; }
+.youtube-sales-session-status strong { font-size: 11px; }
+.youtube-sales-session-status span { margin-top: 2px; color: #6B7280; font-size: 9px; font-weight: 700; overflow-wrap: anywhere; }
+.youtube-sales-session-status time { color: #9CA3AF; font-size: 9px; font-weight: 700; white-space: nowrap; }
+.youtube-sales-session-import { margin-top: 9px; }
+.youtube-sales-session-import summary { display: inline-flex; align-items: center; gap: 5px; color: #B91C1C; font-size: 10px; font-weight: 900; cursor: pointer; }
+.youtube-sales-session-form { display: grid; gap: 7px; margin-top: 9px; }
+.youtube-sales-session-form label { color: #4B5563; font-size: 10px; font-weight: 900; }
+.youtube-sales-session-form textarea { min-height: 105px; resize: vertical; box-sizing: border-box; width: 100%; border: 1px solid #FCA5A5; border-radius: 10px; padding: 9px 10px; background: #fff; color: #111827; font: 10px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.youtube-sales-session-form textarea:focus { outline: none; border-color: #DC2626; box-shadow: 0 0 0 3px rgba(220,38,38,.1); }
+.youtube-sales-session-help { color: #6B7280; font-size: 9px; line-height: 1.5; }
+.youtube-sales-session-form button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; justify-self: start; min-height: 38px; border: 0; border-radius: 9px; padding: 8px 13px; background: #B91C1C; color: #fff; font: inherit; font-size: 10px; font-weight: 900; cursor: pointer; }
+.youtube-sales-session-form button:disabled { cursor: not-allowed; opacity: .5; }
+.youtube-sales-session-message { margin-top: 8px; border-radius: 9px; padding: 8px 10px; font-size: 10px; font-weight: 800; }
+.youtube-sales-session-message.success { background: #ECFDF5; color: #047857; }
+.youtube-sales-session-message.error { background: #FEF2F2; color: #B91C1C; }
+.is-spinning { animation: spin 1s linear infinite; }
 .youtube-service-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
 .youtube-service-toolbar p { margin: 0; color: #6B7280; font-size: 11px; font-weight: 700; }
 .youtube-service-toolbar button, .youtube-service-notice button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; flex: 0 0 auto; border: 0; border-radius: 10px; padding: 8px 11px; background: #DC2626; color: #fff; font: inherit; font-size: 11px; font-weight: 900; cursor: pointer; }
@@ -390,6 +419,8 @@ body {
   }
 
   .youtube-service-panel { padding: 10px; }
+  .youtube-sales-session-status { grid-template-columns: auto minmax(0,1fr); }
+  .youtube-sales-session-status time { grid-column: 2; white-space: normal; }
   .youtube-service-toolbar { align-items: stretch; flex-direction: column; }
   .youtube-family-group-grid { padding: 0; }
   .youtube-family-member dl > div { grid-template-columns: minmax(0, 1fr); }

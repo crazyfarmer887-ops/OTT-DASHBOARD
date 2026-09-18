@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import QuickAccountCreatedModal from "../components/quick-account-created-modal";
+import YouTubeSalesSessionCard from "../components/youtube-sales-session-card";
 import { findQuickPostAccount, type QuickGeneratedAccount } from "../lib/quick-generated-account-flow";
 import { CATEGORIES } from "../lib/constants";
 import { buildAccountSlotStates, calculateAccountVacancy, canAccountReceiveAutoFill, mergeRecruitingProducts, type SlotState } from "../lib/account-slots";
@@ -1968,6 +1969,7 @@ export default function ManagePage() {
 
               {isYouTubeServiceOpen && (
                 <div id="management-service-youtube" role="region" aria-label="유튜브 프리미엄 가족 그룹 목록" className="youtube-service-panel">
+                  <YouTubeSalesSessionCard />
                   <div className="youtube-service-toolbar">
                     <p>관리자 계정과 가족 그룹 초대 상태를 관리합니다. ID/PW · PIN · 프로필은 전달하지 않습니다.</p>
                     <button type="button" className="management-touch-target" onClick={openYouTubeGroupCreateForm} disabled={youtubeGroupsFeatureEnabled !== true || youtubeGroupMutationLoading}><PlusCircle size={14} /> 그룹 추가</button>
@@ -3030,4 +3032,3 @@ export default function ManagePage() {
     </div>
   );
 }
-

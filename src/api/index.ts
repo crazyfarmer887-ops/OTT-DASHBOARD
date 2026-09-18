@@ -56,6 +56,16 @@ import { buildYouTubeEmailExtractionPrompt, buildYouTubeInvitationAlert, buildYo
 import { normalizeYouTubeAuditReason } from '../lib/youtube-audit-reason';
 import { readAuthoritativeYouTubeSellerProducts, reconcileYouTubeProductRegistration, type YouTubeProductRegistrationReconciliationClaim } from '../lib/youtube-product-registration-reconciliation';
 import { ChatRoomOrganizationValidationError, createChatRoomCategory, deleteChatRoomCategory, loadChatRoomOrganization, renameChatRoomCategory, updateChatRoomOrganizationEntry } from '../lib/chat-room-organization';
+import {
+  buildGraytagCookieHeader,
+  loadGraytagAuthCookies,
+  parseGraytagCookieImport,
+  writeGraytagAuthCookiesAtomic,
+  writeJsonAtomic,
+  YOUTUBE_SALES_SESSION_COOKIE_PATH,
+  YOUTUBE_SALES_SESSION_STATUS_PATH,
+  type GraytagAuthCookies,
+} from '../lib/graytag-sales-session';
 
 const EMAIL_SERVER = "http://127.0.0.1:3001";
 // MANAGEMENT_HIDDEN_ACCOUNTS_PATH is owned by src/lib/management-hidden-accounts.ts.
@@ -67,6 +77,7 @@ const PUBLIC_API_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 const ADMIN_REQUIRED_GET_PREFIXES = [
   '/session/cookies',
   '/session/status',
+  '/session/accounts',
   '/everyview/session/status',
   '/chat/rooms',
   '/chat/messages',
@@ -351,14 +362,14 @@ function buildCookieStr(cookies: { AWSALB: string; AWSALBCORS: string; JSESSIONI
 }
 
 async function registerYouTubeSharingNoKeepProduct(model: YouTubeSharingNoKeepProductModel): Promise<Response> {
-  const cookies = resolveCookies({});
-  if (!cookies) throw new Error('saved session unavailable');
+  const cookies = loadGraytagAuthCookies();
+  if (!cookies) throw new Error('YouTube sales session unavailable');
   const multipart = buildMultipartJsonBody(model);
   return rateLimitedFetch('https://graytag.co.kr/ws/lender/registerProduct', {
     method: 'POST',
     headers: {
       ...BASE_HEADERS,
-      Cookie: buildCookieStr(cookies),
+      Cookie: buildGraytagCookieHeader(cookies),
       'Content-Type': multipart.contentType,
       Referer: 'https://graytag.co.kr/lender/product/register/input',
     },
@@ -369,13 +380,13 @@ async function registerYouTubeSharingNoKeepProduct(model: YouTubeSharingNoKeepPr
 }
 
 async function reconcileYouTubeProductRegistrationFromSeller(claim: YouTubeProductRegistrationReconciliationClaim) {
-  const cookies = resolveCookies({});
+  const cookies = loadGraytagAuthCookies();
   if (!cookies) return { status: 'uncertain' as const };
   const observation = await readAuthoritativeYouTubeSellerProducts(
     (url, options) => rateLimitedFetch(url, options, true),
     {
       ...BASE_HEADERS,
-      Cookie: buildCookieStr(cookies),
+      Cookie: buildGraytagCookieHeader(cookies),
       Referer: 'https://graytag.co.kr/lender/deal/list',
     },
   );
@@ -383,14 +394,14 @@ async function reconcileYouTubeProductRegistrationFromSeller(claim: YouTubeProdu
 }
 
 async function finishYouTubeInvitationDelivery(dealUsid: string): Promise<Response> {
-  const cookies = resolveCookies({});
-  if (!cookies) throw new Error('saved session unavailable');
+  const cookies = loadGraytagAuthCookies();
+  if (!cookies) throw new Error('YouTube sales session unavailable');
   const multipart = buildMultipartJsonBody({ dealUsid });
   return rateLimitedFetch('https://graytag.co.kr/ws/lender/finishProductDelivery', {
     method: 'POST',
     headers: {
       ...BASE_HEADERS,
-      Cookie: buildCookieStr(cookies),
+      Cookie: buildGraytagCookieHeader(cookies),
       'Content-Type': multipart.contentType,
       Referer: 'https://graytag.co.kr/lender/deal/list',
     },
@@ -401,9 +412,9 @@ async function finishYouTubeInvitationDelivery(dealUsid: string): Promise<Respon
 }
 
 async function fetchYouTubeInvitationProviderStatus(dealUsid: string): Promise<string | null> {
-  const cookies = resolveCookies({});
+  const cookies = loadGraytagAuthCookies();
   if (!cookies) return null;
-  const headers = (referer: string) => ({ ...BASE_HEADERS, Cookie: buildCookieStr(cookies), Referer: referer });
+  const headers = (referer: string) => ({ ...BASE_HEADERS, Cookie: buildGraytagCookieHeader(cookies), Referer: referer });
   const observations: any[] = [];
   for (const [kind, referer] of [
     ['before', 'https://graytag.co.kr/lender/deal/list'],
@@ -674,6 +685,131 @@ app.get('/session/cookies', (c) => {
     hasJSESSIONID: Boolean(cookies.JSESSIONID),
     AWSALB: cookies.AWSALB ? '✅' : '',
     AWSALBCORS: cookies.AWSALBCORS ? '✅' : '',
+  });
+});
+
+type YouTubeSalesSessionStatus = {
+  status: 'ok' | 'expired' | 'unknown';
+  detail: string;
+  updatedAt: string;
+};
+
+function loadYouTubeSalesSessionStatus(): YouTubeSalesSessionStatus | null {
+  try {
+    const parsed = JSON.parse(readFileSync(YOUTUBE_SALES_SESSION_STATUS_PATH, 'utf8')) as Partial<YouTubeSalesSessionStatus>;
+    if (!parsed || typeof parsed !== 'object' || typeof parsed.updatedAt !== 'string') return null;
+    return {
+      status: parsed.status === 'ok' || parsed.status === 'expired' ? parsed.status : 'unknown',
+      detail: typeof parsed.detail === 'string' ? parsed.detail.slice(0, 180) : '',
+      updatedAt: parsed.updatedAt,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function validateYouTubeSalesSession(cookies: GraytagAuthCookies): Promise<{ valid: boolean; detail: string }> {
+  try {
+    const response = await fetch(
+      'https://graytag.co.kr/ws/lender/findBeforeUsingLenderDeals?finishedDealIncluded=false&sorting=Latest&page=1&rows=1',
+      {
+        headers: {
+          ...BASE_HEADERS,
+          Cookie: buildGraytagCookieHeader(cookies),
+          Referer: 'https://graytag.co.kr/lender/deal/list',
+        },
+        redirect: 'manual',
+        signal: AbortSignal.timeout(15_000),
+      },
+    );
+    if (!response.ok || response.status >= 300 && response.status < 400) {
+      return { valid: false, detail: `GrayTag 인증 응답 오류 (${response.status})` };
+    }
+    const payload = await response.json().catch(() => null) as { succeeded?: unknown; message?: unknown } | null;
+    if (payload?.succeeded !== true) {
+      return { valid: false, detail: typeof payload?.message === 'string' ? payload.message.slice(0, 160) : 'GrayTag 로그인 세션이 유효하지 않습니다.' };
+    }
+    return { valid: true, detail: '전용 판매 계정 연결 확인 완료' };
+  } catch {
+    return { valid: false, detail: 'GrayTag 연결 확인에 실패했습니다.' };
+  }
+}
+
+app.get('/session/accounts', (c) => {
+  const primary = loadSessionCookies();
+  const youtube = loadGraytagAuthCookies();
+  const youtubeStatus = loadYouTubeSalesSessionStatus();
+  return c.json({
+    accounts: [
+      {
+        id: 'primary',
+        label: '기본 GrayTag 계정',
+        purpose: '일반 상품 관리',
+        connected: Boolean(primary),
+        dedicated: false,
+      },
+      {
+        id: 'youtube-invite-sales',
+        label: '유튜브 초대장 판매 전용',
+        purpose: '유튜브 초대장 상품 등록 · 판매 감지 · 전달 처리',
+        connected: Boolean(youtube),
+        dedicated: true,
+        status: youtubeStatus?.status || (youtube ? 'unknown' : 'missing'),
+        detail: youtubeStatus?.detail || (youtube ? '마지막 연결 확인 기록이 없습니다.' : '전용 세션이 아직 등록되지 않았습니다.'),
+        updatedAt: youtubeStatus?.updatedAt || null,
+      },
+    ],
+  });
+});
+
+app.post('/session/accounts/youtube-invite-sales/cookies', async (c) => {
+  let payload: unknown;
+  try { payload = await c.req.json(); } catch { return c.json({ ok: false, error: '쿠키 JSON을 읽을 수 없습니다.' }, 400); }
+
+  let cookies: GraytagAuthCookies;
+  try {
+    const body = payload && typeof payload === 'object' && !Array.isArray(payload) && 'cookies' in payload
+      ? (payload as { cookies: unknown }).cookies
+      : payload;
+    cookies = parseGraytagCookieImport(body);
+  } catch (error) {
+    return c.json({ ok: false, error: error instanceof Error ? error.message : '쿠키 형식이 올바르지 않습니다.' }, 400);
+  }
+
+  const validation = await validateYouTubeSalesSession(cookies);
+  const updatedAt = new Date().toISOString();
+  if (!validation.valid) {
+    return c.json({ ok: false, valid: false, error: validation.detail }, 401);
+  }
+
+  try {
+    writeGraytagAuthCookiesAtomic(YOUTUBE_SALES_SESSION_COOKIE_PATH, cookies);
+    writeJsonAtomic(YOUTUBE_SALES_SESSION_STATUS_PATH, { status: 'ok', detail: validation.detail, updatedAt });
+  } catch {
+    return c.json({ ok: false, error: '서버에 전용 세션을 저장하지 못했습니다.' }, 500);
+  }
+
+  writeAudit({
+    actor: authenticatedAdminActor(c),
+    action: 'session.youtube-sales.updated',
+    targetType: 'graytagSession',
+    targetId: 'youtube-invite-sales',
+    summary: 'YouTube invitation sales session updated',
+    result: 'success',
+    requestId: auditRequestId(c),
+    details: { reason: 'dedicated-session-import' },
+  });
+
+  return c.json({
+    ok: true,
+    valid: true,
+    account: {
+      id: 'youtube-invite-sales',
+      label: '유튜브 초대장 판매 전용',
+      status: 'ok',
+      detail: validation.detail,
+      updatedAt,
+    },
   });
 });
 
