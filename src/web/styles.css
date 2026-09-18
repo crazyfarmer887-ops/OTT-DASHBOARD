@@ -115,6 +115,68 @@ body {
   box-shadow: 0 0 0 5px #DBEAFE;
 }
 
+.management-hidden-accounts-panel {
+  margin-bottom: 12px;
+  overflow: hidden;
+  background: #F9FAFB;
+  border: 1.5px solid #E5E7EB;
+  border-radius: 14px;
+}
+
+.management-hidden-accounts-toggle {
+  width: 100%;
+  min-height: 44px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 0;
+  background: transparent;
+  color: #6B7280;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.management-hidden-accounts-toggle:hover {
+  background: #F3F4F6;
+}
+
+.management-hidden-accounts-summary {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.management-hidden-accounts-title {
+  flex-shrink: 0;
+  color: #374151;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.management-hidden-accounts-description {
+  min-width: 0;
+  color: #9CA3AF;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.management-hidden-accounts-chevron {
+  transition: transform 160ms ease;
+}
+
+.management-hidden-accounts-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 12px 12px;
+  border-top: 1px solid #E5E7EB;
+  padding-top: 10px;
+}
+
 .management-service-group {
   min-width: 0;
   overflow: hidden;
@@ -424,6 +486,12 @@ body {
   .youtube-service-toolbar { align-items: stretch; flex-direction: column; }
   .youtube-family-group-grid { padding: 0; }
   .youtube-family-member dl > div { grid-template-columns: minmax(0, 1fr); }
+
+  .management-hidden-accounts-summary {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 1px;
+  }
 
   .management-service-header {
     align-items: stretch;

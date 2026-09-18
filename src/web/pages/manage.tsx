@@ -276,6 +276,7 @@ export default function ManagePage() {
   const accountCreateCopy = getGeneratedAccountCreationCopy(accountCreateService);
   const [emailAliases, setEmailAliases] = useState<EmailAlias[]>([]);
   const [hiddenAccounts, setHiddenAccounts] = useState<ManagementHiddenAccount[]>([]);
+  const [hiddenAccountsOpen, setHiddenAccountsOpen] = useState(false);
   const [hiddenAccountLoadingKey, setHiddenAccountLoadingKey] = useState<string | null>(null);
   const [paymentCardDrafts, setPaymentCardDrafts] = useState<Record<string, PaymentCardDraft>>({});
   const [paymentCardLoadingKey, setPaymentCardLoadingKey] = useState<string | null>(null);
@@ -1805,27 +1806,40 @@ export default function ManagePage() {
 
       {/* 숨긴 계정 관리 */}
       {hiddenAccounts.length > 0 && (
-        <div style={{ background:'#F9FAFB', border:'1.5px solid #E5E7EB', borderRadius:14, padding:'10px 12px', marginBottom:12 }}>
-          <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:7 }}>
-            <EyeOff size={13} color="#6B7280" />
-            <span style={{ fontSize:12, color:'#374151', fontWeight:900 }}>숨긴 계정 {hiddenAccounts.length}개</span>
-            <span style={{ fontSize:10, color:'#9CA3AF', fontWeight:700 }}>계정 관리·메꾸기·수익에서 제외, alias는 유지</span>
-          </div>
-          <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
-            {hiddenAccounts.map(item => {
-              const key = hiddenAccountKey(item);
-              const busy = hiddenAccountLoadingKey === key;
-              return (
-                <button key={key} onClick={() => restoreHiddenAccount(item)} disabled={busy}
-                  title="다시 보이게 복원"
-                  style={{ border:'none', borderRadius:999, padding:'6px 9px', background:busy?'#D1D5DB':'#fff', color:'#4B5563', fontSize:10, fontWeight:900, cursor:busy?'not-allowed':'pointer', display:'flex', alignItems:'center', gap:5, boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
-                  {busy ? <Loader2 size={11} style={{ animation:'spin 1s linear infinite' }} /> : <Eye size={11} />}
-                  {item.serviceType} · {item.accountEmail} 복원
-                </button>
-              );
-            })}
-          </div>
-        </div>
+        <section className="management-hidden-accounts-panel">
+          <button
+            type="button"
+            className="management-hidden-accounts-toggle"
+            onClick={() => setHiddenAccountsOpen(open => !open)}
+            aria-expanded={hiddenAccountsOpen}
+            aria-controls="management-hidden-accounts-list"
+          >
+            <EyeOff size={16} aria-hidden="true" />
+            <span className="management-hidden-accounts-summary">
+              <span className="management-hidden-accounts-title">숨긴 계정 {hiddenAccounts.length}개</span>
+              <span className="management-hidden-accounts-description">계정 관리·메꾸기·수익에서 제외, alias는 유지</span>
+            </span>
+            {hiddenAccountsOpen
+              ? <ChevronDown className="management-hidden-accounts-chevron" size={17} aria-hidden="true" />
+              : <ChevronRight className="management-hidden-accounts-chevron" size={17} aria-hidden="true" />}
+          </button>
+          {hiddenAccountsOpen && (
+            <div id="management-hidden-accounts-list" className="management-hidden-accounts-list">
+              {hiddenAccounts.map(item => {
+                const key = hiddenAccountKey(item);
+                const busy = hiddenAccountLoadingKey === key;
+                return (
+                  <button key={key} onClick={() => restoreHiddenAccount(item)} disabled={busy}
+                    title="다시 보이게 복원"
+                    style={{ border:'none', borderRadius:999, padding:'6px 9px', background:busy?'#D1D5DB':'#fff', color:'#4B5563', fontSize:10, fontWeight:900, cursor:busy?'not-allowed':'pointer', display:'flex', alignItems:'center', gap:5, boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
+                    {busy ? <Loader2 size={11} style={{ animation:'spin 1s linear infinite' }} /> : <Eye size={11} />}
+                    {item.serviceType} · {item.accountEmail} 복원
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </section>
       )}
 
       {/* 초기 안내 */}

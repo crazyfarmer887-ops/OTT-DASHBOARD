@@ -29,6 +29,10 @@ test('account management uses responsive accessible account cards', () => {
   assert.match(manage, /aria-expanded=\{isAcctOpen\}/);
   assert.match(manage, /aria-controls=\{servicePanelId\}/);
   assert.match(manage, /aria-controls=\{accountPanelId\}/);
+  assert.match(manage, /useState\(false\).*hiddenAccountsOpen|hiddenAccountsOpen.*useState\(false\)/s);
+  assert.match(manage, /aria-expanded=\{hiddenAccountsOpen\}/);
+  assert.match(manage, /aria-controls="management-hidden-accounts-list"/);
+  assert.match(manage, /hiddenAccountsOpen\s*&&\s*\(/);
   assert.match(manage, /role="region"/);
   assert.match(manage, /aria-label=\{`\$\{displayAccountEmail\} 상세 관리`\}/);
   assert.equal((manage.match(/openFillModalForAccount\(acct, vi\)/g) || []).length, 1, 'account card must not render duplicate fill actions');
@@ -46,5 +50,6 @@ test('account management uses responsive accessible account cards', () => {
   assert.match(css, /\.management-touch-target[^}]*min-height:\s*44px/s);
   assert.match(css, /\.account-management-page[^}]*:focus-visible/s);
   assert.match(css, /\.management-account-email[^}]*overflow-wrap:\s*anywhere/s);
+  assert.match(css, /\.management-hidden-accounts-toggle\s*\{[^}]*min-height:\s*44px/s);
   assert.match(css, /@media\s*\(max-width:\s*320px\)/);
 });
