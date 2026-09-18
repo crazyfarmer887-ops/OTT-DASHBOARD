@@ -482,7 +482,7 @@ function occupiedYouTubeFamilySeats(
   }
   for (const registration of registrations) {
     if (registration.familyGroupId.trim().toLowerCase() !== normalizedFamilyGroupId
-      || registration.status === 'failed') continue;
+      || registration.status === 'failed' || registration.status === 'deleted') continue;
     if (registration.status === 'registered' && registration.productUsid) {
       occupiedProducts.add(registration.productUsid.trim().toLowerCase());
     } else if (registration.status === 'submitting' || registration.status === 'uncertain') {
@@ -583,7 +583,9 @@ app.post('/products', async (c) => {
   if (claim.kind === 'replay') return c.json({ ok: true, replayed: true, productUsid: claim.record.productUsid, familyGroupId, status: 'registered' });
   if (claim.kind === 'blocked') {
     const code = claim.record.status === 'uncertain' ? 'YOUTUBE_PRODUCT_REGISTRATION_UNCERTAIN'
-      : claim.record.status === 'failed' ? 'YOUTUBE_PRODUCT_REGISTRATION_FAILED' : 'YOUTUBE_PRODUCT_REGISTRATION_IN_PROGRESS';
+      : claim.record.status === 'failed' ? 'YOUTUBE_PRODUCT_REGISTRATION_FAILED'
+        : claim.record.status === 'deleted' ? 'YOUTUBE_PRODUCT_REGISTRATION_DELETED'
+          : 'YOUTUBE_PRODUCT_REGISTRATION_IN_PROGRESS';
     return registrationError(c, 409, code);
   }
 
@@ -632,15 +634,17 @@ app.post('/products', async (c) => {
 
 app.get('/products/registrations', (c) => {
   try {
-    const registrations = productRegistrationsStore().list().map(({ idempotencyKey, familyGroupId, status, productUsid, createdAt, updatedAt }) => ({
-      registrationDisplayId: privacySafeIdentifier('registration', idempotencyKey),
-      familyGroupId,
-      status,
-      productUsid,
-      productDisplayId: productUsid ? privacySafeIdentifier('product', productUsid) : null,
-      createdAt,
-      updatedAt,
-    }));
+    const registrations = productRegistrationsStore().list()
+      .filter((registration) => registration.status !== 'deleted')
+      .map(({ idempotencyKey, familyGroupId, status, productUsid, createdAt, updatedAt }) => ({
+        registrationDisplayId: privacySafeIdentifier('registration', idempotencyKey),
+        familyGroupId,
+        status,
+        productUsid,
+        productDisplayId: productUsid ? privacySafeIdentifier('product', productUsid) : null,
+        createdAt,
+        updatedAt,
+      }));
     return c.json({ ok: true, enabled: enabled(), registrations });
   } catch { return unavailable(c); }
 });

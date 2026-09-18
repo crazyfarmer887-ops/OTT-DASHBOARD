@@ -391,4 +391,21 @@ describe('YouTube product registration API', () => {
     expect(JSON.stringify(payload)).not.toContain('request-key-submitting');
     expect(JSON.stringify(payload)).not.toContain('"actor"');
   });
+
+  test('hides deleted posts from account management and restores the family-group seat', async () => {
+    const store = new YouTubeProductRegistrationsStore(process.env.YOUTUBE_PRODUCT_REGISTRATIONS_PATH!, { allowUnsafeIsolatedClaim: true });
+    store.claim({ idempotencyKey: 'request-key-deleted-api', requestFingerprint: 'd'.repeat(64), familyGroupId: 'group-1', actor: 'admin', reasonCode: 'create', at: now });
+    store.complete('request-key-deleted-api', 'registered', {
+      actor: 'admin', reasonCode: 'registered', productUsid: 'product-deleted-api', at: '2026-08-11T00:00:01.000Z',
+    });
+    store.markDeletedProducts(['product-deleted-api'], {
+      actor: 'admin', reasonCode: 'provider-delete-succeeded', at: '2026-08-11T00:00:02.000Z',
+    });
+    const app = createYouTubeInvitationsApp();
+
+    const registrations = await (await app.request('/products/registrations')).json() as any;
+    expect(registrations.registrations).toEqual([]);
+    const groups = await (await app.request('/family-groups')).json() as any;
+    expect(groups.familyGroups[0]).toMatchObject({ id: 'group-1', availableSeats: 1 });
+  });
 });

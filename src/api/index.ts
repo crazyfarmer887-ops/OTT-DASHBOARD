@@ -56,6 +56,7 @@ import { YouTubeFamilyGroupsStore, YouTubeInvitationJobsStore } from '../lib/you
 import { buildYouTubeEmailExtractionPrompt, buildYouTubeInvitationAlert, buildYouTubeNewSaleCandidate, isYouTubeAutoReplyProduct, parseYouTubeEmailExtractionJson, resolveYouTubeEmailModel, sendHumanReviewAlertIfEnabled, sendYouTubeInvitationAlert, shouldIncludeOffHoursNotice, YOUTUBE_EMAIL_INVITATION_ALERT_CATEGORY, YOUTUBE_NEW_SALE_GUIDE, YOUTUBE_NEW_SALE_GUIDE_CATEGORY } from './youtube-auto-reply';
 import { normalizeYouTubeAuditReason } from '../lib/youtube-audit-reason';
 import { readAuthoritativeYouTubeSellerProducts, reconcileYouTubeProductRegistration, type YouTubeProductRegistrationReconciliationClaim } from '../lib/youtube-product-registration-reconciliation';
+import { YouTubeProductRegistrationsStore } from '../lib/youtube-product-registrations';
 import { ChatRoomOrganizationValidationError, createChatRoomCategory, deleteChatRoomCategory, loadChatRoomOrganization, renameChatRoomCategory, updateChatRoomOrganizationEntry } from '../lib/chat-room-organization';
 import {
   buildGraytagCookieHeader,
@@ -4292,7 +4293,8 @@ app.post('/api/chat/auto-reply/tick', autoReplyTickHandler);
 app.post('/my/delete-products', async (c) => {
   const requestId = auditRequestId(c);
   const body = await c.req.json() as any;
-  const cookies = resolveCookies(body, graytagAccountIdFromRequest(c));
+  const accountId = graytagAccountIdFromRequest(c);
+  const cookies = resolveCookies(body, accountId);
   if (!cookies) {
     writeAudit({ actor: 'admin', action: 'my.delete-products', targetType: 'product', targetId: '', summary: 'delete products blocked: missing JSESSIONID', result: 'blocked', requestId, details: body });
     return c.json({ error: 'JSESSIONID가 필요합니다' }, 400);
@@ -4339,6 +4341,21 @@ app.post('/my/delete-products', async (c) => {
   }
 
   const successCount = results.filter(r => r.ok).length;
+  const deletedProductUsids = results.filter(r => r.ok).map(r => String(r.usid));
+  let deletedRegistrationCount = 0;
+  let registrationCleanupPending = false;
+  if (accountId === 'youtube-invite-sales' && deletedProductUsids.length > 0) {
+    try {
+      deletedRegistrationCount = new YouTubeProductRegistrationsStore(
+        process.env.YOUTUBE_PRODUCT_REGISTRATIONS_PATH || 'data/youtube-product-registrations.json',
+      ).markDeletedProducts(deletedProductUsids, {
+        actor: authenticatedAdminActor(c),
+        reasonCode: 'provider-delete-succeeded',
+      }).length;
+    } catch {
+      registrationCleanupPending = true;
+    }
+  }
   const result = successCount === usids.length ? 'success' : (successCount > 0 ? 'error' : 'error');
   writeAudit({
     actor: 'admin',
@@ -4348,9 +4365,9 @@ app.post('/my/delete-products', async (c) => {
     summary: `delete products: ${successCount}/${usids.length} succeeded`,
     result,
     requestId,
-    details: { usids, results },
+    details: { usids, results, deletedRegistrationCount, registrationCleanupPending },
   });
-  return c.json({ results, successCount, totalCount: usids.length });
+  return c.json({ results, successCount, totalCount: usids.length, deletedRegistrationCount, registrationCleanupPending });
 });
 
 app.get('/ping', (c) => c.json({ ok: true }));

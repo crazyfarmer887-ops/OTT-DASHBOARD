@@ -41,6 +41,33 @@ describe('YouTube product registration journal', () => {
     expect(lstatSync(path).mode & 0o777).toBe(0o600);
   }));
 
+  test('marks a deleted registered post as deleted and releases its reserved seat', () => withTemp((_root, path) => {
+    const store = new YouTubeProductRegistrationsStore(path, { allowUnsafeIsolatedClaim: true });
+    const first = { idempotencyKey: 'request-key-deleted-1', requestFingerprint: 'a'.repeat(64), familyGroupId: 'group-1', actor: 'admin', reasonCode: 'create', at };
+    expect(store.claim(first).kind).toBe('claimed');
+    store.complete(first.idempotencyKey, 'registered', {
+      actor: 'admin', reasonCode: 'provider-succeeded', productUsid: 'product-deleted', at: '2026-08-11T00:00:01.000Z',
+    });
+
+    expect(store.markDeletedProducts(['product-deleted'], {
+      actor: 'admin', reasonCode: 'provider-delete-succeeded', at: '2026-08-11T00:00:02.000Z',
+    })).toMatchObject([{ status: 'deleted', productUsid: 'product-deleted' }]);
+    expect(store.list()[0]).toMatchObject({
+      status: 'deleted',
+      productUsid: 'product-deleted',
+      history: [
+        { from: null, to: 'submitting' },
+        { from: 'submitting', to: 'registered' },
+        { from: 'registered', to: 'deleted', reasonCode: 'provider-delete-succeeded' },
+      ],
+    });
+
+    expect(store.claimWithCapacity(
+      { ...first, idempotencyKey: 'request-key-after-delete', requestFingerprint: 'b'.repeat(64), at: '2026-08-11T00:00:03.000Z' },
+      { familyCapacity: 1, externalOccupiedProductUsids: new Set(), externalOccupiedFallbackCount: 0 },
+    ).kind).toBe('claimed');
+  }));
+
   test('conflicts on a changed fingerprint and blocks submitting, uncertain, and failed records', () => withTemp((_root, path) => {
     const store = new YouTubeProductRegistrationsStore(path, { allowUnsafeIsolatedClaim: true });
     const fp = fingerprintYouTubeProductRegistration('group-1', model);

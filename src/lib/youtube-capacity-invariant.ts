@@ -47,7 +47,7 @@ export function occupiedYouTubeFamilyGroupSeats(
     }
   }
   for (const registration of registrations) {
-    if (normalize(registration.familyGroupId) !== target || registration.status === 'failed') continue;
+    if (normalize(registration.familyGroupId) !== target || registration.status === 'failed' || registration.status === 'deleted') continue;
     const productUsid = registration.status === 'registered' ? normalize(registration.productUsid) : '';
     if (productUsid) occupiedProducts.add(productUsid);
     else anonymousReservations += 1;
@@ -97,7 +97,7 @@ export function assertYouTubeCapacityInvariant(
   }
 
   for (const registration of registrations) {
-    if (registration.status === 'failed') continue;
+    if (registration.status === 'failed' || registration.status === 'deleted') continue;
     const groupId = requireGroup(registration.familyGroupId);
     if (registration.status === 'registered') {
       const productUsid = normalize(registration.productUsid);
