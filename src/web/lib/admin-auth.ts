@@ -1,5 +1,7 @@
 const ADMIN_TOKEN_STORAGE_KEY = "aio.adminToken";
+const GRAYTAG_ACCOUNT_STORAGE_KEY = "aio.graytagAccount";
 const AUTH_FAILURE_EVENT="aio-admin-auth-failure";
+export type GraytagAccountId = 'primary' | 'youtube-invite-sales';
 const ADMIN_REQUIRED_GET_PREFIXES = [
   "/api/session/cookies",
   "/api/session/status",
@@ -68,6 +70,24 @@ export function clearAdminToken(): void {
   setAdminToken("");
 }
 
+export function getGraytagAccountId(): GraytagAccountId {
+  if (!canUseStorage()) return 'primary';
+  try {
+    return window.localStorage.getItem(GRAYTAG_ACCOUNT_STORAGE_KEY) === 'youtube-invite-sales'
+      ? 'youtube-invite-sales'
+      : 'primary';
+  } catch {
+    return 'primary';
+  }
+}
+
+export function setGraytagAccountId(accountId: GraytagAccountId): void {
+  if (!canUseStorage()) return;
+  try {
+    window.localStorage.setItem(GRAYTAG_ACCOUNT_STORAGE_KEY, accountId === 'youtube-invite-sales' ? accountId : 'primary');
+  } catch {}
+}
+
 function apiUrl(input: RequestInfo | URL): URL | null {
   if (typeof window === "undefined") return null;
   try {
@@ -98,17 +118,17 @@ function withAdminToken(input: RequestInfo | URL, init: RequestInit | undefined)
   if (!isSameOriginApiRequest(input)) return init;
 
   const method = requestMethod(input, init);
-  if ((method === "GET" || method === "HEAD") && !isAdminRequiredGetPath(input)) return init;
   if (method === "OPTIONS") return init;
-
-  const token = getAdminToken();
-  if (!token) return init;
 
   const headers = new Headers(input instanceof Request ? input.headers : undefined);
   if (init?.headers) {
     new Headers(init.headers).forEach((value, key) => headers.set(key, value));
   }
-  if (!headers.has("x-admin-token")) headers.set("x-admin-token", token);
+  if (!headers.has("x-graytag-account")) headers.set("x-graytag-account", getGraytagAccountId());
+
+  const requiresToken = method !== "GET" && method !== "HEAD" || isAdminRequiredGetPath(input);
+  const token = requiresToken ? getAdminToken() : "";
+  if (token && !headers.has("x-admin-token")) headers.set("x-admin-token", token);
 
   return { ...init, headers };
 }

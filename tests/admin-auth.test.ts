@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { __resetAdminAuthFetchPatchForTests, installAdminAuthFetchPatch, setAdminToken } from '../src/web/lib/admin-auth';
+import { __resetAdminAuthFetchPatchForTests, installAdminAuthFetchPatch, setAdminToken, setGraytagAccountId } from '../src/web/lib/admin-auth';
 
 function setupBrowser() {
   const store = new Map<string, string>();
@@ -42,6 +42,17 @@ describe('admin auth fetch patch', () => {
 
     const [, init] = fetchMock.mock.calls[0];
     expect(new Headers(init.headers).get('x-admin-token')).toBe('safe-token');
+  });
+
+  test('adds the selected GrayTag account to every same-origin API request', async () => {
+    const fetchMock = setupBrowser();
+    setGraytagAccountId('youtube-invite-sales');
+    installAdminAuthFetchPatch();
+
+    await (window.fetch as any)('/api/public-summary');
+
+    const [, init] = fetchMock.mock.calls[0];
+    expect(new Headers(init.headers).get('x-graytag-account')).toBe('youtube-invite-sales');
   });
 
   test('adds admin token to party access GET requests so admins can bypass consent', async () => {

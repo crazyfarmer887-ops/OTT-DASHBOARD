@@ -316,7 +316,7 @@ function maskSecret(value: string): string {
 }
 
 // ─── Session Keeper 쿠키 자동 로드 ─────────────────────────
-const SESSION_COOKIE_PATH = '/home/ubuntu/graytag-session/cookies.json';
+const SESSION_COOKIE_PATH = process.env.GRAYTAG_SESSION_COOKIE_PATH || '/home/ubuntu/graytag-session/cookies.json';
 const DEFAULT_GENERATED_ACCOUNTS_PATH = '/home/ubuntu/.hermes/hermes-agent/graytag-aio-manager-0606/data/generated-accounts.json';
 const DEFAULT_SIMPLELOGIN_ALIAS_INVENTORY_PATH = '/home/ubuntu/.hermes/hermes-agent/graytag-aio-manager-0606/data/simplelogin-alias-inventory.json';
 const ACCOUNT_CHECK_INFLOW_PATH = '/home/ubuntu/.hermes/hermes-agent/graytag-aio-manager-0606/data/account-check-inflow.json';
@@ -344,13 +344,31 @@ function sanitizeForGraytag(text: string): string {
   return text.replace(/[\u{10000}-\u{10FFFF}]/gu, '⚠️');
 }
 
-/** body에 JSESSIONID가 없으면 session-keeper의 cookies.json에서 자동으로 가져옴 */
-function resolveCookies(body: any): { AWSALB: string; AWSALBCORS: string; JSESSIONID: string } | null {
+type GraytagAccountId = 'primary' | 'youtube-invite-sales';
+
+function graytagAccountIdFromRequest(c: any): GraytagAccountId {
+  return c.req.header('x-graytag-account') === 'youtube-invite-sales' ? 'youtube-invite-sales' : 'primary';
+}
+
+function loadCookiesForAccount(accountId: GraytagAccountId): GraytagAuthCookies | null {
+  return accountId === 'youtube-invite-sales' ? loadGraytagAuthCookies() : loadSessionCookies();
+}
+
+function managementCacheKey(accountId: GraytagAccountId): string {
+  return accountId === 'youtube-invite-sales' ? 'auto-session:youtube-invite-sales' : 'auto-session';
+}
+
+function clearManagementAccountCaches(): void {
+  managementCache.clear('auto-session');
+  managementCache.clear('auto-session:youtube-invite-sales');
+}
+
+/** body에 JSESSIONID가 없으면 선택된 서버 저장 세션에서 자동으로 가져옴 */
+function resolveCookies(body: any, accountId: GraytagAccountId = 'primary'): { AWSALB: string; AWSALBCORS: string; JSESSIONID: string } | null {
   if (body?.JSESSIONID?.trim()) {
     return { AWSALB: body.AWSALB || '', AWSALBCORS: body.AWSALBCORS || '', JSESSIONID: body.JSESSIONID.trim() };
   }
-  // 자동 폴백: session-keeper 쿠키 사용
-  return loadSessionCookies();
+  return loadCookiesForAccount(accountId);
 }
 
 function buildCookieStr(cookies: { AWSALB: string; AWSALBCORS: string; JSESSIONID: string }): string {
@@ -1396,7 +1414,7 @@ app.get('/prices', async (c) => {
 // 내 계정 파티 조회
 app.post('/my/accounts', async (c) => {
   const body = await c.req.json() as any;
-  const cookies = resolveCookies(body);
+  const cookies = resolveCookies(body, graytagAccountIdFromRequest(c));
   if (!cookies) return c.json({ error: 'JSESSIONID가 필요합니다 (수동 입력 또는 session-keeper 쿠키 없음)' }, 400);
 
   const cookieStr = buildCookieStr(cookies);
@@ -1454,7 +1472,7 @@ async function handleHideManagementAccount(c: any) {
     return c.json({ ok: false, error: 'serviceType/accountEmail required' }, 400);
   }
   const store = hideManagementAccount(input);
-  managementCache.clear('auto-session');
+  clearManagementAccountCaches();
   return c.json({ ok: true, hidden: true, accounts: store.accounts });
 }
 
@@ -1464,7 +1482,7 @@ async function handleUnhideManagementAccount(c: any) {
     return c.json({ ok: false, error: 'serviceType/accountEmail required' }, 400);
   }
   const store = unhideManagementAccount(input);
-  managementCache.clear('auto-session');
+  clearManagementAccountCaches();
   return c.json({ ok: true, hidden: false, accounts: store.accounts });
 }
 
@@ -1491,7 +1509,7 @@ async function handleSaveManagementPaymentCard(c: any) {
   }
   try {
     const card = upsertManagementPaymentCard(body);
-    managementCache.clear('auto-session');
+    clearManagementAccountCaches();
     return c.json({ ok: true, card });
   } catch (error: any) {
     return c.json({ ok: false, error: error?.message || 'invalid payment card metadata' }, 400);
@@ -1511,7 +1529,7 @@ async function handleDeleteManagementPaymentCard(c: any) {
     return c.json({ ok: false, error: 'payment card not found' }, 404);
   }
   deleteManagementPaymentCard({ serviceType, accountEmail });
-  managementCache.clear('auto-session');
+  clearManagementAccountCaches();
   return c.json({ ok: true, deleted: true, cards: paymentCardListResponse() });
 }
 
@@ -1599,7 +1617,8 @@ app.delete('/generated-accounts/:id', async (c) => {
 // 계정 관리 - 서비스별 > 상품별 > 파티원 + 수입 통계
 app.post('/my/management', async (c) => {
   const body = await c.req.json() as any;
-  const cookies = resolveCookies(body);
+  const accountId = graytagAccountIdFromRequest(c);
+  const cookies = resolveCookies(body, accountId);
   if (!cookies) return c.json({ error: 'JSESSIONID가 필요합니다 (수동 입력 또는 session-keeper 쿠키 없음)' }, 400);
 
   const cookieStr = buildCookieStr(cookies);
@@ -2178,7 +2197,7 @@ app.post('/my/management', async (c) => {
 
   try {
     if (isAutoSessionManagementRequest(body)) {
-      const cached = await managementCache.get('auto-session', loadManagementFresh, {
+      const cached = await managementCache.get(managementCacheKey(accountId), loadManagementFresh, {
         forceRefresh: shouldForceManagementRefresh(body, c.req.query('refresh'), c.req.header('cache-control')),
       });
       const response = c.json({
@@ -2203,7 +2222,7 @@ app.post('/my/management', async (c) => {
 // 글 작성 - 상품 등록
 app.post('/post/create', async (c) => {
   const body = await c.req.json() as any;
-  const cookies = resolveCookies(body);
+  const cookies = resolveCookies(body, graytagAccountIdFromRequest(c));
   if (!cookies) return c.json({ error: 'JSESSIONID가 필요합니다' }, 400);
   const { productModel } = body;
 
@@ -2285,7 +2304,7 @@ function validatePlaceholderKeepAcctMapping(input: { productUsid: string; keepAc
 // 계정 자동 전달 설정
 app.post('/post/keepAcct', async (c) => {
   const body = await c.req.json() as any;
-  const cookies = resolveCookies(body);
+  const cookies = resolveCookies(body, graytagAccountIdFromRequest(c));
   if (!cookies) return c.json({ error: '필수 파라미터 누락 (JSESSIONID)' }, 400);
   const { productUsid, keepAcct, keepPasswd, keepMemo } = body;
   if (!productUsid) return c.json({ error: '필수 파라미터 누락 (productUsid)' }, 400);
@@ -2320,7 +2339,7 @@ app.post('/post/keepAcct', async (c) => {
     if (!r.ok) return c.json({ error: `계정 설정 실패 (${resp.status})` }, 500);
     if (!r.data?.succeeded) return c.json({ error: r.data?.message || '계정 설정 실패' }, 400);
 
-    managementCache.clear('auto-session');
+    clearManagementAccountCaches();
     return c.json({ ok: true, managementCacheCleared: true });
   } catch (e: any) {
     return c.json({ error: e.message }, 500);
@@ -2569,30 +2588,32 @@ for (const prefix of ['', '/api']) {
 
 // 채팅방 목록 (모든 활성 딜 + unread 상태)
 app.get('/chat/rooms', async (c) => {
-  const cookies = loadSessionCookies();
+  const accountId = graytagAccountIdFromRequest(c);
+  const useSharedCache = accountId === 'primary';
+  const cookies = loadCookiesForAccount(accountId);
   if (!cookies) return c.json({ error: 'Session keeper 쿠키 없음' }, 400);
   const cookieStr = buildCookieStr(cookies);
   const headers = { ...BASE_HEADERS, Cookie: cookieStr, Referer: 'https://graytag.co.kr/lender/deal/listAfterUsing' };
 
   // Cold-cache 동시 요청도 딜 목록 조회 전에 하나의 refresh gate를 공유한다.
-  if (_chatRoomsRefreshInFlight) {
+  if (useSharedCache && _chatRoomsRefreshInFlight) {
     await _chatRoomsRefreshInFlight.catch(() => undefined);
     if (_chatRoomsCache) return c.json({ ..._chatRoomsCache, fromCache: true, cacheTtlMs: CHAT_ROOMS_CACHE_TTL_MS });
   }
   let releaseRefresh!: () => void;
   const refresh = new Promise<void>((resolve) => { releaseRefresh = resolve; });
-  _chatRoomsRefreshInFlight = refresh;
+  if (useSharedCache) _chatRoomsRefreshInFlight = refresh;
 
   try {
     const forceRefresh = c.req.query('refresh') === '1' || c.req.query('force') === '1';
-    if (_chatRoomsHydrationInFlight && _chatRoomsCache) {
+    if (useSharedCache && _chatRoomsHydrationInFlight && _chatRoomsCache) {
       return c.json({ ..._chatRoomsCache, fromCache: true, cacheTtlMs: CHAT_ROOMS_CACHE_TTL_MS });
     }
-    if (!forceRefresh && _chatRoomsCache && Date.now() - new Date(_chatRoomsCache.updatedAt).getTime() < CHAT_ROOMS_CACHE_TTL_MS) {
+    if (useSharedCache && !forceRefresh && _chatRoomsCache && Date.now() - new Date(_chatRoomsCache.updatedAt).getTime() < CHAT_ROOMS_CACHE_TTL_MS) {
       return c.json({ ..._chatRoomsCache, fromCache: true, cacheTtlMs: CHAT_ROOMS_CACHE_TTL_MS });
     }
     // rate-limit 백오프 중이면 캐시된 결과 즉시 반환
-    if (Date.now() < _rateLimitUntil && _chatRoomsCache) {
+    if (useSharedCache && Date.now() < _rateLimitUntil && _chatRoomsCache) {
       console.log("[chat/rooms] rate-limit 백오프 중 — 캐시 반환");
       return c.json({ ..._chatRoomsCache, fromCache: true });
     }
@@ -2617,7 +2638,7 @@ app.get('/chat/rooms', async (c) => {
           { headers: { ...headers, Referer: referer }, redirect: 'manual' }
         );
         if (resp.status === 429) {
-          if (_chatRoomsCache) {
+          if (useSharedCache && _chatRoomsCache) {
             console.log("[chat/rooms] rate-limit 429 — 캐시 반환");
             return 'rate-limited-cache';
           }
@@ -2641,10 +2662,10 @@ app.get('/chat/rooms', async (c) => {
     // 방 목록은 즉시 반환하고, 최신 구매자 문의 미리보기는 응답 이후 보강한다.
     // 이전 캐시의 미리보기는 유지하므로 사용자는 빈 목록 대신 곧바로 방을 열 수 있다.
     const generation = ++_chatRoomsHydrationGeneration;
-    const result = buildChatRoomsSnapshot(allDeals, new Date().toISOString(), _chatRoomsCache?.rooms || []);
-    _chatRoomsCache = result;
+    const result = buildChatRoomsSnapshot(allDeals, new Date().toISOString(), useSharedCache ? _chatRoomsCache?.rooms || [] : []);
+    if (useSharedCache) _chatRoomsCache = result;
 
-    if (result.messageHydrationPending && !_chatRoomsHydrationInFlight) {
+    if (useSharedCache && result.messageHydrationPending && !_chatRoomsHydrationInFlight) {
       const hydration = startChatRoomMessageHydration(result, async (room) => {
         const msgResp = await rateLimitedFetch(
           `https://graytag.co.kr/ws/chat/findChats?uuid=${encodeURIComponent(room.chatRoomUuid)}&page=1`,
@@ -2677,7 +2698,7 @@ app.get('/chat/rooms', async (c) => {
     return c.json({ error: e.message }, 500);
   } finally {
     releaseRefresh();
-    if (_chatRoomsRefreshInFlight === refresh) _chatRoomsRefreshInFlight = null;
+    if (useSharedCache && _chatRoomsRefreshInFlight === refresh) _chatRoomsRefreshInFlight = null;
   }
 });
 
@@ -2685,7 +2706,7 @@ app.get('/chat/rooms', async (c) => {
 app.get('/chat/messages/:uuid', async (c) => {
   const { uuid } = c.req.param();
   const page = parseInt(c.req.query('page') || '1');
-  const cookies = loadSessionCookies();
+  const cookies = loadCookiesForAccount(graytagAccountIdFromRequest(c));
   if (!cookies) return c.json({ error: 'Session keeper 쿠키 없음' }, 400);
   const cookieStr = buildCookieStr(cookies);
 
@@ -2720,7 +2741,7 @@ app.get('/chat/messages/:uuid', async (c) => {
 
 // 전체 채팅 폴링 (새 메시지 감지)
 app.get('/chat/poll', async (c) => {
-  const cookies = loadSessionCookies();
+  const cookies = loadCookiesForAccount(graytagAccountIdFromRequest(c));
   if (!cookies) return c.json({ error: 'Session keeper 쿠키 없음' }, 400);
   const cookieStr = buildCookieStr(cookies);
   const headers = { ...BASE_HEADERS, Cookie: cookieStr, Referer: 'https://graytag.co.kr/lender/deal/listAfterUsing' };
@@ -2765,10 +2786,38 @@ app.get('/chat/poll', async (c) => {
   } catch (e: any) { return c.json({ error: e.message }, 500); }
 });
 
-async function sendGraytagChatMessage(input: { chatRoomUuid: string; dealUsid?: string; message: string }) {
-  const args = ['/home/ubuntu/graytag-session/stomp-sender.cjs', input.chatRoomUuid, sanitizeForGraytag(input.message)];
-  if (input.dealUsid) args.push(input.dealUsid);
-  const { stdout } = await execFileAsync('node', args, { timeout: 20000, maxBuffer: 1024 * 1024 });
+async function resolveGraytagChatUserId(accountId: GraytagAccountId, chatRoomUuid: string): Promise<string> {
+  if (accountId === 'primary') return process.env.GRAYTAG_PRIMARY_CHAT_USER_ID || '0000000001R20';
+  const cookies = loadCookiesForAccount(accountId);
+  if (!cookies) throw new Error('선택한 GrayTag 계정 세션이 없습니다.');
+  const response = await rateLimitedFetch(
+    `https://graytag.co.kr/ws/chat/findChats?uuid=${encodeURIComponent(chatRoomUuid)}&page=1`,
+    {
+      headers: { ...BASE_HEADERS, Cookie: buildCookieStr(cookies), Referer: `https://graytag.co.kr/chat/${chatRoomUuid}` },
+      redirect: 'manual',
+      signal: AbortSignal.timeout(10_000),
+    },
+  );
+  const parsed = response.ok ? await safeJson(response) : { data: null };
+  const ownedMessage = extractGraytagChats(parsed.data).find((message: any) => message?.owned === true && message?.userId);
+  const userId = String((ownedMessage as any)?.userId || '').trim();
+  if (!userId) throw new Error('전용 계정의 채팅 발신자 정보를 확인할 수 없습니다. GrayTag에서 이 채팅방에 한 번 메시지를 보낸 뒤 다시 시도해주세요.');
+  return userId;
+}
+
+async function sendGraytagChatMessage(
+  input: { chatRoomUuid: string; dealUsid?: string; message: string },
+  accountId: GraytagAccountId = 'primary',
+) {
+  const userId = await resolveGraytagChatUserId(accountId, input.chatRoomUuid);
+  const scriptPath = process.env.GRAYTAG_STOMP_SENDER_PATH || `${process.cwd()}/scripts/graytag-stomp-sender.cjs`;
+  const cookiePath = accountId === 'youtube-invite-sales' ? YOUTUBE_SALES_SESSION_COOKIE_PATH : SESSION_COOKIE_PATH;
+  const args = [scriptPath, input.chatRoomUuid, sanitizeForGraytag(input.message), input.dealUsid || '', userId];
+  const { stdout } = await execFileAsync('node', args, {
+    timeout: 20_000,
+    maxBuffer: 1024 * 1024,
+    env: { ...process.env, GRAYTAG_COOKIE_PATH: cookiePath },
+  });
   return JSON.parse(stdout.trim());
 }
 
@@ -3155,7 +3204,7 @@ app.post('/chat/send', async (c) => {
   }
 
   try {
-    const parsed = await sendGraytagChatMessage({ chatRoomUuid, dealUsid, message });
+    const parsed = await sendGraytagChatMessage({ chatRoomUuid, dealUsid, message }, graytagAccountIdFromRequest(c));
     writeAudit({ actor: 'admin', action: 'chat.send', targetType: 'chatRoom', targetId: chatRoomUuid, summary: `chat message sent${dealUsid ? ` for deal ${dealUsid}` : ''}`, result: parsed?.ok === false ? 'error' : 'success', requestId, details: { dealUsid, response: parsed } });
     return c.json(parsed);
   } catch (e: any) {
@@ -4237,7 +4286,7 @@ app.post('/api/chat/auto-reply/tick', autoReplyTickHandler);
 app.post('/my/delete-products', async (c) => {
   const requestId = auditRequestId(c);
   const body = await c.req.json() as any;
-  const cookies = resolveCookies(body);
+  const cookies = resolveCookies(body, graytagAccountIdFromRequest(c));
   if (!cookies) {
     writeAudit({ actor: 'admin', action: 'my.delete-products', targetType: 'product', targetId: '', summary: 'delete products blocked: missing JSESSIONID', result: 'blocked', requestId, details: body });
     return c.json({ error: 'JSESSIONID가 필요합니다' }, 400);
@@ -4492,7 +4541,8 @@ export default app;
 // ─── 내 판매중(OnSale) 상품 목록 조회 ─────────────────────────
 app.post('/my/onsale-products', async (c) => {
   const body = await c.req.json() as any;
-  const cookies = resolveCookies(body);
+  const accountId = graytagAccountIdFromRequest(c);
+  const cookies = resolveCookies(body, accountId);
   if (!cookies) return c.json({ error: 'JSESSIONID가 필요합니다' }, 400);
 
   const cookieStr = buildCookieStr(cookies);
@@ -4535,7 +4585,7 @@ app.post('/my/onsale-products', async (c) => {
     return c.json({
       products: onSale,
       totalCount: onSale.length,
-      cookieSource: body?.JSESSIONID?.trim() ? 'manual' : 'session-keeper',
+      cookieSource: body?.JSESSIONID?.trim() ? 'manual' : accountId,
       updatedAt: new Date().toISOString(),
     });
   } catch (e: any) { return c.json({ error: e.message }, 500); }
@@ -4578,7 +4628,7 @@ async function fetchProductSettings(cookieStr: string, productUsid: string) {
 app.post('/my/update-price', async (c) => {
   const requestId = auditRequestId(c);
   const body = await c.req.json() as any;
-  const cookies = resolveCookies(body);
+  const cookies = resolveCookies(body, graytagAccountIdFromRequest(c));
   if (!cookies) {
     writeAudit({ actor: 'admin', action: 'my.update-price', targetType: 'product', targetId: '', summary: 'update price blocked: missing JSESSIONID', result: 'blocked', requestId, details: body });
     return c.json({ error: 'JSESSIONID가 필요합니다' }, 400);
@@ -4738,7 +4788,7 @@ app.post('/daily-rates', async (c) => {
 
 // Auto-sync: recalc all OnSale product prices = dailyRate * remainderDays
 app.post('/auto-sync-prices', async (c) => {
-  const cookies = loadSessionCookies();
+  const cookies = loadCookiesForAccount(graytagAccountIdFromRequest(c));
   if (!cookies) return c.json({ error: 'Session keeper 쿠키 없음' }, 500);
 
   const cookieStr = buildCookieStr(cookies);
@@ -4854,7 +4904,7 @@ app.get('/sync-log', (c) => {
 
 // ─── keepMemo 일괄 업데이트 ──────────────────────────────────
 app.post('/bulk-update-keepmemo', async (c) => {
-  const cookies = loadSessionCookies();
+  const cookies = loadCookiesForAccount(graytagAccountIdFromRequest(c));
   if (!cookies) return c.json({ error: 'Session keeper 쿠키 없음' }, 500);
   const cookieStr = buildCookieStr(cookies);
 
@@ -5445,7 +5495,7 @@ app.post('/auto-undercutter/state', async (c) => {
 // 채팅 읽음 표시
 app.post('/chat/mark-read', async (c) => {
   const { chatRoomUuid } = await c.req.json() as { chatRoomUuid: string };
-  const cookies = loadSessionCookies();
+  const cookies = loadCookiesForAccount(graytagAccountIdFromRequest(c));
   if (!cookies) return c.json({ error: 'Session keeper 쿠키 없음' }, 400);
 
   try {
@@ -6489,14 +6539,15 @@ app.post("/chat/notice/send", async (c) => {
   );
 
   try {
-    const cookies = resolveCookies({});
+    const accountId = graytagAccountIdFromRequest(c);
+    const cookies = resolveCookies({}, accountId);
     if (!cookies) return c.json({ error: "쿠키 없음 — session-keeper 확인 필요" }, 401);
     const cookieStr = buildCookieStr(cookies);
     const authedHeaders = (referer: string) => ({ ...BASE_HEADERS, Cookie: cookieStr, Referer: referer });
 
     // 1. chat/rooms 기반으로 발송 대상 직접 추출 (keepAcct+chatRoomUuid+status 있음)
     let rooms: any[] = [];
-    if (_chatRoomsCache) {
+    if (accountId === 'primary' && _chatRoomsCache) {
       rooms = _chatRoomsCache.rooms;
     } else {
       const [lbR, laR] = await Promise.all([
@@ -6537,11 +6588,7 @@ app.post("/chat/notice/send", async (c) => {
 
       try {
         const cleanMessage = message.replace(/\n/g, "<br>");
-        const { execSync } = await import("child_process");
-        const args = ["/home/ubuntu/graytag-session/stomp-sender.cjs", chatRoomUuid, cleanMessage];
-        if (deal.dealUsid) args.push(deal.dealUsid);
-        const cmd = "node " + args.map((a: string) => JSON.stringify(a)).join(" ");
-        const result = JSON.parse(execSync(cmd, { timeout: 20000 }).toString().trim());
+        const result = await sendGraytagChatMessage({ chatRoomUuid, dealUsid: deal.dealUsid, message: cleanMessage }, accountId);
 
         if (result.ok) {
           details.push({ dealUsid: deal.dealUsid, name: deal.borrowerName || null, status: deal.dealStatus, result: "sent" });

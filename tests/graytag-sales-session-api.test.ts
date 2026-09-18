@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -12,6 +12,7 @@ beforeEach(() => {
   tempDir = mkdtempSync(join(tmpdir(), 'graytag-session-api-'));
   process.env.AIO_ADMIN_TOKEN = 'session-admin-token';
   process.env.AUDIT_LOG_PATH = join(tempDir, 'audit.jsonl');
+  process.env.GRAYTAG_SESSION_COOKIE_PATH = join(tempDir, 'primary-cookies.json');
   process.env.YOUTUBE_GRAYTAG_SESSION_COOKIE_PATH = join(tempDir, 'youtube-sales-cookies.json');
   process.env.YOUTUBE_GRAYTAG_SESSION_STATUS_PATH = join(tempDir, 'youtube-sales-status.json');
 });
@@ -19,7 +20,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllGlobals();
   rmSync(tempDir, { recursive: true, force: true });
-  for (const key of ['AIO_ADMIN_TOKEN', 'AUDIT_LOG_PATH', 'YOUTUBE_GRAYTAG_SESSION_COOKIE_PATH', 'YOUTUBE_GRAYTAG_SESSION_STATUS_PATH']) {
+  for (const key of ['AIO_ADMIN_TOKEN', 'AUDIT_LOG_PATH', 'GRAYTAG_SESSION_COOKIE_PATH', 'YOUTUBE_GRAYTAG_SESSION_COOKIE_PATH', 'YOUTUBE_GRAYTAG_SESSION_STATUS_PATH']) {
     if (savedEnv[key] === undefined) delete process.env[key];
     else process.env[key] = savedEnv[key];
   }
@@ -81,5 +82,25 @@ describe('dedicated YouTube sales session API', () => {
     });
     expect(response.status).toBe(401);
     expect(() => readFileSync(process.env.YOUTUBE_GRAYTAG_SESSION_COOKIE_PATH!, 'utf8')).toThrow();
+  });
+
+  test('routes whole-dashboard GrayTag requests through the selected account', async () => {
+    writeFileSync(process.env.YOUTUBE_GRAYTAG_SESSION_COOKIE_PATH!, JSON.stringify({ JSESSIONID: 'youtube-session' }));
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      return new Response(JSON.stringify({ succeeded: true, data: { lenderDeals: [] } }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }));
+
+    const app = (await import('../src/api/index.ts')).default;
+    const response = await app.request('/my/onsale-products', {
+      method: 'POST',
+      headers: { ...authHeaders, 'x-graytag-account': 'youtube-invite-sales' },
+      body: '{}',
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ cookieSource: 'youtube-invite-sales' });
   });
 });
