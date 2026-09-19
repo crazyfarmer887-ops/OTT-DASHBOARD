@@ -62,6 +62,7 @@ test('manage page fetches family groups and invitation members with admin auth',
   assert.match(manage, /parseYouTubeProductRegistrationsResponse/);
   assert.match(manage, /buildYouTubeFamilyGroupCreateBody/);
   assert.match(manage, /buildYouTubeFamilyGroupPatchBody/);
+  assert.match(manage, /getYouTubeFamilyGroupMutationError/);
   assert.match(manage, /operator family group create/);
   assert.match(manage, /operator family group update/);
   assert.match(manage, /'x-audit-reason': 'operator family group disable'/);

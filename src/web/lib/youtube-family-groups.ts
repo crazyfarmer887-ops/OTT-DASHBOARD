@@ -104,6 +104,29 @@ export type YouTubeFamilyGroupCreateBody = {
 
 export type YouTubeFamilyGroupPatchBody = Partial<YouTubeFamilyGroupCreateBody>;
 
+export function getYouTubeFamilyGroupMutationError(
+  status: number,
+  value: unknown,
+  fallback: string,
+): string {
+  const error = value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>).error
+    : null;
+  if (status === 409 && error === 'duplicate manager email') {
+    return '이미 등록된 관리자 이메일입니다. 기존 가족 그룹을 수정하거나 다른 관리자 이메일을 입력해주세요.';
+  }
+  if (status === 409 && error === 'sellable seats below occupied capacity') {
+    return '현재 사용 중인 좌석보다 판매 좌석을 적게 설정할 수 없습니다.';
+  }
+  if (status === 503 && error === 'YOUTUBE_INVITE_SALES_DISABLED') {
+    return '유튜브 초대 판매 기능이 비활성화되어 있어 저장할 수 없습니다.';
+  }
+  if (status === 400 && (error === 'invalid request' || error === 'invalid audit reason')) {
+    return '입력값을 확인한 뒤 다시 저장해주세요.';
+  }
+  return fallback;
+}
+
 export function isYouTubeManagementService(serviceType: string): boolean {
   const normalized = String(serviceType || '').trim().toLowerCase().replace(/\s+/g, '');
   return normalized.includes('유튜브') || normalized.includes('youtube');

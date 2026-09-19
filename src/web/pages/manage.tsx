@@ -16,7 +16,7 @@ import { makeDefaultProductDescription, makeDefaultProductTitle } from "../../li
 import { parseJsonResponse } from "../lib/fetch-json";
 import { getAdminToken } from "../lib/admin-auth";
 import { getVisibleManagementAccounts, type FilterMode } from "../lib/management-account-order";
-import { buildYouTubeFamilyGroupCreateBody, buildYouTubeFamilyGroupPatchBody, getYouTubeRegistrationDisplayLabel, parseYouTubeFamilyGroupsResponse, parseYouTubeInvitationsResponse, parseYouTubeProductRegistrationsResponse, partitionYouTubeManagementServices, summarizeYouTubeFamilyGroup, validateYouTubeFamilyGroupDraft, type YouTubeFamilyGroupDraft, type YouTubeFamilyGroupDto, type YouTubeInvitationStatus, type YouTubeInvitationSummaryDto, type YouTubeProductRegistrationStatus, type YouTubeProductRegistrationSummaryDto } from "../lib/youtube-family-groups";
+import { buildYouTubeFamilyGroupCreateBody, buildYouTubeFamilyGroupPatchBody, getYouTubeFamilyGroupMutationError, getYouTubeRegistrationDisplayLabel, parseYouTubeFamilyGroupsResponse, parseYouTubeInvitationsResponse, parseYouTubeProductRegistrationsResponse, partitionYouTubeManagementServices, summarizeYouTubeFamilyGroup, validateYouTubeFamilyGroupDraft, type YouTubeFamilyGroupDraft, type YouTubeFamilyGroupDto, type YouTubeInvitationStatus, type YouTubeInvitationSummaryDto, type YouTubeProductRegistrationStatus, type YouTubeProductRegistrationSummaryDto } from "../lib/youtube-family-groups";
 import { RefreshCw, KeyRound, Mail, ChevronDown, ChevronRight, TrendingUp, Loader2, AlertCircle, ExternalLink, Calendar, UserX, Megaphone, PlusCircle, X, UserPlus, Trash2, Wifi, WifiOff, Eye, EyeOff, Youtube, Users } from "lucide-react";
 
 interface OnSaleProduct {
@@ -399,7 +399,12 @@ export default function ManagePage() {
         }),
         body: JSON.stringify(body),
       });
-      if (!response.ok) throw new Error('request failed');
+      if (!response.ok) {
+        const fallback = isCreate ? '가족 그룹을 추가하지 못했습니다.' : '가족 그룹을 수정하지 못했습니다.';
+        const responseBody = await response.json().catch(() => null);
+        setYouTubeGroupFormError(getYouTubeFamilyGroupMutationError(response.status, responseBody, fallback));
+        return;
+      }
       setYouTubeGroupDraft(current => ({ ...current, managerEmail: '' }));
       setYouTubeGroupForm(null);
       showToast(isCreate ? '유튜브 가족 그룹을 추가했습니다.' : '유튜브 가족 그룹을 수정했습니다.');

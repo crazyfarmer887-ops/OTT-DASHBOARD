@@ -6,6 +6,7 @@ import {
   parseYouTubeInvitationsResponse,
   parseYouTubeProductRegistrationsResponse,
   getYouTubeRegistrationDisplayLabel,
+  getYouTubeFamilyGroupMutationError,
   summarizeYouTubeFamilyGroup,
   validateYouTubeFamilyGroupDraft,
   isYouTubeManagementService,
@@ -26,6 +27,13 @@ const group = {
 };
 
 describe('YouTube family-group management UI helpers', () => {
+  test('turns duplicate manager conflicts into an actionable form error without reflecting unsafe server text', () => {
+    expect(getYouTubeFamilyGroupMutationError(409, { error: 'duplicate manager email' }, '가족 그룹을 추가하지 못했습니다.'))
+      .toBe('이미 등록된 관리자 이메일입니다. 기존 가족 그룹을 수정하거나 다른 관리자 이메일을 입력해주세요.');
+    expect(getYouTubeFamilyGroupMutationError(500, { error: '<script>alert(1)</script>' }, '가족 그룹을 추가하지 못했습니다.'))
+      .toBe('가족 그룹을 추가하지 못했습니다.');
+  });
+
   test('allowlists safe list DTO fields and rejects malformed responses', () => {
     expect(parseYouTubeFamilyGroupsResponse({
       ok: true,
