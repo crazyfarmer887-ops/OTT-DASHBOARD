@@ -5,6 +5,7 @@ import {
   applyYouTubeInvitationTransition,
   ensureYouTubeInvitationJob,
   isYouTubeIsoTimestamp,
+  isYouTubeProviderTerminalStatus,
   normalizeYouTubeManagerEmail,
   normalizeYouTubeSellableSeats,
   normalizeYouTubeSubscriptionDate,
@@ -154,9 +155,17 @@ export interface YouTubeInvitationsAppDependencies {
   >;
   finishDelivery?: (dealUsid: string) => Promise<Response>;
   fetchProviderStatus?: (dealUsid: string) => Promise<string | null>;
+  fetchProviderProductStatuses?: () => Promise<{
+    authoritative: boolean;
+    rows: Array<{ productUsid: string; status: string }>;
+  }>;
   actor?: (context: any) => string;
   audit?: (event: { outcome: 'registered' | 'uncertain' | 'failed'; actor: string; reason: string; familyGroupId: string; productUsid: string | null }) => void;
   invitationAudit?: (event: YouTubeInvitationAuditEvent) => void;
+  productReconciliationAudit?: (event: {
+    outcome: 'success' | 'failed'; actor: string; reason: string;
+    releasedCount: number; familyGroupIds: string[];
+  }) => void;
   now?: () => Date;
 }
 
@@ -647,6 +656,81 @@ app.get('/products/registrations', (c) => {
       }));
     return c.json({ ok: true, enabled: enabled(), registrations });
   } catch { return unavailable(c); }
+});
+
+app.post('/products/registrations/reconcile', async (c) => {
+  if (!enabled()) return disabledMutation(c);
+  const reason = auditReason(c);
+  if (!reason) return c.json({ ok: false, error: 'invalid audit reason' }, 400);
+  if (!await acceptsEmptyJsonBody(c)) return c.json({ ok: false, error: 'invalid request' }, 400);
+  const actor = actorFor(c);
+  let observation: Awaited<ReturnType<NonNullable<YouTubeInvitationsAppDependencies['fetchProviderProductStatuses']>>>;
+  try {
+    observation = await dependencies.fetchProviderProductStatuses?.()
+      ?? { authoritative: false, rows: [] };
+  } catch {
+    observation = { authoritative: false, rows: [] };
+  }
+  if (!observation.authoritative || !Array.isArray(observation.rows)) {
+    dependencies.productReconciliationAudit?.({ outcome: 'failed', actor, reason, releasedCount: 0, familyGroupIds: [] });
+    return c.json({ ok: false, error: 'provider status unavailable', code: 'YOUTUBE_PROVIDER_STATUS_UNKNOWN' }, 502);
+  }
+  const terminalProductUsids = new Set(observation.rows
+    .filter((row) => row && typeof row.productUsid === 'string' && /^[A-Za-z0-9_-]{1,200}$/.test(row.productUsid)
+      && typeof row.status === 'string' && (isYouTubeProviderTerminalStatus(row.status) || row.status === 'Deleted'))
+    .map((row) => row.productUsid));
+  try {
+    const result = withYouTubeCapacityLock(() => {
+      const registrationStore = productRegistrationsStore();
+      const candidates = registrationStore.list().filter((record) => record.status === 'registered'
+        && record.productUsid && terminalProductUsids.has(record.productUsid));
+      const affectedFamilyGroupIds = [...new Set(candidates.map((record) => record.familyGroupId))];
+      const invitationStore = invitationJobsStore();
+      const invitationData = readOrEmpty(invitationStore, { version: 1, jobs: [] } satisfies YouTubeInvitationJobsStoreData);
+      let invitationChanged = false;
+      const now = dependencies.now?.().toISOString() ?? new Date().toISOString();
+      const jobs = invitationData.jobs.map((job) => {
+        if (!terminalProductUsids.has(job.productUsid) || job.status === 'ended') return job;
+        const status = observation.rows.find((row) => row.productUsid === job.productUsid
+          && (isYouTubeProviderTerminalStatus(row.status) || row.status === 'Deleted'))?.status;
+        if (!status) return job;
+        const updated = reconcileYouTubeInvitationProviderStatus(
+          job,
+          status === 'Deleted' ? 'Cancelled' : status,
+          { actor, reason, at: now },
+          invitationData.jobs,
+        );
+        invitationChanged ||= updated !== job;
+        return updated;
+      });
+      const deleted = registrationStore.markDeletedProducts(
+        candidates.flatMap((record) => record.productUsid ? [record.productUsid] : []),
+        { actor, reasonCode: 'provider-terminal-reconciled', at: now },
+      );
+      if (invitationChanged) invitationStore.write({ version: 1, jobs });
+      const groups = readFamilyGroups().familyGroups;
+      const registrations = registrationStore.listForCapacityValidation();
+      return {
+        releasedCount: deleted.length,
+        familyGroups: affectedFamilyGroupIds.map((id) => {
+          const group = groups.find((candidate) => candidate.id === id);
+          return group ? {
+            id,
+            releasedCount: deleted.filter((record) => record.familyGroupId === id).length,
+            availableSeats: Math.max(0, group.sellableSeats - occupiedYouTubeFamilyGroupSeats(id, jobs, registrations)),
+          } : null;
+        }).filter((group): group is { id: string; releasedCount: number; availableSeats: number } => group !== null),
+      };
+    });
+    dependencies.productReconciliationAudit?.({
+      outcome: 'success', actor, reason, releasedCount: result.releasedCount,
+      familyGroupIds: result.familyGroups.map((group) => group.id),
+    });
+    return c.json({ ok: true, ...result });
+  } catch {
+    dependencies.productReconciliationAudit?.({ outcome: 'failed', actor, reason, releasedCount: 0, familyGroupIds: [] });
+    return unavailable(c);
+  }
 });
 
 app.get('/invitations', (c) => {

@@ -408,4 +408,80 @@ describe('YouTube product registration API', () => {
     const groups = await (await app.request('/family-groups')).json() as any;
     expect(groups.familyGroups[0]).toMatchObject({ id: 'group-1', availableSeats: 1 });
   });
+
+  test('reconciles authoritative provider cancellations and restores capacity idempotently', async () => {
+    const store = new YouTubeProductRegistrationsStore(process.env.YOUTUBE_PRODUCT_REGISTRATIONS_PATH!, { allowUnsafeIsolatedClaim: true });
+    store.claim({ idempotencyKey: 'request-key-provider-cancelled', requestFingerprint: 'e'.repeat(64), familyGroupId: 'group-1', actor: 'admin', reasonCode: 'create', at: now });
+    store.complete('request-key-provider-cancelled', 'registered', {
+      actor: 'admin', reasonCode: 'registered', productUsid: 'product-provider-cancelled', at: '2026-08-11T00:00:01.000Z',
+    });
+    new YouTubeInvitationJobsStore(process.env.YOUTUBE_INVITATIONS_PATH!).write({ version: 1, jobs: [{
+      id: 'youtube-invitation:deal-provider-cancelled', dealUsid: 'deal-provider-cancelled',
+      productUsid: 'product-provider-cancelled', chatRoomUuid: 'chat-provider-cancelled', familyGroupId: 'group-1',
+      buyerName: '구매자', buyerGoogleEmail: null, endDateTime: null, status: 'waiting_for_group_assignment',
+      createdAt: now, updatedAt: '2026-08-11T00:00:01.000Z', history: [],
+    }] });
+    const productReconciliationAudit = vi.fn();
+    const fetchProviderProductStatuses = vi.fn(async () => ({
+      authoritative: true,
+      rows: [{ productUsid: 'product-provider-cancelled', status: 'CancelByDepositRejection' }],
+    }));
+    const app = createYouTubeInvitationsApp({
+      actor: () => 'admin:test', fetchProviderProductStatuses, productReconciliationAudit,
+      now: () => new Date('2026-08-11T00:00:02.000Z'),
+    });
+    const request = () => app.request('/products/registrations/reconcile', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-audit-reason': 'operator cancelled product reconciliation' },
+      body: '{}',
+    });
+
+    const first = await request();
+    expect(first.status).toBe(200);
+    expect(await first.json()).toEqual({
+      ok: true,
+      releasedCount: 1,
+      familyGroups: [{ id: 'group-1', releasedCount: 1, availableSeats: 1 }],
+    });
+    expect(store.list()[0]).toMatchObject({
+      status: 'deleted',
+      history: expect.arrayContaining([expect.objectContaining({
+        from: 'registered', to: 'deleted', actor: 'admin:test', reasonCode: 'provider-terminal-reconciled',
+      })]),
+    });
+    expect(new YouTubeInvitationJobsStore(process.env.YOUTUBE_INVITATIONS_PATH!).read().jobs[0]).toMatchObject({
+      status: 'ended',
+      history: [expect.objectContaining({ from: 'waiting_for_group_assignment', to: 'ended', actor: 'admin:test' })],
+    });
+    expect(productReconciliationAudit).toHaveBeenCalledWith(expect.objectContaining({
+      outcome: 'success', releasedCount: 1, familyGroupIds: ['group-1'],
+    }));
+
+    const replay = await request();
+    expect(replay.status).toBe(200);
+    expect(await replay.json()).toEqual({ ok: true, releasedCount: 0, familyGroups: [] });
+    expect(store.list()[0].history).toHaveLength(3);
+  });
+
+  test('does not release capacity when provider history is unavailable or the request is not exact', async () => {
+    const store = new YouTubeProductRegistrationsStore(process.env.YOUTUBE_PRODUCT_REGISTRATIONS_PATH!, { allowUnsafeIsolatedClaim: true });
+    store.claim({ idempotencyKey: 'request-key-reconcile-guard', requestFingerprint: 'f'.repeat(64), familyGroupId: 'group-1', actor: 'admin', reasonCode: 'create', at: now });
+    store.complete('request-key-reconcile-guard', 'registered', {
+      actor: 'admin', reasonCode: 'registered', productUsid: 'product-reconcile-guard', at: '2026-08-11T00:00:01.000Z',
+    });
+    const app = createYouTubeInvitationsApp({
+      fetchProviderProductStatuses: async () => ({ authoritative: false, rows: [] }),
+    });
+    const invalid = await app.request('/products/registrations/reconcile', {
+      method: 'POST', headers: { 'content-type': 'application/json', 'x-audit-reason': 'operator reconciliation' },
+      body: JSON.stringify({ productUsid: 'product-reconcile-guard' }),
+    });
+    expect(invalid.status).toBe(400);
+    const unavailable = await app.request('/products/registrations/reconcile', {
+      method: 'POST', headers: { 'content-type': 'application/json', 'x-audit-reason': 'operator reconciliation' }, body: '{}',
+    });
+    expect(unavailable.status).toBe(502);
+    expect(await unavailable.json()).toMatchObject({ code: 'YOUTUBE_PROVIDER_STATUS_UNKNOWN' });
+    expect(store.list()[0].status).toBe('registered');
+  });
 });

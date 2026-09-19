@@ -7,6 +7,7 @@ import {
   clampYouTubeRepeat,
   createYouTubeIdempotencyKey,
   normalizeYouTubeEndDate,
+  parseYouTubeRefillPreset,
   validateYouTubeSellingGuide,
   getSeoulTomorrow,
   summarizeYouTubeRegistration,
@@ -27,6 +28,17 @@ test('normalizeYouTubeEndDate defaults and caps the date at subscription expiry'
   assert.equal(normalizeYouTubeEndDate('2027-01-01', '2026-12-31'), '2026-12-31');
   assert.equal(normalizeYouTubeEndDate('2026-11-01', '2026-12-31'), '2026-11-01');
   assert.equal(normalizeYouTubeEndDate('', null), '');
+});
+
+test('parseYouTubeRefillPreset safely preselects a family group and clamps the refill count', () => {
+  assert.deepEqual(parseYouTubeRefillPreset('?service=youtube&familyGroupId=youtube-family-group%3Aabc-123&repeat=9'), {
+    familyGroupId: 'youtube-family-group:abc-123', repeat: 9,
+  });
+  assert.deepEqual(parseYouTubeRefillPreset('?service=youtube&familyGroupId=youtube-family-group%3Aabc-123&repeat=99'), {
+    familyGroupId: 'youtube-family-group:abc-123', repeat: 20,
+  });
+  assert.equal(parseYouTubeRefillPreset('?service=netflix&familyGroupId=youtube-family-group%3Aabc-123&repeat=2'), null);
+  assert.equal(parseYouTubeRefillPreset('?service=youtube&familyGroupId=unsafe&repeat=2'), null);
 });
 
 test('createYouTubeIdempotencyKey uses UUID and provides an ASCII fallback', () => {
@@ -80,6 +92,15 @@ test('write page blocks invalid YouTube descriptions before progress and stops r
   assert.match(source, /response\.status\s*>=\s*400\s*&&\s*response\.status\s*<\s*500[\s\S]*stopSafely\s*=\s*true/);
   assert.match(source, /실패 원인/);
   assert.match(source, /입력 수정하기/);
+});
+
+test('write page consumes the vacancy-fill preset for service, group, date, and repeat', () => {
+  const source = readFileSync(new URL('../src/web/pages/write.tsx', import.meta.url), 'utf8');
+  assert.match(source, /parseYouTubeRefillPreset\(window\.location\.search\)/);
+  assert.match(source, /useState\(initialService\)/);
+  assert.match(source, /initialYouTubeRefill \? getSeoulTomorrow\(\) : ''/);
+  assert.match(source, /initialYouTubeRefill\?\.familyGroupId \|\| ''/);
+  assert.match(source, /initialYouTubeRefill\?\.repeat \|\| 1/);
 });
 
 test('preview title and request name remove a legacy Gmail marker while preserving the clean title', () => {

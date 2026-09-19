@@ -414,6 +414,7 @@ body {
 .is-spinning { animation: spin 1s linear infinite; }
 .youtube-service-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
 .youtube-service-toolbar p { margin: 0; color: #6B7280; font-size: 11px; font-weight: 700; }
+.youtube-service-toolbar-actions { display: flex; align-items: center; justify-content: flex-end; gap: 7px; flex-wrap: wrap; }
 .youtube-service-toolbar button, .youtube-service-notice button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; flex: 0 0 auto; border: 0; border-radius: 10px; padding: 8px 11px; background: #DC2626; color: #fff; font: inherit; font-size: 11px; font-weight: 900; cursor: pointer; }
 .youtube-service-toolbar button:disabled { cursor: not-allowed; opacity: .5; }
 .youtube-service-notice, .youtube-unmapped-notice, .youtube-service-empty { display: flex; align-items: center; gap: 7px; margin-bottom: 10px; padding: 10px 12px; border-radius: 11px; background: #FFFBEB; color: #92400E; font-size: 11px; font-weight: 800; }
@@ -484,6 +485,8 @@ body {
   .youtube-sales-session-status { grid-template-columns: auto minmax(0,1fr); }
   .youtube-sales-session-status time { grid-column: 2; white-space: normal; }
   .youtube-service-toolbar { align-items: stretch; flex-direction: column; }
+  .youtube-service-toolbar-actions { justify-content: stretch; }
+  .youtube-service-toolbar-actions button { flex: 1 1 0; }
   .youtube-family-group-grid { padding: 0; }
   .youtube-family-member dl > div { grid-template-columns: minmax(0, 1fr); }
 

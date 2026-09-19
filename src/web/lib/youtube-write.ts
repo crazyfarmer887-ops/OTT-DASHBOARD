@@ -71,6 +71,21 @@ export function clampYouTubeRepeat(requested: number, availableSeats: number): n
   return Math.max(1, Math.min(Math.floor(requested) || 1, capacity));
 }
 
+export interface YouTubeRefillPreset {
+  familyGroupId: string;
+  repeat: number;
+}
+
+export function parseYouTubeRefillPreset(search: string): YouTubeRefillPreset | null {
+  const params = new URLSearchParams(search);
+  if (params.get('service') !== 'youtube') return null;
+  const familyGroupId = params.get('familyGroupId') || '';
+  if (!/^youtube-family-group:[A-Za-z0-9-]{1,160}$/.test(familyGroupId)) return null;
+  const repeatValue = params.get('repeat') || '1';
+  if (!/^\d{1,2}$/.test(repeatValue)) return null;
+  return { familyGroupId, repeat: Math.max(1, Math.min(20, Number(repeatValue))) };
+}
+
 export function normalizeYouTubeEndDate(value: string, subscriptionEndDate: string | null): string {
   if (!subscriptionEndDate) return value;
   if (!value || value > subscriptionEndDate) return subscriptionEndDate;

@@ -281,6 +281,10 @@ const YOUTUBE_PROVIDER_TERMINAL_STATUSES = new Set<string>([
   'NormalFinished',
 ]);
 
+export function isYouTubeProviderTerminalStatus(providerStatus: string): boolean {
+  return YOUTUBE_PROVIDER_TERMINAL_STATUSES.has(providerStatus);
+}
+
 export function reconcileYouTubeInvitationProviderStatus(
   job: YouTubeInvitationJob,
   providerStatus: string,
@@ -311,7 +315,7 @@ export function reconcileYouTubeInvitationProviderStatus(
     }
     return appendYouTubeInvitationTransition(job, 'active', context);
   }
-  if (YOUTUBE_PROVIDER_TERMINAL_STATUSES.has(providerStatus)) {
+  if (isYouTubeProviderTerminalStatus(providerStatus)) {
     if (job.status === 'ended') return job;
     return appendYouTubeInvitationTransition(job, 'ended', context);
   }

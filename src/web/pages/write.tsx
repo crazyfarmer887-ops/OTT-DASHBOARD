@@ -14,6 +14,7 @@ import {
   getSeoulTomorrow,
   getYouTubePostRegistrationStep,
   normalizeYouTubeEndDate,
+  parseYouTubeRefillPreset,
   summarizeYouTubeRegistration,
   validateYouTubeSellingGuide,
   youtubeSellingGuideLength,
@@ -89,25 +90,27 @@ function getPresetForService(serviceKey: string, store = loadWriteProductPresets
 
 export default function WritePage() {
   const cookies = loadCookies();
+  const initialYouTubeRefill = typeof window === 'undefined' ? null : parseYouTubeRefillPreset(window.location.search);
+  const initialService = initialYouTubeRefill ? 'youtube' : DEFAULT_SERVICE_KEY;
   const [selectedId, setSelectedId] = useState(cookies[0]?.id || '');
   const [step, setStep] = useState<Step>('form');
 
   // 폼
-  const [service, setService] = useState(DEFAULT_SERVICE_KEY);
-  const [endDate, setEndDate] = useState('');
+  const [service, setService] = useState(initialService);
+  const [endDate, setEndDate] = useState(() => initialYouTubeRefill ? getSeoulTomorrow() : '');
   const [price, setPrice] = useState('');
   const [dailyPrice, setDailyPrice] = useState('');
   const [priceMode, setPriceMode] = useState<PriceMode>('total');
-  const [repeat, setRepeat] = useState(1);
+  const [repeat, setRepeat] = useState(initialYouTubeRefill?.repeat || 1);
   const [productPresetStore, setProductPresetStore] = useState<WriteProductPresetStore>(() => loadWriteProductPresets());
   const [presetNotice, setPresetNotice] = useState('');
-  const [title, setTitle] = useState(() => getPresetForService(DEFAULT_SERVICE_KEY).title);
+  const [title, setTitle] = useState(() => getPresetForService(initialService).title);
 
   const makeDefaultKeepMemo = (_emailId?: number|string, _pin?: string, _profileName?: string) => {
     return buildPartyAccessDeliveryTemplate(PARTY_ACCESS_URL_PLACEHOLDER);
   };
 
-  const [description, setDescription] = useState(() => getPresetForService(DEFAULT_SERVICE_KEY).description);
+  const [description, setDescription] = useState(() => getPresetForService(initialService).description);
 
   // 계정 전달
   const [keepAcct, setKeepAcct] = useState('');
@@ -136,7 +139,7 @@ export default function WritePage() {
   const [youtubeGroupsLoading, setYoutubeGroupsLoading] = useState(false);
   const [youtubeGroupsError, setYoutubeGroupsError] = useState('');
   const [youtubeEnabled, setYoutubeEnabled] = useState<boolean | null>(null);
-  const [selectedYoutubeGroupId, setSelectedYoutubeGroupId] = useState('');
+  const [selectedYoutubeGroupId, setSelectedYoutubeGroupId] = useState(initialYouTubeRefill?.familyGroupId || '');
   const [registrationYoutubeGroupLabel, setRegistrationYoutubeGroupLabel] = useState('');
 
   const loadYoutubeGroups = async () => {

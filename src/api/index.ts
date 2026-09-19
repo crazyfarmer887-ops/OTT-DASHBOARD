@@ -201,6 +201,7 @@ const youtubeInvitationsApp = createYouTubeInvitationsApp({
   reconcileProductRegistration: reconcileYouTubeProductRegistrationFromSeller,
   finishDelivery: finishYouTubeInvitationDelivery,
   fetchProviderStatus: fetchYouTubeInvitationProviderStatus,
+  fetchProviderProductStatuses: fetchYouTubeProviderProductStatuses,
   audit: (event) => writeAudit({
     actor: event.actor,
     action: `youtube.product-registration.${event.outcome}`,
@@ -228,6 +229,22 @@ const youtubeInvitationsApp = createYouTubeInvitationsApp({
     requestId: `youtube-invitation-${Date.now()}`,
     details: { reason: event.reason, status: event.outcome },
   }),
+  productReconciliationAudit: (event) => writeAudit({
+    actor: event.actor,
+    action: 'youtube.product-registration.reconcile-terminal',
+    targetType: 'youtubeProductRegistration',
+    targetId: event.familyGroupIds.length === 1
+      ? privacySafeAuditId('youtube-family-group', event.familyGroupIds[0])
+      : 'youtube-family-groups',
+    summary: `YouTube terminal product reconciliation released ${event.releasedCount} seat(s)`,
+    result: event.outcome === 'success' ? 'success' : 'error',
+    requestId: `youtube-product-reconcile-${Date.now()}`,
+    details: {
+      reason: event.reason,
+      releasedCount: event.releasedCount,
+      familyGroupIds: event.familyGroupIds.map((id) => privacySafeAuditId('youtube-family-group', id)),
+    },
+  }),
 });
 
 function writeAudit(entry: Parameters<typeof appendAuditLog>[0]) {
@@ -246,6 +263,7 @@ const SAFE_MODE_RISKY_PATHS = new Set([
   '/post/keepAcct',
   '/bulk-update-keepmemo',
   '/youtube/products',
+  '/youtube/products/registrations/reconcile',
   '/renewal-automation/tick',
   '/renewal-automation/batch',
   '/renewal-automation/reviews/action',
@@ -454,6 +472,53 @@ async function fetchYouTubeInvitationProviderStatus(dealUsid: string): Promise<s
   }
   const exact = observations.find((deal) => deal && typeof deal === 'object' && deal.dealUsid === dealUsid);
   return exact && typeof exact.dealStatus === 'string' && exact.dealStatus ? exact.dealStatus : null;
+}
+
+async function fetchYouTubeProviderProductStatuses(): Promise<{
+  authoritative: boolean;
+  rows: Array<{ productUsid: string; status: string }>;
+}> {
+  const cookies = loadGraytagAuthCookies();
+  if (!cookies) return { authoritative: false, rows: [] };
+  const rows: Array<{ productUsid: string; status: string }> = [];
+  const headers = (referer: string) => ({
+    ...BASE_HEADERS,
+    Cookie: buildGraytagCookieHeader(cookies),
+    Referer: referer,
+  });
+  for (const [kind, referer] of [
+    ['before', 'https://graytag.co.kr/lender/deal/list'],
+    ['after', 'https://graytag.co.kr/lender/deal/listAfterUsing'],
+  ] as const) {
+    let exhausted = false;
+    for (let page = 1; page <= 10; page++) {
+      try {
+        const response = await rateLimitedFetch(
+          buildFinishedDealsUrl(kind, page, 500, true),
+          { headers: headers(referer), redirect: 'manual', signal: AbortSignal.timeout(30_000) },
+          true,
+        );
+        if (!response.ok || response.redirected || (response.status >= 300 && response.status < 400)) {
+          return { authoritative: false, rows: [] };
+        }
+        const payload = await response.json();
+        if (!payload || typeof payload !== 'object' || (payload as any).succeeded === false) {
+          return { authoritative: false, rows: [] };
+        }
+        const deals = extractLenderDeals(payload);
+        for (const deal of deals) {
+          const productUsid = String(deal?.productUsid || '').trim();
+          const status = String(deal?.dealStatus || '').trim();
+          if (/^[A-Za-z0-9_-]{1,200}$/.test(productUsid) && status) rows.push({ productUsid, status });
+        }
+        if (deals.length < 500) { exhausted = true; break; }
+      } catch {
+        return { authoritative: false, rows: [] };
+      }
+    }
+    if (!exhausted) return { authoritative: false, rows: [] };
+  }
+  return { authoritative: true, rows };
 }
 
 function dataDirFor(path: string) {

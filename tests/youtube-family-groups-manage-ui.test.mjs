@@ -72,6 +72,15 @@ test('manage page fetches family groups and invitation members with admin auth',
   assert.doesNotMatch(manage, /console\.(?:log|warn|error)\([^\n]*managerEmail/);
 });
 
+test('manage page reconciles cancelled YouTube products and opens vacancy refill preselected', () => {
+  assert.match(manage, /fetch\('\/api\/youtube\/products\/registrations\/reconcile'/);
+  assert.match(manage, /operator cancelled product reconciliation/);
+  assert.match(manage, /취소 거래 반영/);
+  assert.match(manage, /빈자리 \{group\.availableSeats\}개 매꾸기/);
+  assert.match(manage, /new URLSearchParams\(\{[\s\S]*service: 'youtube',[\s\S]*familyGroupId: group\.id,[\s\S]*repeat:/);
+  assert.match(manage, /navigate\(`\/write\?\$\{query\.toString\(\)\}`\)/);
+});
+
 test('overlapping YouTube refreshes allow only the latest generation to update request state', () => {
   assert.match(manage, /useRef/);
   assert.match(manage, /youtubeGroupsFetchGeneration\.current \+= 1/);

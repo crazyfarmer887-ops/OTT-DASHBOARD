@@ -309,6 +309,7 @@ export default function ManagePage() {
   const [youtubeGroupDraft, setYouTubeGroupDraft] = useState<YouTubeFamilyGroupDraft>({ label: '', managerEmail: '', subscriptionEndDate: '', sellableSeats: '5' });
   const [youtubeGroupFormError, setYouTubeGroupFormError] = useState<string | null>(null);
   const [youtubeGroupMutationLoading, setYouTubeGroupMutationLoading] = useState(false);
+  const [youtubeReconciliationLoading, setYouTubeReconciliationLoading] = useState(false);
   const youtubeGroupsFetchGeneration = useRef(0);
 
   const showToast = (message: string, tone: 'success' | 'error' | 'info' = 'success') => {
@@ -346,12 +347,55 @@ export default function ManagePage() {
       setYouTubeInvitations(parsedInvitations.invitations);
       setYouTubeProductRegistrations(parsedRegistrations.registrations);
       setYouTubeGroupsFeatureEnabled(parsedGroups.enabled && parsedInvitations.enabled && parsedRegistrations.enabled);
+      return parsedGroups;
     } catch {
       if (generation !== youtubeGroupsFetchGeneration.current) return;
       setYouTubeGroupsError('가족 그룹 정보를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.');
+      return null;
     } finally {
       if (generation === youtubeGroupsFetchGeneration.current) setYouTubeGroupsLoading(false);
     }
+  };
+
+  const reconcileYouTubeCancelledProducts = async () => {
+    if (youtubeReconciliationLoading) return;
+    if (!window.confirm('GrayTag의 종료 거래를 확인해 취소된 판매글을 반영할까요? 정상 거래는 그대로 유지됩니다.')) return;
+    setYoutubeReconciliationLoading(true);
+    try {
+      const response = await fetch('/api/youtube/products/registrations/reconcile', {
+        method: 'POST',
+        headers: adminHeaders({
+          'Content-Type': 'application/json',
+          'x-audit-reason': 'operator cancelled product reconciliation',
+        }),
+        body: '{}',
+      });
+      const payload = await response.json().catch(() => null) as { ok?: boolean; releasedCount?: number; code?: string } | null;
+      if (!response.ok || payload?.ok !== true) {
+        throw new Error(payload?.code === 'YOUTUBE_PROVIDER_STATUS_UNKNOWN'
+          ? 'GrayTag 거래 상태를 확인하지 못했습니다. 잠시 후 다시 시도해주세요.'
+          : '취소 거래를 반영하지 못했습니다.');
+      }
+      await fetchYouTubeFamilyGroups();
+      const releasedCount = Number(payload.releasedCount || 0);
+      showToast(releasedCount > 0
+        ? `취소 판매글 ${releasedCount}개를 반영해 빈자리를 복구했습니다.`
+        : '새로 반영할 취소 거래가 없습니다.', releasedCount > 0 ? 'success' : 'info');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : '취소 거래를 반영하지 못했습니다.', 'error');
+    } finally {
+      setYoutubeReconciliationLoading(false);
+    }
+  };
+
+  const openYouTubeVacancyFill = (group: YouTubeFamilyGroupDto) => {
+    if (group.availableSeats <= 0) return;
+    const query = new URLSearchParams({
+      service: 'youtube',
+      familyGroupId: group.id,
+      repeat: String(Math.min(20, group.availableSeats)),
+    });
+    navigate(`/write?${query.toString()}`);
   };
 
   const openYouTubeGroupCreateForm = () => {
@@ -1991,7 +2035,12 @@ export default function ManagePage() {
                   <YouTubeSalesSessionCard />
                   <div className="youtube-service-toolbar">
                     <p>관리자 계정과 가족 그룹 초대 상태를 관리합니다. ID/PW · PIN · 프로필은 전달하지 않습니다.</p>
-                    <button type="button" className="management-touch-target" onClick={openYouTubeGroupCreateForm} disabled={youtubeGroupsFeatureEnabled !== true || youtubeGroupMutationLoading}><PlusCircle size={14} /> 그룹 추가</button>
+                    <div className="youtube-service-toolbar-actions">
+                      <button type="button" className="management-touch-target" onClick={() => void reconcileYouTubeCancelledProducts()} disabled={youtubeGroupsFeatureEnabled !== true || youtubeReconciliationLoading}>
+                        {youtubeReconciliationLoading ? <Loader2 size={14} style={{ animation:'spin 1s linear infinite' }} /> : <RefreshCw size={14} />} 취소 거래 반영
+                      </button>
+                      <button type="button" className="management-touch-target" onClick={openYouTubeGroupCreateForm} disabled={youtubeGroupsFeatureEnabled !== true || youtubeGroupMutationLoading}><PlusCircle size={14} /> 그룹 추가</button>
+                    </div>
                   </div>
                   {youtubeGroupsFeatureEnabled !== true && !youtubeGroupsLoading && !youtubeGroupsError && <div className="youtube-service-notice">유튜브 초대 판매 기능이 비활성화되어 있습니다. 조회만 가능합니다.</div>}
                   {youtubeGroupsLoading && <div role="status" className="youtube-service-notice"><Loader2 size={14} style={{ animation:'spin 1s linear infinite' }} /> 가족 그룹을 불러오는 중...</div>}
@@ -2053,6 +2102,7 @@ export default function ManagePage() {
                               <div><dt>초대 / 파티원</dt><dd>{group.members.length}명</dd></div>
                             </dl>
                             <div className="management-account-actions youtube-family-group-actions">
+                              <button type="button" className="management-touch-target management-primary-action" onClick={() => openYouTubeVacancyFill(group)} disabled={!group.enabled || group.availableSeats <= 0 || youtubeGroupsFeatureEnabled !== true}>빈자리 {group.availableSeats}개 매꾸기</button>
                               <button type="button" className="management-touch-target" onClick={() => setOpenYouTubeGroup(isGroupOpen ? null : group.id)} aria-expanded={isGroupOpen} aria-controls={groupPanelId}>상세보기</button>
                               <button type="button" className="management-touch-target" onClick={() => navigate('/youtube-invites')}>초대 관리</button>
                               <button type="button" className="management-touch-target" onClick={() => openYouTubeGroupEditForm(group)} disabled={youtubeGroupsFeatureEnabled !== true || youtubeGroupMutationLoading}>수정</button>
