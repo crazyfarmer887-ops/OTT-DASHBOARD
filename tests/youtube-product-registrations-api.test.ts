@@ -441,7 +441,9 @@ describe('YouTube product registration API', () => {
     expect(await first.json()).toEqual({
       ok: true,
       releasedCount: 1,
-      familyGroups: [{ id: 'group-1', releasedCount: 1, availableSeats: 1 }],
+      adoptedCount: 0,
+      unmappedCount: 0,
+      familyGroups: [{ id: 'group-1', releasedCount: 1, adoptedCount: 0, availableSeats: 1 }],
     });
     expect(store.list()[0]).toMatchObject({
       status: 'deleted',
@@ -454,13 +456,93 @@ describe('YouTube product registration API', () => {
       history: [expect.objectContaining({ from: 'waiting_for_group_assignment', to: 'ended', actor: 'admin:test' })],
     });
     expect(productReconciliationAudit).toHaveBeenCalledWith(expect.objectContaining({
-      outcome: 'success', releasedCount: 1, familyGroupIds: ['group-1'],
+      outcome: 'success', releasedCount: 1, adoptedCount: 0, familyGroupIds: ['group-1'],
     }));
 
     const replay = await request();
     expect(replay.status).toBe(200);
-    expect(await replay.json()).toEqual({ ok: true, releasedCount: 0, familyGroups: [] });
+    expect(await replay.json()).toEqual({
+      ok: true, releasedCount: 0, adoptedCount: 0, unmappedCount: 0, familyGroups: [],
+    });
     expect(store.list()[0].history).toHaveLength(3);
+  });
+
+  test('adopts provider-live account-checking and using products missing from the local journal', async () => {
+    new YouTubeFamilyGroupsStore(process.env.YOUTUBE_FAMILY_GROUPS_PATH!).write({ version: 1, familyGroups: [{
+      id: 'group-1', label: '그룹', managerEmail: 'manager@example.com', subscriptionEndDate: '2027-08-31',
+      sellableSeats: 3, enabled: true, createdAt: now, updatedAt: now,
+    }] });
+    const store = new YouTubeProductRegistrationsStore(process.env.YOUTUBE_PRODUCT_REGISTRATIONS_PATH!, { allowUnsafeIsolatedClaim: true });
+    store.claim({ idempotencyKey: 'request-key-known-live-product', requestFingerprint: 'a'.repeat(64), familyGroupId: 'group-1', actor: 'admin', reasonCode: 'create', at: now });
+    store.complete('request-key-known-live-product', 'registered', {
+      actor: 'admin', reasonCode: 'registered', productUsid: 'product-known-using', at: '2026-08-11T00:00:01.000Z',
+    });
+    const app = createYouTubeInvitationsApp({
+      actor: () => 'admin:test',
+      fetchProviderProductStatuses: async () => ({ authoritative: true, rows: [
+        { productUsid: 'product-known-using', status: 'Using', endDateTime: '27. 08. 31' },
+        { productUsid: 'product-missing-delivered', status: 'Delivered', endDateTime: '2027-08-31' },
+        { productUsid: 'product-missing-using', status: 'Using', endDateTime: '20270831T2359' },
+      ] }),
+      now: () => new Date('2026-08-11T00:00:02.000Z'),
+    });
+    const request = () => app.request('/products/registrations/reconcile', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-audit-reason': 'operator live product reconciliation' },
+      body: '{}',
+    });
+
+    const first = await request();
+    expect(first.status).toBe(200);
+    expect(await first.json()).toEqual({
+      ok: true,
+      releasedCount: 0,
+      adoptedCount: 2,
+      unmappedCount: 0,
+      familyGroups: [{ id: 'group-1', releasedCount: 0, adoptedCount: 2, availableSeats: 0 }],
+    });
+    expect(store.list()).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        status: 'registered', productUsid: 'product-missing-using', familyGroupId: 'group-1',
+        history: expect.arrayContaining([expect.objectContaining({ reasonCode: 'provider-live-reconciled' })]),
+      }),
+      expect.objectContaining({
+        status: 'registered', productUsid: 'product-missing-delivered', familyGroupId: 'group-1',
+        history: expect.arrayContaining([expect.objectContaining({ reasonCode: 'provider-live-reconciled' })]),
+      }),
+    ]));
+    expect((await (await app.request('/family-groups')).json() as any).familyGroups[0]).toMatchObject({
+      sellableSeats: 3, availableSeats: 0,
+    });
+
+    const replay = await request();
+    expect(replay.status).toBe(200);
+    expect(await replay.json()).toEqual({
+      ok: true, releasedCount: 0, adoptedCount: 0, unmappedCount: 0, familyGroups: [],
+    });
+    expect(store.list()).toHaveLength(3);
+  });
+
+  test('does not guess a family group when a live provider product end date is ambiguous', async () => {
+    new YouTubeFamilyGroupsStore(process.env.YOUTUBE_FAMILY_GROUPS_PATH!).write({ version: 1, familyGroups: [
+      { id: 'group-1', label: '그룹 1', managerEmail: 'one@example.com', subscriptionEndDate: '2027-08-31', sellableSeats: 2, enabled: true, createdAt: now, updatedAt: now },
+      { id: 'group-2', label: '그룹 2', managerEmail: 'two@example.com', subscriptionEndDate: '2027-08-31', sellableSeats: 2, enabled: true, createdAt: now, updatedAt: now },
+    ] });
+    const app = createYouTubeInvitationsApp({
+      fetchProviderProductStatuses: async () => ({ authoritative: true, rows: [
+        { productUsid: 'product-ambiguous-live', status: 'Delivered', endDateTime: '2027-08-31' },
+      ] }),
+    });
+    const response = await app.request('/products/registrations/reconcile', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-audit-reason': 'operator ambiguous reconciliation' },
+      body: '{}',
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      ok: true, releasedCount: 0, adoptedCount: 0, unmappedCount: 1, familyGroups: [],
+    });
+    expect(new YouTubeProductRegistrationsStore(process.env.YOUTUBE_PRODUCT_REGISTRATIONS_PATH!).list()).toEqual([]);
   });
 
   test('does not release capacity when provider history is unavailable or the request is not exact', async () => {

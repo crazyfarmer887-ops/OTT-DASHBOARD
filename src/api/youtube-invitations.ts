@@ -157,14 +157,14 @@ export interface YouTubeInvitationsAppDependencies {
   fetchProviderStatus?: (dealUsid: string) => Promise<string | null>;
   fetchProviderProductStatuses?: () => Promise<{
     authoritative: boolean;
-    rows: Array<{ productUsid: string; status: string }>;
+    rows: Array<{ productUsid: string; status: string; endDateTime?: string | null }>;
   }>;
   actor?: (context: any) => string;
   audit?: (event: { outcome: 'registered' | 'uncertain' | 'failed'; actor: string; reason: string; familyGroupId: string; productUsid: string | null }) => void;
   invitationAudit?: (event: YouTubeInvitationAuditEvent) => void;
   productReconciliationAudit?: (event: {
     outcome: 'success' | 'failed'; actor: string; reason: string;
-    releasedCount: number; familyGroupIds: string[];
+    releasedCount: number; adoptedCount: number; familyGroupIds: string[];
   }) => void;
   now?: () => Date;
 }
@@ -470,6 +470,21 @@ const CAPACITY_CONSUMING_INVITATION_STATUSES = new Set([
   'waiting_for_group_assignment', 'waiting_for_buyer_email', 'email_candidate_found', 'email_confirmed',
   'invite_sent', 'delivery_completion_pending', 'delivered_waiting_inspection', 'active',
 ]);
+const CAPACITY_CONSUMING_PROVIDER_STATUSES = new Set([
+  'OnSale', 'Reserved', 'LendingAcceptanceWaiting', 'Delivering', 'Delivered',
+  'DeliveredAndCheckPrepaid', 'Using', 'UsingNearExpiration',
+]);
+
+function providerEndDate(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim();
+  const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(normalized);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+  const compact = /^(\d{4})(\d{2})(\d{2})(?:T\d{4})?$/.exec(normalized);
+  if (compact) return `${compact[1]}-${compact[2]}-${compact[3]}`;
+  const dotted = /^(\d{2})\.\s*(\d{2})\.\s*(\d{2})/.exec(normalized);
+  return dotted ? `20${dotted[1]}-${dotted[2]}-${dotted[3]}` : null;
+}
 function occupiedYouTubeFamilySeats(
   familyGroupId: string,
   jobs: readonly YouTubeInvitationJob[],
@@ -672,27 +687,33 @@ app.post('/products/registrations/reconcile', async (c) => {
     observation = { authoritative: false, rows: [] };
   }
   if (!observation.authoritative || !Array.isArray(observation.rows)) {
-    dependencies.productReconciliationAudit?.({ outcome: 'failed', actor, reason, releasedCount: 0, familyGroupIds: [] });
+    dependencies.productReconciliationAudit?.({ outcome: 'failed', actor, reason, releasedCount: 0, adoptedCount: 0, familyGroupIds: [] });
     return c.json({ ok: false, error: 'provider status unavailable', code: 'YOUTUBE_PROVIDER_STATUS_UNKNOWN' }, 502);
   }
-  const terminalProductUsids = new Set(observation.rows
-    .filter((row) => row && typeof row.productUsid === 'string' && /^[A-Za-z0-9_-]{1,200}$/.test(row.productUsid)
-      && typeof row.status === 'string' && (isYouTubeProviderTerminalStatus(row.status) || row.status === 'Deleted'))
-    .map((row) => row.productUsid));
+  const validRows = observation.rows.filter((row) => row && typeof row.productUsid === 'string'
+    && /^[A-Za-z0-9_-]{1,200}$/.test(row.productUsid)
+    && typeof row.status === 'string' && row.status.length > 0);
+  const liveRows = new Map(validRows
+    .filter((row) => CAPACITY_CONSUMING_PROVIDER_STATUSES.has(row.status))
+    .map((row) => [row.productUsid, row]));
+  const terminalRows = new Map(validRows
+    .filter((row) => !liveRows.has(row.productUsid)
+      && (isYouTubeProviderTerminalStatus(row.status) || row.status === 'Deleted'))
+    .map((row) => [row.productUsid, row]));
+  const terminalProductUsids = new Set(terminalRows.keys());
   try {
     const result = withYouTubeCapacityLock(() => {
       const registrationStore = productRegistrationsStore();
-      const candidates = registrationStore.list().filter((record) => record.status === 'registered'
+      const existingRegistrations = registrationStore.list();
+      const candidates = existingRegistrations.filter((record) => record.status === 'registered'
         && record.productUsid && terminalProductUsids.has(record.productUsid));
-      const affectedFamilyGroupIds = [...new Set(candidates.map((record) => record.familyGroupId))];
       const invitationStore = invitationJobsStore();
       const invitationData = readOrEmpty(invitationStore, { version: 1, jobs: [] } satisfies YouTubeInvitationJobsStoreData);
       let invitationChanged = false;
       const now = dependencies.now?.().toISOString() ?? new Date().toISOString();
       const jobs = invitationData.jobs.map((job) => {
         if (!terminalProductUsids.has(job.productUsid) || job.status === 'ended') return job;
-        const status = observation.rows.find((row) => row.productUsid === job.productUsid
-          && (isYouTubeProviderTerminalStatus(row.status) || row.status === 'Deleted'))?.status;
+        const status = terminalRows.get(job.productUsid)?.status;
         if (!status) return job;
         const updated = reconcileYouTubeInvitationProviderStatus(
           job,
@@ -703,32 +724,75 @@ app.post('/products/registrations/reconcile', async (c) => {
         invitationChanged ||= updated !== job;
         return updated;
       });
+      const simulatedRegistrations = existingRegistrations.map((record) => candidates.includes(record)
+        ? { ...record, status: 'deleted' as const }
+        : record);
+      const groups = readFamilyGroups().familyGroups;
+      const existingProductUsids = new Set(existingRegistrations
+        .flatMap((record) => record.productUsid ? [record.productUsid] : []));
+      const adoptedCandidates: Array<{ productUsid: string; familyGroupId: string }> = [];
+      let unmappedCount = 0;
+      for (const [productUsid, row] of liveRows) {
+        if (existingProductUsids.has(productUsid)) continue;
+        const endDate = providerEndDate(row.endDateTime);
+        const matchingGroups = endDate
+          ? groups.filter((group) => group.enabled && group.subscriptionEndDate === endDate)
+          : [];
+        if (matchingGroups.length !== 1) {
+          unmappedCount += 1;
+          continue;
+        }
+        adoptedCandidates.push({ productUsid, familyGroupId: matchingGroups[0].id });
+      }
+      const adoptionCounts = new Map<string, number>();
+      for (const candidate of adoptedCandidates) {
+        adoptionCounts.set(candidate.familyGroupId, (adoptionCounts.get(candidate.familyGroupId) ?? 0) + 1);
+      }
+      for (const [familyGroupId, adoptionCount] of adoptionCounts) {
+        const group = groups.find((candidate) => candidate.id === familyGroupId);
+        if (!group || occupiedYouTubeFamilyGroupSeats(familyGroupId, jobs, simulatedRegistrations) + adoptionCount > group.sellableSeats) {
+          throw new YouTubeCapacityInvariantError();
+        }
+      }
       const deleted = registrationStore.markDeletedProducts(
         candidates.flatMap((record) => record.productUsid ? [record.productUsid] : []),
         { actor, reasonCode: 'provider-terminal-reconciled', at: now },
       );
+      const adopted = registrationStore.adoptProviderProducts(
+        adoptedCandidates,
+        { actor, reasonCode: 'provider-live-reconciled', at: now },
+      );
       if (invitationChanged) invitationStore.write({ version: 1, jobs });
-      const groups = readFamilyGroups().familyGroups;
       const registrations = registrationStore.listForCapacityValidation();
+      const affectedFamilyGroupIds = [...new Set([
+        ...deleted.map((record) => record.familyGroupId),
+        ...adopted.map((record) => record.familyGroupId),
+      ])];
       return {
         releasedCount: deleted.length,
+        adoptedCount: adopted.length,
+        unmappedCount,
         familyGroups: affectedFamilyGroupIds.map((id) => {
           const group = groups.find((candidate) => candidate.id === id);
           return group ? {
             id,
             releasedCount: deleted.filter((record) => record.familyGroupId === id).length,
+            adoptedCount: adopted.filter((record) => record.familyGroupId === id).length,
             availableSeats: Math.max(0, group.sellableSeats - occupiedYouTubeFamilyGroupSeats(id, jobs, registrations)),
           } : null;
-        }).filter((group): group is { id: string; releasedCount: number; availableSeats: number } => group !== null),
+        }).filter((group): group is { id: string; releasedCount: number; adoptedCount: number; availableSeats: number } => group !== null),
       };
     });
     dependencies.productReconciliationAudit?.({
-      outcome: 'success', actor, reason, releasedCount: result.releasedCount,
+      outcome: 'success', actor, reason, releasedCount: result.releasedCount, adoptedCount: result.adoptedCount,
       familyGroupIds: result.familyGroups.map((group) => group.id),
     });
     return c.json({ ok: true, ...result });
-  } catch {
-    dependencies.productReconciliationAudit?.({ outcome: 'failed', actor, reason, releasedCount: 0, familyGroupIds: [] });
+  } catch (error) {
+    dependencies.productReconciliationAudit?.({ outcome: 'failed', actor, reason, releasedCount: 0, adoptedCount: 0, familyGroupIds: [] });
+    if (error instanceof YouTubeCapacityInvariantError) {
+      return c.json({ ok: false, error: 'provider capacity conflicts with family group', code: 'YOUTUBE_PROVIDER_CAPACITY_CONFLICT' }, 409);
+    }
     return unavailable(c);
   }
 });

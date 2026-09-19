@@ -370,7 +370,9 @@ export default function ManagePage() {
         }),
         body: '{}',
       });
-      const payload = await response.json().catch(() => null) as { ok?: boolean; releasedCount?: number; code?: string } | null;
+      const payload = await response.json().catch(() => null) as {
+        ok?: boolean; releasedCount?: number; adoptedCount?: number; unmappedCount?: number; code?: string;
+      } | null;
       if (!response.ok || payload?.ok !== true) {
         throw new Error(payload?.code === 'YOUTUBE_PROVIDER_STATUS_UNKNOWN'
           ? 'GrayTag 거래 상태를 확인하지 못했습니다. 잠시 후 다시 시도해주세요.'
@@ -378,9 +380,17 @@ export default function ManagePage() {
       }
       await fetchYouTubeFamilyGroups();
       const releasedCount = Number(payload.releasedCount || 0);
-      showToast(releasedCount > 0
-        ? `취소 판매글 ${releasedCount}개를 반영해 빈자리를 복구했습니다.`
-        : '새로 반영할 취소 거래가 없습니다.', releasedCount > 0 ? 'success' : 'info');
+      const adoptedCount = Number(payload.adoptedCount || 0);
+      const unmappedCount = Number(payload.unmappedCount || 0);
+      const changes = [
+        releasedCount > 0 ? `취소 판매글 ${releasedCount}개 반영` : '',
+        adoptedCount > 0 ? `누락된 사용 거래 ${adoptedCount}개 복구` : '',
+      ].filter(Boolean).join(' · ');
+      showToast(changes
+        ? `${changes}했습니다.${unmappedCount > 0 ? ` 그룹을 특정하지 못한 거래 ${unmappedCount}개는 제외했습니다.` : ''}`
+        : unmappedCount > 0
+          ? `그룹을 특정하지 못한 거래 ${unmappedCount}개는 반영하지 않았습니다.`
+          : '새로 반영할 거래가 없습니다.', changes ? 'success' : 'info');
     } catch (error) {
       showToast(error instanceof Error ? error.message : '취소 거래를 반영하지 못했습니다.', 'error');
     } finally {

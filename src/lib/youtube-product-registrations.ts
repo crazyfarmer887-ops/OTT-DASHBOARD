@@ -312,4 +312,51 @@ export class YouTubeProductRegistrationsStore {
       return deleted;
     });
   }
+  adoptProviderProducts(
+    products: readonly { productUsid: string; familyGroupId: string }[],
+    input: { actor: string; reasonCode: string; at?: string },
+  ): YouTubeProductRegistrationRecord[] {
+    const at = input.at ?? new Date().toISOString();
+    if (!Array.isArray(products) || products.length > 500
+      || !products.every((product) => text(product.productUsid, 200) && text(product.familyGroupId, 200))
+      || !text(input.actor, 200) || !text(input.reasonCode, 200) || !iso(at)) {
+      throw new TypeError('Invalid adopted YouTube product registrations');
+    }
+    if (products.length === 0) return [];
+    const uniqueProducts = new Set(products.map((product) => product.productUsid));
+    if (uniqueProducts.size !== products.length) throw new TypeError('Duplicate adopted YouTube product registrations');
+    return withJournalLock(this.filePath, () => {
+      const data = readStore(this.filePath, true) ?? { version: 1 as const, records: [] };
+      const existingProducts = new Set(data.records.flatMap((record) => record.productUsid ? [record.productUsid] : []));
+      const existingKeys = new Set(data.records.map((record) => record.idempotencyKey));
+      const adopted: YouTubeProductRegistrationRecord[] = [];
+      for (const product of products) {
+        if (existingProducts.has(product.productUsid)) continue;
+        const digest = createHash('sha256').update(`provider-import\0${product.familyGroupId}\0${product.productUsid}`).digest('hex');
+        const idempotencyKey = `provider-import:${digest.slice(0, 32)}`;
+        if (existingKeys.has(idempotencyKey)) throw new TypeError('Adopted YouTube product registration conflict');
+        const created: YouTubeProductRegistrationRecord = {
+          idempotencyKey,
+          requestFingerprint: digest,
+          familyGroupId: product.familyGroupId,
+          attemptId: randomUUID(),
+          leaseExpiresAt: at,
+          status: 'registered',
+          productUsid: product.productUsid,
+          actor: input.actor,
+          createdAt: at,
+          updatedAt: at,
+          history: [
+            { from: null, to: 'submitting', actor: input.actor, reasonCode: input.reasonCode, at },
+            { from: 'submitting', to: 'registered', actor: input.actor, reasonCode: input.reasonCode, at },
+          ],
+        };
+        adopted.push(created);
+        existingProducts.add(product.productUsid);
+        existingKeys.add(idempotencyKey);
+      }
+      if (adopted.length > 0) writeStore(this.filePath, { version: 1, records: [...data.records, ...adopted] });
+      return adopted;
+    });
+  }
 }

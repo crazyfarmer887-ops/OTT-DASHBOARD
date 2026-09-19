@@ -236,12 +236,13 @@ const youtubeInvitationsApp = createYouTubeInvitationsApp({
     targetId: event.familyGroupIds.length === 1
       ? privacySafeAuditId('youtube-family-group', event.familyGroupIds[0])
       : 'youtube-family-groups',
-    summary: `YouTube terminal product reconciliation released ${event.releasedCount} seat(s)`,
+    summary: `YouTube product reconciliation released ${event.releasedCount} and adopted ${event.adoptedCount} seat(s)`,
     result: event.outcome === 'success' ? 'success' : 'error',
     requestId: `youtube-product-reconcile-${Date.now()}`,
     details: {
       reason: event.reason,
       releasedCount: event.releasedCount,
+      adoptedCount: event.adoptedCount,
       familyGroupIds: event.familyGroupIds.map((id) => privacySafeAuditId('youtube-family-group', id)),
     },
   }),
@@ -476,11 +477,11 @@ async function fetchYouTubeInvitationProviderStatus(dealUsid: string): Promise<s
 
 async function fetchYouTubeProviderProductStatuses(): Promise<{
   authoritative: boolean;
-  rows: Array<{ productUsid: string; status: string }>;
+  rows: Array<{ productUsid: string; status: string; endDateTime: string | null }>;
 }> {
   const cookies = loadGraytagAuthCookies();
   if (!cookies) return { authoritative: false, rows: [] };
-  const rows: Array<{ productUsid: string; status: string }> = [];
+  const rows: Array<{ productUsid: string; status: string; endDateTime: string | null }> = [];
   const headers = (referer: string) => ({
     ...BASE_HEADERS,
     Cookie: buildGraytagCookieHeader(cookies),
@@ -509,7 +510,8 @@ async function fetchYouTubeProviderProductStatuses(): Promise<{
         for (const deal of deals) {
           const productUsid = String(deal?.productUsid || '').trim();
           const status = String(deal?.dealStatus || '').trim();
-          if (/^[A-Za-z0-9_-]{1,200}$/.test(productUsid) && status) rows.push({ productUsid, status });
+          const endDateTime = typeof deal?.endDateTime === 'string' ? deal.endDateTime : null;
+          if (/^[A-Za-z0-9_-]{1,200}$/.test(productUsid) && status) rows.push({ productUsid, status, endDateTime });
         }
         if (deals.length < 500) { exhausted = true; break; }
       } catch {

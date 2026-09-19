@@ -68,6 +68,26 @@ describe('YouTube product registration journal', () => {
     ).kind).toBe('claimed');
   }));
 
+  test('adopts a provider-discovered live product once with a durable audited registration', () => withTemp((_root, path) => {
+    const store = new YouTubeProductRegistrationsStore(path);
+    const input = [{ productUsid: 'product-provider-live', familyGroupId: 'group-1' }];
+    expect(store.adoptProviderProducts(input, {
+      actor: 'admin:test', reasonCode: 'provider-live-reconciled', at,
+    })).toMatchObject([{ status: 'registered', productUsid: 'product-provider-live', familyGroupId: 'group-1' }]);
+    expect(store.adoptProviderProducts(input, {
+      actor: 'admin:test', reasonCode: 'provider-live-reconciled', at,
+    })).toEqual([]);
+    expect(store.list()).toMatchObject([{
+      idempotencyKey: expect.stringMatching(/^provider-import:[a-f0-9]{32}$/),
+      requestFingerprint: expect.stringMatching(/^[a-f0-9]{64}$/),
+      status: 'registered',
+      history: [
+        { from: null, to: 'submitting', reasonCode: 'provider-live-reconciled' },
+        { from: 'submitting', to: 'registered', reasonCode: 'provider-live-reconciled' },
+      ],
+    }]);
+  }));
+
   test('conflicts on a changed fingerprint and blocks submitting, uncertain, and failed records', () => withTemp((_root, path) => {
     const store = new YouTubeProductRegistrationsStore(path, { allowUnsafeIsolatedClaim: true });
     const fp = fingerprintYouTubeProductRegistration('group-1', model);
