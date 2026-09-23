@@ -58,6 +58,7 @@ import { normalizeYouTubeAuditReason } from '../lib/youtube-audit-reason';
 import { readAuthoritativeYouTubeSellerProducts, reconcileYouTubeProductRegistration, type YouTubeProductRegistrationReconciliationClaim } from '../lib/youtube-product-registration-reconciliation';
 import { YouTubeProductRegistrationsStore } from '../lib/youtube-product-registrations';
 import { ChatRoomOrganizationValidationError, createChatRoomCategory, deleteChatRoomCategory, loadChatRoomOrganization, renameChatRoomCategory, updateChatRoomOrganizationEntry } from '../lib/chat-room-organization';
+import { parseYouTubeInviteEmailCandidates } from '../lib/youtube-invite-email';
 import {
   buildGraytagCookieHeader,
   loadGraytagAuthCookies,
@@ -432,7 +433,7 @@ async function reconcileYouTubeProductRegistrationFromSeller(claim: YouTubeProdu
   return reconcileYouTubeProductRegistration(claim, observation);
 }
 
-async function finishYouTubeInvitationDelivery(dealUsid: string): Promise<Response> {
+export async function finishYouTubeInvitationDelivery(dealUsid: string): Promise<Response> {
   const cookies = loadGraytagAuthCookies();
   if (!cookies) throw new Error('YouTube sales session unavailable');
   const multipart = buildMultipartJsonBody({ dealUsid });
@@ -450,7 +451,7 @@ async function finishYouTubeInvitationDelivery(dealUsid: string): Promise<Respon
   }, true);
 }
 
-async function fetchYouTubeInvitationProviderStatus(dealUsid: string): Promise<string | null> {
+export async function fetchYouTubeInvitationProviderStatus(dealUsid: string): Promise<string | null> {
   const cookies = loadGraytagAuthCookies();
   if (!cookies) return null;
   const headers = (referer: string) => ({ ...BASE_HEADERS, Cookie: buildGraytagCookieHeader(cookies), Referer: referer });
@@ -473,6 +474,69 @@ async function fetchYouTubeInvitationProviderStatus(dealUsid: string): Promise<s
   }
   const exact = observations.find((deal) => deal && typeof deal === 'object' && deal.dealUsid === dealUsid);
   return exact && typeof exact.dealStatus === 'string' && exact.dealStatus ? exact.dealStatus : null;
+}
+
+/** Read only. Return null unless the complete seller listing is authoritative. */
+export async function fetchNotionDeliveryDeals(): Promise<Array<{
+  dealUsid: string; chatRoomUuid: string; dealStatus: string;
+  productTypeString: string; productName: string;
+}> | null> {
+  const cookies = loadGraytagAuthCookies();
+  if (!cookies) return null;
+  const deals: Array<{
+    dealUsid: string; chatRoomUuid: string; dealStatus: string;
+    productTypeString: string; productName: string;
+  }> = [];
+  for (let page = 1; page <= 10; page++) {
+    try {
+      const response = await rateLimitedFetch(buildFinishedDealsUrl('before', page, 500, true), {
+        headers: { ...BASE_HEADERS, Cookie: buildGraytagCookieHeader(cookies),
+          Referer: 'https://graytag.co.kr/lender/deal/list' },
+        redirect: 'manual', signal: AbortSignal.timeout(30_000),
+      });
+      if (!response.ok || response.redirected) return null;
+      const payload = await response.json() as any;
+      const source = payload?.data?.data?.lenderDeals ?? payload?.data?.lenderDeals ?? payload?.lenderDeals;
+      if (payload?.succeeded !== true || !Array.isArray(source)) return null;
+      for (const deal of source) {
+        const dealUsid = String(deal?.dealUsid || '').trim();
+        const chatRoomUuid = String(deal?.chatRoomUuid || deal?.dealDetail?.chatRoomUuid || '').trim();
+        if (!dealUsid || !chatRoomUuid) continue;
+        deals.push({ dealUsid, chatRoomUuid, dealStatus: String(deal?.dealStatus || '').trim(),
+          productTypeString: String(deal?.productTypeString || deal?.productType || '').trim(),
+          productName: String(deal?.productName || '').trim() });
+      }
+      if (source.length < 500) return deals;
+    } catch { return null; }
+  }
+  return null;
+}
+
+/** Only explicit buyer-authored messages can bind a Notion email to a sale. */
+export async function fetchNotionDeliveryBuyerEmails(chatRoomUuid: string): Promise<string[] | null> {
+  const cookies = loadGraytagAuthCookies();
+  if (!cookies || !/^[A-Za-z0-9_-]{1,200}$/.test(chatRoomUuid)) return null;
+  try {
+    const response = await rateLimitedFetch(
+      `https://graytag.co.kr/ws/chat/findChats?uuid=${encodeURIComponent(chatRoomUuid)}&page=1`,
+      { headers: { ...BASE_HEADERS, Cookie: buildGraytagCookieHeader(cookies),
+        Referer: `https://graytag.co.kr/chat/${encodeURIComponent(chatRoomUuid)}` },
+        redirect: 'manual', signal: AbortSignal.timeout(15_000) },
+    );
+    if (!response.ok || response.redirected) return null;
+    const payload = await response.json() as any;
+    if (payload?.succeeded !== true) return null;
+    const messages = extractGraytagChats(payload);
+    const emails = new Set<string>();
+    for (const message of messages) {
+      if (message.owned !== false && message.isOwned !== false) continue;
+      if (!isBuyerTextMessage({ chatRoomUuid, message: String(message.message || ''), ...message })) continue;
+      const parsed = parseYouTubeInviteEmailCandidates(normalizeBuyerMessage(message.message));
+      if (parsed.kind === 'ambiguous') return null;
+      if (parsed.kind === 'single_candidate') emails.add(parsed.candidate);
+    }
+    return [...emails];
+  } catch { return null; }
 }
 
 async function fetchYouTubeProviderProductStatuses(): Promise<{
@@ -3718,11 +3782,12 @@ async function createAutoReplyPartyAccessUrl(job: any, persist = true): Promise<
 
 async function processYouTubeNewSaleGuide(job: any, dryRun: boolean): Promise<{ status: 'drafted' | 'sent' | 'blocked' | 'error' } | null> {
   if (job.internalCategory !== YOUTUBE_NEW_SALE_GUIDE_CATEGORY) return null;
-  if (dryRun || process.env.AUTO_REPLY_ENABLE_SEND !== 'true') {
+  if (dryRun || process.env.AUTO_REPLY_ENABLE_SEND !== 'true' || process.env.YOUTUBE_INVITE_AUTO_MESSAGE_ENABLED !== 'true') {
     updateAutoReplyJobPersisted(AUTO_REPLY_MEMORY_STORE, job.id, {
       status: 'drafted', category: YOUTUBE_NEW_SALE_GUIDE_CATEGORY, risk: 'low',
       draftReply: YOUTUBE_NEW_SALE_GUIDE,
-      blockReason: dryRun ? 'dry-run' : 'AUTO_REPLY_ENABLE_SEND 꺼짐',
+      blockReason: dryRun ? 'dry-run' : (process.env.YOUTUBE_INVITE_AUTO_MESSAGE_ENABLED !== 'true'
+        ? 'YOUTUBE_INVITE_AUTO_MESSAGE_ENABLED 꺼짐' : 'AUTO_REPLY_ENABLE_SEND 꺼짐'),
     });
     return { status: 'drafted' };
   }

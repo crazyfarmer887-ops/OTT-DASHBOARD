@@ -4,7 +4,12 @@ import { readFile, stat } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { extname, resolve } from 'node:path';
 import { randomBytes } from 'node:crypto';
-import apiApp from './src/api/index.ts';
+import apiApp, {
+  fetchNotionDeliveryBuyerEmails,
+  fetchNotionDeliveryDeals,
+  fetchYouTubeInvitationProviderStatus,
+  finishYouTubeInvitationDelivery,
+} from './src/api/index.ts';
 import {
   createDashboardSessionToken,
   dashboardAdminPassword,
@@ -18,6 +23,7 @@ import { startUndercutterScheduler } from './src/scheduler/undercutter.ts';
 import { startPollDaemon } from './src/scheduler/poll-daemon.ts';
 import { startAutoReplyDaemon } from './src/scheduler/auto-reply-daemon.ts';
 import { startRenewalAutomationDaemon } from './src/scheduler/renewal-automation-daemon.ts';
+import { startNotionInvitationSync } from './src/scheduler/notion-invitation-sync.ts';
 import { buildPartyAccessHtml } from './src/lib/party-access-page-html.ts';
 
 const distDir = resolve(process.cwd(), 'dist/client');
@@ -245,3 +251,9 @@ startUndercutterScheduler(port);
 startPollDaemon();
 startAutoReplyDaemon(port);
 startRenewalAutomationDaemon(port);
+startNotionInvitationSync({
+  listDeals: fetchNotionDeliveryDeals,
+  buyerEmails: fetchNotionDeliveryBuyerEmails,
+  providerStatus: fetchYouTubeInvitationProviderStatus,
+  finishDelivery: finishYouTubeInvitationDelivery,
+});
