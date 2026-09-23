@@ -59,6 +59,7 @@ import { readAuthoritativeYouTubeSellerProducts, reconcileYouTubeProductRegistra
 import { YouTubeProductRegistrationsStore } from '../lib/youtube-product-registrations';
 import { ChatRoomOrganizationValidationError, createChatRoomCategory, deleteChatRoomCategory, loadChatRoomOrganization, renameChatRoomCategory, updateChatRoomOrganizationEntry } from '../lib/chat-room-organization';
 import { parseYouTubeInviteEmailCandidates } from '../lib/youtube-invite-email';
+import { resolveYouTubeBuyerEmailFromChat } from './youtube-chat-email';
 import {
   buildGraytagCookieHeader,
   loadGraytagAuthCookies,
@@ -530,16 +531,7 @@ export async function fetchNotionDeliveryBuyerEmails(chatRoomUuid: string): Prom
     if (!response.ok || response.redirected) return null;
     const payload = await response.json() as any;
     if (payload?.succeeded !== true) return null;
-    const messages = extractGraytagChats(payload);
-    const emails = new Set<string>();
-    for (const message of messages) {
-      if (message.owned !== false && message.isOwned !== false) continue;
-      if (!isBuyerTextMessage({ chatRoomUuid, message: String(message.message || ''), ...message })) continue;
-      const parsed = parseYouTubeInviteEmailCandidates(normalizeBuyerMessage(message.message));
-      if (parsed.kind === 'ambiguous') return null;
-      if (parsed.kind === 'single_candidate') emails.add(parsed.candidate);
-    }
-    return [...emails];
+    return resolveYouTubeBuyerEmailFromChat(chatRoomUuid, extractGraytagChats(payload));
   } catch { return null; }
 }
 

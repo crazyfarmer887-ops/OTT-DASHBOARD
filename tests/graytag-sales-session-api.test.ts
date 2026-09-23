@@ -111,7 +111,7 @@ describe('dedicated YouTube sales session API', () => {
       const url = String(input);
       if (url.includes('proxy.webshare.io')) return new Response('', { status: 503 });
       const data = url.includes('/findChats')
-        ? { chats: [{ message: '초대 이메일 buyer@example.com', owned: false }] }
+        ? { chats: [{ message: '초대 이메일 buyer&#64;example.com', owned: false }] }
         : { lenderDeals: [{ dealUsid: 'order-1', chatRoomUuid: 'room-1', dealStatus: 'Delivering',
           productTypeString: '유튜브 프리미엄', productName: '가족 초대', registeredDateTime: '2026-09-23T13:00:00Z' }] };
       return Response.json({ succeeded: true, data });
