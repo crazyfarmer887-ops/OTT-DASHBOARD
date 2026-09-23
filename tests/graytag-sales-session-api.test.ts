@@ -103,4 +103,26 @@ describe('dedicated YouTube sales session API', () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ cookieSource: 'youtube-invite-sales' });
   });
+
+  test('reads invitation orders and buyer emails through the dedicated sales session', async () => {
+    writeFileSync(process.env.YOUTUBE_GRAYTAG_SESSION_COOKIE_PATH!, JSON.stringify({ JSESSIONID: 'youtube-session' }));
+    writeFileSync(process.env.GRAYTAG_SESSION_COOKIE_PATH!, JSON.stringify({ JSESSIONID: 'primary-session' }));
+    const fetchMock = vi.fn(async (input: string | URL | Request, _init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes('proxy.webshare.io')) return new Response('', { status: 503 });
+      const data = url.includes('/findChats')
+        ? { chats: [{ message: '초대 이메일 buyer@example.com', owned: false }] }
+        : { lenderDeals: [{ dealUsid: 'order-1', chatRoomUuid: 'room-1', dealStatus: 'Delivering',
+          productTypeString: '유튜브 프리미엄', productName: '가족 초대', registeredDateTime: '2026-09-23T13:00:00Z' }] };
+      return Response.json({ succeeded: true, data });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const { fetchNotionDeliveryDeals, fetchNotionDeliveryBuyerEmails } = await import('../src/api/index.ts');
+    expect(await fetchNotionDeliveryDeals()).toMatchObject([{ dealUsid: 'order-1', registeredDateTime: '2026-09-23T13:00:00Z' }]);
+    expect(await fetchNotionDeliveryBuyerEmails('room-1')).toEqual(['buyer@example.com']);
+    for (const [input, options] of fetchMock.mock.calls) {
+      if (!String(input).startsWith('https://graytag.co.kr/')) continue;
+      expect((options as RequestInit).headers).toMatchObject({ Cookie: 'JSESSIONID=youtube-session' });
+    }
+  });
 });

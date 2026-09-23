@@ -480,12 +480,14 @@ export async function fetchYouTubeInvitationProviderStatus(dealUsid: string): Pr
 export async function fetchNotionDeliveryDeals(): Promise<Array<{
   dealUsid: string; chatRoomUuid: string; dealStatus: string;
   productTypeString: string; productName: string;
+  registeredDateTime: string; borrowerName: string;
 }> | null> {
   const cookies = loadGraytagAuthCookies();
   if (!cookies) return null;
   const deals: Array<{
     dealUsid: string; chatRoomUuid: string; dealStatus: string;
     productTypeString: string; productName: string;
+    registeredDateTime: string; borrowerName: string;
   }> = [];
   for (let page = 1; page <= 10; page++) {
     try {
@@ -504,7 +506,9 @@ export async function fetchNotionDeliveryDeals(): Promise<Array<{
         if (!dealUsid || !chatRoomUuid) continue;
         deals.push({ dealUsid, chatRoomUuid, dealStatus: String(deal?.dealStatus || '').trim(),
           productTypeString: String(deal?.productTypeString || deal?.productType || '').trim(),
-          productName: String(deal?.productName || '').trim() });
+          productName: String(deal?.productName || '').trim(),
+          registeredDateTime: String(deal?.registeredDateTime || deal?.createdDateTime || '').trim(),
+          borrowerName: String(deal?.borrowerName || '').trim() });
       }
       if (source.length < 500) return deals;
     } catch { return null; }
@@ -3803,7 +3807,7 @@ async function processYouTubeNewSaleGuide(job: any, dryRun: boolean): Promise<{ 
       chatRoomUuid: job.chatRoomUuid,
       dealUsid: job.dealUsid,
       message: YOUTUBE_NEW_SALE_GUIDE,
-    });
+    }, 'youtube-invite-sales');
     const ok = result?.ok !== false;
     updateAutoReplyJobPersisted(AUTO_REPLY_MEMORY_STORE, job.id, {
       status: ok ? 'sent' : 'error', category: YOUTUBE_NEW_SALE_GUIDE_CATEGORY, risk: 'low',
@@ -4267,6 +4271,8 @@ async function scanAutoReplyCandidates(maxRooms = 10): Promise<any[]> {
     ...extractLenderDeals(afterR.data),
     ...extractLenderDeals(beforeR.data),
   ];
+  const youtubeSalesDeals = process.env.YOUTUBE_INVITE_AUTO_MESSAGE_ENABLED === 'true'
+    ? await fetchNotionDeliveryDeals() : [];
   const manualMembers = loadManualMembers();
   const profileRefsByAccount = buildAutoReplyProfileRefsByAccount(allDeals, manualMembers);
   const profileNameByMember = buildPartyAccessDeliverySnapshotByMember(loadPartyAccessLinkStore());
@@ -4275,7 +4281,7 @@ async function scanAutoReplyCandidates(maxRooms = 10): Promise<any[]> {
 
   // New YouTube purchases are deterministic sale events and do not require buyer unread state.
   // The process-start timestamp gate prevents replaying historical current deals after restart.
-  for (const deal of allDeals) {
+  for (const deal of youtubeSalesDeals || []) {
     if (candidates.length >= maxRooms) break;
     const candidate = buildYouTubeNewSaleCandidate(deal, AUTO_REPLY_PROCESS_STARTED_AT);
     if (!candidate) continue;
