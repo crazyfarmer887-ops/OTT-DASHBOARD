@@ -437,16 +437,15 @@ async function reconcileYouTubeProductRegistrationFromSeller(claim: YouTubeProdu
 export async function finishYouTubeInvitationDelivery(dealUsid: string): Promise<Response> {
   const cookies = loadGraytagAuthCookies();
   if (!cookies) throw new Error('YouTube sales session unavailable');
-  const multipart = buildMultipartJsonBody({ dealUsid });
   return rateLimitedFetch('https://graytag.co.kr/ws/lender/finishProductDelivery', {
     method: 'POST',
     headers: {
       ...BASE_HEADERS,
       Cookie: buildGraytagCookieHeader(cookies),
-      'Content-Type': multipart.contentType,
+      'Content-Type': 'application/json',
       Referer: 'https://graytag.co.kr/lender/deal/list',
     },
-    body: multipart.body,
+    body: JSON.stringify({ dealUsid }),
     redirect: 'manual',
     signal: AbortSignal.timeout(30_000),
   }, true);

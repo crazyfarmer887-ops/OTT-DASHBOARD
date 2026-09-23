@@ -139,4 +139,21 @@ describe('dedicated YouTube sales session API', () => {
     const chatCall = fetchMock.mock.calls.find(([input]) => String(input).includes('graytag.co.kr/chat/room-1'));
     expect(chatCall?.[1]?.headers).toMatchObject({ Cookie: 'JSESSIONID=youtube-session' });
   });
+
+  test('finishes delivery with the same JSON body used by the GrayTag chat button', async () => {
+    writeFileSync(process.env.YOUTUBE_GRAYTAG_SESSION_COOKIE_PATH!, JSON.stringify({ JSESSIONID: 'youtube-session' }));
+    const fetchMock = vi.fn(async (input: string | URL | Request, _init?: RequestInit) => {
+      if (String(input).includes('proxy.webshare.io')) return new Response('', { status: 503 });
+      return Response.json({ succeeded: true });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const { finishYouTubeInvitationDelivery } = await import('../src/api/index.ts');
+    const response = await finishYouTubeInvitationDelivery('deal-1');
+    expect(response.ok).toBe(true);
+    const call = fetchMock.mock.calls.find(([input]) => String(input).includes('/finishProductDelivery'));
+    expect(call?.[1]).toMatchObject({ method: 'POST', body: '{"dealUsid":"deal-1"}' });
+    expect((call?.[1] as RequestInit).headers).toMatchObject({
+      'Content-Type': 'application/json', Cookie: 'JSESSIONID=youtube-session',
+    });
+  });
 });
