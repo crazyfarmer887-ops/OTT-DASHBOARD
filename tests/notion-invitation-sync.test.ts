@@ -34,6 +34,17 @@ describe('Notion invitation synchronization', () => {
     expect(createRow).not.toHaveBeenCalled();
   });
 
+  test('clears a premature Invited check while binding a manual row to its order', async () => {
+    const manual = row('manual', 'buyer@example.com', true);
+    const bindRow = vi.fn(async (id: string, dealUsid: string) => row(id, manual.email, false, dealUsid));
+    expect(await syncNotionBuyerEmails({
+      listRows: async () => [manual], getRow: async () => manual,
+      createRow: vi.fn(), bindRow, updateRowEmail: vi.fn(),
+      listDeals: async () => [deal('order-1')], buyerEmails: async () => ['buyer@example.com'],
+    })).toEqual({ created: 0, bound: 1, updated: 0 });
+    expect(bindRow).toHaveBeenCalledExactlyOnceWith('manual', 'order-1');
+  });
+
   test('creates one row for an unrepresented order and ignores ambiguous buyer emails', async () => {
     const rows: NotionInvitationRow[] = [];
     const createRow = vi.fn(async (email: string, dealUsid: string) => {
@@ -131,5 +142,7 @@ describe('Notion invitation synchronization', () => {
       parent: { type: 'data_source_id', data_source_id: 'data-source-id' },
       properties: { Invited: { checkbox: false }, 'Deal USID': { rich_text: [{ text: { content: 'order-1' } }] } },
     });
+    await client.bindRow('notion-row', 'order-1');
+    expect(requests[2].body.properties.Invited).toEqual({ checkbox: false });
   });
 });

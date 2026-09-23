@@ -109,7 +109,8 @@ export async function syncNotionBuyerEmails(deps: NotionEmailSyncDependencies): 
       const current = await deps.getRow(manualRows[0].id);
       if (!current || current.dealUsid || normalizeYouTubeInvitationEmail(current.email) !== email) continue;
       const updated = await deps.bindRow(manualRows[0].id, deal.dealUsid);
-      if (updated.dealUsid !== deal.dealUsid || normalizeYouTubeInvitationEmail(updated.email) !== email) {
+      if (updated.dealUsid !== deal.dealUsid || normalizeYouTubeInvitationEmail(updated.email) !== email
+        || updated.invited) {
         throw new Error('Notion row changed while linking an order');
       }
       rows.splice(rows.indexOf(manualRows[0]), 1, updated);
@@ -297,11 +298,12 @@ export function createNotionInvitationClient(token: string, dataSourceId: string
         method: 'PATCH', headers, signal: AbortSignal.timeout(15_000),
         body: JSON.stringify({ properties: {
           'Deal USID': { rich_text: [{ text: { content: dealUsid } }] },
+          Invited: { checkbox: false },
         } }),
       });
       if (!response.ok) throw new Error(`Notion update page failed: HTTP ${response.status}`);
       const row = parseNotionRow(await response.json());
-      if (!row || row.dealUsid !== dealUsid) throw new Error('Notion updated page response invalid');
+      if (!row || row.dealUsid !== dealUsid || row.invited) throw new Error('Notion updated page response invalid');
       return row;
     },
     async updateRowEmail(id: string, email: string): Promise<NotionInvitationRow> {
