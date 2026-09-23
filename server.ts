@@ -9,6 +9,8 @@ import apiApp, {
   fetchNotionDeliveryDeals,
   fetchYouTubeInvitationProviderStatus,
   finishYouTubeInvitationDelivery,
+  resolveGraytagChatUserId,
+  sendYouTubeBuyerGuide,
 } from './src/api/index.ts';
 import {
   createDashboardSessionToken,
@@ -24,6 +26,7 @@ import { startPollDaemon } from './src/scheduler/poll-daemon.ts';
 import { startAutoReplyDaemon } from './src/scheduler/auto-reply-daemon.ts';
 import { startRenewalAutomationDaemon } from './src/scheduler/renewal-automation-daemon.ts';
 import { startNotionInvitationSync } from './src/scheduler/notion-invitation-sync.ts';
+import { startYouTubeBuyerGuide } from './src/scheduler/youtube-buyer-guide.ts';
 import { buildPartyAccessHtml } from './src/lib/party-access-page-html.ts';
 
 const distDir = resolve(process.cwd(), 'dist/client');
@@ -256,4 +259,10 @@ startNotionInvitationSync({
   buyerEmails: fetchNotionDeliveryBuyerEmails,
   providerStatus: fetchYouTubeInvitationProviderStatus,
   finishDelivery: finishYouTubeInvitationDelivery,
+});
+startYouTubeBuyerGuide({
+  listDeals: fetchNotionDeliveryDeals,
+  buyerEmails: fetchNotionDeliveryBuyerEmails,
+  validateChat: async (room) => { await resolveGraytagChatUserId('youtube-invite-sales', room); },
+  sendGuide: sendYouTubeBuyerGuide,
 });

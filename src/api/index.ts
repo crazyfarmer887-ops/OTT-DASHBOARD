@@ -53,7 +53,7 @@ import { buildMultipartJsonBody, curlFetch } from './http-transport';
 import chatNotificationStreamApp from './chat-notification-stream';
 import { createYouTubeInvitationsApp } from './youtube-invitations';
 import { YouTubeFamilyGroupsStore, YouTubeInvitationJobsStore } from '../lib/youtube-invitations';
-import { buildYouTubeEmailExtractionPrompt, buildYouTubeInvitationAlert, buildYouTubeNewSaleCandidate, isYouTubeAutoReplyProduct, parseYouTubeEmailExtractionJson, resolveYouTubeEmailModel, sendHumanReviewAlertIfEnabled, sendYouTubeInvitationAlert, shouldIncludeOffHoursNotice, YOUTUBE_EMAIL_INVITATION_ALERT_CATEGORY, YOUTUBE_NEW_SALE_GUIDE, YOUTUBE_NEW_SALE_GUIDE_CATEGORY } from './youtube-auto-reply';
+import { buildYouTubeEmailExtractionPrompt, buildYouTubeInvitationAlert, isYouTubeAutoReplyProduct, parseYouTubeEmailExtractionJson, resolveYouTubeEmailModel, sendHumanReviewAlertIfEnabled, sendYouTubeInvitationAlert, shouldIncludeOffHoursNotice, YOUTUBE_EMAIL_INVITATION_ALERT_CATEGORY, YOUTUBE_NEW_SALE_GUIDE, YOUTUBE_NEW_SALE_GUIDE_CATEGORY } from './youtube-auto-reply';
 import { normalizeYouTubeAuditReason } from '../lib/youtube-audit-reason';
 import { readAuthoritativeYouTubeSellerProducts, reconcileYouTubeProductRegistration, type YouTubeProductRegistrationReconciliationClaim } from '../lib/youtube-product-registration-reconciliation';
 import { YouTubeProductRegistrationsStore } from '../lib/youtube-product-registrations';
@@ -2964,6 +2964,15 @@ async function sendGraytagChatMessage(
   return JSON.parse(stdout.trim());
 }
 
+export async function sendYouTubeBuyerGuide(deal: { dealUsid: string; chatRoomUuid: string }): Promise<boolean> {
+  const result = await sendGraytagChatMessage({
+    chatRoomUuid: deal.chatRoomUuid,
+    dealUsid: deal.dealUsid,
+    message: YOUTUBE_NEW_SALE_GUIDE,
+  }, 'youtube-invite-sales');
+  return result?.ok !== false;
+}
+
 const RENEWAL_AUTOMATION_JOBS_PATH = process.env.RENEWAL_AUTOMATION_JOBS_PATH
   || '/home/ubuntu/.hermes/hermes-agent/graytag-aio-manager-0606/data/renewal-automation-jobs.json';
 
@@ -3363,7 +3372,6 @@ function autoReplyJobsPath(): string {
   return process.env.AUTO_REPLY_JOBS_PATH || DEFAULT_AUTO_REPLY_JOBS_PATH;
 }
 let AUTO_REPLY_MEMORY_STORE: AutoReplyJobStore = loadAutoReplyJobStore(autoReplyJobsPath());
-const AUTO_REPLY_PROCESS_STARTED_AT = new Date();
 
 function persistAutoReplyJobs(): void {
   saveAutoReplyJobStore(autoReplyJobsPath(), AUTO_REPLY_MEMORY_STORE);
@@ -4272,25 +4280,11 @@ async function scanAutoReplyCandidates(maxRooms = 10): Promise<any[]> {
     ...extractLenderDeals(afterR.data),
     ...extractLenderDeals(beforeR.data),
   ];
-  const youtubeSalesDeals = process.env.YOUTUBE_INVITE_AUTO_MESSAGE_ENABLED === 'true'
-    ? await fetchNotionDeliveryDeals() : [];
   const manualMembers = loadManualMembers();
   const profileRefsByAccount = buildAutoReplyProfileRefsByAccount(allDeals, manualMembers);
   const profileNameByMember = buildPartyAccessDeliverySnapshotByMember(loadPartyAccessLinkStore());
   const seen = new Set<string>();
   const candidates: any[] = [];
-
-  // New YouTube purchases are deterministic sale events and do not require buyer unread state.
-  // The process-start timestamp gate prevents replaying historical current deals after restart.
-  for (const deal of youtubeSalesDeals || []) {
-    if (candidates.length >= maxRooms) break;
-    const candidate = buildYouTubeNewSaleCandidate(deal, AUTO_REPLY_PROCESS_STARTED_AT);
-    if (!candidate) continue;
-    const fingerprint = messageFingerprint(candidate as any);
-    if (AUTO_REPLY_MEMORY_STORE.fingerprintToJobId[fingerprint]) continue;
-    candidates.push(candidate);
-    seen.add(String(candidate.chatRoomUuid || ''));
-  }
 
   for (const deal of allDeals) {
     if (candidates.length >= maxRooms) break;
