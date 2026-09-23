@@ -10,7 +10,7 @@ import {
 
 const deal = (id: string, room = id): NotionDeliveryDeal => ({
   dealUsid: id, chatRoomUuid: room, dealStatus: 'Delivering',
-  productTypeString: '유튜브 프리미엄', productName: '가족 초대',
+  productTypeString: '유튜브', productName: '광고X ✅ 음악 ✅',
 });
 const row = (id: string, email: string, invited = false, dealUsid = ''): NotionInvitationRow => ({
   id, email, invited, dealUsid,

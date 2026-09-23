@@ -4,7 +4,7 @@ import type { NotionDeliveryDeal } from '../src/scheduler/notion-invitation-sync
 
 const deal = (id: string): NotionDeliveryDeal => ({
   dealUsid: id, chatRoomUuid: `room-${id}`, dealStatus: 'Delivering',
-  productTypeString: '유튜브 프리미엄', productName: '가족 초대',
+  productTypeString: '유튜브', productName: '광고X ✅ 음악 ✅',
 });
 
 describe('YouTube buyer guide', () => {

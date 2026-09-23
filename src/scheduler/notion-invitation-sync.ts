@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
-import { isYouTubeAutoReplyProduct } from '../api/youtube-auto-reply';
+import { isYouTubeInvitationSellerDeal } from '../api/youtube-auto-reply';
 import { loadSafeModeConfig } from '../api/safe-mode';
 import { normalizeYouTubeInvitationEmail } from '../lib/youtube-invitations';
 import { writeJsonAtomic } from '../lib/graytag-sales-session';
@@ -74,7 +74,7 @@ export async function syncNotionBuyerEmails(deps: NotionEmailSyncDependencies): 
   const rows = await deps.listRows();
   const deals = await deps.listDeals();
   if (!deals) throw new Error('YouTube seller deals unavailable');
-  const active = deals.filter((deal) => deal.dealStatus === 'Delivering' && isYouTubeAutoReplyProduct(deal));
+  const active = deals.filter((deal) => deal.dealStatus === 'Delivering' && isYouTubeInvitationSellerDeal(deal));
   const emailByDeal = new Map<string, string>();
   for (const deal of active) {
     const emails = await deps.buyerEmails(deal.chatRoomUuid);
@@ -126,7 +126,7 @@ export function resolveUniqueDeliveryMatches(
     const email = normalizeYouTubeInvitationEmail(row.email)!;
     if (!row.dealUsid && rowCounts.get(email) !== 1) continue;
     const candidates = deals.filter((deal) => {
-      if (deal.dealStatus !== 'Delivering' || !isYouTubeAutoReplyProduct(deal)) return false;
+      if (deal.dealStatus !== 'Delivering' || !isYouTubeInvitationSellerDeal(deal)) return false;
       if (row.dealUsid && row.dealUsid !== deal.dealUsid) return false;
       const buyerEmails = emailsByRoom.get(deal.chatRoomUuid);
       return buyerEmails?.length === 1 && normalizeYouTubeInvitationEmail(buyerEmails[0]) === email;
@@ -171,7 +171,7 @@ export async function syncNotionInvitationDeliveries(deps: NotionInvitationSyncD
   }
   const deals = await deps.listDeals();
   if (!deals) throw new Error('YouTube seller deals unavailable');
-  const delivering = deals.filter((deal) => deal.dealStatus === 'Delivering' && isYouTubeAutoReplyProduct(deal));
+  const delivering = deals.filter((deal) => deal.dealStatus === 'Delivering' && isYouTubeInvitationSellerDeal(deal));
   const emailsByRoom = new Map<string, readonly string[] | null>();
   for (const room of new Set(delivering.map((deal) => deal.chatRoomUuid))) {
     emailsByRoom.set(room, await deps.buyerEmails(room));

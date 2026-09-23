@@ -30,6 +30,13 @@ export function isYouTubeAutoReplyProduct(deal: GraytagDealLike): boolean {
   return isYouTube && isPremium;
 }
 
+/** Deals from the dedicated invitation seller account are all YouTube family invitations.
+ * GrayTag lists these as type "유튜브" and name "광고X ✅ 음악 ✅". */
+export function isYouTubeInvitationSellerDeal(deal: GraytagDealLike): boolean {
+  const productType = stringField(deal.productTypeString || deal.productType).toLowerCase();
+  return productType === '유튜브' || productType === 'youtube' || isYouTubeAutoReplyProduct(deal);
+}
+
 function parseTrustworthyTimestamp(value: string): number {
   const dotted = /^(\d{4})\.(\d{2})\.(\d{2})\s+(\d{2}):(\d{2})$/.exec(value);
   if (dotted) {

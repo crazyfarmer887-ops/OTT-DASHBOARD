@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
-import { isYouTubeAutoReplyProduct } from '../api/youtube-auto-reply';
+import { isYouTubeInvitationSellerDeal } from '../api/youtube-auto-reply';
 import { loadSafeModeConfig } from '../api/safe-mode';
 import { writeJsonAtomic } from '../lib/graytag-sales-session';
 import { createSingleFlightRunner, runWithExclusivePollLock } from './poll-daemon';
@@ -26,7 +26,7 @@ export interface BuyerGuideDependencies {
 
 function eligible(deal: NotionDeliveryDeal): boolean {
   return Boolean(deal.dealUsid && deal.chatRoomUuid && deal.dealStatus === 'Delivering'
-    && isYouTubeAutoReplyProduct(deal));
+    && isYouTubeInvitationSellerDeal(deal));
 }
 
 export async function syncYouTubeBuyerGuides(deps: BuyerGuideDependencies): Promise<{
