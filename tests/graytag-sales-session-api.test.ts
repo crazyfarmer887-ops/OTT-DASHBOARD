@@ -125,4 +125,17 @@ describe('dedicated YouTube sales session API', () => {
       expect((options as RequestInit).headers).toMatchObject({ Cookie: 'JSESSIONID=youtube-session' });
     }
   });
+
+  test('finds the dedicated seller identity before the first seller chat message', async () => {
+    writeFileSync(process.env.YOUTUBE_GRAYTAG_SESSION_COOKIE_PATH!, JSON.stringify({ JSESSIONID: 'youtube-session' }));
+    const fetchMock = vi.fn(async (input: string | URL | Request, _init?: RequestInit) => {
+      if (String(input).includes('proxy.webshare.io')) return new Response('', { status: 503 });
+      return new Response('<html>room-1<input type="hidden" id="userId" value="seller-user-1" /></html>', { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const { resolveGraytagChatUserId } = await import('../src/api/index.ts');
+    expect(await resolveGraytagChatUserId('youtube-invite-sales', 'room-1')).toBe('seller-user-1');
+    const chatCall = fetchMock.mock.calls.find(([input]) => String(input).includes('graytag.co.kr/chat/room-1'));
+    expect(chatCall?.[1]?.headers).toMatchObject({ Cookie: 'JSESSIONID=youtube-session' });
+  });
 });

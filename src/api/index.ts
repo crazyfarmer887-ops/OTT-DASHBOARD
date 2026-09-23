@@ -2928,23 +2928,24 @@ app.get('/chat/poll', async (c) => {
   } catch (e: any) { return c.json({ error: e.message }, 500); }
 });
 
-async function resolveGraytagChatUserId(accountId: GraytagAccountId, chatRoomUuid: string): Promise<string> {
+export async function resolveGraytagChatUserId(accountId: GraytagAccountId, chatRoomUuid: string): Promise<string> {
   if (accountId === 'primary') return process.env.GRAYTAG_PRIMARY_CHAT_USER_ID || '0000000001R20';
   const cookies = loadCookiesForAccount(accountId);
   if (!cookies) throw new Error('선택한 GrayTag 계정 세션이 없습니다.');
-  const response = await rateLimitedFetch(
-    `https://graytag.co.kr/ws/chat/findChats?uuid=${encodeURIComponent(chatRoomUuid)}&page=1`,
-    {
-      headers: { ...BASE_HEADERS, Cookie: buildCookieStr(cookies), Referer: `https://graytag.co.kr/chat/${chatRoomUuid}` },
-      redirect: 'manual',
-      signal: AbortSignal.timeout(10_000),
-    },
-  );
-  const parsed = response.ok ? await safeJson(response) : { data: null };
-  const ownedMessage = extractGraytagChats(parsed.data).find((message: any) => message?.owned === true && message?.userId);
-  const userId = String((ownedMessage as any)?.userId || '').trim();
-  if (!userId) throw new Error('전용 계정의 채팅 발신자 정보를 확인할 수 없습니다. GrayTag에서 이 채팅방에 한 번 메시지를 보낸 뒤 다시 시도해주세요.');
-  return userId;
+  if (!/^[A-Za-z0-9_-]{1,200}$/.test(chatRoomUuid)) throw new Error('채팅방 식별값이 올바르지 않습니다.');
+  // The authenticated chat page supplies the current seller's userId even
+  // before that seller has written the first message in this room.
+  const response = await rateLimitedFetch(`https://graytag.co.kr/chat/${encodeURIComponent(chatRoomUuid)}`, {
+    headers: { ...BASE_HEADERS, Cookie: buildCookieStr(cookies) },
+    redirect: 'manual', signal: AbortSignal.timeout(10_000),
+  });
+  if (!response.ok || response.redirected) throw new Error('전용 계정 채팅 화면을 열 수 없습니다.');
+  const html = await response.text();
+  if (!html.includes(chatRoomUuid)) throw new Error('채팅방 식별값을 확인할 수 없습니다.');
+  const input = html.match(/<input\b[^>]*\bid=["']userId["'][^>]*>/i)?.[0] || '';
+  const userId = input.match(/\bvalue=["']([A-Za-z0-9_-]{1,100})["']/i)?.[1] || '';
+  if (userId) return userId;
+  throw new Error('전용 계정의 채팅 발신자 정보를 확인할 수 없습니다.');
 }
 
 async function sendGraytagChatMessage(
