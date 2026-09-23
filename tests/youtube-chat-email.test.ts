@@ -37,4 +37,13 @@ describe('YouTube buyer email from chat', () => {
       buyer('old@gmail.com', '2026.09.23 22:45')];
     expect(resolveYouTubeBuyerEmailFromChat('room-1', messages)).toEqual(['new@gmail.com']);
   });
+
+  test('waits a full five minutes before publishing an email from a minute-precision chat timestamp', () => {
+    const messages = [buyer('buyer&#64;gmail.com', '2026.09.23 22:45')];
+    const at = (time: string) => Date.parse(time);
+    expect(resolveYouTubeBuyerEmailFromChat('room-1', messages, false, 5 * 60_000,
+      at('2026-09-23T13:50:59Z'))).toBeNull();
+    expect(resolveYouTubeBuyerEmailFromChat('room-1', messages, false, 5 * 60_000,
+      at('2026-09-23T13:51:00Z'))).toEqual(['buyer@gmail.com']);
+  });
 });

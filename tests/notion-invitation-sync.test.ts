@@ -23,13 +23,14 @@ describe('Notion invitation synchronization', () => {
     const bindRow = vi.fn(async (id: string, dealUsid: string) => row(id, 'buyer@example.com', false, dealUsid));
     const deps = {
       listRows: async () => [...rows], getRow: async () => rows[0], createRow, bindRow,
+      updateRowEmail: vi.fn(),
       listDeals: async () => [deal('order-1')],
       buyerEmails: async () => ['buyer@example.com'],
     };
-    expect(await syncNotionBuyerEmails(deps)).toEqual({ created: 0, bound: 1 });
+    expect(await syncNotionBuyerEmails(deps)).toEqual({ created: 0, bound: 1, updated: 0 });
     expect(bindRow).toHaveBeenCalledWith('manual', 'order-1');
     rows[0] = row('manual', 'buyer@example.com', false, 'order-1');
-    expect(await syncNotionBuyerEmails(deps)).toEqual({ created: 0, bound: 0 });
+    expect(await syncNotionBuyerEmails(deps)).toEqual({ created: 0, bound: 0, updated: 0 });
     expect(createRow).not.toHaveBeenCalled();
   });
 
@@ -42,11 +43,11 @@ describe('Notion invitation synchronization', () => {
     });
     const deps = {
       listRows: async () => [...rows], getRow: async () => null, createRow,
-      bindRow: vi.fn(), listDeals: async () => [deal('order-1'), deal('order-2')],
+      bindRow: vi.fn(), updateRowEmail: vi.fn(), listDeals: async () => [deal('order-1'), deal('order-2')],
       buyerEmails: async (room: string) => room === 'order-1' ? ['buyer@example.com'] : ['a@example.com', 'b@example.com'],
     };
-    expect(await syncNotionBuyerEmails(deps)).toEqual({ created: 1, bound: 0 });
-    expect(await syncNotionBuyerEmails(deps)).toEqual({ created: 0, bound: 0 });
+    expect(await syncNotionBuyerEmails(deps)).toEqual({ created: 1, bound: 0, updated: 0 });
+    expect(await syncNotionBuyerEmails(deps)).toEqual({ created: 0, bound: 0, updated: 0 });
     expect(createRow).toHaveBeenCalledTimes(1);
   });
 
@@ -55,9 +56,10 @@ describe('Notion invitation synchronization', () => {
     const createRow = vi.fn();
     const result = await syncNotionBuyerEmails({
       listRows: async () => [row('manual', 'same@example.com')], getRow: async () => null, bindRow, createRow,
+      updateRowEmail: vi.fn(),
       listDeals: async () => [deal('one'), deal('two')], buyerEmails: async () => ['same@example.com'],
     });
-    expect(result).toEqual({ created: 0, bound: 0 });
+    expect(result).toEqual({ created: 0, bound: 0, updated: 0 });
     expect(bindRow).not.toHaveBeenCalled();
     expect(createRow).not.toHaveBeenCalled();
   });
@@ -70,6 +72,18 @@ describe('Notion invitation synchronization', () => {
     );
     expect(matches.get('a')?.dealUsid).toBe('one');
     expect(matches.get('b')?.dealUsid).toBe('two');
+  });
+
+  test('replaces a corrected email on the same order and clears an earlier Invited check', async () => {
+    const rows = [row('r1', 'old@example.com', true, 'order-1')];
+    const updateRowEmail = vi.fn(async (id: string, email: string) => row(id, email, false, 'order-1'));
+    const result = await syncNotionBuyerEmails({
+      listRows: async () => rows,
+      getRow: async () => rows[0], createRow: vi.fn(), bindRow: vi.fn(), updateRowEmail,
+      listDeals: async () => [deal('order-1')], buyerEmails: async () => ['new@example.com'],
+    });
+    expect(result).toEqual({ created: 0, bound: 0, updated: 1 });
+    expect(updateRowEmail).toHaveBeenCalledExactlyOnceWith('r1', 'new@example.com');
   });
 
   test('rechecks the checkbox and journals before finishing, then never retries an uncertain finish', async () => {

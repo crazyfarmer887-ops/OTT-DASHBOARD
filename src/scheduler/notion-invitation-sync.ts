@@ -53,6 +53,7 @@ export interface NotionEmailSyncDependencies {
   getRow(id: string): Promise<NotionInvitationRow | null>;
   createRow(email: string, dealUsid: string): Promise<NotionInvitationRow>;
   bindRow(id: string, dealUsid: string): Promise<NotionInvitationRow>;
+  updateRowEmail(id: string, email: string): Promise<NotionInvitationRow>;
   listDeals(): Promise<NotionDeliveryDeal[] | null>;
   buyerEmails(chatRoomUuid: string): Promise<string[] | null>;
 }
@@ -69,7 +70,7 @@ function sameRow(left: NotionInvitationRow | null, right: NotionInvitationRow): 
 
 /** Add only emails explicitly supplied by a buyer for one identifiable order. */
 export async function syncNotionBuyerEmails(deps: NotionEmailSyncDependencies): Promise<{
-  created: number; bound: number;
+  created: number; bound: number; updated: number;
 }> {
   const rows = await deps.listRows();
   const deals = await deps.listDeals();
@@ -84,11 +85,24 @@ export async function syncNotionBuyerEmails(deps: NotionEmailSyncDependencies): 
   }
   let created = 0;
   let bound = 0;
+  let updated = 0;
   for (const deal of active) {
     const email = emailByDeal.get(deal.dealUsid);
     if (!email) continue;
     const assigned = rows.filter((row) => row.dealUsid === deal.dealUsid);
-    if (assigned.length > 0) continue;
+    if (assigned.length > 0) {
+      if (assigned.length !== 1 || normalizeYouTubeInvitationEmail(assigned[0].email) === email) continue;
+      const current = await deps.getRow(assigned[0].id);
+      if (!current || current.dealUsid !== deal.dealUsid) continue;
+      // An old check cannot confirm a newly supplied address. Reset it atomically.
+      const replacement = await deps.updateRowEmail(current.id, email);
+      if (replacement.dealUsid !== deal.dealUsid || replacement.email !== email || replacement.invited) {
+        throw new Error('Notion email replacement response invalid');
+      }
+      rows.splice(rows.indexOf(assigned[0]), 1, replacement);
+      updated += 1;
+      continue;
+    }
     const candidateDeals = active.filter((other) => emailByDeal.get(other.dealUsid) === email);
     const manualRows = rows.filter((row) => !row.dealUsid && normalizeYouTubeInvitationEmail(row.email) === email);
     if (candidateDeals.length === 1 && manualRows.length === 1) {
@@ -107,7 +121,7 @@ export async function syncNotionBuyerEmails(deps: NotionEmailSyncDependencies): 
     rows.push(added);
     created += 1;
   }
-  return { created, bound };
+  return { created, bound, updated };
 }
 
 export function resolveUniqueDeliveryMatches(
@@ -290,6 +304,21 @@ export function createNotionInvitationClient(token: string, dataSourceId: string
       if (!row || row.dealUsid !== dealUsid) throw new Error('Notion updated page response invalid');
       return row;
     },
+    async updateRowEmail(id: string, email: string): Promise<NotionInvitationRow> {
+      const response = await transport(`https://api.notion.com/v1/pages/${encodeURIComponent(id)}`, {
+        method: 'PATCH', headers, signal: AbortSignal.timeout(15_000),
+        body: JSON.stringify({ properties: {
+          'Customer email': { title: [{ text: { content: email } }] },
+          Invited: { checkbox: false },
+        } }),
+      });
+      if (!response.ok) throw new Error(`Notion replace email failed: HTTP ${response.status}`);
+      const row = parseNotionRow(await response.json());
+      if (!row || normalizeYouTubeInvitationEmail(row.email) !== email || row.invited) {
+        throw new Error('Notion replaced email response invalid');
+      }
+      return row;
+    },
   };
 }
 
@@ -322,7 +351,7 @@ export function startNotionInvitationSync(dependencies: Pick<NotionInvitationSyn
       try {
         if (importEnabled) {
           const imported = await syncNotionBuyerEmails({ ...client, ...dependencies });
-          if (imported.created || imported.bound) console.log('[NotionInvitationSync] emails', imported);
+          if (imported.created || imported.bound || imported.updated) console.log('[NotionInvitationSync] emails', imported);
         }
         if (deliveryEnabled) {
           const result = await syncNotionInvitationDeliveries({

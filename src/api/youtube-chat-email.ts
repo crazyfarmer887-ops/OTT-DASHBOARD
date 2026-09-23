@@ -8,7 +8,7 @@ const PROCEED_WITH_ORIGINAL = /(?:기존|처음|원래|앞서\s*(?:주신|보내
 
 function sortTime(value?: string): number {
   const dotted = /^(\d{4})\.(\d{1,2})\.(\d{1,2})\s+(\d{1,2}):(\d{1,2})/.exec(value || '');
-  if (dotted) return Date.UTC(Number(dotted[1]), Number(dotted[2]) - 1, Number(dotted[3]), Number(dotted[4]), Number(dotted[5]));
+  if (dotted) return Date.UTC(Number(dotted[1]), Number(dotted[2]) - 1, Number(dotted[3]), Number(dotted[4]), Number(dotted[5])) - 9 * 60 * 60_000;
   const parsed = Date.parse(value || '');
   return Number.isFinite(parsed) ? parsed : 0;
 }
@@ -18,6 +18,8 @@ export function resolveYouTubeBuyerEmailFromChat(
   chatRoomUuid: string,
   messages: readonly GraytagChatMessage[],
   allowSellerResumption = false,
+  settleMs = 0,
+  now = Date.now(),
 ): string[] | null {
   const ordered = messages.map((message, index) => ({ message, index })).sort((a, b) => {
     const left = sortTime(a.message.registeredDateTime || a.message.createdAt || a.message.updatedAt);
@@ -25,6 +27,7 @@ export function resolveYouTubeBuyerEmailFromChat(
     return left && right && left !== right ? left - right : a.index - b.index;
   });
   let selected: string | null = null;
+  let selectedAt = 0;
   let prior: string | null = null;
   let unresolved = false;
   for (const { message } of ordered) {
@@ -34,6 +37,7 @@ export function resolveYouTubeBuyerEmailFromChat(
       if (DIFFERENT_ACCOUNT.test(text)) {
         prior = selected;
         selected = null;
+        selectedAt = 0;
         unresolved = true;
       } else if (allowSellerResumption && unresolved && prior && PROCEED_WITH_ORIGINAL.test(text)) {
         selected = prior;
@@ -46,16 +50,22 @@ export function resolveYouTubeBuyerEmailFromChat(
     if (parsed.kind === 'none') continue;
     if (parsed.kind === 'ambiguous') {
       selected = null;
+      selectedAt = 0;
       unresolved = true;
       continue;
     }
     if (unresolved || !selected || selected === parsed.candidate || CORRECTION.test(text)) {
       selected = parsed.candidate;
+      selectedAt = sortTime(message.registeredDateTime || message.createdAt || message.updatedAt);
       unresolved = false;
     } else {
       selected = null;
+      selectedAt = 0;
       unresolved = true;
     }
   }
+  // GrayTag timestamps have minute precision. An extra minute guarantees the
+  // full settling window even when a message arrived at the end of its minute.
+  if (selected && settleMs > 0 && (!selectedAt || selectedAt > now || now - selectedAt < settleMs + 60_000)) return null;
   return selected ? [selected] : unresolved ? null : [];
 }
