@@ -8,8 +8,8 @@ import { createSingleFlightRunner, runWithExclusivePollLock } from './poll-daemo
 
 const NOTION_VERSION = '2025-09-03';
 const DEFAULT_DATA_SOURCE_ID = '52e0fe4e-5f56-4fa1-8547-f2e89142b0db';
-const DEFAULT_JOURNAL_PATH = 'data/notion-invitation-deliveries.json';
-const DEFAULT_LOCK_PATH = 'data/notion-invitation-deliveries.lock';
+const DEFAULT_JOURNAL_PATH = '/home/ubuntu/.hermes/hermes-agent/graytag-aio-manager-0606/data/notion-invitation-deliveries.json';
+const DEFAULT_LOCK_PATH = '/home/ubuntu/.hermes/hermes-agent/graytag-aio-manager-0606/data/notion-invitation-deliveries.lock';
 const DEFAULT_INTERVAL_MS = 60_000;
 
 export interface NotionInvitationRow {

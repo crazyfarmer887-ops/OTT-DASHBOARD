@@ -63,7 +63,7 @@ The seller's new YouTube Premium purchase receives a short request for the buyer
 
 The Notion sync runs every minute when configured in `.env.example`. Share the **Invitation Tracker** database with a Notion integration that has read, insert, and update content capabilities, then supply its token through `NOTION_API_TOKEN` on the server. Set `NOTION_INVITATION_EMAIL_IMPORT_ENABLED=true` to copy a single explicit buyer email into an unchecked Notion row. The hidden `Deal USID` property ties the row to its order; the partner only needs to see `Customer email`, `Invited`, and `from which account?`.
 
-Set `NOTION_INVITATION_AUTO_DELIVERY_ENABLED=true` to complete a matching GrayTag order after the partner checks `Invited`. This uses the dedicated YouTube seller session and a persistent journal. Unclear buyer emails, duplicate manual rows, stale checkboxes, unavailable seller status, or an uncertain delivery response stop automatic delivery for that order. An uncertain response is reconciled by reading seller status; the finish request is never retried automatically. Safe mode pauses both Notion flows.
+Set `NOTION_INVITATION_AUTO_DELIVERY_ENABLED=true` to complete a matching GrayTag order after the partner checks `Invited`. This uses the dedicated YouTube seller session and a journal stored outside release directories. Unclear buyer emails, duplicate manual rows, stale checkboxes, unavailable seller status, or an uncertain delivery response stop automatic delivery for that order. An uncertain response is reconciled by reading seller status; the finish request is never retried automatically. Safe mode pauses both Notion flows.
 
 ## Agent Rules
 
