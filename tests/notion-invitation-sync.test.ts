@@ -23,14 +23,14 @@ describe('Notion invitation synchronization', () => {
     const bindRow = vi.fn(async (id: string, dealUsid: string) => row(id, 'buyer@example.com', false, dealUsid));
     const deps = {
       listRows: async () => [...rows], getRow: async () => rows[0], createRow, bindRow,
-      updateRowEmail: vi.fn(),
+      updateRowEmail: vi.fn(), cancelRow: vi.fn(),
       listDeals: async () => [deal('order-1')],
       buyerEmails: async () => ['buyer@example.com'],
     };
-    expect(await syncNotionBuyerEmails(deps)).toEqual({ created: 0, bound: 1, updated: 0 });
+    expect(await syncNotionBuyerEmails(deps)).toEqual({ created: 0, bound: 1, updated: 0, cancelled: 0 });
     expect(bindRow).toHaveBeenCalledWith('manual', 'order-1');
     rows[0] = row('manual', 'buyer@example.com', false, 'order-1');
-    expect(await syncNotionBuyerEmails(deps)).toEqual({ created: 0, bound: 0, updated: 0 });
+    expect(await syncNotionBuyerEmails(deps)).toEqual({ created: 0, bound: 0, updated: 0, cancelled: 0 });
     expect(createRow).not.toHaveBeenCalled();
   });
 
@@ -39,9 +39,9 @@ describe('Notion invitation synchronization', () => {
     const bindRow = vi.fn(async (id: string, dealUsid: string) => row(id, manual.email, false, dealUsid));
     expect(await syncNotionBuyerEmails({
       listRows: async () => [manual], getRow: async () => manual,
-      createRow: vi.fn(), bindRow, updateRowEmail: vi.fn(),
+      createRow: vi.fn(), bindRow, updateRowEmail: vi.fn(), cancelRow: vi.fn(),
       listDeals: async () => [deal('order-1')], buyerEmails: async () => ['buyer@example.com'],
-    })).toEqual({ created: 0, bound: 1, updated: 0 });
+    })).toEqual({ created: 0, bound: 1, updated: 0, cancelled: 0 });
     expect(bindRow).toHaveBeenCalledExactlyOnceWith('manual', 'order-1');
   });
 
@@ -54,11 +54,11 @@ describe('Notion invitation synchronization', () => {
     });
     const deps = {
       listRows: async () => [...rows], getRow: async () => null, createRow,
-      bindRow: vi.fn(), updateRowEmail: vi.fn(), listDeals: async () => [deal('order-1'), deal('order-2')],
+      bindRow: vi.fn(), updateRowEmail: vi.fn(), cancelRow: vi.fn(), listDeals: async () => [deal('order-1'), deal('order-2')],
       buyerEmails: async (room: string) => room === 'order-1' ? ['buyer@example.com'] : ['a@example.com', 'b@example.com'],
     };
-    expect(await syncNotionBuyerEmails(deps)).toEqual({ created: 1, bound: 0, updated: 0 });
-    expect(await syncNotionBuyerEmails(deps)).toEqual({ created: 0, bound: 0, updated: 0 });
+    expect(await syncNotionBuyerEmails(deps)).toEqual({ created: 1, bound: 0, updated: 0, cancelled: 0 });
+    expect(await syncNotionBuyerEmails(deps)).toEqual({ created: 0, bound: 0, updated: 0, cancelled: 0 });
     expect(createRow).toHaveBeenCalledTimes(1);
   });
 
@@ -67,10 +67,10 @@ describe('Notion invitation synchronization', () => {
     const createRow = vi.fn();
     const result = await syncNotionBuyerEmails({
       listRows: async () => [row('manual', 'same@example.com')], getRow: async () => null, bindRow, createRow,
-      updateRowEmail: vi.fn(),
+      updateRowEmail: vi.fn(), cancelRow: vi.fn(),
       listDeals: async () => [deal('one'), deal('two')], buyerEmails: async () => ['same@example.com'],
     });
-    expect(result).toEqual({ created: 0, bound: 0, updated: 0 });
+    expect(result).toEqual({ created: 0, bound: 0, updated: 0, cancelled: 0 });
     expect(bindRow).not.toHaveBeenCalled();
     expect(createRow).not.toHaveBeenCalled();
   });
@@ -87,14 +87,96 @@ describe('Notion invitation synchronization', () => {
 
   test('replaces a corrected email on the same order and clears an earlier Invited check', async () => {
     const rows = [row('r1', 'old@example.com', true, 'order-1')];
-    const updateRowEmail = vi.fn(async (id: string, email: string) => row(id, email, false, 'order-1'));
+    const original = rows[0];
+    const updateRowEmail = vi.fn(async (current: NotionInvitationRow, email: string) => ({
+      ...row(current.id, email, false, 'order-1'), emailHistory: [current.email], cancelled: false,
+    }));
     const result = await syncNotionBuyerEmails({
       listRows: async () => rows,
-      getRow: async () => rows[0], createRow: vi.fn(), bindRow: vi.fn(), updateRowEmail,
+      getRow: async () => rows[0], createRow: vi.fn(), bindRow: vi.fn(), updateRowEmail, cancelRow: vi.fn(),
       listDeals: async () => [deal('order-1')], buyerEmails: async () => ['new@example.com'],
     });
-    expect(result).toEqual({ created: 0, bound: 0, updated: 1 });
-    expect(updateRowEmail).toHaveBeenCalledExactlyOnceWith('r1', 'new@example.com');
+    expect(result).toEqual({ created: 0, bound: 0, updated: 1, cancelled: 0 });
+    expect(updateRowEmail).toHaveBeenCalledExactlyOnceWith(original, 'new@example.com');
+  });
+
+  test('strikes the old address, shows an arrow and keeps only the latest address eligible for delivery', async () => {
+    let page: any = { id: 'notion-row', properties: {
+      'Customer email': { title: [{ text: { content: 'old@example.com' } }] },
+      Invited: { checkbox: true }, 'Deal USID': { rich_text: [{ text: { content: 'order-1' } }] },
+    } };
+    const requests: any[] = [];
+    const transport = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+      if (init?.method === 'PATCH') {
+        const body = JSON.parse(String(init.body));
+        requests.push(body);
+        page = { ...page, properties: { ...page.properties, ...body.properties } };
+      }
+      return Response.json(page);
+    }) as typeof fetch;
+    const client = createNotionInvitationClient('token', 'data-source-id', transport);
+    const old = await client.getRow('notion-row');
+    expect(old?.email).toBe('old@example.com');
+    const changed = await client.updateRowEmail(old!, 'new@example.com');
+    expect(requests[0].properties['Customer email'].title).toEqual([
+      { text: { content: 'old@example.com' }, annotations: { strikethrough: true } },
+      { text: { content: ' → ' } },
+      { text: { content: 'new@example.com' }, annotations: { strikethrough: false } },
+    ]);
+    expect(changed).toMatchObject({ email: 'new@example.com', emailHistory: ['old@example.com'], cancelled: false, invited: false });
+    page.properties['Customer email'].title = [
+      page.properties['Customer email'].title[0],
+      { text: { content: ' → new@example.com' }, annotations: { strikethrough: false } },
+    ];
+    expect(await client.getRow('notion-row')).toMatchObject({ email: 'new@example.com', emailHistory: ['old@example.com'] });
+    expect(resolveUniqueDeliveryMatches([{ ...changed, invited: true }], [deal('order-1')],
+      new Map([['order-1', ['old@example.com']]])).size).toBe(0);
+    expect(resolveUniqueDeliveryMatches([{ ...changed, invited: true }], [deal('order-1')],
+      new Map([['order-1', ['new@example.com']]])).size).toBe(1);
+    const struck = await client.cancelRow(changed);
+    expect(struck).toMatchObject({ email: '', emailHistory: ['old@example.com', 'new@example.com'], cancelled: true, invited: false });
+    expect(requests[1].properties['Customer email'].title[2].annotations.strikethrough).toBe(true);
+    expect(resolveUniqueDeliveryMatches([{ ...struck, invited: true }], [deal('order-1')],
+      new Map([['order-1', ['new@example.com']]])).size).toBe(0);
+  });
+
+  test('strikes an uninvited address after cancellation and creates a struck row if cancellation came first', async () => {
+    const existing = row('existing', 'old@example.com', false, 'order-1');
+    const cancelRow = vi.fn(async (current: NotionInvitationRow) => ({
+      ...current, email: '', emailHistory: [current.email], cancelled: true, invited: false,
+    }));
+    const createRow = vi.fn(async (email: string, dealUsid: string, cancelled = false) => ({
+      ...row('new', cancelled ? '' : email, false, dealUsid),
+      emailHistory: cancelled ? [email] : [], cancelled,
+    }));
+    const cancellation = (id: string) => ({ ...deal(id), dealStatus: 'CancelByInspectionRejection' });
+    const result = await syncNotionBuyerEmails({
+      listRows: async () => [existing], getRow: async () => existing,
+      createRow, bindRow: vi.fn(), updateRowEmail: vi.fn(), cancelRow,
+      listDeals: async () => [cancellation('order-1'), cancellation('order-2')],
+      buyerEmails: async (room: string) => room === 'order-2' ? ['second@example.com'] : [],
+    });
+    expect(result).toEqual({ created: 1, bound: 0, updated: 0, cancelled: 2 });
+    expect(cancelRow).toHaveBeenCalledExactlyOnceWith(existing);
+    expect(createRow).toHaveBeenCalledExactlyOnceWith('second@example.com', 'order-2', true);
+  });
+
+  test('does not strike an Invited row or create a row for an unclear cancelled chat', async () => {
+    const invited = row('invited', 'buyer@example.com', true, 'order-1');
+    const cancelRow = vi.fn();
+    const createRow = vi.fn();
+    const result = await syncNotionBuyerEmails({
+      listRows: async () => [invited], getRow: async () => invited,
+      createRow, bindRow: vi.fn(), updateRowEmail: vi.fn(), cancelRow,
+      listDeals: async () => [
+        { ...deal('order-1'), dealStatus: 'Cancelled' },
+        { ...deal('order-2'), dealStatus: 'CancelByNoShow' },
+      ],
+      buyerEmails: async () => null,
+    });
+    expect(result).toEqual({ created: 0, bound: 0, updated: 0, cancelled: 0 });
+    expect(cancelRow).not.toHaveBeenCalled();
+    expect(createRow).not.toHaveBeenCalled();
   });
 
   test('rechecks the checkbox and journals before finishing, then never retries an uncertain finish', async () => {

@@ -15,6 +15,8 @@ const DEFAULT_INTERVAL_MS = 60_000;
 export interface NotionInvitationRow {
   id: string;
   email: string;
+  emailHistory?: string[];
+  cancelled?: boolean;
   invited: boolean;
   dealUsid: string;
 }
@@ -51,9 +53,10 @@ export interface NotionInvitationSyncDependencies {
 export interface NotionEmailSyncDependencies {
   listRows(): Promise<NotionInvitationRow[]>;
   getRow(id: string): Promise<NotionInvitationRow | null>;
-  createRow(email: string, dealUsid: string): Promise<NotionInvitationRow>;
+  createRow(email: string, dealUsid: string, cancelled?: boolean): Promise<NotionInvitationRow>;
   bindRow(id: string, dealUsid: string): Promise<NotionInvitationRow>;
-  updateRowEmail(id: string, email: string): Promise<NotionInvitationRow>;
+  updateRowEmail(row: NotionInvitationRow, email: string): Promise<NotionInvitationRow>;
+  cancelRow(row: NotionInvitationRow): Promise<NotionInvitationRow>;
   listDeals(): Promise<NotionDeliveryDeal[] | null>;
   buyerEmails(chatRoomUuid: string): Promise<string[] | null>;
 }
@@ -63,19 +66,20 @@ function emailHash(email: string): string {
 }
 
 function sameRow(left: NotionInvitationRow | null, right: NotionInvitationRow): boolean {
-  return Boolean(left && left.id === right.id && left.invited
+  return Boolean(left && left.id === right.id && left.invited && !left.cancelled && !right.cancelled
     && left.dealUsid === right.dealUsid
     && normalizeYouTubeInvitationEmail(left.email) === normalizeYouTubeInvitationEmail(right.email));
 }
 
 /** Add only emails explicitly supplied by a buyer for one identifiable order. */
 export async function syncNotionBuyerEmails(deps: NotionEmailSyncDependencies): Promise<{
-  created: number; bound: number; updated: number;
+  created: number; bound: number; updated: number; cancelled: number;
 }> {
   const rows = await deps.listRows();
   const deals = await deps.listDeals();
   if (!deals) throw new Error('YouTube seller deals unavailable');
   const active = deals.filter((deal) => deal.dealStatus === 'Delivering' && isYouTubeInvitationSellerDeal(deal));
+  const cancelledDeals = deals.filter((deal) => /^Cancel/i.test(deal.dealStatus) && isYouTubeInvitationSellerDeal(deal));
   const emailByDeal = new Map<string, string>();
   for (const deal of active) {
     const emails = await deps.buyerEmails(deal.chatRoomUuid);
@@ -86,17 +90,20 @@ export async function syncNotionBuyerEmails(deps: NotionEmailSyncDependencies): 
   let created = 0;
   let bound = 0;
   let updated = 0;
+  let cancelled = 0;
   for (const deal of active) {
     const email = emailByDeal.get(deal.dealUsid);
     if (!email) continue;
     const assigned = rows.filter((row) => row.dealUsid === deal.dealUsid);
     if (assigned.length > 0) {
-      if (assigned.length !== 1 || normalizeYouTubeInvitationEmail(assigned[0].email) === email) continue;
+      if (assigned.length !== 1 || assigned[0].cancelled || normalizeYouTubeInvitationEmail(assigned[0].email) === email) continue;
       const current = await deps.getRow(assigned[0].id);
-      if (!current || current.dealUsid !== deal.dealUsid) continue;
+      const previousEmail = normalizeYouTubeInvitationEmail(current?.email);
+      if (!current || current.cancelled || current.dealUsid !== deal.dealUsid || !previousEmail) continue;
       // An old check cannot confirm a newly supplied address. Reset it atomically.
-      const replacement = await deps.updateRowEmail(current.id, email);
-      if (replacement.dealUsid !== deal.dealUsid || replacement.email !== email || replacement.invited) {
+      const replacement = await deps.updateRowEmail(current, email);
+      if (replacement.dealUsid !== deal.dealUsid || replacement.email !== email || replacement.invited
+        || replacement.cancelled || !replacement.emailHistory?.includes(previousEmail)) {
         throw new Error('Notion email replacement response invalid');
       }
       rows.splice(rows.indexOf(assigned[0]), 1, replacement);
@@ -104,7 +111,7 @@ export async function syncNotionBuyerEmails(deps: NotionEmailSyncDependencies): 
       continue;
     }
     const candidateDeals = active.filter((other) => emailByDeal.get(other.dealUsid) === email);
-    const manualRows = rows.filter((row) => !row.dealUsid && normalizeYouTubeInvitationEmail(row.email) === email);
+    const manualRows = rows.filter((row) => !row.dealUsid && !row.cancelled && normalizeYouTubeInvitationEmail(row.email) === email);
     if (candidateDeals.length === 1 && manualRows.length === 1) {
       const current = await deps.getRow(manualRows[0].id);
       if (!current || current.dealUsid || normalizeYouTubeInvitationEmail(current.email) !== email) continue;
@@ -122,7 +129,35 @@ export async function syncNotionBuyerEmails(deps: NotionEmailSyncDependencies): 
     rows.push(added);
     created += 1;
   }
-  return { created, bound, updated };
+  for (const deal of cancelledDeals) {
+    const assigned = rows.filter((row) => row.dealUsid === deal.dealUsid);
+    if (assigned.length > 1) continue;
+    if (assigned.length === 1) {
+      if (assigned[0].invited || assigned[0].cancelled) continue;
+      const current = await deps.getRow(assigned[0].id);
+      if (!current || current.dealUsid !== deal.dealUsid || current.invited || current.cancelled
+        || !normalizeYouTubeInvitationEmail(current.email)) continue;
+      const struck = await deps.cancelRow(current);
+      if (!struck.cancelled || struck.invited || struck.email || struck.dealUsid !== deal.dealUsid) {
+        throw new Error('Notion cancellation response invalid');
+      }
+      rows.splice(rows.indexOf(assigned[0]), 1, struck);
+      cancelled += 1;
+      continue;
+    }
+    const emails = await deps.buyerEmails(deal.chatRoomUuid);
+    if (emails?.length !== 1) continue;
+    const email = normalizeYouTubeInvitationEmail(emails[0]);
+    if (!email) continue;
+    const struck = await deps.createRow(email, deal.dealUsid, true);
+    if (!struck.cancelled || struck.invited || struck.email || struck.dealUsid !== deal.dealUsid) {
+      throw new Error('Notion cancelled page response invalid');
+    }
+    rows.push(struck);
+    created += 1;
+    cancelled += 1;
+  }
+  return { created, bound, updated, cancelled };
 }
 
 export function resolveUniqueDeliveryMatches(
@@ -130,7 +165,7 @@ export function resolveUniqueDeliveryMatches(
   deals: readonly NotionDeliveryDeal[],
   emailsByRoom: ReadonlyMap<string, readonly string[] | null>,
 ): Map<string, NotionDeliveryDeal> {
-  const validRows = rows.filter((row) => row.invited && normalizeYouTubeInvitationEmail(row.email));
+  const validRows = rows.filter((row) => row.invited && !row.cancelled && normalizeYouTubeInvitationEmail(row.email));
   const rowCounts = new Map<string, number>();
   for (const row of validRows) {
     const email = normalizeYouTubeInvitationEmail(row.email)!;
@@ -179,6 +214,7 @@ export async function syncNotionInvitationDeliveries(deps: NotionInvitationSyncD
     confirmed: Object.values(journal.records).filter((record) => record.state === 'confirmed').length };
 
   const actionable = rows.filter((row) => !journal.records[row.id]
+    && !row.cancelled
     && row.invited && normalizeYouTubeInvitationEmail(row.email));
   if (actionable.length === 0) {
     return { checked: rows.length, matched: 0, attempted: 0,
@@ -238,11 +274,33 @@ function parseNotionRow(value: unknown): NotionInvitationRow | null {
   const page = value as Record<string, any>;
   if (typeof page.id !== 'string' || page.archived === true || page.in_trash === true) return null;
   const title = page.properties?.['Customer email']?.title;
-  const email = Array.isArray(title) ? title.map((part: any) => part?.plain_text ?? part?.text?.content ?? '').join('') : '';
+  const parts = Array.isArray(title) ? title : [];
+  // Notion may merge adjacent unstyled arrow and email fragments in its response.
+  const emails = parts.flatMap((part: any) => String(part?.plain_text ?? part?.text?.content ?? '')
+    .split('→').map((segment) => ({
+      email: normalizeYouTubeInvitationEmail(segment),
+      struck: part?.annotations?.strikethrough === true,
+    }))).filter((part: { email: string | null; struck: boolean }) => Boolean(part.email));
+  const active = emails.filter((part: { email: string | null; struck: boolean }) => !part.struck);
+  const cancelled = active.length === 0 && emails.length > 0;
+  const email = active.length === 1 ? active[0].email! : '';
+  const emailHistory = emails.filter((part: { email: string | null; struck: boolean }) => part.struck)
+    .map((part: { email: string | null; struck: boolean }) => part.email!);
   const dealParts = page.properties?.['Deal USID']?.rich_text;
   const dealUsid = Array.isArray(dealParts)
     ? dealParts.map((part: any) => part?.plain_text ?? part?.text?.content ?? '').join('').trim() : '';
-  return { id: page.id, email, invited: page.properties?.Invited?.checkbox === true, dealUsid };
+  return { id: page.id, email, emailHistory, cancelled, invited: page.properties?.Invited?.checkbox === true, dealUsid };
+}
+
+function emailTitle(emailHistory: readonly string[], currentEmail: string, cancelled = false) {
+  const emails = [...emailHistory, ...(currentEmail ? [currentEmail] : [])];
+  if (emails.length === 0 || emails.length > 40 || emails.some((email) => !normalizeYouTubeInvitationEmail(email))) {
+    throw new Error('Notion email history invalid');
+  }
+  return emails.flatMap((email, index) => [
+    ...(index ? [{ text: { content: ' → ' } }] : []),
+    { text: { content: email }, annotations: { strikethrough: cancelled || index < emails.length - 1 } },
+  ]);
 }
 
 export function createNotionInvitationClient(token: string, dataSourceId: string, transport: typeof fetch = fetch) {
@@ -276,19 +334,20 @@ export function createNotionInvitationClient(token: string, dataSourceId: string
       if (!response.ok) return null;
       return parseNotionRow(await response.json());
     },
-    async createRow(email: string, dealUsid: string): Promise<NotionInvitationRow> {
+    async createRow(email: string, dealUsid: string, cancelled = false): Promise<NotionInvitationRow> {
       const response = await transport('https://api.notion.com/v1/pages', {
         method: 'POST', headers, signal: AbortSignal.timeout(15_000),
         body: JSON.stringify({ parent: { type: 'data_source_id', data_source_id: dataSourceId },
           properties: {
-            'Customer email': { title: [{ text: { content: email } }] },
+            'Customer email': { title: emailTitle([], email, cancelled) },
             Invited: { checkbox: false },
             'Deal USID': { rich_text: [{ text: { content: dealUsid } }] },
           } }),
       });
       if (!response.ok) throw new Error(`Notion create page failed: HTTP ${response.status}`);
       const row = parseNotionRow(await response.json());
-      if (!row || normalizeYouTubeInvitationEmail(row.email) !== email || row.dealUsid !== dealUsid) {
+      if (!row || row.dealUsid !== dealUsid || row.invited || row.cancelled !== cancelled
+        || (cancelled ? row.emailHistory?.slice(-1)[0] !== email || row.email !== '' : row.email !== email)) {
         throw new Error('Notion created page response invalid');
       }
       return row;
@@ -306,20 +365,43 @@ export function createNotionInvitationClient(token: string, dataSourceId: string
       if (!row || row.dealUsid !== dealUsid || row.invited) throw new Error('Notion updated page response invalid');
       return row;
     },
-    async updateRowEmail(id: string, email: string): Promise<NotionInvitationRow> {
-      const response = await transport(`https://api.notion.com/v1/pages/${encodeURIComponent(id)}`, {
+    async updateRowEmail(row: NotionInvitationRow, email: string): Promise<NotionInvitationRow> {
+      const oldEmail = normalizeYouTubeInvitationEmail(row.email);
+      if (!oldEmail || row.cancelled || oldEmail === email) throw new Error('Notion email replacement invalid');
+      const history = [...(row.emailHistory ?? []), oldEmail];
+      const response = await transport(`https://api.notion.com/v1/pages/${encodeURIComponent(row.id)}`, {
         method: 'PATCH', headers, signal: AbortSignal.timeout(15_000),
         body: JSON.stringify({ properties: {
-          'Customer email': { title: [{ text: { content: email } }] },
+          'Customer email': { title: emailTitle(history, email) },
           Invited: { checkbox: false },
         } }),
       });
       if (!response.ok) throw new Error(`Notion replace email failed: HTTP ${response.status}`);
-      const row = parseNotionRow(await response.json());
-      if (!row || normalizeYouTubeInvitationEmail(row.email) !== email || row.invited) {
+      const replacement = parseNotionRow(await response.json());
+      if (!replacement || replacement.email !== email || replacement.invited || replacement.cancelled
+        || replacement.emailHistory?.length !== history.length) {
         throw new Error('Notion replaced email response invalid');
       }
-      return row;
+      return replacement;
+    },
+    async cancelRow(row: NotionInvitationRow): Promise<NotionInvitationRow> {
+      const email = normalizeYouTubeInvitationEmail(row.email);
+      if (!email || row.cancelled || row.invited) throw new Error('Notion cancellation invalid');
+      const history = [...(row.emailHistory ?? []), email];
+      const response = await transport(`https://api.notion.com/v1/pages/${encodeURIComponent(row.id)}`, {
+        method: 'PATCH', headers, signal: AbortSignal.timeout(15_000),
+        body: JSON.stringify({ properties: {
+          'Customer email': { title: emailTitle(history, '', true) },
+          Invited: { checkbox: false },
+        } }),
+      });
+      if (!response.ok) throw new Error(`Notion cancel email failed: HTTP ${response.status}`);
+      const cancelledRow = parseNotionRow(await response.json());
+      if (!cancelledRow || !cancelledRow.cancelled || cancelledRow.invited || cancelledRow.email
+        || cancelledRow.emailHistory?.length !== history.length) {
+        throw new Error('Notion cancelled email response invalid');
+      }
+      return cancelledRow;
     },
   };
 }
@@ -353,7 +435,7 @@ export function startNotionInvitationSync(dependencies: Pick<NotionInvitationSyn
       try {
         if (importEnabled) {
           const imported = await syncNotionBuyerEmails({ ...client, ...dependencies });
-          if (imported.created || imported.bound || imported.updated) console.log('[NotionInvitationSync] emails', imported);
+          if (imported.created || imported.bound || imported.updated || imported.cancelled) console.log('[NotionInvitationSync] emails', imported);
         }
         if (deliveryEnabled) {
           const result = await syncNotionInvitationDeliveries({

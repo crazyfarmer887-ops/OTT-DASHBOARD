@@ -8,7 +8,7 @@ import {
 
 export const YOUTUBE_NEW_SALE_GUIDE_CATEGORY = 'youtube_new_sale_guide';
 export const YOUTUBE_EMAIL_INVITATION_ALERT_CATEGORY = 'youtube_email_invitation_alert';
-export const YOUTUBE_NEW_SALE_GUIDE = '구매 감사합니다. 유튜브 프리미엄 초대를 받으실 Google 이메일 주소를 이 대화창에 남겨주세요. 이메일을 확인해야 초대를 보내드릴 수 있습니다.\n\n계정 전달은 주문이 들어오는 대로 수작업으로 진행하므로 초대까지 최대 24시간이 걸릴 수 있습니다.';
+export const YOUTUBE_NEW_SALE_GUIDE = '구매 감사합니다. 유튜브 프리미엄 초대를 받으실 Google 이메일 주소를 이 대화창에 남겨주세요. 이메일을 확인해야 초대를 보내드릴 수 있습니다.\n\n초대는 주문 순서대로 직접 진행하므로 최대 24시간이 걸릴 수 있습니다. 제가 계정 전달을 완료하고 구매자님이 확인하신 뒤 이용이 시작됩니다. 조금만 기다려 주세요!';
 export const DEFAULT_YOUTUBE_EMAIL_MODEL = 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free';
 
 export type EnvLike = Record<string, string | undefined>;
