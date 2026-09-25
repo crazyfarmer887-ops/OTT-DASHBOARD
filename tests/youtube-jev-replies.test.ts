@@ -29,9 +29,12 @@ describe('Jev intent and dedicated-account replies', () => {
       '국가/지역이 일치하지 않는다면서 초대 수락이 안돼요', '초대장이 왔는데 다른 나라라고 떠요',
       '지역 달라서 안됨', '나라가 틀리대요', '국가설정 오류나네요',
       'Your country is different라고 나와요',
+      '구글 결제 프로필 국가가 달라서 초대가 안 된대요',
+      '나라 달라서 초대 안 받아진다고 뜨네요ㅠ',
     ]) expect(isSafeYouTubeBuyerIntent(message, 'country_mismatch')).toBe(true);
     for (const message of [
       '초대장 안왔는데 국가가 다르다고 뜹니다', '초대 아직 안 왔는데 국가가 달라서 못 받아요',
+      '초대 안 받았는데 국가가 다르다네요',
       '초대 전인데 국가가 달라도 괜찮나요?', '국가가 다르다고 뜨면 어떻게 해야 하나요?',
       '초대장 받았는데 국가 달라요. 그냥 환불해주세요',
     ]) expect(isSafeYouTubeBuyerIntent(message, 'country_mismatch')).toBe(false);

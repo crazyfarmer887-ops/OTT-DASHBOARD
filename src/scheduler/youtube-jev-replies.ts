@@ -28,9 +28,9 @@ export function isSafeYouTubeBuyerIntent(message: string, intent: BuyerIntent): 
   const countryMention = /국가|나라|지역|country|region/i.test(text);
   if (intent === 'invitation_wait') return !countryMention;
   if (!countryMention || !/다르|다른|달라|틀리|불일치|일치하지|안\s*맞|맞지|mismatch|different|국가\s*설정\s*(?:오류|에러)/i.test(text)) return false;
-  if (/초대\s*전|초대받기\s*전|초대장\s*오기\s*전|(?:초대장?|초대장이)\s*(?:이|가)?\s*(?:아직\s*)?(?:안\s*왔|오지|못\s*받|안\s*받)|아직\s*초대\s*(?:안|못)/.test(text)) return false;
+  if (/초대\s*전|초대받기\s*전|초대장\s*오기\s*전|(?:초대장?|초대장이)\s*(?:이|가)?\s*(?:아직\s*)?(?:안\s*왔|오지|못\s*받|안\s*받(?!아))|아직\s*초대\s*(?:안|못)/.test(text)) return false;
   if (/만약|뜨면|다르면|일치하지\s*않으면|괜찮(?:나요|을까요)|가능한가요/.test(text)) return false;
-  return /뜨|뜹|떠|나오|나와|표시|오류|에러|수락|가입|못|안\s*되|안\s*돼|안\s*됨|불가|거절|보내|받|초대장|링크|다르다네요|틀리대|틀리다고/.test(text);
+  return /뜨|뜹|떠|나오|나와|표시|오류|에러|수락|가입|못|안\s*되|안\s*된|안\s*돼|안\s*됨|불가|거절|보내|받|초대장|링크|다르다네요|틀리대|틀리다고/.test(text);
 }
 
 type JournalRecord = { fingerprint: string; state: 'baseline' | 'ignored' | 'attempted' | 'sent'; updatedAt: string; lastSentIntent?: BuyerIntent; lastSentAt?: string };
