@@ -535,6 +535,24 @@ export async function fetchNotionDeliveryBuyerEmails(chatRoomUuid: string): Prom
   } catch { return null; }
 }
 
+/** Read the latest messages from the dedicated YouTube seller, including seller replies. */
+export async function fetchYouTubeSellerChatMessages(chatRoomUuid: string): Promise<GraytagChatMessage[] | null> {
+  const cookies = loadGraytagAuthCookies();
+  if (!cookies || !/^[A-Za-z0-9_-]{1,200}$/.test(chatRoomUuid)) return null;
+  try {
+    const response = await rateLimitedFetch(
+      `https://graytag.co.kr/ws/chat/findChats?uuid=${encodeURIComponent(chatRoomUuid)}&page=1`,
+      { headers: { ...BASE_HEADERS, Cookie: buildGraytagCookieHeader(cookies),
+        Referer: `https://graytag.co.kr/chat/${encodeURIComponent(chatRoomUuid)}` },
+        redirect: 'manual', signal: AbortSignal.timeout(15_000) },
+    );
+    if (!response.ok || response.redirected) return null;
+    const payload = await response.json() as any;
+    if (payload?.succeeded !== true) return null;
+    return extractGraytagChats(payload);
+  } catch { return null; }
+}
+
 async function fetchYouTubeProviderProductStatuses(): Promise<{
   authoritative: boolean;
   rows: Array<{ productUsid: string; status: string; endDateTime: string | null }>;
@@ -2963,6 +2981,20 @@ export async function sendYouTubeBuyerGuide(deal: { dealUsid: string; chatRoomUu
     message: YOUTUBE_NEW_SALE_GUIDE,
   }, 'youtube-invite-sales');
   return result?.ok !== false;
+}
+
+export async function sendYouTubeJevReply(deal: { dealUsid: string; chatRoomUuid: string }, message: string): Promise<boolean> {
+  const result = await sendGraytagChatMessage({ chatRoomUuid: deal.chatRoomUuid, dealUsid: deal.dealUsid, message }, 'youtube-invite-sales');
+  return result?.ok !== false;
+}
+
+export async function alertYouTubeCountryIssue(deal: { dealUsid: string; chatRoomUuid: string }): Promise<void> {
+  await sendSellerAlert({
+    key: `youtube-country-issue-${deal.dealUsid}-${Date.now()}`,
+    title: '유튜브 초대 국가 오류',
+    body: `구매자가 국가가 다르다는 초대 오류를 신고했습니다. 실제 국가·거주지 요건을 확인하고 재초대 가능 여부를 판단해 주세요.\n거래: ${deal.dealUsid}\n채팅: https://graytag.co.kr/chat/${encodeURIComponent(deal.chatRoomUuid)}`,
+    severity: 'warning', category: 'auto-reply', throttleMs: 0,
+  });
 }
 
 const RENEWAL_AUTOMATION_JOBS_PATH = process.env.RENEWAL_AUTOMATION_JOBS_PATH
