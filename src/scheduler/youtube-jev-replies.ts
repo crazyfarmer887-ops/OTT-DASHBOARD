@@ -21,6 +21,18 @@ export type BuyerIntent = 'invitation_wait' | 'country_mismatch' | 'other';
 export const YOUTUBE_INVITATION_WAIT_REPLY = '문의 감사합니다. 초대는 해외 현지 담당자와 소통하며 주문 순서대로 직접 진행하고 있어 최대 24시간이 걸릴 수 있습니다. 준비되는 대로 안내드릴 테니 조금만 양해 부탁드립니다.';
 export const YOUTUBE_COUNTRY_MISMATCH_REPLY = `국가가 다르다는 오류를 확인한 뒤 재초대가 가능한지 살펴보겠습니다. 필요한 경우 초대장을 다시 보내드릴게요. 먼저 Google 결제 프로필의 국가와 현재 거주 국가가 일치하는지 확인해 주세요. 결제 프로필 폐쇄 방법: ${PAYMENT_PROFILE_HELP}\n\n프로필 폐쇄는 되돌릴 수 없고 결제 정보가 삭제되므로, 확인 없이 모든 프로필을 삭제하지는 마세요. YouTube 가족 초대는 가족 관리자와 같은 거주지 요건도 있어 재발송만으로 해결되지 않을 수 있습니다. 오류 화면을 보내주시면 확인에 도움이 됩니다.`;
 
+/** A confident model decision still needs to be about one current, actionable issue. */
+export function isSafeYouTubeBuyerIntent(message: string, intent: BuyerIntent): boolean {
+  const text = normalizeBuyerMessage(message);
+  if (intent === 'other' || !text || /취소|환불|반품|삭제|이메일.*(?:변경|바꾸|수정)|(?:변경|바꾸|수정).*이메일|계정.*(?:변경|바꾸)|[\w.+-]+@[\w.-]+\.[a-z]{2,}/i.test(text)) return false;
+  const countryMention = /국가|나라|지역|country|region/i.test(text);
+  if (intent === 'invitation_wait') return !countryMention;
+  if (!countryMention || !/다르|다른|달라|불일치|일치하지|안\s*맞|맞지|mismatch|different/i.test(text)) return false;
+  if (/초대\s*전|초대받기\s*전|초대장\s*오기\s*전|(?:초대장?|초대장이)\s*(?:이|가)?\s*(?:아직\s*)?(?:안\s*왔|오지|못\s*받|안\s*받)|아직\s*초대\s*(?:안|못)/.test(text)) return false;
+  if (/만약|뜨면|다르면|일치하지\s*않으면|괜찮(?:나요|을까요)|가능한가요/.test(text)) return false;
+  return /뜨|뜹|떠|나오|표시|오류|에러|수락|가입|못|안\s*되|안\s*돼|보내|받|초대장|링크|다르다네요/.test(text);
+}
+
 type JournalRecord = { fingerprint: string; state: 'baseline' | 'ignored' | 'attempted' | 'sent'; updatedAt: string; lastSentIntent?: BuyerIntent; lastSentAt?: string };
 export interface JevReplyJournal { version: 1; startedAt: string; records: Record<string, JournalRecord> }
 export interface JevReplyDependencies {
@@ -65,11 +77,11 @@ export async function classifyYouTubeBuyerIntent(message: string, apiKey = proce
       model: process.env.TYPESAFE_MODEL || 'jev-1.13.0',
       questions: { intent: {
         type: 'choice',
-        instructions: 'Classify only the latest Korean buyer message about a YouTube Premium invitation. Select other when it has mixed intents or is unclear. Do not infer that an invitation was sent merely because the buyer asks when it will arrive.',
+        instructions: 'The latest message is from the buyer in an active paid YouTube Premium invitation order. Classify what the buyer currently wants. Short shorthand such as 언제쯤 올까요, 초대 좀 빨리요, 배송 언제요 asks about invitation timing. A country error means the buyer reports a current country/region mismatch while accepting the invitation. Questions about hypothetical future errors are other. Select other for mixed intents, cancellation, refund, changing accounts, or unclear messages.',
         criteria: {
-          invitation_wait: 'Buyer asks when the invitation will be sent, when delivery will be completed, or why the invitation has not arrived yet. No explicit country mismatch error.',
-          country_mismatch: 'Buyer explicitly says an invitation was sent but cannot be accepted because countries or regions differ, or reports a country/region mismatch error while accepting it.',
-          other: 'Any other inquiry, email address, account change, cancellation, refund, complaint, mixed intentions, or unclear text.',
+          invitation_wait: 'The buyer asks when the invitation will arrive or delivery will finish, says they are still waiting, or urges the seller to send it. No country mismatch error.',
+          country_mismatch: 'The buyer reports an actual country/region mismatch error while trying to accept a sent invitation, and wants it fixed or resent. Includes shorthand like 국가가 다르다고 떠요, 국가 달라서 가족 그룹 가입 안된다.',
+          other: 'Unrelated, hypothetical, cancellation/refund, email or account change, multiple distinct requests, or unclear.',
         },
       } },
     }),
@@ -86,7 +98,7 @@ export async function classifyYouTubeBuyerIntent(message: string, apiKey = proce
   if (!Number.isFinite(answer?.confidence) || (answer?.confidence || 0) < MIN_CONFIDENCE
     || !Number.isFinite(selected) || selected < MIN_CONFIDENCE || !Number.isFinite(next)
     || selected - next < MIN_MARGIN) return 'other';
-  return choice as BuyerIntent;
+  return isSafeYouTubeBuyerIntent(message, choice as BuyerIntent) ? choice as BuyerIntent : 'other';
 }
 
 export async function syncYouTubeJevReplies(deps: JevReplyDependencies): Promise<{ baselined: number; sent: number; ignored: number; attempted: number }> {

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   classifyYouTubeBuyerIntent,
+  isSafeYouTubeBuyerIntent,
   syncYouTubeJevReplies,
   type JevReplyJournal,
   YOUTUBE_COUNTRY_MISMATCH_REPLY,
@@ -19,6 +20,22 @@ const seller = (message: string, time = '2026.09.25 11:55'): GraytagChatMessage 
 afterEach(() => vi.unstubAllGlobals());
 
 describe('Jev intent and dedicated-account replies', () => {
+  test('accepts common phrasing and blocks contradictory or destructive requests', () => {
+    for (const message of ['초대 언제 오나요?', '혹시 얼마나 더 기다려야 돼요?', '초대 좀 빨리요']) {
+      expect(isSafeYouTubeBuyerIntent(message, 'invitation_wait')).toBe(true);
+    }
+    for (const message of [
+      '국가가 다르다고 떠요', '국가 달라서 가족 그룹 가입 안 된다는데요?',
+      '국가/지역이 일치하지 않는다면서 초대 수락이 안돼요', '초대장이 왔는데 다른 나라라고 떠요',
+    ]) expect(isSafeYouTubeBuyerIntent(message, 'country_mismatch')).toBe(true);
+    for (const message of [
+      '초대장 안왔는데 국가가 다르다고 뜹니다', '초대 아직 안 왔는데 국가가 달라서 못 받아요',
+      '초대 전인데 국가가 달라도 괜찮나요?', '국가가 다르다고 뜨면 어떻게 해야 하나요?',
+      '초대장 받았는데 국가 달라요. 그냥 환불해주세요',
+    ]) expect(isSafeYouTubeBuyerIntent(message, 'country_mismatch')).toBe(false);
+    expect(isSafeYouTubeBuyerIntent('언제오나요? 그리고 취소할게요', 'invitation_wait')).toBe(false);
+  });
+
   test('accepts only a high-confidence, unambiguous Jev decision', async () => {
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({ answers: { intent: {
       choice: 'invitation_wait', confidence: 0.98,
