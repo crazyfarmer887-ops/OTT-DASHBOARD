@@ -27,10 +27,10 @@ export function isSafeYouTubeBuyerIntent(message: string, intent: BuyerIntent): 
   if (intent === 'other' || !text || /취소|환불|반품|삭제|이메일.*(?:변경|바꾸|수정)|(?:변경|바꾸|수정).*이메일|계정.*(?:변경|바꾸)|[\w.+-]+@[\w.-]+\.[a-z]{2,}/i.test(text)) return false;
   const countryMention = /국가|나라|지역|country|region/i.test(text);
   if (intent === 'invitation_wait') return !countryMention;
-  if (!countryMention || !/다르|다른|달라|불일치|일치하지|안\s*맞|맞지|mismatch|different/i.test(text)) return false;
+  if (!countryMention || !/다르|다른|달라|틀리|불일치|일치하지|안\s*맞|맞지|mismatch|different|국가\s*설정\s*(?:오류|에러)/i.test(text)) return false;
   if (/초대\s*전|초대받기\s*전|초대장\s*오기\s*전|(?:초대장?|초대장이)\s*(?:이|가)?\s*(?:아직\s*)?(?:안\s*왔|오지|못\s*받|안\s*받)|아직\s*초대\s*(?:안|못)/.test(text)) return false;
   if (/만약|뜨면|다르면|일치하지\s*않으면|괜찮(?:나요|을까요)|가능한가요/.test(text)) return false;
-  return /뜨|뜹|떠|나오|표시|오류|에러|수락|가입|못|안\s*되|안\s*돼|보내|받|초대장|링크|다르다네요/.test(text);
+  return /뜨|뜹|떠|나오|나와|표시|오류|에러|수락|가입|못|안\s*되|안\s*돼|안\s*됨|불가|거절|보내|받|초대장|링크|다르다네요|틀리대|틀리다고/.test(text);
 }
 
 type JournalRecord = { fingerprint: string; state: 'baseline' | 'ignored' | 'attempted' | 'sent'; updatedAt: string; lastSentIntent?: BuyerIntent; lastSentAt?: string };
@@ -95,8 +95,13 @@ export async function classifyYouTubeBuyerIntent(message: string, apiKey = proce
   if (!choice || !probabilities || !['invitation_wait', 'country_mismatch'].includes(choice)) return 'other';
   const selected = probabilities[choice];
   const next = Math.max(...Object.entries(probabilities).filter(([key]) => key !== choice).map(([, value]) => value));
-  if (!Number.isFinite(answer?.confidence) || (answer?.confidence || 0) < MIN_CONFIDENCE
-    || !Number.isFinite(selected) || selected < MIN_CONFIDENCE || !Number.isFinite(next)
+  const explicitWait = choice === 'invitation_wait'
+    && /초대|배송|전달/.test(message)
+    && /언제|기다|늦|빨리|안\s*(?:오|왔|옵)|보내|해주/.test(message);
+  const neededConfidence = explicitWait ? 0.8 : MIN_CONFIDENCE;
+  const neededProbability = explicitWait ? 0.85 : MIN_CONFIDENCE;
+  if (!Number.isFinite(answer?.confidence) || (answer?.confidence || 0) < neededConfidence
+    || !Number.isFinite(selected) || selected < neededProbability || !Number.isFinite(next)
     || selected - next < MIN_MARGIN) return 'other';
   return isSafeYouTubeBuyerIntent(message, choice as BuyerIntent) ? choice as BuyerIntent : 'other';
 }

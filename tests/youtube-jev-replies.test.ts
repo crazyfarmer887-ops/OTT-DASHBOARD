@@ -27,6 +27,8 @@ describe('Jev intent and dedicated-account replies', () => {
     for (const message of [
       '국가가 다르다고 떠요', '국가 달라서 가족 그룹 가입 안 된다는데요?',
       '국가/지역이 일치하지 않는다면서 초대 수락이 안돼요', '초대장이 왔는데 다른 나라라고 떠요',
+      '지역 달라서 안됨', '나라가 틀리대요', '국가설정 오류나네요',
+      'Your country is different라고 나와요',
     ]) expect(isSafeYouTubeBuyerIntent(message, 'country_mismatch')).toBe(true);
     for (const message of [
       '초대장 안왔는데 국가가 다르다고 뜹니다', '초대 아직 안 왔는데 국가가 달라서 못 받아요',
@@ -50,6 +52,14 @@ describe('Jev intent and dedicated-account replies', () => {
       probabilities: { invitation_wait: 0.2, country_mismatch: 0.7, other: 0.1 },
     } } }), { status: 200 }));
     expect(await classifyYouTubeBuyerIntent('국가가 다르대요', 'test-key')).toBe('other');
+    const shortWait = () => new Response(JSON.stringify({ answers: { intent: {
+      choice: 'invitation_wait', confidence: 0.83,
+      probabilities: { invitation_wait: 0.89, country_mismatch: 0.01, other: 0.1 },
+    } } }), { status: 200 });
+    fetchMock.mockResolvedValueOnce(shortWait());
+    expect(await classifyYouTubeBuyerIntent('초대장 안옵니다', 'test-key')).toBe('invitation_wait');
+    fetchMock.mockResolvedValueOnce(shortWait());
+    expect(await classifyYouTubeBuyerIntent('아직도요?', 'test-key')).toBe('other');
   });
 
   test('baselines existing messages, sends one wait reply for a new buyer question, and deduplicates it', async () => {
