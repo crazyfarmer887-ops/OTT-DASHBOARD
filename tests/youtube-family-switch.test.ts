@@ -43,6 +43,11 @@ describe('post-delivery family switch', () => {
       issueText: '12개월 가족그룹 변경에 걸려있네요', newEmail: 'new@example.com',
       resolved: false, sellerReplied: false,
     });
+    expect(findFamilySwitchEvent('room-1', [
+      buyer('죄송합니다 전에 가입했던 판매자가 중지시키는 바람에 12개월 가족그룹 변경에 걸려있네요', '2026.09.26 07:29'),
+      buyer('miran9081@gmail.com', '2026.09.26 07:30'),
+      buyer('여기로 다시 초대 좀 부탁드립니다', '2026.09.26 07:30'),
+    ], row.email, NOW)).toMatchObject({ newEmail: 'miran9081@gmail.com', resolved: false });
     const resolved = [
       buyer('가족 변경이 안된다고 하네요', '2026.09.26 08:21'),
       buyer('song15237575&#64;gmail.com', '2026.09.26 08:32'),

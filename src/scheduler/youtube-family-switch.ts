@@ -76,7 +76,7 @@ export function findFamilySwitchEvent(room: string, messages: readonly GraytagCh
   if (issue.time > now + 60_000 || now - issue.time > MAX_ISSUE_AGE_MS) return null;
   const after = ordered.slice(issueIndex);
   const buyerAfter = after.filter((entry) => entry.buyer);
-  const buyerResolved = buyerAfter.some(({ text }) => /가입했|가입됐|가입완료|쓰고\s*있|사용\s*중|이용\s*중|사용하고\s*있|이용하고\s*있|잘\s*되|해결됐|해결했/.test(text));
+  const buyerResolved = buyerAfter.slice(1).some(({ text }) => /(?:지금\s*)?가입(?:했어요|했습니다|됐어요|되었습니다|완료)|쓰고\s*있|사용\s*중|이용\s*중|사용하고\s*있|이용하고\s*있|잘\s*되|해결됐|해결했/.test(text));
   const declined = buyerAfter.some(({ text }) => /취소|환불|더\s*이상\s*필요\s*없/.test(text));
   if (buyerResolved || declined) return { issueText: issue.text, issueTime: issue.time, fingerprint: '',
     newEmail: null, resolved: true, sellerReplied: false, ambiguousEmail: false, lastBuyerTime: 0 };
