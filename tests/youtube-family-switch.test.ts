@@ -48,6 +48,22 @@ describe('post-delivery family switch', () => {
       buyer('miran9081@gmail.com', '2026.09.26 07:30'),
       buyer('여기로 다시 초대 좀 부탁드립니다', '2026.09.26 07:30'),
     ], row.email, NOW)).toMatchObject({ newEmail: 'miran9081@gmail.com', resolved: false });
+    expect(findFamilySwitchEvent('room-1', [
+      buyer('가족', '2026.09.26 07:10'),
+      buyer('변경이 안 된다고 하네요', '2026.09.26 07:25'),
+      buyer('new@example.com', '2026.09.26 07:30'),
+    ], row.email, NOW)).toMatchObject({
+      issueText: '가족\n변경이 안 된다고 하네요', newEmail: 'new@example.com', resolved: false,
+    });
+    expect(findFamilySwitchEvent('room-1', [
+      buyer('가족', '2026.09.26 07:10'),
+      seller('제가 확인할게요', '2026.09.26 07:20'),
+      buyer('변경이 안 된다고 하네요', '2026.09.26 07:25'),
+    ], row.email, NOW)).toBeNull();
+    expect(findFamilySwitchEvent('room-1', [
+      buyer('가족', '2026.09.26 07:10'),
+      buyer('변경이 안 된다고 하네요', '2026.09.26 07:45'),
+    ], row.email, NOW)).toBeNull();
     const resolved = [
       buyer('가족 변경이 안된다고 하네요', '2026.09.26 08:21'),
       buyer('song15237575&#64;gmail.com', '2026.09.26 08:32'),
@@ -100,6 +116,23 @@ describe('post-delivery family switch', () => {
     expect(send).toHaveBeenCalledExactlyOnceWith(deal, YOUTUBE_FAMILY_SWITCH_EMAIL_REQUEST);
     expect(await syncYouTubeFamilySwitches(deps)).toMatchObject({ asked: 0 });
     expect(deps.updateRowEmail).not.toHaveBeenCalled();
+  });
+
+  test('does not ask twice when the buyer adds more detail to the same family issue', async () => {
+    let journal: FamilySwitchJournal = { version: 1, records: {} };
+    let messages = [buyer('가족 변경이 안 된다고 해요', '2026.09.26 07:20')];
+    const send = vi.fn(async () => true);
+    const deps = {
+      listDeals: async () => [deal], listRows: async () => [row], getRow: async () => row,
+      updateRowEmail: vi.fn(), listMessages: async () => messages,
+      classify: async () => 'family_switch_limit' as const, send,
+      readJournal: () => journal, writeJournal: (next: FamilySwitchJournal) => { journal = structuredClone(next); },
+      now: () => NOW,
+    };
+    expect(await syncYouTubeFamilySwitches(deps)).toMatchObject({ asked: 1 });
+    messages = [...messages, buyer('12개월 제한이라네요', '2026.09.26 07:35')];
+    expect(await syncYouTubeFamilySwitches(deps)).toMatchObject({ asked: 0 });
+    expect(send).toHaveBeenCalledTimes(1);
   });
 
   test('does not reply twice after a seller response and does nothing when the buyer already joined', async () => {

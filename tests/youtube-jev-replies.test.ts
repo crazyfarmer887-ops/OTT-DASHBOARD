@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { createHash } from 'node:crypto';
 import {
   classifyYouTubeBuyerIntent,
   isSafeYouTubeBuyerIntent,
@@ -90,6 +91,23 @@ describe('Jev intent and dedicated-account replies', () => {
     expect(classify).toHaveBeenCalledTimes(1);
   });
 
+  test('keeps the existing single-message fingerprint after deployment', async () => {
+    const room = 'room-existing';
+    const message = buyer('초대 언제 되나요?', '2026.09.25 11:50');
+    const fingerprint = createHash('sha256').update(`${room}\0${message.registeredDateTime}\0${message.message}`).digest('hex');
+    const journal: JevReplyJournal = { version: 1, startedAt: '2026-09-25T00:00:00.000Z',
+      records: { existing: { fingerprint, state: 'sent', updatedAt: '2026-09-25T02:55:00.000Z' } } };
+    const classify = vi.fn(async () => 'invitation_wait' as const);
+    const send = vi.fn(async () => true);
+    expect(await syncYouTubeJevReplies({
+      listDeals: async () => [deal('existing')], listMessages: async () => [message],
+      providerStatus: async () => 'Delivering', classify, send, alertCountryIssue: async () => {},
+      readJournal: () => journal, writeJournal: vi.fn(), now: () => now,
+    })).toMatchObject({ sent: 0 });
+    expect(classify).not.toHaveBeenCalled();
+    expect(send).not.toHaveBeenCalled();
+  });
+
   test('country mismatch receives cautious instructions and alerts the seller', async () => {
     let journal: JevReplyJournal | null = { version: 1, startedAt: '2026-09-25T00:00:00.000Z', records: {} };
     const send = vi.fn(async () => true);
@@ -109,6 +127,58 @@ describe('Jev intent and dedicated-account replies', () => {
     expect(alertCountryIssue).toHaveBeenCalledOnce();
     expect(YOUTUBE_COUNTRY_MISMATCH_REPLY).toContain('https://support.google.com/paymentscenter/answer/7688666?hl=ko');
     expect(YOUTUBE_COUNTRY_MISMATCH_REPLY).toContain('모든 프로필을 삭제하지는 마세요');
+  });
+
+  test('combines buyer messages sent minutes apart before asking Jev', async () => {
+    let journal: JevReplyJournal | null = { version: 1, startedAt: '2026-09-25T00:00:00.000Z', records: {} };
+    const send = vi.fn(async () => true);
+    const classify = vi.fn(async (text: string) => text.includes('초대장은') && text.includes('언제 오나요?')
+      ? 'invitation_wait' as const : 'other' as const);
+    const deps = {
+      listDeals: async () => [deal('split')],
+      listMessages: async () => [buyer('언제 오나요?', '2026.09.25 11:50'), buyer('초대장은', '2026.09.25 11:32')],
+      providerStatus: async () => 'Delivering', classify, send, alertCountryIssue: async () => {},
+      readJournal: () => journal,
+      writeJournal: (value: JevReplyJournal) => { journal = structuredClone(value); },
+      now: () => now,
+    };
+    expect(await syncYouTubeJevReplies(deps)).toMatchObject({ sent: 1 });
+    expect(classify).toHaveBeenCalledWith('초대장은\n언제 오나요?');
+    expect(send).toHaveBeenCalledExactlyOnceWith(deal('split'), YOUTUBE_INVITATION_WAIT_REPLY);
+    expect(await syncYouTubeJevReplies(deps)).toMatchObject({ sent: 0 });
+  });
+
+  test('recognizes a country error split across messages and stops at a seller reply or long pause', async () => {
+    let chat: GraytagChatMessage[] = [
+      buyer('다르다고 떠요', '2026.09.25 11:50'),
+      buyer('초대장 누르면 국가가', '2026.09.25 11:35'),
+    ];
+    let journal: JevReplyJournal | null = { version: 1, startedAt: '2026-09-25T00:00:00.000Z', records: {} };
+    const classify = vi.fn(async (text: string) => text.includes('국가가') && text.includes('다르다고 떠요')
+      ? 'country_mismatch' as const : 'other' as const);
+    const send = vi.fn(async () => true);
+    const deps = {
+      listDeals: async () => [deal('country-split')], listMessages: async () => chat,
+      providerStatus: async () => 'Delivering', classify, send, alertCountryIssue: async () => {},
+      readJournal: () => journal,
+      writeJournal: (value: JevReplyJournal) => { journal = structuredClone(value); },
+      now: () => now,
+    };
+    expect(await syncYouTubeJevReplies(deps)).toMatchObject({ sent: 1 });
+    expect(classify).toHaveBeenCalledWith('초대장 누르면 국가가\n다르다고 떠요');
+    expect(send).toHaveBeenCalledExactlyOnceWith(deal('country-split'), YOUTUBE_COUNTRY_MISMATCH_REPLY);
+
+    journal = { version: 1, startedAt: '2026-09-25T00:00:00.000Z', records: {} };
+    classify.mockClear(); send.mockClear();
+    chat = [...chat, seller('제가 확인하겠습니다', '2026.09.25 11:40')];
+    expect(await syncYouTubeJevReplies(deps)).toMatchObject({ sent: 0 });
+    expect(classify).toHaveBeenCalledWith('다르다고 떠요');
+
+    journal = { version: 1, startedAt: '2026-09-25T00:00:00.000Z', records: {} };
+    classify.mockClear();
+    chat = [buyer('다르다고 떠요', '2026.09.25 11:50'), buyer('초대장 누르면 국가가', '2026.09.25 11:19')];
+    expect(await syncYouTubeJevReplies(deps)).toMatchObject({ sent: 0 });
+    expect(classify).toHaveBeenCalledWith('다르다고 떠요');
   });
 
   test('does not send after a human reply, delivery, or uncertain transport outcome', async () => {

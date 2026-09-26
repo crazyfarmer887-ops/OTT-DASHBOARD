@@ -7,6 +7,7 @@ import { loadSafeModeConfig } from '../api/safe-mode';
 import { writeJsonAtomic } from '../lib/graytag-sales-session';
 import type { NotionDeliveryDeal } from './notion-invitation-sync';
 import { createSingleFlightRunner, runWithExclusivePollLock } from './poll-daemon';
+import { buyerTurnEndingAt } from './buyer-message-turn';
 
 const DEFAULT_JOURNAL = '/home/ubuntu/.hermes/hermes-agent/graytag-aio-manager-0606/data/youtube-jev-replies.json';
 const DEFAULT_LOCK = '/home/ubuntu/.hermes/hermes-agent/graytag-aio-manager-0606/data/youtube-jev-replies.lock';
@@ -55,15 +56,22 @@ function chatTime(value: string): number {
 
 function latestBuyerMessage(room: string, messages: GraytagChatMessage[]): { text: string; time: number; fingerprint: string } | null {
   const stamped = messages.map((message, index) => ({ message, index, time: chatTime(messageTimestamp(message)) }))
-    .filter((entry) => Number.isFinite(entry.time) && entry.time > 0 && normalizeBuyerMessage(entry.message.message));
-  const buyers = stamped.filter(({ message }) => isBuyerTextMessage({ chatRoomUuid: room, ...message, message: message.message || '' }));
-  buyers.sort((a, b) => b.time - a.time || a.index - b.index);
-  const latest = buyers[0];
-  if (!latest) return null;
+    .filter((entry) => Number.isFinite(entry.time) && entry.time > 0 && normalizeBuyerMessage(entry.message.message))
+    .map((entry) => ({ ...entry, buyer: isBuyerTextMessage({ chatRoomUuid: room, ...entry.message,
+      message: entry.message.message || '' }), text: normalizeBuyerMessage(entry.message.message) }))
+    .sort((a, b) => a.time - b.time || a.index - b.index);
+  const latestIndex = stamped.findLastIndex((entry) => entry.buyer);
+  if (latestIndex < 0) return null;
+  const latest = stamped[latestIndex];
   // If a seller has replied in the same timestamp minute, defer to the human.
   if (stamped.some(({ message, time }) => (message.owned || message.isOwned) && time >= latest.time)) return null;
-  const text = normalizeBuyerMessage(latest.message.message);
-  const fingerprint = createHash('sha256').update(`${room}\0${messageTimestamp(latest.message)}\0${text}`).digest('hex');
+  const turn = buyerTurnEndingAt(stamped, latestIndex);
+  const text = turn.map((entry) => entry.text).join('\n');
+  // Preserve existing one-message fingerprints so a deploy cannot replay old inquiries.
+  const fingerprintInput = turn.length === 1
+    ? `${room}\0${messageTimestamp(latest.message)}\0${text}`
+    : `${room}\0${turn.map((entry) => `${messageTimestamp(entry.message)}:${entry.text}`).join('\0')}`;
+  const fingerprint = createHash('sha256').update(fingerprintInput).digest('hex');
   return { text, time: latest.time, fingerprint };
 }
 

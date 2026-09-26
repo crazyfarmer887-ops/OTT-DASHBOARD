@@ -9,6 +9,7 @@ import { normalizeYouTubeInvitationEmail } from '../lib/youtube-invitations';
 import { writeJsonAtomic } from '../lib/graytag-sales-session';
 import { createNotionInvitationClient, type NotionDeliveryDeal, type NotionInvitationRow } from './notion-invitation-sync';
 import { createSingleFlightRunner, runWithExclusivePollLock } from './poll-daemon';
+import { buyerTurnEndingAt } from './buyer-message-turn';
 
 const DEFAULT_JOURNAL = '/home/ubuntu/.hermes/hermes-agent/graytag-aio-manager-0606/data/youtube-family-switch.json';
 const DEFAULT_LOCK = '/home/ubuntu/.hermes/hermes-agent/graytag-aio-manager-0606/data/youtube-family-switch.lock';
@@ -68,17 +69,28 @@ function orderedChat(room: string, messages: readonly GraytagChatMessage[]): Cha
 
 export function findFamilySwitchEvent(room: string, messages: readonly GraytagChatMessage[], oldEmail: string, now = Date.now()): FamilySwitchEvent | null {
   const ordered = orderedChat(room, messages);
-  const issueIndex = ordered.findLastIndex((entry) => entry.buyer
-    && /가족|family/i.test(entry.text)
-    && /변경|바꾸|이동|전환|가입|참여|12개월|1년|switch|join/i.test(entry.text));
+  let issueIndex = -1;
+  let issueText = '';
+  let issueTime = 0;
+  for (let index = 0; index < ordered.length; index++) {
+    const entry = ordered[index];
+    if (!entry.buyer || !/가족|family|변경|바꾸|이동|전환|가입|참여|12개월|1년|switch|join|안\s*되|안\s*돼|못|걸려/i.test(entry.text)) continue;
+    const turn = buyerTurnEndingAt(ordered, index);
+    const text = turn.filter((message) => !normalizeYouTubeInvitationEmail(message.text))
+      .map((message) => message.text).join('\n');
+    if (!/가족|family/i.test(text)
+      || !/변경|바꾸|이동|전환|가입|참여|12개월|1년|switch|join/i.test(text)) continue;
+    issueIndex = ordered.indexOf(turn.find((message) => /가족|family/i.test(message.text)) || entry);
+    issueText = text;
+    issueTime = entry.time;
+  }
   if (issueIndex < 0) return null;
-  const issue = ordered[issueIndex];
-  if (issue.time > now + 60_000 || now - issue.time > MAX_ISSUE_AGE_MS) return null;
+  if (issueTime > now + 60_000 || now - issueTime > MAX_ISSUE_AGE_MS) return null;
   const after = ordered.slice(issueIndex);
   const buyerAfter = after.filter((entry) => entry.buyer);
   const buyerResolved = buyerAfter.slice(1).some(({ text }) => /(?:지금\s*)?가입(?:했어요|했습니다|됐어요|되었습니다|완료)|쓰고\s*있|사용\s*중|이용\s*중|사용하고\s*있|이용하고\s*있|잘\s*되|해결됐|해결했/.test(text));
   const declined = buyerAfter.some(({ text }) => /취소|환불|더\s*이상\s*필요\s*없/.test(text));
-  if (buyerResolved || declined) return { issueText: issue.text, issueTime: issue.time, fingerprint: '',
+  if (buyerResolved || declined) return { issueText, issueTime, fingerprint: '',
     newEmail: null, resolved: true, sellerReplied: false, ambiguousEmail: false, lastBuyerTime: 0 };
   const candidateEmails = new Set<string>();
   let ambiguousEmail = false;
@@ -90,16 +102,17 @@ export function findFamilySwitchEvent(room: string, messages: readonly GraytagCh
   }
   if (candidateEmails.size > 1) ambiguousEmail = true;
   const newEmail = !ambiguousEmail && candidateEmails.size === 1 ? [...candidateEmails][0] : null;
-  const lastBuyer = buyerAfter.at(-1) || issue;
+  const lastBuyer = buyerAfter.at(-1) || ordered[issueIndex];
   const lastBuyerIndex = ordered.indexOf(lastBuyer);
   const sellerAfterLatestBuyer = ordered.slice(lastBuyerIndex + 1).filter((entry) => entry.seller);
   if (sellerAfterLatestBuyer.some(({ text }) => /초대(?:장)?.{0,30}(?:완료|보냈|발송했|전달했)/.test(text)))
-    return { issueText: issue.text, issueTime: issue.time, fingerprint: '', newEmail: null,
+    return { issueText, issueTime, fingerprint: '', newEmail: null,
       resolved: true, sellerReplied: true, ambiguousEmail: false, lastBuyerTime: lastBuyer.time };
   const sellerReplied = sellerAfterLatestBuyer.length > 0;
+  const issueStart = ordered[issueIndex];
   const fingerprint = createHash('sha256')
-    .update(`${room}\0${issue.time}\0${issue.text}\0${newEmail || 'pending'}`).digest('hex');
-  return { issueText: issue.text, issueTime: issue.time, fingerprint, newEmail,
+    .update(`${room}\0${issueStart.time}\0${issueStart.text}\0${newEmail || 'pending'}`).digest('hex');
+  return { issueText, issueTime, fingerprint, newEmail,
     resolved: false, sellerReplied, ambiguousEmail, lastBuyerTime: lastBuyer.time };
 }
 
