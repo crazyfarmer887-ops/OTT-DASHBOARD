@@ -519,13 +519,13 @@ export async function fetchNotionDeliveryDeals(): Promise<Array<{
 /** Authoritative read of both seller deal lists for post-delivery invitation corrections. */
 export async function fetchYouTubeSellerAllDeals(): Promise<Array<{
   dealUsid: string; chatRoomUuid: string; dealStatus: string;
-  productTypeString: string; productName: string;
+  productTypeString: string; productName: string; borrowerName: string;
 }> | null> {
   const cookies = loadGraytagAuthCookies();
   if (!cookies) return null;
   const deals = new Map<string, {
     dealUsid: string; chatRoomUuid: string; dealStatus: string;
-    productTypeString: string; productName: string;
+    productTypeString: string; productName: string; borrowerName: string;
   }>();
   for (const [kind, referer] of [
     ['before', 'https://graytag.co.kr/lender/deal/list'],
@@ -549,7 +549,8 @@ export async function fetchYouTubeSellerAllDeals(): Promise<Array<{
           deals.set(dealUsid, { dealUsid, chatRoomUuid,
             dealStatus: String(deal?.dealStatus || '').trim(),
             productTypeString: String(deal?.productTypeString || deal?.productType || '').trim(),
-            productName: String(deal?.productName || '').trim() });
+            productName: String(deal?.productName || '').trim(),
+            borrowerName: String(deal?.borrowerName || '').trim() });
         }
         if (source.length < 500) { complete = true; break; }
       } catch { return null; }
