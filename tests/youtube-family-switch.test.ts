@@ -102,6 +102,28 @@ describe('post-delivery family switch', () => {
     expect(await syncYouTubeFamilySwitches(deps)).toEqual({ updated: 0, asked: 0, replied: 0, skipped: 0 });
   });
 
+  test('uses a manually struck pending email when a delivered buyer later supplies the replacement', async () => {
+    const pending: NotionInvitationRow = { ...row, email: '', invited: false,
+      emailHistory: ['old@example.com'], cancelled: true, refundMarked: false };
+    let current = pending;
+    let journal: FamilySwitchJournal = { version: 1, records: {} };
+    const updateRowEmail = vi.fn(async (_row: NotionInvitationRow, email: string) => {
+      current = { ...pending, email, invited: false, cancelled: false, newInviteMarked: true };
+      return current;
+    });
+    const send = vi.fn(async () => true);
+    const deps = {
+      listDeals: async () => [deal], listRows: async () => [current], getRow: async () => current,
+      updateRowEmail, listMessages: async () => conversation,
+      classify: async () => 'family_switch_limit' as const, send,
+      readJournal: () => journal, writeJournal: (next: FamilySwitchJournal) => { journal = structuredClone(next); },
+      now: () => NOW,
+    };
+    expect(await syncYouTubeFamilySwitches(deps)).toMatchObject({ updated: 1, replied: 1 });
+    expect(updateRowEmail).toHaveBeenCalledExactlyOnceWith(pending, 'new@example.com');
+    expect(send).toHaveBeenCalledExactlyOnceWith(deal, YOUTUBE_FAMILY_SWITCH_REINVITE_REPLY);
+  });
+
   test('requests an alternate address once when the buyer reports the restriction without one', async () => {
     let journal: FamilySwitchJournal = { version: 1, records: {} };
     const send = vi.fn(async () => true);

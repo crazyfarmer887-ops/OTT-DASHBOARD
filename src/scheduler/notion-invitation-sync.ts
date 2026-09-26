@@ -31,6 +31,12 @@ export interface NotionDeliveryDeal {
   productName?: string;
 }
 
+/** A struck address without a refund label is waiting for a replacement address. */
+export function isPendingNewInviteRow(row: NotionInvitationRow): boolean {
+  return row.cancelled === true && row.refundMarked !== true && !normalizeYouTubeInvitationEmail(row.email)
+    && Boolean(row.emailHistory?.length);
+}
+
 type DeliveryState = 'attempted' | 'confirmed' | 'rejected';
 interface DeliveryRecord {
   emailHash: string;
@@ -98,10 +104,14 @@ export async function syncNotionBuyerEmails(deps: NotionEmailSyncDependencies): 
     if (!email) continue;
     const assigned = rows.filter((row) => row.dealUsid === deal.dealUsid);
     if (assigned.length > 0) {
-      if (assigned.length !== 1 || assigned[0].cancelled || normalizeYouTubeInvitationEmail(assigned[0].email) === email) continue;
+      if (assigned.length !== 1 || (assigned[0].cancelled && !isPendingNewInviteRow(assigned[0]))
+        || normalizeYouTubeInvitationEmail(assigned[0].email) === email) continue;
       const current = await deps.getRow(assigned[0].id);
-      const previousEmail = normalizeYouTubeInvitationEmail(current?.email);
-      if (!current || current.cancelled || current.dealUsid !== deal.dealUsid || !previousEmail) continue;
+      const previousEmail = normalizeYouTubeInvitationEmail(current?.email)
+        || (current && isPendingNewInviteRow(current)
+          ? normalizeYouTubeInvitationEmail(current.emailHistory?.at(-1)) : null);
+      if (!current || (current.cancelled && !isPendingNewInviteRow(current))
+        || current.dealUsid !== deal.dealUsid || !previousEmail || previousEmail === email) continue;
       // An old check cannot confirm a newly supplied address. Reset it atomically.
       const replacement = await deps.updateRowEmail(current, email);
       if (replacement.dealUsid !== deal.dealUsid || replacement.email !== email || replacement.invited
@@ -380,8 +390,10 @@ export function createNotionInvitationClient(token: string, dataSourceId: string
     },
     async updateRowEmail(row: NotionInvitationRow, email: string): Promise<NotionInvitationRow> {
       const oldEmail = normalizeYouTubeInvitationEmail(row.email);
-      if (!oldEmail || row.cancelled || oldEmail === email) throw new Error('Notion email replacement invalid');
-      const history = [...(row.emailHistory ?? []), oldEmail];
+      const pending = isPendingNewInviteRow(row);
+      const history = [...(row.emailHistory ?? []), ...(oldEmail ? [oldEmail] : [])];
+      if ((!oldEmail && !pending) || (row.cancelled && !pending) || history.includes(email))
+        throw new Error('Notion email replacement invalid');
       const response = await transport(`https://api.notion.com/v1/pages/${encodeURIComponent(row.id)}`, {
         method: 'PATCH', headers, signal: AbortSignal.timeout(15_000),
         body: JSON.stringify({ properties: {

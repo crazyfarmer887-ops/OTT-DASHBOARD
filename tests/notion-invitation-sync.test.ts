@@ -164,6 +164,56 @@ describe('Notion invitation synchronization', () => {
     expect(cancelRow).toHaveBeenCalledExactlyOnceWith(invited);
   });
 
+  test('appends a replacement below a manually struck email awaiting a new invitation', async () => {
+    let page: any = { id: 'pending-row', properties: {
+      'Customer email': { title: [{ text: { content: 'old@example.com' }, annotations: { strikethrough: true } }] },
+      Invited: { checkbox: true }, 'Deal USID': { rich_text: [{ text: { content: 'order-1' } }] },
+    } };
+    const transport = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+      if (init?.method === 'PATCH') {
+        const body = JSON.parse(String(init.body));
+        page = { ...page, properties: { ...page.properties, ...body.properties } };
+      }
+      return Response.json(page);
+    }) as typeof fetch;
+    const client = createNotionInvitationClient('token', 'data-source-id', transport);
+    const pending = await client.getRow('pending-row');
+    expect(pending).toMatchObject({ cancelled: true, refundMarked: false,
+      emailHistory: ['old@example.com'], invited: true });
+    const replacement = await client.updateRowEmail(pending!, 'new@example.com');
+    expect(replacement).toMatchObject({ email: 'new@example.com', invited: false,
+      cancelled: false, newInviteMarked: true, emailHistory: ['old@example.com'] });
+    const body = JSON.parse(String(transport.mock.calls[1][1]?.body));
+    expect(body.properties['Customer email'].title.map((part: any) => part.text.content).join(''))
+      .toBe('old@example.com\n\n↓\n\nnew@example.com (new invite)');
+  });
+
+  test('fills a pending replacement row when the buyer supplies one clear new email', async () => {
+    const pending: NotionInvitationRow = { ...row('pending', '', false, 'order-1'),
+      emailHistory: ['old@example.com'], cancelled: true, refundMarked: false };
+    const updateRowEmail = vi.fn(async (_current: NotionInvitationRow, email: string) => ({
+      ...pending, email, cancelled: false, emailHistory: ['old@example.com'], newInviteMarked: true,
+    }));
+    expect(await syncNotionBuyerEmails({
+      listRows: async () => [pending], getRow: async () => pending,
+      createRow: vi.fn(), bindRow: vi.fn(), updateRowEmail, cancelRow: vi.fn(),
+      listDeals: async () => [deal('order-1')], buyerEmails: async () => ['new@example.com'],
+    })).toMatchObject({ updated: 1 });
+    expect(updateRowEmail).toHaveBeenCalledExactlyOnceWith(pending, 'new@example.com');
+  });
+
+  test('does not reopen a row marked refund when another email appears', async () => {
+    const refunded: NotionInvitationRow = { ...row('refunded', '', false, 'order-1'),
+      emailHistory: ['old@example.com'], cancelled: true, refundMarked: true };
+    const updateRowEmail = vi.fn();
+    expect(await syncNotionBuyerEmails({
+      listRows: async () => [refunded], getRow: async () => refunded,
+      createRow: vi.fn(), bindRow: vi.fn(), updateRowEmail, cancelRow: vi.fn(),
+      listDeals: async () => [deal('order-1')], buyerEmails: async () => ['new@example.com'],
+    })).toMatchObject({ updated: 0, created: 0 });
+    expect(updateRowEmail).not.toHaveBeenCalled();
+  });
+
   test('adds the refund label to a previously struck cancelled row and clears a stale check', async () => {
     const old: NotionInvitationRow = { ...row('old', '', true, 'order-1'),
       emailHistory: ['buyer@example.com'], cancelled: true, refundMarked: false };

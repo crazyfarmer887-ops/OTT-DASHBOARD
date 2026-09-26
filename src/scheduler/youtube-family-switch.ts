@@ -7,7 +7,7 @@ import { isYouTubeInvitationSellerDeal } from '../api/youtube-auto-reply';
 import { parseYouTubeInviteEmailCandidates } from '../lib/youtube-invite-email';
 import { normalizeYouTubeInvitationEmail } from '../lib/youtube-invitations';
 import { writeJsonAtomic } from '../lib/graytag-sales-session';
-import { createNotionInvitationClient, type NotionDeliveryDeal, type NotionInvitationRow } from './notion-invitation-sync';
+import { createNotionInvitationClient, isPendingNewInviteRow, type NotionDeliveryDeal, type NotionInvitationRow } from './notion-invitation-sync';
 import { createSingleFlightRunner, runWithExclusivePollLock } from './poll-daemon';
 import { buyerTurnEndingAt } from './buyer-message-turn';
 
@@ -155,13 +155,17 @@ export async function syncYouTubeFamilySwitches(deps: FamilySwitchDependencies):
   const dealById = new Map(deals.filter((deal) => ELIGIBLE_STATUS.has(deal.dealStatus)
     && isYouTubeInvitationSellerDeal(deal)).map((deal) => [deal.dealUsid, deal]));
   let updated = 0; let asked = 0; let replied = 0; let skipped = 0;
-  for (const row of rows.filter((entry) => entry.invited && !entry.cancelled && entry.dealUsid && entry.email)) {
+  for (const row of rows.filter((entry) => entry.dealUsid
+    && ((entry.invited && !entry.cancelled && entry.email) || isPendingNewInviteRow(entry)))) {
     if (rows.filter((entry) => entry.dealUsid === row.dealUsid).length !== 1) continue;
     const deal = dealById.get(row.dealUsid);
     if (!deal) continue;
+    const oldEmail = normalizeYouTubeInvitationEmail(row.email)
+      || normalizeYouTubeInvitationEmail(row.emailHistory?.at(-1));
+    if (!oldEmail) continue;
     const messages = await deps.listMessages(deal.chatRoomUuid);
     if (!messages) continue;
-    const event = findFamilySwitchEvent(deal.chatRoomUuid, messages, row.email, now);
+    const event = findFamilySwitchEvent(deal.chatRoomUuid, messages, oldEmail, now);
     if (!event || event.resolved || event.ambiguousEmail || now - event.lastBuyerTime < SETTLE_MS) continue;
     const key = `${deal.dealUsid}:${event.fingerprint}`;
     if (journal.records[key]) continue;
@@ -169,34 +173,38 @@ export async function syncYouTubeFamilySwitches(deps: FamilySwitchDependencies):
     try { intent = await deps.classify(event.issueText); } catch { continue; }
     if (intent !== 'family_switch_limit') { skipped += 1; continue; }
     const freshMessages = await deps.listMessages(deal.chatRoomUuid);
-    const fresh = freshMessages && findFamilySwitchEvent(deal.chatRoomUuid, freshMessages, row.email, now);
+    const fresh = freshMessages && findFamilySwitchEvent(deal.chatRoomUuid, freshMessages, oldEmail, now);
     if (!fresh || fresh.resolved || fresh.ambiguousEmail || fresh.fingerprint !== event.fingerprint) continue;
     const freshDeals = await deps.listDeals();
     if (!freshDeals?.some((item) => item.dealUsid === deal.dealUsid && ELIGIBLE_STATUS.has(item.dealStatus))) continue;
     const liveRow = await deps.getRow(row.id);
-    if (!liveRow || liveRow.dealUsid !== deal.dealUsid || liveRow.cancelled) continue;
+    if (!liveRow || liveRow.dealUsid !== deal.dealUsid || liveRow.refundMarked) continue;
     const mark = (state: JournalState) => {
       journal.records[key] = { state, updatedAt: new Date(now).toISOString() };
       deps.writeJournal(journal);
     };
     if (!event.newEmail) {
-      if (fresh.sellerReplied || !liveRow.invited || liveRow.email !== row.email) continue;
+      if (isPendingNewInviteRow(row) || fresh.sellerReplied || !liveRow.invited
+        || liveRow.cancelled || liveRow.email !== row.email) continue;
       mark('attempted');
       try {
         if (await deps.send(deal, YOUTUBE_FAMILY_SWITCH_EMAIL_REQUEST)) { mark('done'); asked += 1; }
       } catch { /* Sending may have succeeded before an uncertain transport error. */ }
       continue;
     }
-    if (!liveRow.invited || liveRow.email !== row.email) continue;
+    if (isPendingNewInviteRow(row)) {
+      if (!isPendingNewInviteRow(liveRow)
+        || normalizeYouTubeInvitationEmail(liveRow.emailHistory?.at(-1)) !== oldEmail) continue;
+    } else if (!liveRow.invited || liveRow.cancelled || liveRow.email !== row.email) continue;
     const replacement = await deps.updateRowEmail(liveRow, event.newEmail);
     if (replacement.dealUsid !== deal.dealUsid || replacement.email !== event.newEmail
-      || replacement.invited || replacement.cancelled || !replacement.emailHistory?.includes(row.email))
+      || replacement.invited || replacement.cancelled || !replacement.emailHistory?.includes(oldEmail))
       throw new Error('Family switch Notion replacement invalid');
     mark('notion_updated');
     updated += 1;
     if (fresh.sellerReplied) { mark('done'); continue; }
     const finalMessages = await deps.listMessages(deal.chatRoomUuid);
-    const finalEvent = finalMessages && findFamilySwitchEvent(deal.chatRoomUuid, finalMessages, row.email, now);
+    const finalEvent = finalMessages && findFamilySwitchEvent(deal.chatRoomUuid, finalMessages, oldEmail, now);
     if (!finalEvent || finalEvent.resolved || finalEvent.fingerprint !== event.fingerprint || finalEvent.sellerReplied) {
       mark('done'); continue;
     }
