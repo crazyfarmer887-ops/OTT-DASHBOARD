@@ -1,6 +1,9 @@
 import { describe, expect, test, vi } from 'vitest';
 import {
   createNotionInvitationClient,
+  createNotionSlotLedgerClient,
+  calculateNotionSlotCapacity,
+  occupiedNotionSlots,
   resolveUniqueDeliveryMatches,
   syncNotionBuyerEmails,
   syncNotionInvitationDeliveries,
@@ -27,10 +30,10 @@ describe('Notion invitation synchronization', () => {
       listDeals: async () => [deal('order-1')],
       buyerEmails: async () => ['buyer@example.com'],
     };
-    expect(await syncNotionBuyerEmails(deps)).toEqual({ created: 0, bound: 1, updated: 0, cancelled: 0 });
+    expect(await syncNotionBuyerEmails(deps)).toEqual({ created: 0, bound: 1, updated: 0, cancelled: 0, capacityBlocked: 0 });
     expect(bindRow).toHaveBeenCalledWith('manual', 'order-1');
     rows[0] = row('manual', 'buyer@example.com', false, 'order-1');
-    expect(await syncNotionBuyerEmails(deps)).toEqual({ created: 0, bound: 0, updated: 0, cancelled: 0 });
+    expect(await syncNotionBuyerEmails(deps)).toEqual({ created: 0, bound: 0, updated: 0, cancelled: 0, capacityBlocked: 0 });
     expect(createRow).not.toHaveBeenCalled();
   });
 
@@ -41,7 +44,7 @@ describe('Notion invitation synchronization', () => {
       listRows: async () => [manual], getRow: async () => manual,
       createRow: vi.fn(), bindRow, updateRowEmail: vi.fn(), cancelRow: vi.fn(),
       listDeals: async () => [deal('order-1')], buyerEmails: async () => ['buyer@example.com'],
-    })).toEqual({ created: 0, bound: 1, updated: 0, cancelled: 0 });
+    })).toEqual({ created: 0, bound: 1, updated: 0, cancelled: 0, capacityBlocked: 0 });
     expect(bindRow).toHaveBeenCalledExactlyOnceWith('manual', 'order-1');
   });
 
@@ -57,8 +60,8 @@ describe('Notion invitation synchronization', () => {
       bindRow: vi.fn(), updateRowEmail: vi.fn(), cancelRow: vi.fn(), listDeals: async () => [deal('order-1'), deal('order-2')],
       buyerEmails: async (room: string) => room === 'order-1' ? ['buyer@example.com'] : ['a@example.com', 'b@example.com'],
     };
-    expect(await syncNotionBuyerEmails(deps)).toEqual({ created: 1, bound: 0, updated: 0, cancelled: 0 });
-    expect(await syncNotionBuyerEmails(deps)).toEqual({ created: 0, bound: 0, updated: 0, cancelled: 0 });
+    expect(await syncNotionBuyerEmails(deps)).toEqual({ created: 1, bound: 0, updated: 0, cancelled: 0, capacityBlocked: 0 });
+    expect(await syncNotionBuyerEmails(deps)).toEqual({ created: 0, bound: 0, updated: 0, cancelled: 0, capacityBlocked: 0 });
     expect(createRow).toHaveBeenCalledTimes(1);
   });
 
@@ -70,7 +73,7 @@ describe('Notion invitation synchronization', () => {
       updateRowEmail: vi.fn(), cancelRow: vi.fn(),
       listDeals: async () => [deal('one'), deal('two')], buyerEmails: async () => ['same@example.com'],
     });
-    expect(result).toEqual({ created: 0, bound: 0, updated: 0, cancelled: 0 });
+    expect(result).toEqual({ created: 0, bound: 0, updated: 0, cancelled: 0, capacityBlocked: 0 });
     expect(bindRow).not.toHaveBeenCalled();
     expect(createRow).not.toHaveBeenCalled();
   });
@@ -96,7 +99,7 @@ describe('Notion invitation synchronization', () => {
       getRow: async () => rows[0], createRow: vi.fn(), bindRow: vi.fn(), updateRowEmail, cancelRow: vi.fn(),
       listDeals: async () => [deal('order-1')], buyerEmails: async () => ['new@example.com'],
     });
-    expect(result).toEqual({ created: 0, bound: 0, updated: 1, cancelled: 0 });
+    expect(result).toEqual({ created: 0, bound: 0, updated: 1, cancelled: 0, capacityBlocked: 0 });
     expect(updateRowEmail).toHaveBeenCalledExactlyOnceWith(original, 'new@example.com');
   });
 
@@ -244,7 +247,7 @@ describe('Notion invitation synchronization', () => {
       listDeals: async () => [cancellation('order-1'), cancellation('order-2')],
       buyerEmails: async (room: string) => room === 'order-2' ? ['second@example.com'] : [],
     });
-    expect(result).toEqual({ created: 1, bound: 0, updated: 0, cancelled: 2 });
+    expect(result).toEqual({ created: 1, bound: 0, updated: 0, cancelled: 2, capacityBlocked: 0 });
     expect(cancelRow).toHaveBeenCalledExactlyOnceWith(existing);
     expect(createRow).toHaveBeenCalledExactlyOnceWith('second@example.com', 'order-2', true);
   });
@@ -260,9 +263,72 @@ describe('Notion invitation synchronization', () => {
       ],
       buyerEmails: async () => null,
     });
-    expect(result).toEqual({ created: 0, bound: 0, updated: 0, cancelled: 0 });
+    expect(result).toEqual({ created: 0, bound: 0, updated: 0, cancelled: 0, capacityBlocked: 0 });
     expect(cancelRow).not.toHaveBeenCalled();
     expect(createRow).not.toHaveBeenCalled();
+  });
+
+  test('counts paid capacity from dated Notion ledger entries and rejects incomplete adjustments', async () => {
+    const entries = [
+      { change: 60, reason: '9월 26일 초기 등록 / 결제 확인', effectiveDate: '2026-09-26' },
+      { change: 10, reason: '10월 1일 10자리 추가 / 결제 완료', effectiveDate: '2026-10-01' },
+      { change: -5, reason: '10월 2일 계정 회수 / vendor 확인', effectiveDate: '2026-10-02' },
+    ];
+    expect(calculateNotionSlotCapacity(entries, '2026-09-26')).toBe(60);
+    expect(calculateNotionSlotCapacity(entries, '2026-10-01')).toBe(70);
+    expect(calculateNotionSlotCapacity(entries, '2026-10-02')).toBe(65);
+    expect(() => calculateNotionSlotCapacity([...entries, { change: 3, reason: '', effectiveDate: '2026-10-03' }], '2026-10-03'))
+      .toThrow('entry invalid');
+    const transport = vi.fn(async () => Response.json({ results: entries.map((entry, index) => ({
+      id: `ledger-${index}`, properties: {
+        'Change / reason': { title: [{ plain_text: entry.reason }] },
+        'Slot change': { number: entry.change },
+        'Effective date': { date: { start: entry.effectiveDate } },
+      },
+    })), has_more: false })) as typeof fetch;
+    expect(await createNotionSlotLedgerClient('token', 'ledger-id', transport).readSlotCapacity('2026-10-01')).toBe(70);
+  });
+
+  test('blocks new buyer rows at capacity but permits a replacement in an existing row', async () => {
+    const rows = [row('occupied', 'old@example.com', true, 'order-1')];
+    const createRow = vi.fn();
+    const updateRowEmail = vi.fn(async (current: NotionInvitationRow, email: string) => ({
+      ...current, email, emailHistory: [current.email], invited: false, cancelled: false,
+    }));
+    const result = await syncNotionBuyerEmails({
+      listRows: async () => [...rows], readSlotCapacity: async () => 1,
+      getRow: async () => rows[0], createRow, bindRow: vi.fn(), updateRowEmail, cancelRow: vi.fn(),
+      listDeals: async () => [deal('order-1'), deal('order-2')],
+      buyerEmails: async (room: string) => room === 'order-1' ? ['new@example.com'] : ['buyer@example.com'],
+    });
+    expect(result).toMatchObject({ updated: 1, created: 0, capacityBlocked: 1 });
+    expect(updateRowEmail).toHaveBeenCalledOnce();
+    expect(createRow).not.toHaveBeenCalled();
+  });
+
+  test('refunds release a place only after invite removal is confirmed; missing ledger blocks creation', async () => {
+    const refunded: NotionInvitationRow = { ...row('refund', '', false, 'old-order'),
+      emailHistory: ['old@example.com'], cancelled: true, refundMarked: true, inviteRemoved: false };
+    const rows = [refunded];
+    const createRow = vi.fn(async (email: string, dealUsid: string) => {
+      const created = row('new', email, false, dealUsid);
+      rows.push(created);
+      return created;
+    });
+    const deps = {
+      listRows: async () => [...rows], readSlotCapacity: async (): Promise<number | null> => 1,
+      getRow: async () => null, createRow, bindRow: vi.fn(), updateRowEmail: vi.fn(), cancelRow: vi.fn(),
+      listDeals: async () => [deal('new-order')], buyerEmails: async () => ['buyer@example.com'],
+    };
+    expect(occupiedNotionSlots(rows)).toBe(1);
+    expect((await syncNotionBuyerEmails(deps)).capacityBlocked).toBe(1);
+    refunded.inviteRemoved = true;
+    expect(occupiedNotionSlots(rows)).toBe(0);
+    expect((await syncNotionBuyerEmails(deps)).created).toBe(1);
+    expect(createRow).toHaveBeenCalledOnce();
+    rows.pop();
+    expect((await syncNotionBuyerEmails({ ...deps, readSlotCapacity: async () => null })).capacityBlocked).toBe(1);
+    expect(createRow).toHaveBeenCalledOnce();
   });
 
   test('rechecks the checkbox and journals before finishing, then never retries an uncertain finish', async () => {

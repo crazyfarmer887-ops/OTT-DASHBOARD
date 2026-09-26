@@ -8,6 +8,7 @@ import { createSingleFlightRunner, runWithExclusivePollLock } from './poll-daemo
 
 const NOTION_VERSION = '2025-09-03';
 const DEFAULT_DATA_SOURCE_ID = '52e0fe4e-5f56-4fa1-8547-f2e89142b0db';
+const DEFAULT_SLOT_LEDGER_DATA_SOURCE_ID = '0162c5cb-60f8-414c-beeb-9ec78dd9a383';
 const DEFAULT_JOURNAL_PATH = '/home/ubuntu/.hermes/hermes-agent/graytag-aio-manager-0606/data/notion-invitation-deliveries.json';
 const DEFAULT_LOCK_PATH = '/home/ubuntu/.hermes/hermes-agent/graytag-aio-manager-0606/data/notion-invitation-deliveries.lock';
 const DEFAULT_INTERVAL_MS = 60_000;
@@ -19,6 +20,7 @@ export interface NotionInvitationRow {
   cancelled?: boolean;
   refundMarked?: boolean;
   newInviteMarked?: boolean;
+  inviteRemoved?: boolean;
   invited: boolean;
   dealUsid: string;
 }
@@ -60,6 +62,8 @@ export interface NotionInvitationSyncDependencies {
 
 export interface NotionEmailSyncDependencies {
   listRows(): Promise<NotionInvitationRow[]>;
+  /** Null means the ledger could not be read, so new rows must fail closed. */
+  readSlotCapacity?(): Promise<number | null>;
   getRow(id: string): Promise<NotionInvitationRow | null>;
   createRow(email: string, dealUsid: string, cancelled?: boolean): Promise<NotionInvitationRow>;
   bindRow(id: string, dealUsid: string): Promise<NotionInvitationRow>;
@@ -81,9 +85,10 @@ function sameRow(left: NotionInvitationRow | null, right: NotionInvitationRow): 
 
 /** Add only emails explicitly supplied by a buyer for one identifiable order. */
 export async function syncNotionBuyerEmails(deps: NotionEmailSyncDependencies): Promise<{
-  created: number; bound: number; updated: number; cancelled: number;
+  created: number; bound: number; updated: number; cancelled: number; capacityBlocked: number;
 }> {
   const rows = await deps.listRows();
+  const capacity = deps.readSlotCapacity ? await deps.readSlotCapacity().catch(() => null) : Number.POSITIVE_INFINITY;
   const deals = await deps.listDeals();
   if (!deals) throw new Error('YouTube seller deals unavailable');
   const active = deals.filter((deal) => deal.dealStatus === 'Delivering' && isYouTubeInvitationSellerDeal(deal));
@@ -99,6 +104,22 @@ export async function syncNotionBuyerEmails(deps: NotionEmailSyncDependencies): 
   let bound = 0;
   let updated = 0;
   let cancelled = 0;
+  let capacityBlocked = 0;
+  const canCreate = async (dealUsid: string, email: string): Promise<boolean> => {
+    if (capacity === null || (deps.readSlotCapacity && (!Number.isSafeInteger(capacity) || capacity < 0))) {
+      capacityBlocked += 1;
+      return false;
+    }
+    if (!Number.isFinite(capacity)) return true;
+    // Re-read before every insertion so edits in Notion and other writers are reflected.
+    const latest = await deps.listRows();
+    // Keep rows just created in this run even if a Notion query is briefly stale.
+    const observed = [...new Map([...rows, ...latest].map((row) => [row.id, row])).values()];
+    if (observed.some((row) => row.dealUsid === dealUsid
+      || (!row.dealUsid && !row.cancelled && normalizeYouTubeInvitationEmail(row.email) === email))) return false;
+    if (occupiedNotionSlots(observed) >= capacity) { capacityBlocked += 1; return false; }
+    return true;
+  };
   for (const deal of active) {
     const email = emailByDeal.get(deal.dealUsid);
     if (!email) continue;
@@ -137,6 +158,7 @@ export async function syncNotionBuyerEmails(deps: NotionEmailSyncDependencies): 
       continue;
     }
     if (manualRows.length > 0) continue;
+    if (!await canCreate(deal.dealUsid, email)) continue;
     const added = await deps.createRow(email, deal.dealUsid);
     rows.push(added);
     created += 1;
@@ -163,6 +185,7 @@ export async function syncNotionBuyerEmails(deps: NotionEmailSyncDependencies): 
     if (emails?.length !== 1) continue;
     const email = normalizeYouTubeInvitationEmail(emails[0]);
     if (!email) continue;
+    if (!await canCreate(deal.dealUsid, email)) continue;
     const struck = await deps.createRow(email, deal.dealUsid, true);
     if (!struck.cancelled || !struck.refundMarked || struck.invited || struck.email
       || struck.dealUsid !== deal.dealUsid) {
@@ -172,7 +195,62 @@ export async function syncNotionBuyerEmails(deps: NotionEmailSyncDependencies): 
     created += 1;
     cancelled += 1;
   }
-  return { created, bound, updated, cancelled };
+  return { created, bound, updated, cancelled, capacityBlocked };
+}
+
+/** A refund holds its place until the vendor confirms that the invite was removed. */
+export function occupiedNotionSlots(rows: readonly NotionInvitationRow[]): number {
+  return rows.filter((row) => !row.refundMarked || !row.inviteRemoved).length;
+}
+
+export interface NotionSlotLedgerEntry {
+  change: number;
+  reason: string;
+  effectiveDate: string;
+}
+
+export function calculateNotionSlotCapacity(entries: readonly NotionSlotLedgerEntry[], today: string): number {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(today) || entries.length === 0) throw new Error('Notion slot ledger invalid');
+  let capacity = 0;
+  for (const entry of entries) {
+    if (!Number.isSafeInteger(entry.change) || entry.change === 0 || !entry.reason.trim()
+      || !/^\d{4}-\d{2}-\d{2}$/.test(entry.effectiveDate)) throw new Error('Notion slot ledger entry invalid');
+    if (entry.effectiveDate <= today) capacity += entry.change;
+  }
+  if (!Number.isSafeInteger(capacity) || capacity < 0 || capacity > 10_000) throw new Error('Notion slot capacity invalid');
+  return capacity;
+}
+
+export function createNotionSlotLedgerClient(token: string, dataSourceId: string, transport: typeof fetch = fetch) {
+  return {
+    async readSlotCapacity(today = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit',
+    }).format(new Date())): Promise<number> {
+      const entries: NotionSlotLedgerEntry[] = [];
+      let cursor: string | undefined;
+      do {
+        const response = await transport(`https://api.notion.com/v1/data_sources/${encodeURIComponent(dataSourceId)}/query`, {
+          method: 'POST', headers: notionHeaders(token), signal: AbortSignal.timeout(15_000),
+          body: JSON.stringify({ page_size: 100, ...(cursor ? { start_cursor: cursor } : {}) }),
+        });
+        if (!response.ok) throw new Error(`Notion slot ledger query failed: HTTP ${response.status}`);
+        const payload = await response.json() as { results?: unknown[]; has_more?: boolean; next_cursor?: string };
+        if (!Array.isArray(payload.results)) throw new Error('Notion slot ledger response invalid');
+        for (const value of payload.results) {
+          const page = value as Record<string, any>;
+          if (page.archived === true || page.in_trash === true) continue;
+          const title = page.properties?.['Change / reason']?.title;
+          const reason = Array.isArray(title) ? title.map((part: any) => String(part?.plain_text ?? part?.text?.content ?? '')).join('') : '';
+          entries.push({ change: page.properties?.['Slot change']?.number,
+            effectiveDate: page.properties?.['Effective date']?.date?.start ?? '', reason });
+        }
+        if (entries.length > 1000) throw new Error('Notion slot ledger exceeds 1000 rows');
+        cursor = payload.has_more ? payload.next_cursor : undefined;
+        if (payload.has_more && !cursor) throw new Error('Notion slot ledger cursor missing');
+      } while (cursor);
+      return calculateNotionSlotCapacity(entries, today);
+    },
+  };
 }
 
 export function resolveUniqueDeliveryMatches(
@@ -309,6 +387,7 @@ function parseNotionRow(value: unknown): NotionInvitationRow | null {
   const refundMarked = cancelled && /\(refund\)\s*$/i.test(visibleTitle);
   const newInviteMarked = !cancelled && /\(new invite\)\s*$/i.test(visibleTitle);
   return { id: page.id, email, emailHistory, cancelled, refundMarked, newInviteMarked,
+    inviteRemoved: page.properties?.['Invite removed']?.checkbox === true,
     invited: page.properties?.Invited?.checkbox === true, dealUsid };
 }
 
@@ -363,6 +442,7 @@ export function createNotionInvitationClient(token: string, dataSourceId: string
           properties: {
             'Customer email': { title: emailTitle([], email, cancelled) },
             Invited: { checkbox: false },
+            'Invite removed': { checkbox: false },
             'Deal USID': { rich_text: [{ text: { content: dealUsid } }] },
           } }),
       });
@@ -381,6 +461,7 @@ export function createNotionInvitationClient(token: string, dataSourceId: string
         body: JSON.stringify({ properties: {
           'Deal USID': { rich_text: [{ text: { content: dealUsid } }] },
           Invited: { checkbox: false },
+          'Invite removed': { checkbox: false },
         } }),
       });
       if (!response.ok) throw new Error(`Notion update page failed: HTTP ${response.status}`);
@@ -399,6 +480,7 @@ export function createNotionInvitationClient(token: string, dataSourceId: string
         body: JSON.stringify({ properties: {
           'Customer email': { title: emailTitle(history, email) },
           Invited: { checkbox: false },
+          'Invite removed': { checkbox: false },
         } }),
       });
       if (!response.ok) throw new Error(`Notion replace email failed: HTTP ${response.status}`);
@@ -420,6 +502,7 @@ export function createNotionInvitationClient(token: string, dataSourceId: string
         body: JSON.stringify({ properties: {
           'Customer email': { title: emailTitle(history, '', true) },
           Invited: { checkbox: false },
+          'Invite removed': { checkbox: false },
         } }),
       });
       if (!response.ok) throw new Error(`Notion cancel email failed: HTTP ${response.status}`);
@@ -449,11 +532,13 @@ export function startNotionInvitationSync(dependencies: Pick<NotionInvitationSyn
   if (!importEnabled && !deliveryEnabled) return;
   const token = process.env.NOTION_API_TOKEN?.trim();
   const dataSourceId = process.env.NOTION_INVITATION_DATA_SOURCE_ID?.trim() || DEFAULT_DATA_SOURCE_ID;
+  const ledgerDataSourceId = process.env.NOTION_SLOT_LEDGER_DATA_SOURCE_ID?.trim() || DEFAULT_SLOT_LEDGER_DATA_SOURCE_ID;
   if (!token || !/^[a-f0-9-]{32,36}$/i.test(dataSourceId)) {
     console.error('[NotionInvitationSync] Notion connection is not configured');
     return;
   }
   const client = createNotionInvitationClient(token, dataSourceId);
+  const ledger = createNotionSlotLedgerClient(token, ledgerDataSourceId);
   const journalPath = process.env.NOTION_INVITATION_JOURNAL_PATH || DEFAULT_JOURNAL_PATH;
   const lockPath = process.env.NOTION_INVITATION_LOCK_PATH || DEFAULT_LOCK_PATH;
   const intervalMs = Math.max(30_000, Number(process.env.NOTION_INVITATION_INTERVAL_MS) || DEFAULT_INTERVAL_MS);
@@ -462,8 +547,15 @@ export function startNotionInvitationSync(dependencies: Pick<NotionInvitationSyn
     await runWithExclusivePollLock(lockPath, async () => {
       try {
         if (importEnabled) {
-          const imported = await syncNotionBuyerEmails({ ...client, ...dependencies });
-          if (imported.created || imported.bound || imported.updated || imported.cancelled) console.log('[NotionInvitationSync] emails', imported);
+          const imported = await syncNotionBuyerEmails({ ...client, ...ledger, ...dependencies,
+            readSlotCapacity: () => ledger.readSlotCapacity().catch((error: unknown) => {
+              console.error('[NotionInvitationSync] slot ledger unavailable',
+                error instanceof Error ? error.message : 'unknown error');
+              return null;
+            }),
+          });
+          if (imported.created || imported.bound || imported.updated || imported.cancelled || imported.capacityBlocked)
+            console.log('[NotionInvitationSync] emails', imported);
         }
         if (deliveryEnabled) {
           const result = await syncNotionInvitationDeliveries({
