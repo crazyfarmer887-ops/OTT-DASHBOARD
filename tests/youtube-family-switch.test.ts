@@ -104,7 +104,7 @@ describe('post-delivery family switch', () => {
 
   test('uses a manually struck pending email when a delivered buyer later supplies the replacement', async () => {
     const pending: NotionInvitationRow = { ...row, email: '', invited: false,
-      emailHistory: ['old@example.com'], cancelled: true, refundMarked: false };
+      emailHistory: ['old@example.com'], cancelled: true, cancelWaitlist: false };
     let current = pending;
     let journal: FamilySwitchJournal = { version: 1, records: {} };
     const updateRowEmail = vi.fn(async (_row: NotionInvitationRow, email: string) => {

@@ -178,7 +178,7 @@ export async function syncYouTubeFamilySwitches(deps: FamilySwitchDependencies):
     const freshDeals = await deps.listDeals();
     if (!freshDeals?.some((item) => item.dealUsid === deal.dealUsid && ELIGIBLE_STATUS.has(item.dealStatus))) continue;
     const liveRow = await deps.getRow(row.id);
-    if (!liveRow || liveRow.dealUsid !== deal.dealUsid || liveRow.refundMarked) continue;
+    if (!liveRow || liveRow.dealUsid !== deal.dealUsid || liveRow.cancelWaitlist) continue;
     const mark = (state: JournalState) => {
       journal.records[key] = { state, updatedAt: new Date(now).toISOString() };
       deps.writeJournal(journal);
