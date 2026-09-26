@@ -9,6 +9,7 @@ import { createSingleFlightRunner, runWithExclusivePollLock } from './poll-daemo
 const NOTION_VERSION = '2025-09-03';
 const DEFAULT_DATA_SOURCE_ID = '52e0fe4e-5f56-4fa1-8547-f2e89142b0db';
 const DEFAULT_SLOT_LEDGER_DATA_SOURCE_ID = '0162c5cb-60f8-414c-beeb-9ec78dd9a383';
+const DEFAULT_SLOT_SUMMARY_BLOCK_ID = '3e5ff936-cc9b-8037-b082-c540e7640d9f';
 const DEFAULT_JOURNAL_PATH = '/home/ubuntu/.hermes/hermes-agent/graytag-aio-manager-0606/data/notion-invitation-deliveries.json';
 const DEFAULT_LOCK_PATH = '/home/ubuntu/.hermes/hermes-agent/graytag-aio-manager-0606/data/notion-invitation-deliveries.lock';
 const DEFAULT_INTERVAL_MS = 60_000;
@@ -201,6 +202,39 @@ export async function syncNotionBuyerEmails(deps: NotionEmailSyncDependencies): 
 /** A refund holds its place until the vendor confirms that the invite was removed. */
 export function occupiedNotionSlots(rows: readonly NotionInvitationRow[]): number {
   return rows.filter((row) => !row.refundMarked || !row.inviteRemoved).length;
+}
+
+export function formatNotionSlotSummary(capacity: number, occupied: number): string {
+  if (!Number.isSafeInteger(capacity) || capacity < 0 || !Number.isSafeInteger(occupied) || occupied < 0)
+    throw new Error('Notion slot summary counts invalid');
+  return `Available slots: ${Math.max(0, capacity - occupied)}  |  Current slots: ${occupied}/${capacity}`;
+}
+
+export function createNotionSlotSummaryClient(token: string, blockId: string, transport: typeof fetch = fetch) {
+  const url = `https://api.notion.com/v1/blocks/${encodeURIComponent(blockId)}`;
+  const headers = notionHeaders(token);
+  return {
+    async update(capacity: number, occupied: number): Promise<boolean> {
+      const summary = formatNotionSlotSummary(capacity, occupied);
+      const current = await transport(url, { headers, signal: AbortSignal.timeout(15_000) });
+      if (!current.ok) throw new Error(`Notion slot summary read failed: HTTP ${current.status}`);
+      const block = await current.json() as Record<string, any>;
+      if (block.id !== blockId || block.type !== 'paragraph' || block.archived === true || block.in_trash === true
+        || !Array.isArray(block.paragraph?.rich_text)) throw new Error('Notion slot summary block invalid');
+      const existing = block.paragraph.rich_text.map((part: any) => String(part?.plain_text ?? part?.text?.content ?? '')).join('');
+      if (existing === summary) return false;
+      const response = await transport(url, {
+        method: 'PATCH', headers, signal: AbortSignal.timeout(15_000),
+        body: JSON.stringify({ paragraph: { rich_text: [{ text: { content: summary } }] } }),
+      });
+      if (!response.ok) throw new Error(`Notion slot summary update failed: HTTP ${response.status}`);
+      const updated = await response.json() as Record<string, any>;
+      if (updated.id !== blockId || updated.type !== 'paragraph'
+        || updated.paragraph?.rich_text?.map((part: any) => String(part?.plain_text ?? part?.text?.content ?? '')).join('') !== summary)
+        throw new Error('Notion slot summary update response invalid');
+      return true;
+    },
+  };
 }
 
 export interface NotionSlotLedgerEntry {
@@ -533,12 +567,14 @@ export function startNotionInvitationSync(dependencies: Pick<NotionInvitationSyn
   const token = process.env.NOTION_API_TOKEN?.trim();
   const dataSourceId = process.env.NOTION_INVITATION_DATA_SOURCE_ID?.trim() || DEFAULT_DATA_SOURCE_ID;
   const ledgerDataSourceId = process.env.NOTION_SLOT_LEDGER_DATA_SOURCE_ID?.trim() || DEFAULT_SLOT_LEDGER_DATA_SOURCE_ID;
+  const summaryBlockId = process.env.NOTION_SLOT_SUMMARY_BLOCK_ID?.trim() || DEFAULT_SLOT_SUMMARY_BLOCK_ID;
   if (!token || !/^[a-f0-9-]{32,36}$/i.test(dataSourceId)) {
     console.error('[NotionInvitationSync] Notion connection is not configured');
     return;
   }
   const client = createNotionInvitationClient(token, dataSourceId);
   const ledger = createNotionSlotLedgerClient(token, ledgerDataSourceId);
+  const summary = createNotionSlotSummaryClient(token, summaryBlockId);
   const journalPath = process.env.NOTION_INVITATION_JOURNAL_PATH || DEFAULT_JOURNAL_PATH;
   const lockPath = process.env.NOTION_INVITATION_LOCK_PATH || DEFAULT_LOCK_PATH;
   const intervalMs = Math.max(30_000, Number(process.env.NOTION_INVITATION_INTERVAL_MS) || DEFAULT_INTERVAL_MS);
@@ -567,6 +603,14 @@ export function startNotionInvitationSync(dependencies: Pick<NotionInvitationSyn
         }
       } catch (error) {
         console.error('[NotionInvitationSync] sync failed', error instanceof Error ? error.message : 'unknown error');
+      }
+      try {
+        const capacity = await ledger.readSlotCapacity();
+        const occupied = occupiedNotionSlots(await client.listRows());
+        if (await summary.update(capacity, occupied))
+          console.log('[NotionInvitationSync] slot summary', { capacity, occupied });
+      } catch (error) {
+        console.error('[NotionInvitationSync] slot summary failed', error instanceof Error ? error.message : 'unknown error');
       }
     });
   });

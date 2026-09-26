@@ -2,7 +2,9 @@ import { describe, expect, test, vi } from 'vitest';
 import {
   createNotionInvitationClient,
   createNotionSlotLedgerClient,
+  createNotionSlotSummaryClient,
   calculateNotionSlotCapacity,
+  formatNotionSlotSummary,
   occupiedNotionSlots,
   resolveUniqueDeliveryMatches,
   syncNotionBuyerEmails,
@@ -287,6 +289,43 @@ describe('Notion invitation synchronization', () => {
       },
     })), has_more: false })) as typeof fetch;
     expect(await createNotionSlotLedgerClient('token', 'ledger-id', transport).readSlotCapacity('2026-10-01')).toBe(70);
+  });
+
+  test('shows available and occupied slots and only updates a changed Notion summary', async () => {
+    expect(formatNotionSlotSummary(60, 36)).toBe('Available slots: 24  |  Current slots: 36/60');
+    expect(formatNotionSlotSummary(60, 61)).toBe('Available slots: 0  |  Current slots: 61/60');
+    expect(() => formatNotionSlotSummary(-1, 0)).toThrow('counts invalid');
+    const blockId = 'summary-block';
+    let block: any = { id: blockId, type: 'paragraph', paragraph: {
+      rich_text: [{ plain_text: 'Available slots: 24  |  Current slots: 36/60' }],
+    } };
+    const transport = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+      if (init?.method === 'PATCH') {
+        const body = JSON.parse(String(init.body));
+        block = { ...block, paragraph: { rich_text: body.paragraph.rich_text } };
+      }
+      return Response.json(block);
+    }) as typeof fetch;
+    const client = createNotionSlotSummaryClient('token', blockId, transport);
+    expect(await client.update(60, 36)).toBe(false);
+    expect(transport).toHaveBeenCalledTimes(1);
+    expect(await client.update(60, 37)).toBe(true);
+    expect(transport.mock.calls[2][1]?.method).toBe('PATCH');
+    expect(JSON.parse(String(transport.mock.calls[2][1]?.body))).toEqual({ paragraph: {
+      rich_text: [{ text: { content: 'Available slots: 23  |  Current slots: 37/60' } }],
+    } });
+    expect(await client.update(60, 37)).toBe(false);
+    expect(transport).toHaveBeenCalledTimes(4);
+  });
+
+  test('does not write a slot summary when the Notion block is unavailable or invalid', async () => {
+    const missing = vi.fn(async () => new Response('', { status: 404 })) as typeof fetch;
+    await expect(createNotionSlotSummaryClient('token', 'block', missing).update(60, 36))
+      .rejects.toThrow('read failed: HTTP 404');
+    const wrongBlock = vi.fn(async () => Response.json({ id: 'block', type: 'heading_1' })) as typeof fetch;
+    await expect(createNotionSlotSummaryClient('token', 'block', wrongBlock).update(60, 36))
+      .rejects.toThrow('block invalid');
+    expect(wrongBlock).toHaveBeenCalledTimes(1);
   });
 
   test('blocks new buyer rows at capacity but permits a replacement in an existing row', async () => {
