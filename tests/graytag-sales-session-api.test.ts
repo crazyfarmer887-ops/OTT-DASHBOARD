@@ -127,6 +127,25 @@ describe('dedicated YouTube sales session API', () => {
     }
   });
 
+  test('finds delivered and using orders across both dedicated seller lists', async () => {
+    writeFileSync(process.env.YOUTUBE_GRAYTAG_SESSION_COOKIE_PATH!, JSON.stringify({ JSESSIONID: 'youtube-session' }));
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes('proxy.webshare.io')) return new Response('', { status: 503 });
+      const deal = url.includes('findAfterUsingLenderDeals')
+        ? { dealUsid: 'using-order', chatRoomUuid: 'using-room', dealStatus: 'Using', productTypeString: '유튜브' }
+        : { dealUsid: 'delivered-order', chatRoomUuid: 'delivered-room', dealStatus: 'Delivered', productTypeString: '유튜브' };
+      return Response.json({ succeeded: true, data: { lenderDeals: [deal] } });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const { fetchYouTubeSellerAllDeals } = await import('../src/api/index.ts');
+    expect(await fetchYouTubeSellerAllDeals()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ dealUsid: 'delivered-order', dealStatus: 'Delivered' }),
+      expect.objectContaining({ dealUsid: 'using-order', dealStatus: 'Using' }),
+    ]));
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('findAfterUsingLenderDeals'))).toBe(true);
+  });
+
   test('finds the dedicated seller identity before the first seller chat message', async () => {
     writeFileSync(process.env.YOUTUBE_GRAYTAG_SESSION_COOKIE_PATH!, JSON.stringify({ JSESSIONID: 'youtube-session' }));
     const fetchMock = vi.fn(async (input: string | URL | Request, _init?: RequestInit) => {

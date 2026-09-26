@@ -7,6 +7,7 @@ import { randomBytes } from 'node:crypto';
 import apiApp, {
   fetchNotionDeliveryBuyerEmails,
   fetchNotionDeliveryDeals,
+  fetchYouTubeSellerAllDeals,
   fetchYouTubeSellerChatMessages,
   fetchYouTubeInvitationProviderStatus,
   finishYouTubeInvitationDelivery,
@@ -31,6 +32,7 @@ import { startRenewalAutomationDaemon } from './src/scheduler/renewal-automation
 import { startNotionInvitationSync } from './src/scheduler/notion-invitation-sync.ts';
 import { startYouTubeBuyerGuide } from './src/scheduler/youtube-buyer-guide.ts';
 import { startYouTubeJevReplies } from './src/scheduler/youtube-jev-replies.ts';
+import { startYouTubeFamilySwitches } from './src/scheduler/youtube-family-switch.ts';
 import { buildPartyAccessHtml } from './src/lib/party-access-page-html.ts';
 
 const distDir = resolve(process.cwd(), 'dist/client');
@@ -276,4 +278,9 @@ startYouTubeJevReplies({
   providerStatus: fetchYouTubeInvitationProviderStatus,
   send: sendYouTubeJevReply,
   alertCountryIssue: alertYouTubeCountryIssue,
+});
+startYouTubeFamilySwitches({
+  listDeals: fetchYouTubeSellerAllDeals,
+  listMessages: fetchYouTubeSellerChatMessages,
+  send: sendYouTubeJevReply,
 });

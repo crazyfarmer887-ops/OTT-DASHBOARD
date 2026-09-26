@@ -516,6 +516,49 @@ export async function fetchNotionDeliveryDeals(): Promise<Array<{
   return null;
 }
 
+/** Authoritative read of both seller deal lists for post-delivery invitation corrections. */
+export async function fetchYouTubeSellerAllDeals(): Promise<Array<{
+  dealUsid: string; chatRoomUuid: string; dealStatus: string;
+  productTypeString: string; productName: string;
+}> | null> {
+  const cookies = loadGraytagAuthCookies();
+  if (!cookies) return null;
+  const deals = new Map<string, {
+    dealUsid: string; chatRoomUuid: string; dealStatus: string;
+    productTypeString: string; productName: string;
+  }>();
+  for (const [kind, referer] of [
+    ['before', 'https://graytag.co.kr/lender/deal/list'],
+    ['after', 'https://graytag.co.kr/lender/deal/listAfterUsing'],
+  ] as const) {
+    let complete = false;
+    for (let page = 1; page <= 10; page++) {
+      try {
+        const response = await rateLimitedFetch(buildFinishedDealsUrl(kind, page, 500, true), {
+          headers: { ...BASE_HEADERS, Cookie: buildGraytagCookieHeader(cookies), Referer: referer },
+          redirect: 'manual', signal: AbortSignal.timeout(30_000),
+        });
+        if (!response.ok || response.redirected) return null;
+        const payload = await response.json() as any;
+        const source = payload?.data?.data?.lenderDeals ?? payload?.data?.lenderDeals ?? payload?.lenderDeals;
+        if (payload?.succeeded !== true || !Array.isArray(source)) return null;
+        for (const deal of source) {
+          const dealUsid = String(deal?.dealUsid || '').trim();
+          const chatRoomUuid = String(deal?.chatRoomUuid || deal?.dealDetail?.chatRoomUuid || '').trim();
+          if (!dealUsid || !chatRoomUuid) continue;
+          deals.set(dealUsid, { dealUsid, chatRoomUuid,
+            dealStatus: String(deal?.dealStatus || '').trim(),
+            productTypeString: String(deal?.productTypeString || deal?.productType || '').trim(),
+            productName: String(deal?.productName || '').trim() });
+        }
+        if (source.length < 500) { complete = true; break; }
+      } catch { return null; }
+    }
+    if (!complete) return null;
+  }
+  return [...deals.values()];
+}
+
 /** Only explicit buyer-authored messages can bind a Notion email to a sale. */
 export async function fetchNotionDeliveryBuyerEmails(chatRoomUuid: string): Promise<string[] | null> {
   const cookies = loadGraytagAuthCookies();
