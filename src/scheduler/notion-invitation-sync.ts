@@ -276,8 +276,9 @@ function parseNotionRow(value: unknown): NotionInvitationRow | null {
   const title = page.properties?.['Customer email']?.title;
   const parts = Array.isArray(title) ? title : [];
   // Notion may merge adjacent unstyled arrow and email fragments in its response.
+  // Keep reading the original right-arrow format after switching to a down arrow.
   const emails = parts.flatMap((part: any) => String(part?.plain_text ?? part?.text?.content ?? '')
-    .split('→').map((segment) => ({
+    .split(/[→↓]/).map((segment) => ({
       email: normalizeYouTubeInvitationEmail(segment),
       struck: part?.annotations?.strikethrough === true,
     }))).filter((part: { email: string | null; struck: boolean }) => Boolean(part.email));
@@ -298,7 +299,7 @@ function emailTitle(emailHistory: readonly string[], currentEmail: string, cance
     throw new Error('Notion email history invalid');
   }
   return emails.flatMap((email, index) => [
-    ...(index ? [{ text: { content: ' → ' } }] : []),
+    ...(index ? [{ text: { content: ' ↓ ' } }] : []),
     { text: { content: email }, annotations: { strikethrough: cancelled || index < emails.length - 1 } },
   ]);
 }

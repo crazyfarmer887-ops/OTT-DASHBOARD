@@ -100,7 +100,7 @@ describe('Notion invitation synchronization', () => {
     expect(updateRowEmail).toHaveBeenCalledExactlyOnceWith(original, 'new@example.com');
   });
 
-  test('strikes the old address, shows an arrow and keeps only the latest address eligible for delivery', async () => {
+  test('strikes the old address, shows a spaced down arrow in the same title and keeps only the latest address eligible for delivery', async () => {
     let page: any = { id: 'notion-row', properties: {
       'Customer email': { title: [{ text: { content: 'old@example.com' } }] },
       Invited: { checkbox: true }, 'Deal USID': { rich_text: [{ text: { content: 'order-1' } }] },
@@ -120,14 +120,16 @@ describe('Notion invitation synchronization', () => {
     const changed = await client.updateRowEmail(old!, 'new@example.com');
     expect(requests[0].properties['Customer email'].title).toEqual([
       { text: { content: 'old@example.com' }, annotations: { strikethrough: true } },
-      { text: { content: ' → ' } },
+      { text: { content: ' ↓ ' } },
       { text: { content: 'new@example.com' }, annotations: { strikethrough: false } },
     ]);
     expect(changed).toMatchObject({ email: 'new@example.com', emailHistory: ['old@example.com'], cancelled: false, invited: false });
     page.properties['Customer email'].title = [
       page.properties['Customer email'].title[0],
-      { text: { content: ' → new@example.com' }, annotations: { strikethrough: false } },
+      { text: { content: ' ↓ new@example.com' }, annotations: { strikethrough: false } },
     ];
+    expect(await client.getRow('notion-row')).toMatchObject({ email: 'new@example.com', emailHistory: ['old@example.com'] });
+    page.properties['Customer email'].title[1].text.content = ' → new@example.com';
     expect(await client.getRow('notion-row')).toMatchObject({ email: 'new@example.com', emailHistory: ['old@example.com'] });
     expect(resolveUniqueDeliveryMatches([{ ...changed, invited: true }], [deal('order-1')],
       new Map([['order-1', ['old@example.com']]])).size).toBe(0);
