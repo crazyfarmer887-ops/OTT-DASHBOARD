@@ -100,7 +100,7 @@ describe('Notion invitation synchronization', () => {
     expect(updateRowEmail).toHaveBeenCalledExactlyOnceWith(original, 'new@example.com');
   });
 
-  test('strikes the old address, shows a spaced down arrow in the same title and keeps only the latest address eligible for delivery', async () => {
+  test('shows a blank line, down arrow, blank line and new-invite label while keeping only the latest address eligible', async () => {
     let page: any = { id: 'notion-row', properties: {
       'Customer email': { title: [{ text: { content: 'old@example.com' } }] },
       Invited: { checkbox: true }, 'Deal USID': { rich_text: [{ text: { content: 'order-1' } }] },
@@ -120,13 +120,15 @@ describe('Notion invitation synchronization', () => {
     const changed = await client.updateRowEmail(old!, 'new@example.com');
     expect(requests[0].properties['Customer email'].title).toEqual([
       { text: { content: 'old@example.com' }, annotations: { strikethrough: true } },
-      { text: { content: ' ↓ ' } },
+      { text: { content: '\n\n↓\n\n' } },
       { text: { content: 'new@example.com' }, annotations: { strikethrough: false } },
+      { text: { content: ' (new invite)' } },
     ]);
-    expect(changed).toMatchObject({ email: 'new@example.com', emailHistory: ['old@example.com'], cancelled: false, invited: false });
+    expect(changed).toMatchObject({ email: 'new@example.com', emailHistory: ['old@example.com'],
+      cancelled: false, invited: false, newInviteMarked: true });
     page.properties['Customer email'].title = [
       page.properties['Customer email'].title[0],
-      { text: { content: ' ↓ new@example.com' }, annotations: { strikethrough: false } },
+      { text: { content: '\n\n↓\n\nnew@example.com (new invite)' }, annotations: { strikethrough: false } },
     ];
     expect(await client.getRow('notion-row')).toMatchObject({ email: 'new@example.com', emailHistory: ['old@example.com'] });
     page.properties['Customer email'].title[1].text.content = ' → new@example.com';
@@ -135,21 +137,55 @@ describe('Notion invitation synchronization', () => {
       new Map([['order-1', ['old@example.com']]])).size).toBe(0);
     expect(resolveUniqueDeliveryMatches([{ ...changed, invited: true }], [deal('order-1')],
       new Map([['order-1', ['new@example.com']]])).size).toBe(1);
-    const struck = await client.cancelRow(changed);
-    expect(struck).toMatchObject({ email: '', emailHistory: ['old@example.com', 'new@example.com'], cancelled: true, invited: false });
+    page.properties.Invited = { checkbox: true };
+    const struck = await client.cancelRow({ ...changed, invited: true });
+    expect(struck).toMatchObject({ email: '', emailHistory: ['old@example.com', 'new@example.com'],
+      cancelled: true, invited: false, refundMarked: true });
     expect(requests[1].properties['Customer email'].title[2].annotations.strikethrough).toBe(true);
+    expect(requests[1].properties['Customer email'].title.at(-1)).toEqual({ text: { content: ' (refund)' } });
+    expect(requests[1].properties.Invited).toEqual({ checkbox: false });
     expect(resolveUniqueDeliveryMatches([{ ...struck, invited: true }], [deal('order-1')],
       new Map([['order-1', ['new@example.com']]])).size).toBe(0);
+  });
+
+  test('strikes an invited email and clears its checkbox after the order is cancelled', async () => {
+    const invited = row('invited', 'buyer@example.com', true, 'order-1');
+    const cancelRow = vi.fn(async (current: NotionInvitationRow) => ({
+      ...current, email: '', emailHistory: [current.email], cancelled: true,
+      invited: false, refundMarked: true,
+    }));
+    const result = await syncNotionBuyerEmails({
+      listRows: async () => [invited], getRow: async () => invited,
+      createRow: vi.fn(), bindRow: vi.fn(), updateRowEmail: vi.fn(), cancelRow,
+      listDeals: async () => [{ ...deal('order-1'), dealStatus: 'CancelByInspectionRejection' }],
+      buyerEmails: async () => null,
+    });
+    expect(result).toMatchObject({ cancelled: 1 });
+    expect(cancelRow).toHaveBeenCalledExactlyOnceWith(invited);
+  });
+
+  test('adds the refund label to a previously struck cancelled row and clears a stale check', async () => {
+    const old: NotionInvitationRow = { ...row('old', '', true, 'order-1'),
+      emailHistory: ['buyer@example.com'], cancelled: true, refundMarked: false };
+    const cancelRow = vi.fn(async () => ({ ...old, invited: false, refundMarked: true }));
+    expect(await syncNotionBuyerEmails({
+      listRows: async () => [old], getRow: async () => old,
+      createRow: vi.fn(), bindRow: vi.fn(), updateRowEmail: vi.fn(), cancelRow,
+      listDeals: async () => [{ ...deal('order-1'), dealStatus: 'CancelByInspectionRejection' }],
+      buyerEmails: async () => null,
+    })).toMatchObject({ cancelled: 1 });
+    expect(cancelRow).toHaveBeenCalledExactlyOnceWith(old);
   });
 
   test('strikes an uninvited address after cancellation and creates a struck row if cancellation came first', async () => {
     const existing = row('existing', 'old@example.com', false, 'order-1');
     const cancelRow = vi.fn(async (current: NotionInvitationRow) => ({
-      ...current, email: '', emailHistory: [current.email], cancelled: true, invited: false,
+      ...current, email: '', emailHistory: [current.email], cancelled: true,
+      refundMarked: true, invited: false,
     }));
     const createRow = vi.fn(async (email: string, dealUsid: string, cancelled = false) => ({
       ...row('new', cancelled ? '' : email, false, dealUsid),
-      emailHistory: cancelled ? [email] : [], cancelled,
+      emailHistory: cancelled ? [email] : [], cancelled, refundMarked: cancelled,
     }));
     const cancellation = (id: string) => ({ ...deal(id), dealStatus: 'CancelByInspectionRejection' });
     const result = await syncNotionBuyerEmails({
@@ -163,15 +199,13 @@ describe('Notion invitation synchronization', () => {
     expect(createRow).toHaveBeenCalledExactlyOnceWith('second@example.com', 'order-2', true);
   });
 
-  test('does not strike an Invited row or create a row for an unclear cancelled chat', async () => {
-    const invited = row('invited', 'buyer@example.com', true, 'order-1');
+  test('does not create a refund row when the cancelled chat has no clear email', async () => {
     const cancelRow = vi.fn();
     const createRow = vi.fn();
     const result = await syncNotionBuyerEmails({
-      listRows: async () => [invited], getRow: async () => invited,
+      listRows: async () => [], getRow: async () => null,
       createRow, bindRow: vi.fn(), updateRowEmail: vi.fn(), cancelRow,
       listDeals: async () => [
-        { ...deal('order-1'), dealStatus: 'Cancelled' },
         { ...deal('order-2'), dealStatus: 'CancelByNoShow' },
       ],
       buyerEmails: async () => null,
