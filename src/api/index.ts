@@ -53,11 +53,13 @@ import { buildMultipartJsonBody, curlFetch } from './http-transport';
 import chatNotificationStreamApp from './chat-notification-stream';
 import { createYouTubeInvitationsApp } from './youtube-invitations';
 import { YouTubeFamilyGroupsStore, YouTubeInvitationJobsStore } from '../lib/youtube-invitations';
-import { buildYouTubeEmailExtractionPrompt, buildYouTubeInvitationAlert, buildYouTubeNewSaleCandidate, isYouTubeAutoReplyProduct, parseYouTubeEmailExtractionJson, resolveYouTubeEmailModel, sendHumanReviewAlertIfEnabled, sendYouTubeInvitationAlert, shouldIncludeOffHoursNotice, YOUTUBE_EMAIL_INVITATION_ALERT_CATEGORY, YOUTUBE_NEW_SALE_GUIDE, YOUTUBE_NEW_SALE_GUIDE_CATEGORY } from './youtube-auto-reply';
+import { buildYouTubeEmailExtractionPrompt, buildYouTubeInvitationAlert, isYouTubeAutoReplyProduct, parseYouTubeEmailExtractionJson, resolveYouTubeEmailModel, sendHumanReviewAlertIfEnabled, sendYouTubeInvitationAlert, shouldIncludeOffHoursNotice, YOUTUBE_EMAIL_INVITATION_ALERT_CATEGORY, YOUTUBE_NEW_SALE_GUIDE, YOUTUBE_NEW_SALE_GUIDE_CATEGORY } from './youtube-auto-reply';
 import { normalizeYouTubeAuditReason } from '../lib/youtube-audit-reason';
 import { readAuthoritativeYouTubeSellerProducts, reconcileYouTubeProductRegistration, type YouTubeProductRegistrationReconciliationClaim } from '../lib/youtube-product-registration-reconciliation';
 import { YouTubeProductRegistrationsStore } from '../lib/youtube-product-registrations';
 import { ChatRoomOrganizationValidationError, createChatRoomCategory, deleteChatRoomCategory, loadChatRoomOrganization, renameChatRoomCategory, updateChatRoomOrganizationEntry } from '../lib/chat-room-organization';
+import { parseYouTubeInviteEmailCandidates } from '../lib/youtube-invite-email';
+import { resolveYouTubeBuyerEmailFromChat } from './youtube-chat-email';
 import {
   buildGraytagCookieHeader,
   loadGraytagAuthCookies,
@@ -432,25 +434,24 @@ async function reconcileYouTubeProductRegistrationFromSeller(claim: YouTubeProdu
   return reconcileYouTubeProductRegistration(claim, observation);
 }
 
-async function finishYouTubeInvitationDelivery(dealUsid: string): Promise<Response> {
+export async function finishYouTubeInvitationDelivery(dealUsid: string): Promise<Response> {
   const cookies = loadGraytagAuthCookies();
   if (!cookies) throw new Error('YouTube sales session unavailable');
-  const multipart = buildMultipartJsonBody({ dealUsid });
   return rateLimitedFetch('https://graytag.co.kr/ws/lender/finishProductDelivery', {
     method: 'POST',
     headers: {
       ...BASE_HEADERS,
       Cookie: buildGraytagCookieHeader(cookies),
-      'Content-Type': multipart.contentType,
+      'Content-Type': 'application/json',
       Referer: 'https://graytag.co.kr/lender/deal/list',
     },
-    body: multipart.body,
+    body: JSON.stringify({ dealUsid }),
     redirect: 'manual',
     signal: AbortSignal.timeout(30_000),
   }, true);
 }
 
-async function fetchYouTubeInvitationProviderStatus(dealUsid: string): Promise<string | null> {
+export async function fetchYouTubeInvitationProviderStatus(dealUsid: string): Promise<string | null> {
   const cookies = loadGraytagAuthCookies();
   if (!cookies) return null;
   const headers = (referer: string) => ({ ...BASE_HEADERS, Cookie: buildGraytagCookieHeader(cookies), Referer: referer });
@@ -473,6 +474,127 @@ async function fetchYouTubeInvitationProviderStatus(dealUsid: string): Promise<s
   }
   const exact = observations.find((deal) => deal && typeof deal === 'object' && deal.dealUsid === dealUsid);
   return exact && typeof exact.dealStatus === 'string' && exact.dealStatus ? exact.dealStatus : null;
+}
+
+/** Read only. Return null unless the complete seller listing is authoritative. */
+export async function fetchNotionDeliveryDeals(): Promise<Array<{
+  dealUsid: string; chatRoomUuid: string; dealStatus: string;
+  productTypeString: string; productName: string;
+  registeredDateTime: string; borrowerName: string;
+}> | null> {
+  const cookies = loadGraytagAuthCookies();
+  if (!cookies) return null;
+  const deals: Array<{
+    dealUsid: string; chatRoomUuid: string; dealStatus: string;
+    productTypeString: string; productName: string;
+    registeredDateTime: string; borrowerName: string;
+  }> = [];
+  for (let page = 1; page <= 10; page++) {
+    try {
+      const response = await rateLimitedFetch(buildFinishedDealsUrl('before', page, 500, true), {
+        headers: { ...BASE_HEADERS, Cookie: buildGraytagCookieHeader(cookies),
+          Referer: 'https://graytag.co.kr/lender/deal/list' },
+        redirect: 'manual', signal: AbortSignal.timeout(30_000),
+      });
+      if (!response.ok || response.redirected) return null;
+      const payload = await response.json() as any;
+      const source = payload?.data?.data?.lenderDeals ?? payload?.data?.lenderDeals ?? payload?.lenderDeals;
+      if (payload?.succeeded !== true || !Array.isArray(source)) return null;
+      for (const deal of source) {
+        const dealUsid = String(deal?.dealUsid || '').trim();
+        const chatRoomUuid = String(deal?.chatRoomUuid || deal?.dealDetail?.chatRoomUuid || '').trim();
+        if (!dealUsid || !chatRoomUuid) continue;
+        deals.push({ dealUsid, chatRoomUuid, dealStatus: String(deal?.dealStatus || '').trim(),
+          productTypeString: String(deal?.productTypeString || deal?.productType || '').trim(),
+          productName: String(deal?.productName || '').trim(),
+          registeredDateTime: String(deal?.registeredDateTime || deal?.createdDateTime || '').trim(),
+          borrowerName: String(deal?.borrowerName || '').trim() });
+      }
+      if (source.length < 500) return deals;
+    } catch { return null; }
+  }
+  return null;
+}
+
+/** Authoritative read of both seller deal lists for post-delivery invitation corrections. */
+export async function fetchYouTubeSellerAllDeals(): Promise<Array<{
+  dealUsid: string; chatRoomUuid: string; dealStatus: string;
+  productTypeString: string; productName: string; borrowerName: string;
+}> | null> {
+  const cookies = loadGraytagAuthCookies();
+  if (!cookies) return null;
+  const deals = new Map<string, {
+    dealUsid: string; chatRoomUuid: string; dealStatus: string;
+    productTypeString: string; productName: string; borrowerName: string;
+  }>();
+  for (const [kind, referer] of [
+    ['before', 'https://graytag.co.kr/lender/deal/list'],
+    ['after', 'https://graytag.co.kr/lender/deal/listAfterUsing'],
+  ] as const) {
+    let complete = false;
+    for (let page = 1; page <= 10; page++) {
+      try {
+        const response = await rateLimitedFetch(buildFinishedDealsUrl(kind, page, 500, true), {
+          headers: { ...BASE_HEADERS, Cookie: buildGraytagCookieHeader(cookies), Referer: referer },
+          redirect: 'manual', signal: AbortSignal.timeout(30_000),
+        });
+        if (!response.ok || response.redirected) return null;
+        const payload = await response.json() as any;
+        const source = payload?.data?.data?.lenderDeals ?? payload?.data?.lenderDeals ?? payload?.lenderDeals;
+        if (payload?.succeeded !== true || !Array.isArray(source)) return null;
+        for (const deal of source) {
+          const dealUsid = String(deal?.dealUsid || '').trim();
+          const chatRoomUuid = String(deal?.chatRoomUuid || deal?.dealDetail?.chatRoomUuid || '').trim();
+          if (!dealUsid || !chatRoomUuid) continue;
+          deals.set(dealUsid, { dealUsid, chatRoomUuid,
+            dealStatus: String(deal?.dealStatus || '').trim(),
+            productTypeString: String(deal?.productTypeString || deal?.productType || '').trim(),
+            productName: String(deal?.productName || '').trim(),
+            borrowerName: String(deal?.borrowerName || '').trim() });
+        }
+        if (source.length < 500) { complete = true; break; }
+      } catch { return null; }
+    }
+    if (!complete) return null;
+  }
+  return [...deals.values()];
+}
+
+/** Only explicit buyer-authored messages can bind a Notion email to a sale. */
+export async function fetchNotionDeliveryBuyerEmails(chatRoomUuid: string): Promise<string[] | null> {
+  const cookies = loadGraytagAuthCookies();
+  if (!cookies || !/^[A-Za-z0-9_-]{1,200}$/.test(chatRoomUuid)) return null;
+  try {
+    const response = await rateLimitedFetch(
+      `https://graytag.co.kr/ws/chat/findChats?uuid=${encodeURIComponent(chatRoomUuid)}&page=1`,
+      { headers: { ...BASE_HEADERS, Cookie: buildGraytagCookieHeader(cookies),
+        Referer: `https://graytag.co.kr/chat/${encodeURIComponent(chatRoomUuid)}` },
+        redirect: 'manual', signal: AbortSignal.timeout(15_000) },
+    );
+    if (!response.ok || response.redirected) return null;
+    const payload = await response.json() as any;
+    if (payload?.succeeded !== true) return null;
+    // Give the conversation time to surface an alternate-account request before importing.
+    return resolveYouTubeBuyerEmailFromChat(chatRoomUuid, extractGraytagChats(payload), false, 5 * 60_000);
+  } catch { return null; }
+}
+
+/** Read the latest messages from the dedicated YouTube seller, including seller replies. */
+export async function fetchYouTubeSellerChatMessages(chatRoomUuid: string): Promise<GraytagChatMessage[] | null> {
+  const cookies = loadGraytagAuthCookies();
+  if (!cookies || !/^[A-Za-z0-9_-]{1,200}$/.test(chatRoomUuid)) return null;
+  try {
+    const response = await rateLimitedFetch(
+      `https://graytag.co.kr/ws/chat/findChats?uuid=${encodeURIComponent(chatRoomUuid)}&page=1`,
+      { headers: { ...BASE_HEADERS, Cookie: buildGraytagCookieHeader(cookies),
+        Referer: `https://graytag.co.kr/chat/${encodeURIComponent(chatRoomUuid)}` },
+        redirect: 'manual', signal: AbortSignal.timeout(15_000) },
+    );
+    if (!response.ok || response.redirected) return null;
+    const payload = await response.json() as any;
+    if (payload?.succeeded !== true) return null;
+    return extractGraytagChats(payload);
+  } catch { return null; }
 }
 
 async function fetchYouTubeProviderProductStatuses(): Promise<{
@@ -2860,23 +2982,24 @@ app.get('/chat/poll', async (c) => {
   } catch (e: any) { return c.json({ error: e.message }, 500); }
 });
 
-async function resolveGraytagChatUserId(accountId: GraytagAccountId, chatRoomUuid: string): Promise<string> {
+export async function resolveGraytagChatUserId(accountId: GraytagAccountId, chatRoomUuid: string): Promise<string> {
   if (accountId === 'primary') return process.env.GRAYTAG_PRIMARY_CHAT_USER_ID || '0000000001R20';
   const cookies = loadCookiesForAccount(accountId);
   if (!cookies) throw new Error('선택한 GrayTag 계정 세션이 없습니다.');
-  const response = await rateLimitedFetch(
-    `https://graytag.co.kr/ws/chat/findChats?uuid=${encodeURIComponent(chatRoomUuid)}&page=1`,
-    {
-      headers: { ...BASE_HEADERS, Cookie: buildCookieStr(cookies), Referer: `https://graytag.co.kr/chat/${chatRoomUuid}` },
-      redirect: 'manual',
-      signal: AbortSignal.timeout(10_000),
-    },
-  );
-  const parsed = response.ok ? await safeJson(response) : { data: null };
-  const ownedMessage = extractGraytagChats(parsed.data).find((message: any) => message?.owned === true && message?.userId);
-  const userId = String((ownedMessage as any)?.userId || '').trim();
-  if (!userId) throw new Error('전용 계정의 채팅 발신자 정보를 확인할 수 없습니다. GrayTag에서 이 채팅방에 한 번 메시지를 보낸 뒤 다시 시도해주세요.');
-  return userId;
+  if (!/^[A-Za-z0-9_-]{1,200}$/.test(chatRoomUuid)) throw new Error('채팅방 식별값이 올바르지 않습니다.');
+  // The authenticated chat page supplies the current seller's userId even
+  // before that seller has written the first message in this room.
+  const response = await rateLimitedFetch(`https://graytag.co.kr/chat/${encodeURIComponent(chatRoomUuid)}`, {
+    headers: { ...BASE_HEADERS, Cookie: buildCookieStr(cookies) },
+    redirect: 'manual', signal: AbortSignal.timeout(10_000),
+  });
+  if (!response.ok || response.redirected) throw new Error('전용 계정 채팅 화면을 열 수 없습니다.');
+  const html = await response.text();
+  if (!html.includes(chatRoomUuid)) throw new Error('채팅방 식별값을 확인할 수 없습니다.');
+  const input = html.match(/<input\b[^>]*\bid=["']userId["'][^>]*>/i)?.[0] || '';
+  const userId = input.match(/\bvalue=["']([A-Za-z0-9_-]{1,100})["']/i)?.[1] || '';
+  if (userId) return userId;
+  throw new Error('전용 계정의 채팅 발신자 정보를 확인할 수 없습니다.');
 }
 
 async function sendGraytagChatMessage(
@@ -2893,6 +3016,29 @@ async function sendGraytagChatMessage(
     env: { ...process.env, GRAYTAG_COOKIE_PATH: cookiePath },
   });
   return JSON.parse(stdout.trim());
+}
+
+export async function sendYouTubeBuyerGuide(deal: { dealUsid: string; chatRoomUuid: string }): Promise<boolean> {
+  const result = await sendGraytagChatMessage({
+    chatRoomUuid: deal.chatRoomUuid,
+    dealUsid: deal.dealUsid,
+    message: YOUTUBE_NEW_SALE_GUIDE,
+  }, 'youtube-invite-sales');
+  return result?.ok !== false;
+}
+
+export async function sendYouTubeJevReply(deal: { dealUsid: string; chatRoomUuid: string }, message: string): Promise<boolean> {
+  const result = await sendGraytagChatMessage({ chatRoomUuid: deal.chatRoomUuid, dealUsid: deal.dealUsid, message }, 'youtube-invite-sales');
+  return result?.ok !== false;
+}
+
+export async function alertYouTubeCountryIssue(deal: { dealUsid: string; chatRoomUuid: string }): Promise<void> {
+  await sendSellerAlert({
+    key: `youtube-country-issue-${deal.dealUsid}-${Date.now()}`,
+    title: '유튜브 초대 국가 오류',
+    body: `구매자가 국가가 다르다는 초대 오류를 신고했습니다. 실제 국가·거주지 요건을 확인하고 재초대 가능 여부를 판단해 주세요.\n거래: ${deal.dealUsid}\n채팅: https://graytag.co.kr/chat/${encodeURIComponent(deal.chatRoomUuid)}`,
+    severity: 'warning', category: 'auto-reply', throttleMs: 0,
+  });
 }
 
 const RENEWAL_AUTOMATION_JOBS_PATH = process.env.RENEWAL_AUTOMATION_JOBS_PATH
@@ -3294,7 +3440,6 @@ function autoReplyJobsPath(): string {
   return process.env.AUTO_REPLY_JOBS_PATH || DEFAULT_AUTO_REPLY_JOBS_PATH;
 }
 let AUTO_REPLY_MEMORY_STORE: AutoReplyJobStore = loadAutoReplyJobStore(autoReplyJobsPath());
-const AUTO_REPLY_PROCESS_STARTED_AT = new Date();
 
 function persistAutoReplyJobs(): void {
   saveAutoReplyJobStore(autoReplyJobsPath(), AUTO_REPLY_MEMORY_STORE);
@@ -3718,11 +3863,12 @@ async function createAutoReplyPartyAccessUrl(job: any, persist = true): Promise<
 
 async function processYouTubeNewSaleGuide(job: any, dryRun: boolean): Promise<{ status: 'drafted' | 'sent' | 'blocked' | 'error' } | null> {
   if (job.internalCategory !== YOUTUBE_NEW_SALE_GUIDE_CATEGORY) return null;
-  if (dryRun || process.env.AUTO_REPLY_ENABLE_SEND !== 'true') {
+  if (dryRun || process.env.AUTO_REPLY_ENABLE_SEND !== 'true' || process.env.YOUTUBE_INVITE_AUTO_MESSAGE_ENABLED !== 'true') {
     updateAutoReplyJobPersisted(AUTO_REPLY_MEMORY_STORE, job.id, {
       status: 'drafted', category: YOUTUBE_NEW_SALE_GUIDE_CATEGORY, risk: 'low',
       draftReply: YOUTUBE_NEW_SALE_GUIDE,
-      blockReason: dryRun ? 'dry-run' : 'AUTO_REPLY_ENABLE_SEND 꺼짐',
+      blockReason: dryRun ? 'dry-run' : (process.env.YOUTUBE_INVITE_AUTO_MESSAGE_ENABLED !== 'true'
+        ? 'YOUTUBE_INVITE_AUTO_MESSAGE_ENABLED 꺼짐' : 'AUTO_REPLY_ENABLE_SEND 꺼짐'),
     });
     return { status: 'drafted' };
   }
@@ -3738,7 +3884,7 @@ async function processYouTubeNewSaleGuide(job: any, dryRun: boolean): Promise<{ 
       chatRoomUuid: job.chatRoomUuid,
       dealUsid: job.dealUsid,
       message: YOUTUBE_NEW_SALE_GUIDE,
-    });
+    }, 'youtube-invite-sales');
     const ok = result?.ok !== false;
     updateAutoReplyJobPersisted(AUTO_REPLY_MEMORY_STORE, job.id, {
       status: ok ? 'sent' : 'error', category: YOUTUBE_NEW_SALE_GUIDE_CATEGORY, risk: 'low',
@@ -4207,18 +4353,6 @@ async function scanAutoReplyCandidates(maxRooms = 10): Promise<any[]> {
   const profileNameByMember = buildPartyAccessDeliverySnapshotByMember(loadPartyAccessLinkStore());
   const seen = new Set<string>();
   const candidates: any[] = [];
-
-  // New YouTube purchases are deterministic sale events and do not require buyer unread state.
-  // The process-start timestamp gate prevents replaying historical current deals after restart.
-  for (const deal of allDeals) {
-    if (candidates.length >= maxRooms) break;
-    const candidate = buildYouTubeNewSaleCandidate(deal, AUTO_REPLY_PROCESS_STARTED_AT);
-    if (!candidate) continue;
-    const fingerprint = messageFingerprint(candidate as any);
-    if (AUTO_REPLY_MEMORY_STORE.fingerprintToJobId[fingerprint]) continue;
-    candidates.push(candidate);
-    seen.add(String(candidate.chatRoomUuid || ''));
-  }
 
   for (const deal of allDeals) {
     if (candidates.length >= maxRooms) break;

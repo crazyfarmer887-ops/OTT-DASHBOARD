@@ -4,7 +4,18 @@ import { readFile, stat } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { extname, resolve } from 'node:path';
 import { randomBytes } from 'node:crypto';
-import apiApp from './src/api/index.ts';
+import apiApp, {
+  fetchNotionDeliveryBuyerEmails,
+  fetchNotionDeliveryDeals,
+  fetchYouTubeSellerAllDeals,
+  fetchYouTubeSellerChatMessages,
+  fetchYouTubeInvitationProviderStatus,
+  finishYouTubeInvitationDelivery,
+  resolveGraytagChatUserId,
+  sendYouTubeBuyerGuide,
+  sendYouTubeJevReply,
+  alertYouTubeCountryIssue,
+} from './src/api/index.ts';
 import {
   createDashboardSessionToken,
   dashboardAdminPassword,
@@ -18,6 +29,11 @@ import { startUndercutterScheduler } from './src/scheduler/undercutter.ts';
 import { startPollDaemon } from './src/scheduler/poll-daemon.ts';
 import { startAutoReplyDaemon } from './src/scheduler/auto-reply-daemon.ts';
 import { startRenewalAutomationDaemon } from './src/scheduler/renewal-automation-daemon.ts';
+import { startNotionInvitationSync } from './src/scheduler/notion-invitation-sync.ts';
+import { startYouTubeBuyerGuide } from './src/scheduler/youtube-buyer-guide.ts';
+import { startYouTubeEmailReceipts } from './src/scheduler/youtube-email-receipt.ts';
+import { startYouTubeJevReplies } from './src/scheduler/youtube-jev-replies.ts';
+import { startYouTubeFamilySwitches } from './src/scheduler/youtube-family-switch.ts';
 import { buildPartyAccessHtml } from './src/lib/party-access-page-html.ts';
 
 const distDir = resolve(process.cwd(), 'dist/client');
@@ -245,3 +261,33 @@ startUndercutterScheduler(port);
 startPollDaemon();
 startAutoReplyDaemon(port);
 startRenewalAutomationDaemon(port);
+startNotionInvitationSync({
+  listDeals: fetchNotionDeliveryDeals,
+  buyerEmails: fetchNotionDeliveryBuyerEmails,
+  providerStatus: fetchYouTubeInvitationProviderStatus,
+  finishDelivery: finishYouTubeInvitationDelivery,
+});
+startYouTubeBuyerGuide({
+  listDeals: fetchNotionDeliveryDeals,
+  buyerEmails: fetchNotionDeliveryBuyerEmails,
+  validateChat: async (room) => { await resolveGraytagChatUserId('youtube-invite-sales', room); },
+  sendGuide: sendYouTubeBuyerGuide,
+});
+startYouTubeEmailReceipts({
+  listDeals: fetchNotionDeliveryDeals,
+  listMessages: fetchYouTubeSellerChatMessages,
+  providerStatus: fetchYouTubeInvitationProviderStatus,
+  send: sendYouTubeJevReply,
+});
+startYouTubeJevReplies({
+  listDeals: fetchNotionDeliveryDeals,
+  listMessages: fetchYouTubeSellerChatMessages,
+  providerStatus: fetchYouTubeInvitationProviderStatus,
+  send: sendYouTubeJevReply,
+  alertCountryIssue: alertYouTubeCountryIssue,
+});
+startYouTubeFamilySwitches({
+  listDeals: fetchYouTubeSellerAllDeals,
+  listMessages: fetchYouTubeSellerChatMessages,
+  send: sendYouTubeJevReply,
+});

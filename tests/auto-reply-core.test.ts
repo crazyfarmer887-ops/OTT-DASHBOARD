@@ -25,6 +25,7 @@ describe('auto reply core', () => {
 
   test('normalizes buyer messages and filters seller/system messages', () => {
     expect(normalizeBuyerMessage('<b>인증</b><br> 번호&nbsp;주세요')).toBe('인증 번호 주세요');
+    expect(normalizeBuyerMessage('buyer&#64;example.com')).toBe('buyer@example.com');
     expect(isBuyerTextMessage({ chatRoomUuid: 'r1', message: '문의', isOwned: false })).toBe(true);
     expect(isBuyerTextMessage({ chatRoomUuid: 'r1', message: '판매자', isOwned: true })).toBe(false);
     expect(isBuyerTextMessage({ chatRoomUuid: 'r1', message: '입장', messageType: 'Information' })).toBe(false);

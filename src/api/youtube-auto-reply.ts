@@ -8,10 +8,7 @@ import {
 
 export const YOUTUBE_NEW_SALE_GUIDE_CATEGORY = 'youtube_new_sale_guide';
 export const YOUTUBE_EMAIL_INVITATION_ALERT_CATEGORY = 'youtube_email_invitation_alert';
-export const YOUTUBE_NEW_SALE_GUIDE = '유튜브 프리미엄 초대장 이용 안내입니다.\n\n'
-  + '이메일을 남겨주시면 구매 당일 안으로는 초대해드리고 있습니다.  \n\n'
-  + '만약 초대 수락 오류 발생 시 아래 링크를 꼭 확인해주세요\n\n'
-  + 'https://zrr.kr/xTL6y9';
+export const YOUTUBE_NEW_SALE_GUIDE = '구매 감사합니다. 유튜브 프리미엄 초대를 받으실 Google 이메일 주소를 이 대화창에 남겨주세요. 이메일을 확인해야 초대를 보내드릴 수 있습니다.\n\n초대는 주문 순서대로 직접 진행하므로 최대 24시간이 걸릴 수 있습니다. 제가 계정 전달을 완료하고 구매자님이 확인하신 뒤 이용이 시작됩니다. 조금만 기다려 주세요!';
 export const DEFAULT_YOUTUBE_EMAIL_MODEL = 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free';
 
 export type EnvLike = Record<string, string | undefined>;
@@ -31,6 +28,13 @@ export function isYouTubeAutoReplyProduct(deal: GraytagDealLike): boolean {
   const isYouTube = combined.includes('유튜브') || combined.includes('youtube');
   const isPremium = combined.includes('프리미엄') || combined.includes('premium');
   return isYouTube && isPremium;
+}
+
+/** Deals from the dedicated invitation seller account are all YouTube family invitations.
+ * GrayTag lists these as type "유튜브" and name "광고X ✅ 음악 ✅". */
+export function isYouTubeInvitationSellerDeal(deal: GraytagDealLike): boolean {
+  const productType = stringField(deal.productTypeString || deal.productType).toLowerCase();
+  return productType === '유튜브' || productType === 'youtube' || isYouTubeAutoReplyProduct(deal);
 }
 
 function parseTrustworthyTimestamp(value: string): number {
