@@ -31,6 +31,7 @@ import { startAutoReplyDaemon } from './src/scheduler/auto-reply-daemon.ts';
 import { startRenewalAutomationDaemon } from './src/scheduler/renewal-automation-daemon.ts';
 import { startNotionInvitationSync } from './src/scheduler/notion-invitation-sync.ts';
 import { startYouTubeBuyerGuide } from './src/scheduler/youtube-buyer-guide.ts';
+import { startYouTubeEmailReceipts } from './src/scheduler/youtube-email-receipt.ts';
 import { startYouTubeJevReplies } from './src/scheduler/youtube-jev-replies.ts';
 import { startYouTubeFamilySwitches } from './src/scheduler/youtube-family-switch.ts';
 import { buildPartyAccessHtml } from './src/lib/party-access-page-html.ts';
@@ -271,6 +272,12 @@ startYouTubeBuyerGuide({
   buyerEmails: fetchNotionDeliveryBuyerEmails,
   validateChat: async (room) => { await resolveGraytagChatUserId('youtube-invite-sales', room); },
   sendGuide: sendYouTubeBuyerGuide,
+});
+startYouTubeEmailReceipts({
+  listDeals: fetchNotionDeliveryDeals,
+  listMessages: fetchYouTubeSellerChatMessages,
+  providerStatus: fetchYouTubeInvitationProviderStatus,
+  send: sendYouTubeJevReply,
 });
 startYouTubeJevReplies({
   listDeals: fetchNotionDeliveryDeals,
