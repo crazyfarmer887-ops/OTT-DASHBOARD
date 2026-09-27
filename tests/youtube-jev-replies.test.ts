@@ -56,6 +56,7 @@ describe('Jev intent and dedicated-account replies', () => {
     ]) expect(isSafeYouTubeBuyerIntent(message, 'premium_lost')).toBe(true);
     for (const message of [
       '가족 그룹 변경이 안돼서 프리미엄이 안 떠요', '가입 전에 프리미엄 되나요?',
+      '가족 가입이 안돼서 프리미엄이 안 떠요',
       '프리미엄 안돼서 환불해주세요', '프리미엄 안됐는데 지금 해결됐어요',
     ]) expect(isSafeYouTubeBuyerIntent(message, 'premium_lost')).toBe(false);
   });
@@ -102,6 +103,12 @@ describe('Jev intent and dedicated-account replies', () => {
       probabilities: { invitation_wait: 0, country_mismatch: 0, delivered_no_invitation: 0, premium_lost: 0.97, other: 0.03 },
     } } }));
     expect(await classifyYouTubeBuyerIntent('프리미엄 잘 되다가 풀렸어요', 'Using', 'test-key'))
+      .toBe('premium_lost');
+    fetchMock.mockResolvedValueOnce(Response.json({ answers: { intent: {
+      choice: 'premium_lost', confidence: 0.75,
+      probabilities: { invitation_wait: 0, country_mismatch: 0, delivered_no_invitation: 0.1, premium_lost: 0.8, other: 0.1 },
+    } } }));
+    expect(await classifyYouTubeBuyerIntent('가족 가입했는데 프리미엄이 안 떠요', 'Using', 'test-key'))
       .toBe('premium_lost');
   });
 

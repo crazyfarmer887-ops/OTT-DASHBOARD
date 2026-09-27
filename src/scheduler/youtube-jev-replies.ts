@@ -48,7 +48,7 @@ export function isSafeYouTubeBuyerIntent(message: string, intent: BuyerIntent): 
     return /프리미엄|premium/i.test(text)
       && /(?:안\s*(?:되|돼|나오|떠|보이)|없어|사라|풀렸|끊겼|해제|취소됐|종료됐|멈췄|중단됐|광고\s*(?:나와|나오|떠))/.test(text)
       && /가입|참여|이용|사용|잘\s*되|되다가|쓰다가|받았|초대|풀렸|끊겼|해제|사라|다시\s*광고/.test(text)
-      && !/국가|나라|지역|가족\s*(?:변경|그룹\s*(?:변경|가입))|12개월|1년|지금\s*(?:돼|되네|해결)|방금\s*(?:돼|되네|해결)/.test(text);
+      && !/국가|나라|지역|가족\s*(?:변경|그룹\s*(?:변경|가입)|(?:가입|참여)(?:이|가)?\s*(?:안|못|불가))|가입(?:이|가)?\s*(?:안|못)|12개월|1년|지금\s*(?:돼|되네|해결)|방금\s*(?:돼|되네|해결)/.test(text);
   }
   const countryMention = /국가|나라|지역|country|region/i.test(text);
   if (intent === 'invitation_wait') return !countryMention;
@@ -118,7 +118,7 @@ export async function classifyYouTubeBuyerIntent(message: string, dealStatus = '
           invitation_wait: 'Only for Delivering: buyer asks when an invitation/delivery will arrive or urges seller to send it, without reporting a completed delivery.',
           country_mismatch: 'Only for Delivering: actual country/region mismatch error while accepting a sent invitation.',
           delivered_no_invitation: 'Only for Delivered/Using: delivery is marked complete but buyer says the invitation email/link has not arrived or cannot be found. No country/family error.',
-          premium_lost: 'Only for Delivered/Using: buyer joined or previously used Premium, but Premium disappeared, stopped, or is not active after joining. No family switch or country error.',
+          premium_lost: 'Only for Delivered/Using: buyer successfully joined the family group but Premium is not active (e.g. 가족 가입했는데 프리미엄이 안 떠요), or previously used Premium but it disappeared or stopped. Do not select this when joining the family group itself failed. No family switch or country error.',
           other: 'Unrelated, resolved, hypothetical, family-group switch, cancellation/refund, email or account change, multiple distinct requests, or unclear.',
         },
       } },
@@ -137,8 +137,11 @@ export async function classifyYouTubeBuyerIntent(message: string, dealStatus = '
   const explicitWait = choice === 'invitation_wait'
     && /초대|배송|전달/.test(message)
     && /언제|기다|늦|빨리|안\s*(?:오|왔|옵)|보내|해주/.test(message);
-  const neededConfidence = explicitWait ? 0.8 : MIN_CONFIDENCE;
-  const neededProbability = explicitWait ? 0.85 : MIN_CONFIDENCE;
+  const joinedWithoutPremium = choice === 'premium_lost'
+    && /가입(?:했|완료|됐)|참여(?:했|완료|됐)/.test(message)
+    && /프리미엄|premium/i.test(message);
+  const neededConfidence = joinedWithoutPremium ? 0.75 : explicitWait ? 0.8 : MIN_CONFIDENCE;
+  const neededProbability = joinedWithoutPremium ? 0.8 : explicitWait ? 0.85 : MIN_CONFIDENCE;
   if (!Number.isFinite(answer?.confidence) || (answer?.confidence || 0) < neededConfidence
     || !Number.isFinite(selected) || selected < neededProbability || !Number.isFinite(next)
     || selected - next < MIN_MARGIN) return 'other';
