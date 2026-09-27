@@ -6,7 +6,9 @@ import {
   syncYouTubeJevReplies,
   type JevReplyJournal,
   YOUTUBE_COUNTRY_MISMATCH_REPLY,
+  YOUTUBE_DELIVERED_NO_INVITATION_REPLY,
   YOUTUBE_INVITATION_WAIT_REPLY,
+  YOUTUBE_PREMIUM_LOST_REPLY,
 } from '../src/scheduler/youtube-jev-replies';
 import type { NotionDeliveryDeal } from '../src/scheduler/notion-invitation-sync';
 import type { GraytagChatMessage } from '../src/api/chat-message-summary';
@@ -40,6 +42,22 @@ describe('Jev intent and dedicated-account replies', () => {
       '초대장 받았는데 국가 달라요. 그냥 환불해주세요',
     ]) expect(isSafeYouTubeBuyerIntent(message, 'country_mismatch')).toBe(false);
     expect(isSafeYouTubeBuyerIntent('언제오나요? 그리고 취소할게요', 'invitation_wait')).toBe(false);
+    for (const message of [
+      '전달 완료라고 뜨는데 초대장이 안 왔어요', '배송 완료 눌렸는데 초대 메일이 없어요',
+      '계정 전달 상태인데 아직 초대 링크 못 받았습니다',
+    ]) expect(isSafeYouTubeBuyerIntent(message, 'delivered_no_invitation')).toBe(true);
+    for (const message of [
+      '초대장은 왔는데 국가가 달라요', '초대 메일 안 왔어요. 환불해주세요',
+      '초대장 안 왔다가 방금 왔어요', '가족 변경 제한이라 초대 못 받아요',
+    ]) expect(isSafeYouTubeBuyerIntent(message, 'delivered_no_invitation')).toBe(false);
+    for (const message of [
+      '가입했는데 프리미엄이 안 떠요', '프리미엄 잘 되다가 갑자기 풀렸어요',
+      '어제까지 이용했는데 프리미엄이 사라졌네요', '초대받았는데 Premium이 취소됐어요',
+    ]) expect(isSafeYouTubeBuyerIntent(message, 'premium_lost')).toBe(true);
+    for (const message of [
+      '가족 그룹 변경이 안돼서 프리미엄이 안 떠요', '가입 전에 프리미엄 되나요?',
+      '프리미엄 안돼서 환불해주세요', '프리미엄 안됐는데 지금 해결됐어요',
+    ]) expect(isSafeYouTubeBuyerIntent(message, 'premium_lost')).toBe(false);
   });
 
   test('accepts only a high-confidence, unambiguous Jev decision', async () => {
@@ -48,22 +66,160 @@ describe('Jev intent and dedicated-account replies', () => {
       probabilities: { invitation_wait: 0.98, country_mismatch: 0.01, other: 0.01 },
     } } }), { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);
-    expect(await classifyYouTubeBuyerIntent('초대는 언제 되나요?', 'test-key')).toBe('invitation_wait');
+    expect(await classifyYouTubeBuyerIntent('초대는 언제 되나요?', 'Delivering', 'test-key')).toBe('invitation_wait');
     const [, options] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect(JSON.parse(String(options.body)).questions.intent.criteria).toHaveProperty('other');
     fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ answers: { intent: {
       choice: 'country_mismatch', confidence: 0.65,
       probabilities: { invitation_wait: 0.2, country_mismatch: 0.7, other: 0.1 },
     } } }), { status: 200 }));
-    expect(await classifyYouTubeBuyerIntent('국가가 다르대요', 'test-key')).toBe('other');
+    expect(await classifyYouTubeBuyerIntent('국가가 다르대요', 'Delivering', 'test-key')).toBe('other');
     const shortWait = () => new Response(JSON.stringify({ answers: { intent: {
       choice: 'invitation_wait', confidence: 0.83,
       probabilities: { invitation_wait: 0.89, country_mismatch: 0.01, other: 0.1 },
     } } }), { status: 200 });
     fetchMock.mockResolvedValueOnce(shortWait());
-    expect(await classifyYouTubeBuyerIntent('초대장 안옵니다', 'test-key')).toBe('invitation_wait');
+    expect(await classifyYouTubeBuyerIntent('초대장 안옵니다', 'Delivering', 'test-key')).toBe('invitation_wait');
     fetchMock.mockResolvedValueOnce(shortWait());
-    expect(await classifyYouTubeBuyerIntent('아직도요?', 'test-key')).toBe('other');
+    expect(await classifyYouTubeBuyerIntent('아직도요?', 'Delivering', 'test-key')).toBe('other');
+  });
+
+  test('Jev separates post-delivery invitation and Premium issues by live order status', async () => {
+    const fetchMock = vi.fn(async () => Response.json({ answers: { intent: {
+      choice: 'delivered_no_invitation', confidence: 0.98,
+      probabilities: { invitation_wait: 0.01, country_mismatch: 0, delivered_no_invitation: 0.98, premium_lost: 0, other: 0.01 },
+    } } }));
+    vi.stubGlobal('fetch', fetchMock);
+    expect(await classifyYouTubeBuyerIntent('계정 전달 완료인데 초대 메일을 못 받았어요', 'Delivered', 'test-key'))
+      .toBe('delivered_no_invitation');
+    expect(await classifyYouTubeBuyerIntent('계정 전달 완료인데 초대 메일을 못 받았어요', 'Delivering', 'test-key'))
+      .toBe('other');
+    const body = JSON.parse(String((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].body));
+    expect(body.state).toContain('Order status: Delivered');
+    expect(body.questions.intent.criteria).toHaveProperty('premium_lost');
+    fetchMock.mockResolvedValueOnce(Response.json({ answers: { intent: {
+      choice: 'premium_lost', confidence: 0.97,
+      probabilities: { invitation_wait: 0, country_mismatch: 0, delivered_no_invitation: 0, premium_lost: 0.97, other: 0.03 },
+    } } }));
+    expect(await classifyYouTubeBuyerIntent('프리미엄 잘 되다가 풀렸어요', 'Using', 'test-key'))
+      .toBe('premium_lost');
+  });
+
+  test.each([
+    { status: 'Delivered', buyerText: '배송 완료라고 뜨는데 아직 초대장이 안 왔습니다',
+      intent: 'delivered_no_invitation' as const, reply: YOUTUBE_DELIVERED_NO_INVITATION_REPLY },
+    { status: 'Using', buyerText: '가족 가입했는데 프리미엄이 안 떠요',
+      intent: 'premium_lost' as const, reply: YOUTUBE_PREMIUM_LOST_REPLY },
+  ])('replies once to $intent on a completed order', async ({ status, buyerText, intent, reply }) => {
+    let journal: JevReplyJournal | null = { version: 1, startedAt: '2026-09-25T00:00:00.000Z', records: {} };
+    const send = vi.fn(async () => true);
+    const alertPostDeliveryIssue = vi.fn(async () => {});
+    const classify = vi.fn(async () => intent);
+    const current = deal(`post-${intent}`, status);
+    const deps = {
+      listDeals: async () => [current], listMessages: async () => [buyer(buyerText)],
+      providerStatus: async () => status, classify, send, alertCountryIssue: vi.fn(async () => {}),
+      alertPostDeliveryIssue,
+      readJournal: () => journal,
+      writeJournal: (value: JevReplyJournal) => { journal = structuredClone(value); },
+      now: () => now,
+    };
+    expect(await syncYouTubeJevReplies(deps)).toMatchObject({ sent: 1, attempted: 1 });
+    expect(classify).toHaveBeenCalledExactlyOnceWith(buyerText, status);
+    expect(send).toHaveBeenCalledExactlyOnceWith(current, reply);
+    expect(alertPostDeliveryIssue).toHaveBeenCalledExactlyOnceWith(current, intent);
+    expect(await syncYouTubeJevReplies(deps)).toMatchObject({ sent: 0, attempted: 0 });
+    expect(deps.alertCountryIssue).not.toHaveBeenCalled();
+  });
+
+  test('a renewed complaint after 24 hours alerts the seller without repeating the canned reply', async () => {
+    let currentNow = now;
+    let chat = [buyer('전달 완료인데 초대 메일이 안 왔어요')];
+    let journal: JevReplyJournal | null = { version: 1, startedAt: '2026-09-25T00:00:00.000Z', records: {} };
+    const send = vi.fn(async () => true);
+    const alertPostDeliveryIssue = vi.fn(async () => {});
+    const deps = {
+      listDeals: async () => [deal('renewed', 'Delivered')], listMessages: async () => chat,
+      providerStatus: async () => 'Delivered', classify: async () => 'delivered_no_invitation' as const,
+      send, alertCountryIssue: vi.fn(async () => {}), alertPostDeliveryIssue,
+      readJournal: () => journal,
+      writeJournal: (value: JevReplyJournal) => { journal = structuredClone(value); },
+      now: () => currentNow,
+    };
+    expect(await syncYouTubeJevReplies(deps)).toMatchObject({ sent: 1 });
+    currentNow += 25 * 60 * 60_000;
+    chat = [buyer('초대 메일 아직도 안 왔습니다', '2026.09.26 12:50'), ...chat];
+    expect(await syncYouTubeJevReplies(deps)).toMatchObject({ sent: 0, ignored: 1 });
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(alertPostDeliveryIssue).toHaveBeenCalledTimes(2);
+  });
+
+  test('holds post-delivery reply when live status changes or the buyer says the issue is resolved', async () => {
+    let chat: GraytagChatMessage[] = [buyer('전달 완료인데 초대장 안 왔어요')];
+    let status = 'Canceled';
+    let journal: JevReplyJournal | null = { version: 1, startedAt: '2026-09-25T00:00:00.000Z', records: {} };
+    const send = vi.fn(async () => true);
+    const deps = {
+      listDeals: async () => [deal('post-check', 'Delivered')], listMessages: async () => chat,
+      providerStatus: async () => status, classify: async () => 'delivered_no_invitation' as const,
+      send, alertCountryIssue: vi.fn(async () => {}),
+      readJournal: () => journal,
+      writeJournal: (value: JevReplyJournal) => { journal = structuredClone(value); },
+      now: () => now,
+    };
+    expect(await syncYouTubeJevReplies(deps)).toMatchObject({ sent: 0 });
+    status = 'Delivered';
+    chat = [buyer('초대장이 안 왔는데 지금 왔어요')];
+    expect(await syncYouTubeJevReplies(deps)).toMatchObject({ sent: 0 });
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  test('combines a split post-delivery complaint and keeps pre/post polling separate', async () => {
+    let journal: JevReplyJournal | null = { version: 1, startedAt: '2026-09-25T00:00:00.000Z',
+      postStartedAt: '2026-09-25T00:00:00.000Z', records: {} };
+    const current = deal('split-post', 'Delivered');
+    const classify = vi.fn(async () => 'delivered_no_invitation' as const);
+    const send = vi.fn(async () => true);
+    const deps = {
+      listDeals: async () => [current],
+      listMessages: async () => [buyer('초대 메일은 아직 안 왔어요', '2026.09.25 11:50'),
+        buyer('전달 완료로 떠요', '2026.09.25 11:40')],
+      providerStatus: async () => 'Delivered', classify, send, alertCountryIssue: vi.fn(async () => {}),
+      readJournal: () => journal,
+      writeJournal: (value: JevReplyJournal) => { journal = structuredClone(value); },
+      now: () => now,
+    };
+    expect(await syncYouTubeJevReplies({ ...deps, scope: 'pre' })).toMatchObject({ sent: 0 });
+    expect(classify).not.toHaveBeenCalled();
+    expect(await syncYouTubeJevReplies({ ...deps, scope: 'post' })).toMatchObject({ sent: 1 });
+    expect(classify).toHaveBeenCalledWith('전달 완료로 떠요\n초대 메일은 아직 안 왔어요', 'Delivered');
+    expect(send).toHaveBeenCalledExactlyOnceWith(current, YOUTUBE_DELIVERED_NO_INVITATION_REPLY);
+  });
+
+  test('first post-delivery poll baselines past chats before any reply', async () => {
+    let currentNow = now;
+    let chat = [buyer('전달 완료인데 초대장 안 왔어요', '2026.09.25 11:50')];
+    let journal: JevReplyJournal | null = { version: 1, startedAt: '2026-09-24T00:00:00.000Z', records: {} };
+    const classify = vi.fn(async () => 'delivered_no_invitation' as const);
+    const send = vi.fn(async () => true);
+    const deps = {
+      scope: 'post' as const, listDeals: async () => [deal('baseline-post', 'Delivered')],
+      listMessages: async () => chat, providerStatus: async () => 'Delivered',
+      classify, send, alertCountryIssue: vi.fn(async () => {}),
+      readJournal: () => journal,
+      writeJournal: (value: JevReplyJournal) => { journal = structuredClone(value); },
+      now: () => currentNow,
+    };
+    expect(await syncYouTubeJevReplies(deps)).toMatchObject({ baselined: 1, sent: 0 });
+    expect(classify).not.toHaveBeenCalled();
+    expect(journal?.postStartedAt).toBe(new Date(currentNow).toISOString());
+    expect(await syncYouTubeJevReplies(deps)).toMatchObject({ sent: 0 });
+    currentNow += 10 * 60_000;
+    chat = [buyer('아직도 초대장이 안 왔습니다', '2026.09.25 12:08'), ...chat];
+    expect(await syncYouTubeJevReplies(deps)).toMatchObject({ sent: 0 });
+    currentNow += 5 * 60_000;
+    expect(await syncYouTubeJevReplies(deps)).toMatchObject({ sent: 1 });
+    expect(send).toHaveBeenCalledTimes(1);
   });
 
   test('baselines existing messages, sends one wait reply for a new buyer question, and deduplicates it', async () => {
@@ -143,7 +299,7 @@ describe('Jev intent and dedicated-account replies', () => {
       now: () => now,
     };
     expect(await syncYouTubeJevReplies(deps)).toMatchObject({ sent: 1 });
-    expect(classify).toHaveBeenCalledWith('초대장은\n언제 오나요?');
+    expect(classify).toHaveBeenCalledWith('초대장은\n언제 오나요?', 'Delivering');
     expect(send).toHaveBeenCalledExactlyOnceWith(deal('split'), YOUTUBE_INVITATION_WAIT_REPLY);
     expect(await syncYouTubeJevReplies(deps)).toMatchObject({ sent: 0 });
   });
@@ -165,20 +321,20 @@ describe('Jev intent and dedicated-account replies', () => {
       now: () => now,
     };
     expect(await syncYouTubeJevReplies(deps)).toMatchObject({ sent: 1 });
-    expect(classify).toHaveBeenCalledWith('초대장 누르면 국가가\n다르다고 떠요');
+    expect(classify).toHaveBeenCalledWith('초대장 누르면 국가가\n다르다고 떠요', 'Delivering');
     expect(send).toHaveBeenCalledExactlyOnceWith(deal('country-split'), YOUTUBE_COUNTRY_MISMATCH_REPLY);
 
     journal = { version: 1, startedAt: '2026-09-25T00:00:00.000Z', records: {} };
     classify.mockClear(); send.mockClear();
     chat = [...chat, seller('제가 확인하겠습니다', '2026.09.25 11:40')];
     expect(await syncYouTubeJevReplies(deps)).toMatchObject({ sent: 0 });
-    expect(classify).toHaveBeenCalledWith('다르다고 떠요');
+    expect(classify).toHaveBeenCalledWith('다르다고 떠요', 'Delivering');
 
     journal = { version: 1, startedAt: '2026-09-25T00:00:00.000Z', records: {} };
     classify.mockClear();
     chat = [buyer('다르다고 떠요', '2026.09.25 11:50'), buyer('초대장 누르면 국가가', '2026.09.25 11:19')];
     expect(await syncYouTubeJevReplies(deps)).toMatchObject({ sent: 0 });
-    expect(classify).toHaveBeenCalledWith('다르다고 떠요');
+    expect(classify).toHaveBeenCalledWith('다르다고 떠요', 'Delivering');
   });
 
   test('does not send after a human reply, delivery, or uncertain transport outcome', async () => {

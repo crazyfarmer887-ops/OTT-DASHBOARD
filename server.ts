@@ -15,6 +15,7 @@ import apiApp, {
   sendYouTubeBuyerGuide,
   sendYouTubeJevReply,
   alertYouTubeCountryIssue,
+  alertYouTubePostDeliveryIssue,
 } from './src/api/index.ts';
 import {
   createDashboardSessionToken,
@@ -280,11 +281,12 @@ startYouTubeEmailReceipts({
   send: sendYouTubeJevReply,
 });
 startYouTubeJevReplies({
-  listDeals: fetchNotionDeliveryDeals,
+  listDeals: fetchYouTubeSellerAllDeals,
   listMessages: fetchYouTubeSellerChatMessages,
   providerStatus: fetchYouTubeInvitationProviderStatus,
   send: sendYouTubeJevReply,
   alertCountryIssue: alertYouTubeCountryIssue,
+  alertPostDeliveryIssue: alertYouTubePostDeliveryIssue,
 });
 startYouTubeFamilySwitches({
   listDeals: fetchYouTubeSellerAllDeals,

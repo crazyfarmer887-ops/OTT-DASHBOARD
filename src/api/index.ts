@@ -3041,6 +3041,19 @@ export async function alertYouTubeCountryIssue(deal: { dealUsid: string; chatRoo
   });
 }
 
+export async function alertYouTubePostDeliveryIssue(
+  deal: { dealUsid: string; chatRoomUuid: string },
+  intent: 'delivered_no_invitation' | 'premium_lost',
+): Promise<void> {
+  const title = intent === 'premium_lost' ? '유튜브 프리미엄 이용 중단 문의' : '배송 완료 후 초대장 미도착 문의';
+  await sendSellerAlert({
+    key: `youtube-post-delivery-${intent}-${deal.dealUsid}-${Date.now()}`,
+    title,
+    body: `구매자가 ${title}를 보냈습니다. 초대 및 이용 상태를 직접 확인해 주세요.\n거래: ${deal.dealUsid}\n채팅: https://graytag.co.kr/chat/${encodeURIComponent(deal.chatRoomUuid)}`,
+    severity: 'warning', category: 'auto-reply', throttleMs: 0,
+  });
+}
+
 const RENEWAL_AUTOMATION_JOBS_PATH = process.env.RENEWAL_AUTOMATION_JOBS_PATH
   || '/home/ubuntu/.hermes/hermes-agent/graytag-aio-manager-0606/data/renewal-automation-jobs.json';
 
