@@ -7,8 +7,8 @@ import { writeJsonAtomic } from '../lib/graytag-sales-session';
 import { createSingleFlightRunner, runWithExclusivePollLock } from './poll-daemon';
 
 const NOTION_VERSION = '2025-09-03';
-const DEFAULT_DATA_SOURCE_ID = '52e0fe4e-5f56-4fa1-8547-f2e89142b0db';
-const DEFAULT_SLOT_LEDGER_DATA_SOURCE_ID = '0162c5cb-60f8-414c-beeb-9ec78dd9a383';
+export const DEFAULT_DATA_SOURCE_ID = '52e0fe4e-5f56-4fa1-8547-f2e89142b0db';
+export const DEFAULT_SLOT_LEDGER_DATA_SOURCE_ID = '0162c5cb-60f8-414c-beeb-9ec78dd9a383';
 const DEFAULT_SLOT_SUMMARY_BLOCK_ID = '3e5ff936-cc9b-8037-b082-c540e7640d9f';
 const DEFAULT_JOURNAL_PATH = '/home/ubuntu/.hermes/hermes-agent/graytag-aio-manager-0606/data/notion-invitation-deliveries.json';
 const DEFAULT_LOCK_PATH = '/home/ubuntu/.hermes/hermes-agent/graytag-aio-manager-0606/data/notion-invitation-deliveries.lock';

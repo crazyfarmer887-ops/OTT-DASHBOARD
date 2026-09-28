@@ -57,6 +57,8 @@ import { buildYouTubeEmailExtractionPrompt, buildYouTubeInvitationAlert, isYouTu
 import { normalizeYouTubeAuditReason } from '../lib/youtube-audit-reason';
 import { readAuthoritativeYouTubeSellerProducts, reconcileYouTubeProductRegistration, type YouTubeProductRegistrationReconciliationClaim } from '../lib/youtube-product-registration-reconciliation';
 import { YouTubeProductRegistrationsStore } from '../lib/youtube-product-registrations';
+import { DEFAULT_YOUTUBE_AUTO_LISTING_LOCK_PATH, enqueueYouTubeAutoListingManager, readYouTubeAutoListingState, removeQueuedYouTubeAutoListingManager, writeYouTubeAutoListingState } from '../scheduler/youtube-auto-listings';
+import { runWithExclusivePollLock } from '../scheduler/poll-daemon';
 import { ChatRoomOrganizationValidationError, createChatRoomCategory, deleteChatRoomCategory, loadChatRoomOrganization, renameChatRoomCategory, updateChatRoomOrganizationEntry } from '../lib/chat-room-organization';
 import { parseYouTubeInviteEmailCandidates } from '../lib/youtube-invite-email';
 import { resolveYouTubeBuyerEmailFromChat } from './youtube-chat-email';
@@ -310,6 +312,55 @@ app.use('*', async (c, next) => {
   }, 423);
 });
 
+const autoListingStatePath = () => process.env.YOUTUBE_AUTO_LISTING_STATE_PATH || undefined;
+const autoListingLockPath = () => process.env.YOUTUBE_AUTO_LISTING_LOCK_PATH || DEFAULT_YOUTUBE_AUTO_LISTING_LOCK_PATH;
+const maskedAutoListingEmail = (email: string) => {
+  const [local, domain] = email.split('@');
+  return `${local.slice(0, 1)}***${local.slice(-1)}@${domain}`;
+};
+
+app.get('/youtube/auto-listings', (c) => {
+  try {
+    const state = readYouTubeAutoListingState(autoListingStatePath());
+    return c.json({ ok: true, enabled: process.env.YOUTUBE_AUTO_LISTING_ENABLED === 'true'
+      && process.env.YOUTUBE_INVITE_SALES_ENABLED === 'true'
+      && Boolean(process.env.NOTION_API_TOKEN?.trim()) && Boolean(process.env.AIO_ADMIN_TOKEN?.trim()),
+      queue: state.queue.map(({ id, managerEmail, addedAt }) => ({ id, managerEmailMasked: maskedAutoListingEmail(managerEmail), addedAt })),
+      batch: state.batch ? { label: state.batch.label, completed: state.batch.productUsids.length } : null,
+      lastBatch: state.lastBatch, lastCheck: state.lastCheck });
+  } catch { return c.json({ ok: false, error: 'auto listing state unavailable' }, 503); }
+});
+
+app.post('/youtube/auto-listings/queue', async (c) => {
+  const body = await c.req.json().catch(() => null) as { managerEmail?: unknown } | null;
+  if (typeof body?.managerEmail !== 'string') return c.json({ ok: false, error: 'manager email required' }, 400);
+  let result: { ok: boolean; error?: string } | null = null;
+  const locked = await runWithExclusivePollLock(autoListingLockPath(), async () => {
+    try {
+      const groupsPath = process.env.YOUTUBE_FAMILY_GROUPS_PATH || undefined;
+      const groups = new YouTubeFamilyGroupsStore(groupsPath).read().familyGroups;
+      const next = enqueueYouTubeAutoListingManager(readYouTubeAutoListingState(autoListingStatePath()), body.managerEmail as string, groups);
+      writeYouTubeAutoListingState(next, autoListingStatePath());
+      result = { ok: true };
+    } catch (error) { result = { ok: false, error: error instanceof Error ? error.message : 'queue unavailable' }; }
+  });
+  if (!locked) return c.json({ ok: false, error: 'auto listing busy' }, 409);
+  return c.json(result, result?.ok ? 201 : 400);
+});
+
+app.delete('/youtube/auto-listings/queue/:id', async (c) => {
+  let result: { ok: boolean; error?: string } | null = null;
+  const locked = await runWithExclusivePollLock(autoListingLockPath(), async () => {
+    try {
+      const next = removeQueuedYouTubeAutoListingManager(readYouTubeAutoListingState(autoListingStatePath()), c.req.param('id'));
+      writeYouTubeAutoListingState(next, autoListingStatePath());
+      result = { ok: true };
+    } catch (error) { result = { ok: false, error: error instanceof Error ? error.message : 'queue unavailable' }; }
+  });
+  if (!locked) return c.json({ ok: false, error: 'auto listing busy' }, 409);
+  return c.json(result, result?.ok ? 200 : 400);
+});
+
 app.route('/youtube', youtubeInvitationsApp);
 
 function auditResultFromResults(results: any[]): 'success' | 'blocked' | 'error' {
@@ -432,6 +483,16 @@ async function reconcileYouTubeProductRegistrationFromSeller(claim: YouTubeProdu
     },
   );
   return reconcileYouTubeProductRegistration(claim, observation);
+}
+
+export async function fetchAuthoritativeYouTubeSellerProductsForAutoListing() {
+  const cookies = loadGraytagAuthCookies();
+  if (!cookies) return { authoritative: false, rows: [] };
+  return readAuthoritativeYouTubeSellerProducts(
+    (url, options) => rateLimitedFetch(url, options, true),
+    { ...BASE_HEADERS, Cookie: buildGraytagCookieHeader(cookies),
+      Referer: 'https://graytag.co.kr/lender/deal/list' },
+  );
 }
 
 export async function finishYouTubeInvitationDelivery(dealUsid: string): Promise<Response> {
@@ -597,7 +658,7 @@ export async function fetchYouTubeSellerChatMessages(chatRoomUuid: string): Prom
   } catch { return null; }
 }
 
-async function fetchYouTubeProviderProductStatuses(): Promise<{
+export async function fetchYouTubeProviderProductStatuses(): Promise<{
   authoritative: boolean;
   rows: Array<{ productUsid: string; status: string; endDateTime: string | null }>;
 }> {
