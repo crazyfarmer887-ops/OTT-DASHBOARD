@@ -18,8 +18,9 @@ const SETTLE_MS = 3 * 60_000;
 const MAX_MESSAGE_AGE_MS = 24 * 60 * 60_000;
 const REPEAT_COOLDOWN_MS = 12 * 60 * 60_000;
 
-export type BuyerIntent = 'invitation_wait' | 'country_mismatch' | 'delivered_no_invitation' | 'premium_lost' | 'other';
+export type BuyerIntent = 'invitation_wait' | 'missing_email' | 'country_mismatch' | 'delivered_no_invitation' | 'premium_lost' | 'other';
 export const YOUTUBE_INVITATION_WAIT_REPLY = '문의 감사합니다. 초대는 해외 현지 담당자와 소통하며 주문 순서대로 직접 진행하고 있어 최대 24시간이 걸릴 수 있습니다. 준비되는 대로 안내드릴 테니 조금만 양해 부탁드립니다.';
+export const YOUTUBE_MISSING_EMAIL_REPLY = '기다리게 해드려 죄송합니다. 초대를 진행하려면 초대받으실 Google 이메일 주소가 필요합니다. 이 대화창에 이메일을 남겨주시면 확인 후 해외 현지 담당자와 순서대로 직접 초대해드리겠습니다.';
 export const YOUTUBE_COUNTRY_MISMATCH_REPLY = `국가가 다르다는 오류를 확인한 뒤 재초대가 가능한지 살펴보겠습니다. 필요한 경우 초대장을 다시 보내드릴게요. 먼저 Google 결제 프로필의 국가와 현재 거주 국가가 일치하는지 확인해 주세요. 결제 프로필 폐쇄 방법: ${PAYMENT_PROFILE_HELP}\n\n프로필 폐쇄는 되돌릴 수 없고 결제 정보가 삭제되므로, 확인 없이 모든 프로필을 삭제하지는 마세요. YouTube 가족 초대는 가족 관리자와 같은 거주지 요건도 있어 재발송만으로 해결되지 않을 수 있습니다. 오류 화면을 보내주시면 확인에 도움이 됩니다.`;
 export const YOUTUBE_DELIVERED_NO_INVITATION_REPLY = '죄송합니다. 초대 작업은 해외 현지 담당자와 함께 진행하고 있어 소통에 차질이 생길 수 있습니다. 24시간 내에도 초대장이 오지 않으면 이 대화창으로 한 번 더 문의해 주세요.';
 export const YOUTUBE_PREMIUM_LOST_REPLY = '죄송합니다. 초대 작업은 해외 현지 담당자와 함께 진행하고 있어 소통에 차질이 생길 수 있습니다. 저희가 임의로 프리미엄을 해제하는 경우는 없습니다. 현재 이용 상태를 한 번 더 확인하신 뒤에도 프리미엄이 보이지 않으면 이 대화창으로 다시 문의해 주세요.';
@@ -27,7 +28,7 @@ export const YOUTUBE_PREMIUM_LOST_REPLY = '죄송합니다. 초대 작업은 해
 const POST_DELIVERY_STATUSES = new Set(['Delivered', 'Using', 'UsingNearExpiration', 'DeliveredAndCheckPrepaid']);
 
 function intentMatchesStatus(intent: BuyerIntent, status: string): boolean {
-  if (intent === 'invitation_wait' || intent === 'country_mismatch') return status === 'Delivering';
+  if (intent === 'invitation_wait' || intent === 'missing_email' || intent === 'country_mismatch') return status === 'Delivering';
   return POST_DELIVERY_STATUSES.has(status);
 }
 
@@ -39,6 +40,7 @@ function isPostDeliveryIntent(intent: BuyerIntent): intent is 'delivered_no_invi
 export function isSafeYouTubeBuyerIntent(message: string, intent: BuyerIntent): boolean {
   const text = normalizeBuyerMessage(message);
   if (intent === 'other' || !text || /취소\s*(?:해|할|하고|원해|부탁)|환불|반품|삭제|이메일.*(?:변경|바꾸|수정)|(?:변경|바꾸|수정).*이메일|계정.*(?:변경|바꾸)|[\w.+-]+@[\w.-]+\.[a-z]{2,}/i.test(text)) return false;
+  if (intent === 'missing_email') return /거래\s*안\s*하시|(?:답|연락)\s*(?:이\s*)?(?:없|안\s*오)|(?:초대|배송|전달|계정)[^\n]{0,40}(?:언제|안\s*(?:오|와|됐|되|나오)|늦|지연|빨리)|(?:구매|결제)[^\n]{0,40}(?:답|언제|진행)/.test(text);
   if (intent === 'delivered_no_invitation') {
     return /초대|메일|이메일|링크/.test(text)
       && /안\s*(?:왔|와|오|보이|보여)|못\s*받|오지\s*않|도착하지\s*않|미도착|미수신|없(?:어|습|네|음|다)/.test(text)
@@ -63,6 +65,7 @@ export interface JevReplyJournal { version: 1; startedAt: string; postStartedAt?
 export interface JevReplyDependencies {
   listDeals(): Promise<NotionDeliveryDeal[] | null>;
   listMessages(room: string): Promise<GraytagChatMessage[] | null>;
+  buyerEmails?(room: string): Promise<string[] | null>;
   providerStatus(dealUsid: string): Promise<string | null>;
   classify(message: string, dealStatus: string): Promise<BuyerIntent>;
   send(deal: NotionDeliveryDeal, message: string): Promise<boolean>;
@@ -189,8 +192,12 @@ export async function syncYouTubeJevReplies(deps: JevReplyDependencies): Promise
     const messages = await deps.listMessages(deal.chatRoomUuid);
     if (!messages) continue;
     const latest = latestBuyerMessage(deal.chatRoomUuid, messages);
-    if (!latest || journal.records[deal.dealUsid]?.fingerprint === latest.fingerprint) continue;
     const previous = journal.records[deal.dealUsid];
+    if (!latest) continue;
+    const repeat = previous?.fingerprint === latest.fingerprint;
+    const missingEmailInquiry = deal.dealStatus === 'Delivering' && Boolean(deps.buyerEmails)
+      && isSafeYouTubeBuyerIntent(latest.text, 'missing_email');
+    if (repeat && !(previous?.state === 'ignored' && missingEmailInquiry)) continue;
     const mark = (state: JournalRecord['state'], intent?: BuyerIntent) => {
       journal!.records[deal.dealUsid] = {
         fingerprint: latest.fingerprint, state, updatedAt: new Date(now).toISOString(),
@@ -203,7 +210,13 @@ export async function syncYouTubeJevReplies(deps: JevReplyDependencies): Promise
       || now - latest.time < SETTLE_MS
       || now - latest.time > MAX_MESSAGE_AGE_MS || latest.time > now + 60_000) continue;
     let intent: BuyerIntent;
-    try { intent = await deps.classify(latest.text, deal.dealStatus); } catch { continue; }
+    if (missingEmailInquiry) {
+      const emails = await deps.buyerEmails!(deal.chatRoomUuid).catch(() => null);
+      if (emails === null) continue;
+      if (emails.length === 0) intent = 'missing_email';
+      else if (repeat) continue;
+      else try { intent = await deps.classify(latest.text, deal.dealStatus); } catch { continue; }
+    } else try { intent = await deps.classify(latest.text, deal.dealStatus); } catch { continue; }
     const postIntent = isPostDeliveryIntent(intent);
     const repeatedPostIntent = postIntent && previous?.lastSentIntent === intent && Boolean(previous.lastSentAt);
     if (intent === 'other' || !intentMatchesStatus(intent, deal.dealStatus)
@@ -222,10 +235,12 @@ export async function syncYouTubeJevReplies(deps: JevReplyDependencies): Promise
     if (!liveStatus || !intentMatchesStatus(intent, liveStatus)) continue;
     const current = await deps.listMessages(deal.chatRoomUuid);
     if (!current || latestBuyerMessage(deal.chatRoomUuid, current)?.fingerprint !== latest.fingerprint) continue;
+    if (intent === 'missing_email' && (await deps.buyerEmails!(deal.chatRoomUuid).catch(() => null))?.length !== 0) continue;
     mark('attempted', intent);
     attempted += 1;
     if (isPostDeliveryIntent(intent)) await deps.alertPostDeliveryIssue?.(deal, intent).catch(() => {});
     const reply = intent === 'country_mismatch' ? YOUTUBE_COUNTRY_MISMATCH_REPLY
+      : intent === 'missing_email' ? YOUTUBE_MISSING_EMAIL_REPLY
       : intent === 'delivered_no_invitation' ? YOUTUBE_DELIVERED_NO_INVITATION_REPLY
         : intent === 'premium_lost' ? YOUTUBE_PREMIUM_LOST_REPLY : YOUTUBE_INVITATION_WAIT_REPLY;
     try {
@@ -246,7 +261,7 @@ function readJournal(path: string): JevReplyJournal | null {
 }
 
 export function startYouTubeJevReplies(dependencies: Pick<JevReplyDependencies,
-  'listDeals' | 'listMessages' | 'providerStatus' | 'send' | 'alertCountryIssue' | 'alertPostDeliveryIssue'>): void {
+  'listDeals' | 'listMessages' | 'buyerEmails' | 'providerStatus' | 'send' | 'alertCountryIssue' | 'alertPostDeliveryIssue'>): void {
   if (process.env.YOUTUBE_JEV_AUTO_REPLY_ENABLED !== 'true') return;
   if (!process.env.TYPESAFE_API_KEY) { console.error('[YouTubeJevReplies] Jev key missing'); return; }
   const journalPath = process.env.YOUTUBE_JEV_REPLY_JOURNAL_PATH || DEFAULT_JOURNAL;

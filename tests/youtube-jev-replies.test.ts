@@ -8,6 +8,7 @@ import {
   YOUTUBE_COUNTRY_MISMATCH_REPLY,
   YOUTUBE_DELIVERED_NO_INVITATION_REPLY,
   YOUTUBE_INVITATION_WAIT_REPLY,
+  YOUTUBE_MISSING_EMAIL_REPLY,
   YOUTUBE_PREMIUM_LOST_REPLY,
 } from '../src/scheduler/youtube-jev-replies';
 import type { NotionDeliveryDeal } from '../src/scheduler/notion-invitation-sync';
@@ -23,6 +24,44 @@ const seller = (message: string, time = '2026.09.25 11:55'): GraytagChatMessage 
 afterEach(() => vi.unstubAllGlobals());
 
 describe('Jev intent and dedicated-account replies', () => {
+  test('revisits an ignored delivery inquiry and asks for a missing Google email once', async () => {
+    let journal: JevReplyJournal | null = { version: 1, startedAt: '2026-09-25T00:00:00.000Z', records: {} };
+    const current = deal('missing-email');
+    const chat = [seller('Google 이메일 주소를 남겨주세요.', '2026.09.25 11:40'),
+      buyer('구매했는데 답이 없나요?', '2026.09.25 11:49'),
+      buyer('거래 안하시나요?', '2026.09.25 11:50')];
+    const send = vi.fn(async () => true);
+    const classify = vi.fn(async () => 'other' as const);
+    const deps = {
+      listDeals: async () => [current], listMessages: async () => chat,
+      providerStatus: async () => 'Delivering', classify, send,
+      alertCountryIssue: vi.fn(async () => {}),
+      readJournal: () => journal,
+      writeJournal: (value: JevReplyJournal) => { journal = structuredClone(value); },
+      now: () => now,
+      buyerEmails: undefined as undefined | (() => Promise<string[] | null>),
+    };
+    expect((await syncYouTubeJevReplies(deps)).ignored).toBe(1);
+    deps.buyerEmails = async () => [];
+    expect((await syncYouTubeJevReplies(deps)).sent).toBe(1);
+    expect(send).toHaveBeenCalledExactlyOnceWith(current, YOUTUBE_MISSING_EMAIL_REPLY);
+    expect((await syncYouTubeJevReplies(deps)).sent).toBe(0);
+    expect(classify).toHaveBeenCalledTimes(1);
+  });
+
+  test('does not request an email after a cancellation or when an email is already known', async () => {
+    for (const [text, emails] of [['취소 부탁드립니다. 거래 안 할게요', []],
+      ['거래 안하시나요?', ['buyer@gmail.com']]] as const) {
+      let journal: JevReplyJournal | null = { version: 1, startedAt: '2026-09-25T00:00:00.000Z', records: {} };
+      const send = vi.fn(async () => true);
+      await syncYouTubeJevReplies({ listDeals: async () => [deal('guard')],
+        listMessages: async () => [buyer(text)], providerStatus: async () => 'Delivering',
+        classify: async () => 'other', send, buyerEmails: async () => [...emails],
+        alertCountryIssue: async () => {}, readJournal: () => journal,
+        writeJournal: (value) => { journal = structuredClone(value); }, now: () => now });
+      expect(send).not.toHaveBeenCalled();
+    }
+  });
   test('accepts common phrasing and blocks contradictory or destructive requests', () => {
     for (const message of ['초대 언제 오나요?', '혹시 얼마나 더 기다려야 돼요?', '초대 좀 빨리요']) {
       expect(isSafeYouTubeBuyerIntent(message, 'invitation_wait')).toBe(true);

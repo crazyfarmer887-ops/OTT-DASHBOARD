@@ -287,6 +287,7 @@ startYouTubeEmailReceipts({
 startYouTubeJevReplies({
   listDeals: fetchYouTubeSellerAllDeals,
   listMessages: fetchYouTubeSellerChatMessages,
+  buyerEmails: fetchNotionDeliveryBuyerEmails,
   providerStatus: fetchYouTubeInvitationProviderStatus,
   send: sendYouTubeJevReply,
   alertCountryIssue: alertYouTubeCountryIssue,
