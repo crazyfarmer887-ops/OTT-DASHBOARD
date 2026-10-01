@@ -172,6 +172,18 @@ describe('YouTube product registration API', () => {
     expect(registerProduct).not.toHaveBeenCalled();
   });
 
+  test('reports provider access denial without retrying or releasing uncertain capacity', async () => {
+    const registerProduct = vi.fn(async () => new Response('<h1>403 Forbidden</h1>', { status: 403 }));
+    const app = createYouTubeInvitationsApp({ registerProduct });
+    const first = await post(app, 'denied-request-1000');
+    expect(first.status).toBe(502);
+    expect(await first.json()).toMatchObject({ code: 'YOUTUBE_PROVIDER_ACCESS_DENIED' });
+    expect((await post(app, 'denied-request-1000')).status).toBe(409);
+    expect(registerProduct).toHaveBeenCalledTimes(1);
+    const list = await (await app.request('/products/registrations')).json();
+    expect(list.registrations[0].status).toBe('uncertain');
+  });
+
   test('marks timeout uncertain and blocks a second call without retrying', async () => {
     const registerProduct = vi.fn(async () => { throw new DOMException('timed out model-secret', 'TimeoutError'); });
     const app = createYouTubeInvitationsApp({ registerProduct, actor: () => 'admin:test' });
