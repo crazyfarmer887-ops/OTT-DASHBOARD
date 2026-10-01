@@ -49,7 +49,7 @@ import { JsonRenewalJobStore, type RenewalJob, type RenewalReviewAction } from '
 import { buildRenewalMessage, buildRenewalPreviewRows, type ExtensionProductModel } from '../renewal/core';
 import { reconcileRenewalRegistration, retryRenewalMessage, retryRenewalRegistration, runRenewalAutomation, runSelectedRenewalBatch } from '../renewal/orchestrator';
 import { buildRegistrationEvidenceSnapshot } from '../renewal/graytag-registration-verifier';
-import { buildMultipartJsonBody } from './http-transport';
+import { buildMultipartJsonBody, curlFetch } from './http-transport';
 import chatNotificationStreamApp from './chat-notification-stream';
 import { createYouTubeInvitationsApp } from './youtube-invitations';
 import { YouTubeFamilyGroupsStore, YouTubeInvitationJobsStore } from '../lib/youtube-invitations';
@@ -1488,10 +1488,11 @@ const CHAT_ROOMS_CACHE_TTL_MS = 60_000;
 const CHAT_RATE_LIMIT_BACKOFF_MS = 60_000;
 
 async function directFetch(url: string, options?: RequestInit): Promise<Response> {
-  return fetch(url, options);
+  const proxyUrl = process.env.GRAYTAG_PROXY_URL?.trim();
+  return proxyUrl ? curlFetch(url, options, proxyUrl) : fetch(url, options);
 }
 
-/** Direct requests only. Never retry writes after an uncertain response. */
+/** Use the configured transport once. Never retry uncertain writes. */
 async function rateLimitedFetch(url: string, options?: RequestInit, bypass = false): Promise<Response> {
   if (!bypass && Date.now() < _rateLimitUntil) {
     return new Response(JSON.stringify({ ok: false, error: 'rate_limit_backoff' }), {
@@ -1502,7 +1503,7 @@ async function rateLimitedFetch(url: string, options?: RequestInit, bypass = fal
   const elapsed = Date.now() - _lastGraytagRequest;
   if (elapsed < 1500) await new Promise(r => setTimeout(r, 1500 - elapsed));
   _lastGraytagRequest = Date.now();
-  const response = await fetch(url, options);
+  const response = await directFetch(url, options);
   if (response.status === 429) _rateLimitUntil = Math.max(_rateLimitUntil, Date.now() + CHAT_RATE_LIMIT_BACKOFF_MS);
   return response;
 }

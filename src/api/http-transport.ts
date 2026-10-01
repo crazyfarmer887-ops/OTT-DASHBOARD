@@ -52,9 +52,15 @@ export async function curlFetch(
   }
   args.push(url);
 
-  const { stdout } = await exec('curl', args, { maxBuffer: 10 * 1024 * 1024 });
+  let stdout: string;
+  try {
+    ({ stdout } = await exec('curl', args, { maxBuffer: 10 * 1024 * 1024 }));
+  } catch {
+    // exec errors include command arguments, including proxy and session secrets.
+    throw new Error('GrayTag proxy connection failed');
+  }
   const statusMatch = stdout.match(/__STATUS__(\d+)$/);
   const status = statusMatch ? Number.parseInt(statusMatch[1], 10) : 0;
   const body = stdout.replace(/\n?__STATUS__\d+$/, '');
-  return new Response(body, { status, headers: { 'Content-Type': 'application/json' } });
+  return new Response([204, 205, 304].includes(status) ? null : body, { status, headers: { 'Content-Type': 'application/json' } });
 }
