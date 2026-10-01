@@ -49,7 +49,7 @@ import { JsonRenewalJobStore, type RenewalJob, type RenewalReviewAction } from '
 import { buildRenewalMessage, buildRenewalPreviewRows, type ExtensionProductModel } from '../renewal/core';
 import { reconcileRenewalRegistration, retryRenewalMessage, retryRenewalRegistration, runRenewalAutomation, runSelectedRenewalBatch } from '../renewal/orchestrator';
 import { buildRegistrationEvidenceSnapshot } from '../renewal/graytag-registration-verifier';
-import { buildMultipartJsonBody, curlFetch } from './http-transport';
+import { buildMultipartJsonBody } from './http-transport';
 import chatNotificationStreamApp from './chat-notification-stream';
 import { createYouTubeInvitationsApp } from './youtube-invitations';
 import { YouTubeFamilyGroupsStore, YouTubeInvitationJobsStore } from '../lib/youtube-invitations';
@@ -1477,9 +1477,7 @@ const BASE_HEADERS = {
 };
 
 
-// ─── 프록시 로테이터 + Rate Limiter ──────────────────────────
-let _proxyList: string[] = [];       // "host:port" 형식
-let _proxyIndex = 0;
+// ─── Direct GrayTag requests + rate limiting ──────────────────
 let _lastGraytagRequest = 0;
 let _rateLimitUntil: number = 0;
 let _chatRoomsCache: FastChatRoomsSnapshot | null = null;
@@ -1489,53 +1487,11 @@ let _chatRoomsRefreshInFlight: Promise<void> | null = null;
 const CHAT_ROOMS_CACHE_TTL_MS = 60_000;
 const CHAT_RATE_LIMIT_BACKOFF_MS = 60_000;
 
-/** webshare 프록시 리스트 로드 (서버 시작 시 + 1시간마다 자동 갱신) */
-async function loadProxies() {
-  const url = 'https://proxy.webshare.io/api/v2/proxy/list/download/lmvkutzxtmxjggpoumjedbagwnijvfhgxwzptris/-/any/username/direct/-/?plan_id=13115101';
-  try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const text = await res.text();
-    // 포맷: ip:port:user:pass
-    const lines = text.split('\n').map(l => l.trim()).filter(l => l.includes(':'));
-    if (lines.length === 0) throw new Error('프록시 리스트 비어있음');
-    _proxyList = lines;
-    _proxyIndex = 0;
-    console.log(`[ProxyRotator] ✓ ${lines.length}개 프록시 로드됨`);
-  } catch (e: any) {
-    console.warn(`[ProxyRotator] 프록시 로드 실패: ${e.message}`);
-  }
-}
-
-/** ip:port:user:pass → http://user:pass@ip:port */
-function proxyToUrl(proxy: string): string {
-  const parts = proxy.split(':');
-  if (parts.length === 4) {
-    const [ip, port, user, pass] = parts;
-    return `http://${user}:${pass}@${ip}:${port}`;
-  }
-  return `http://${proxy}`;
-}
-
-/** 다음 프록시로 회전 */
-function rotateProxy(reason: string) {
-  if (_proxyList.length === 0) return;
-  const prev = _proxyList[_proxyIndex].split(':').slice(0,2).join(':');
-  _proxyIndex = (_proxyIndex + 1) % _proxyList.length;
-  const next = _proxyList[_proxyIndex].split(':').slice(0,2).join(':');
-  console.log(`[ProxyRotator] ${reason} → 회전: ${prev} → ${next} (${_proxyIndex + 1}/${_proxyList.length})`);
-}
-
-/** 직접 호출 (프록시 없음) */
 async function directFetch(url: string, options?: RequestInit): Promise<Response> {
   return fetch(url, options);
 }
 
-/**
- * rateLimitedFetch: 403 즉시 다음 프록시로 재시도
- * - 프록시 있으면: 1번 → 2번 → 3번 ... 전체 순환 후 포기
- * - 프록시 없으면: 기존 방식 (30초 백오프)
- */
+/** Direct requests only. Never retry writes after an uncertain response. */
 async function rateLimitedFetch(url: string, options?: RequestInit, bypass = false): Promise<Response> {
   if (!bypass && Date.now() < _rateLimitUntil) {
     return new Response(JSON.stringify({ ok: false, error: 'rate_limit_backoff' }), {
@@ -1543,69 +1499,13 @@ async function rateLimitedFetch(url: string, options?: RequestInit, bypass = fal
       headers: { 'Content-Type': 'application/json', 'Retry-After': String(Math.max(1, Math.ceil((_rateLimitUntil - Date.now()) / 1000))) },
     });
   }
-  // Side effects with durable idempotency claims must make exactly one transport attempt.
-  if (bypass) {
-    const elapsed = Date.now() - _lastGraytagRequest;
-    if (elapsed < 1500) await new Promise(r => setTimeout(r, 1500 - elapsed));
-    _lastGraytagRequest = Date.now();
-    const proxyUrl = _proxyList.length > 0 ? proxyToUrl(_proxyList[_proxyIndex]) : null;
-    return proxyUrl ? curlFetch(url, options, proxyUrl) : fetch(url, options);
-  }
-  // 프록시 없으면 기존 방식
-  if (_proxyList.length === 0) {
-    const elapsed = Date.now() - _lastGraytagRequest;
-    if (elapsed < 1500) await new Promise(r => setTimeout(r, 1500 - elapsed));
-    _lastGraytagRequest = Date.now();
-    const resp = await fetch(url, options);
-    if (resp.status === 429) _rateLimitUntil = Math.max(_rateLimitUntil, Date.now() + CHAT_RATE_LIMIT_BACKOFF_MS);
-    if (resp.status === 403) console.log('[rate-limiter] 403 감지 (프록시 없음)');
-    return resp;
-  }
-
-  // 프록시 있으면: 최대 전체 프록시 수만큼 재시도
-  const maxAttempts = Math.min(_proxyList.length, 10);
-  let lastResp: Response | null = null;
-
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const elapsed = Date.now() - _lastGraytagRequest;
-    if (elapsed < 300) await new Promise(r => setTimeout(r, 300 - elapsed));
-    _lastGraytagRequest = Date.now();
-
-    try {
-      const proxyUrl = _proxyList.length > 0 ? proxyToUrl(_proxyList[_proxyIndex]) : null;
-      const resp = proxyUrl
-        ? await curlFetch(url, options, proxyUrl)
-        : await fetch(url, options);
-
-      if (resp.status === 403 || resp.status === 429) {
-        if (resp.status === 429) _rateLimitUntil = Math.max(_rateLimitUntil, Date.now() + CHAT_RATE_LIMIT_BACKOFF_MS);
-        console.log(`[ProxyRotator] 시도 ${attempt + 1}/${maxAttempts} — ${resp.status} 감지, 다음 프록시로`);
-        rotateProxy(`${resp.status}`);
-        lastResp = resp;
-        continue; // 즉시 다음 프록시
-      }
-
-      // 성공
-      if (attempt > 0) console.log(`[ProxyRotator] ✓ 시도 ${attempt + 1}번째에 성공`);
-      return resp;
-
-    } catch (e: any) {
-      console.log(`[ProxyRotator] 시도 ${attempt + 1}/${maxAttempts} — 연결 실패: ${e.message}, 다음 프록시로`);
-      rotateProxy('연결실패');
-      continue;
-    }
-  }
-
-  console.log(`[ProxyRotator] ✗ 모든 프록시 실패 — 마지막 응답 반환`);
-  return lastResp ?? new Response(JSON.stringify({ ok: false, error: '모든 프록시 실패' }), {
-    status: 429, headers: { 'Content-Type': 'application/json' }
-  });
+  const elapsed = Date.now() - _lastGraytagRequest;
+  if (elapsed < 1500) await new Promise(r => setTimeout(r, 1500 - elapsed));
+  _lastGraytagRequest = Date.now();
+  const response = await fetch(url, options);
+  if (response.status === 429) _rateLimitUntil = Math.max(_rateLimitUntil, Date.now() + CHAT_RATE_LIMIT_BACKOFF_MS);
+  return response;
 }
-
-// 서버 시작 시 프록시 로드 + 1시간마다 갱신
-loadProxies();
-setInterval(loadProxies, 60 * 60 * 1000);
-
 
 function extractLenderDeals(payload: any): any[] {
   const data = payload?.data ?? payload;
@@ -2493,7 +2393,7 @@ app.post('/post/create', async (c) => {
     return c.json({ error: '쿠키가 만료됐어요.', code: 'COOKIE_EXPIRED' }, 401);
 
   try {
-    // multipart/form-data 구성 (string으로 직접 구성 - curlFetch 호환)
+    // multipart/form-data 구성 (string으로 직접 구성)
     const boundary = '----GraytagBoundary' + Date.now().toString(36);
     const productModelJson = JSON.stringify(productModel);
     const multipartBody = [
