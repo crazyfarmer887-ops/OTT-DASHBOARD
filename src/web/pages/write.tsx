@@ -1106,6 +1106,12 @@ export default function WritePage() {
         )}
       </div>
 
+      {error && (
+        <div role="alert" aria-live="assertive" style={{ background: '#FFF0F0', borderRadius: 12, padding: '12px 14px', marginBottom: 12, fontSize: 14, color: '#B91C1C' }}>
+          {error}
+        </div>
+      )}
+
       {/* 등록 버튼 */}
       <button onClick={handleSubmit} disabled={youtubeSubmitDisabled} style={{
         width: '100%', background: youtubeSubmitDisabled ? '#D1D5DB' : '#A78BFA', border: 'none', borderRadius: 14,
