@@ -16,6 +16,7 @@ const ROUTE_TITLES: Array<{ pattern: RegExp; title: string }> = [
 ];
 
 export function dashboardPageTitleForPath(pathname: string): string {
+  if (pathname.startsWith('/spotify-invites')) return 'Spotify 초대 | 대시보드';
   const normalizedPath = normalizePathname(pathname);
   const match = ROUTE_TITLES.find((route) => route.pattern.test(normalizedPath));
   return match ? `${DASHBOARD_TITLE_BASE} | ${match.title}` : DASHBOARD_TITLE_BASE;

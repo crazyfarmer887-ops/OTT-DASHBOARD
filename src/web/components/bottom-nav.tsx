@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useLocation } from "wouter";
-import { Home, BarChart2, PenLine, LayoutGrid, User, Calculator, MessageCircle, Settings2, Info, Menu, X, RefreshCw, Youtube, Users } from "lucide-react";
+import { Home, BarChart2, PenLine, LayoutGrid, User, Calculator, MessageCircle, Settings2, Info, Menu, X, RefreshCw, Youtube, Users, Music2 } from "lucide-react";
 import { getGraytagAccountId, setGraytagAccountId, type GraytagAccountId } from "../lib/admin-auth";
 
 const navGroups = [
@@ -10,6 +10,7 @@ const navGroups = [
     { path: "/everyview", label: "에브리뷰", Icon: Users },
     { path: "/renewals", label: "연장 관리", Icon: RefreshCw },
     { path: "/youtube-invites", label: "유튜브 초대", Icon: Youtube },
+    { path: "/spotify-invites", label: "Spotify 초대", Icon: Music2 },
     { path: "/party-info", label: "파티정보", Icon: Info },
     { path: "/edit-price", label: "게시물",  Icon: Settings2 },
   ] },

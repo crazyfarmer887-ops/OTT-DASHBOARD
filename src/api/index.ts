@@ -72,6 +72,8 @@ import {
   YOUTUBE_SALES_SESSION_STATUS_PATH,
   type GraytagAuthCookies,
 } from '../lib/graytag-sales-session';
+import { loadGbutsSession, parseGbutsToken, saveGbutsSession } from '../lib/gbuts-session';
+import { createGbutsSpotifySellerClient, GBUTS_SPOTIFY_POST_SEQ } from '../scheduler/gbuts-spotify-sync';
 
 const EMAIL_SERVER = "http://127.0.0.1:3001";
 // MANAGEMENT_HIDDEN_ACCOUNTS_PATH is owned by src/lib/management-hidden-accounts.ts.
@@ -105,6 +107,7 @@ const ADMIN_REQUIRED_GET_PREFIXES = [
   '/operations-center',
   '/renewal-automation',
   '/youtube',
+  '/gbuts',
 ];
 
 function normalizedApiPath(path: string): string {
@@ -1081,6 +1084,62 @@ app.post('/session/accounts/youtube-invite-sales/cookies', async (c) => {
       updatedAt,
     },
   });
+});
+
+app.get('/gbuts/session', async (c) => {
+  const saved = loadGbutsSession();
+  const token = saved?.token || process.env.GBUTS_API_TOKEN?.trim();
+  if (!token) return c.json({ connected: false, syncEnabled: process.env.GBUTS_SPOTIFY_SYNC_ENABLED === 'true',
+    autoMessageEnabled: process.env.GBUTS_SPOTIFY_AUTO_MESSAGE_ENABLED === 'true' });
+  try {
+    const members = await createGbutsSpotifySellerClient(token).listMembers(
+      Number(process.env.GBUTS_SPOTIFY_POST_SEQ || GBUTS_SPOTIFY_POST_SEQ));
+    return c.json({ connected: true, sellerLabel: saved?.sellerLabel || 'GButs seller',
+      connectedAt: saved?.connectedAt || null, memberCount: members.length,
+      syncEnabled: process.env.GBUTS_SPOTIFY_SYNC_ENABLED === 'true',
+      autoMessageEnabled: process.env.GBUTS_SPOTIFY_AUTO_MESSAGE_ENABLED === 'true' });
+  } catch {
+    return c.json({ connected: false, expired: true, sellerLabel: saved?.sellerLabel || null,
+      syncEnabled: process.env.GBUTS_SPOTIFY_SYNC_ENABLED === 'true',
+      autoMessageEnabled: process.env.GBUTS_SPOTIFY_AUTO_MESSAGE_ENABLED === 'true' });
+  }
+});
+
+app.post('/gbuts/session', async (c) => {
+  const body = await c.req.json().catch(() => null) as { email?: unknown; password?: unknown; token?: unknown } | null;
+  let token: string;
+  let sellerLabel = 'GButs seller';
+  if (typeof body?.token === 'string') {
+    try { token = parseGbutsToken(body.token); }
+    catch { return c.json({ ok: false, error: 'GButs 로그인 토큰 형식이 올바르지 않습니다.' }, 400); }
+  } else {
+    if (typeof body?.email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.email.trim())
+      || typeof body.password !== 'string' || body.password.length < 6 || body.password.length > 256) {
+      return c.json({ ok: false, error: 'GButs 이메일과 비밀번호를 입력해 주세요.' }, 400);
+    }
+    try {
+      const response = await fetch('https://api.gbuts.com/api/auth', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(15_000),
+        body: JSON.stringify({ principal: body.email.trim(), credentials: body.password }),
+      });
+      if (!response.ok) return c.json({ ok: false, error: 'GButs 로그인 정보를 확인해 주세요.' }, 401);
+      const payload = await response.json() as { response?: { apiToken?: unknown; account?: { nickname?: unknown } } };
+      token = parseGbutsToken(payload.response?.apiToken);
+      if (typeof payload.response?.account?.nickname === 'string') sellerLabel = payload.response.account.nickname.slice(0, 80);
+    } catch { return c.json({ ok: false, error: 'GButs 로그인 연결에 실패했습니다.' }, 502); }
+  }
+  try {
+    // A buyer account must not be accepted as this listing's seller connection.
+    await createGbutsSpotifySellerClient(token).listMembers(
+      Number(process.env.GBUTS_SPOTIFY_POST_SEQ || GBUTS_SPOTIFY_POST_SEQ));
+    saveGbutsSession({ token, sellerLabel, connectedAt: new Date().toISOString() });
+  } catch { return c.json({ ok: false, error: '이 GButs 계정으로 Spotify 판매자 주문을 읽을 수 없습니다.' }, 403); }
+  writeAudit({ actor: authenticatedAdminActor(c), action: 'session.gbuts.updated', targetType: 'gbutsSession',
+    targetId: 'spotify-seller', summary: 'GButs Spotify seller session connected', result: 'success',
+    requestId: auditRequestId(c), details: { reason: 'seller-session-connect' } });
+  return c.json({ ok: true, connected: true, sellerLabel,
+    syncEnabled: process.env.GBUTS_SPOTIFY_SYNC_ENABLED === 'true',
+    autoMessageEnabled: process.env.GBUTS_SPOTIFY_AUTO_MESSAGE_ENABLED === 'true' });
 });
 
 // ─── 에브리뷰 세션 상태 (everyview session-keeper v1 상태 파일) ──
