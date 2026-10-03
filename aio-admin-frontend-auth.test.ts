@@ -68,7 +68,9 @@ describe("AIO admin auth frontend fetch patch", () => {
     const eventSpy = vi.fn();
     window.addEventListener("aio-admin-auth-failure", eventSpy);
 
-    const originalFetch = vi.fn(async () => new Response(JSON.stringify({ ok: false }), { status: 403 }));
+    const originalFetch = vi.fn(async () => new Response(JSON.stringify({ ok: false }), {
+      status: 403, headers: { 'x-aio-admin-auth-failure': 'invalid' },
+    }));
     Object.defineProperty(window, "fetch", { value: originalFetch, writable: true });
 
     installAdminAuthFetchPatch();
@@ -76,6 +78,26 @@ describe("AIO admin auth frontend fetch patch", () => {
 
     expect(alertSpy).toHaveBeenCalledWith(expect.stringContaining("AIO 관리자 토큰"));
     expect(eventSpy).toHaveBeenCalledTimes(1);
+    window.removeEventListener("aio-admin-auth-failure", eventSpy);
+  });
+
+  it("does not mistake a GButs seller permission error for an AIO admin token error", async () => {
+    setAdminToken("secret-token");
+    const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => undefined);
+    const eventSpy = vi.fn();
+    window.addEventListener("aio-admin-auth-failure", eventSpy);
+
+    const originalFetch = vi.fn(async () => new Response(JSON.stringify({
+      ok: false, error: "이 GButs 계정으로 Spotify 판매자 주문을 읽을 수 없습니다.",
+    }), { status: 403 }));
+    Object.defineProperty(window, "fetch", { value: originalFetch, writable: true });
+
+    installAdminAuthFetchPatch();
+    const response = await fetch("/api/gbuts/session", { method: "POST" });
+
+    expect(response.status).toBe(403);
+    expect(alertSpy).not.toHaveBeenCalled();
+    expect(eventSpy).not.toHaveBeenCalled();
     window.removeEventListener("aio-admin-auth-failure", eventSpy);
   });
 });

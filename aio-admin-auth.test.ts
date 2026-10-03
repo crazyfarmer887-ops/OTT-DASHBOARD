@@ -53,8 +53,12 @@ describe('AIO admin auth guard', () => {
   it('rejects dangerous APIs without a valid bearer or x-admin-token', async () => {
     process.env.AIO_ADMIN_TOKEN = 'test-admin-token';
 
-    await expect(post('/post/keepAcct')).resolves.toHaveProperty('status', 403);
-    await expect(post('/post/keepAcct', { authorization: 'Bearer wrong' })).resolves.toHaveProperty('status', 403);
+    const missing = await post('/post/keepAcct');
+    const invalid = await post('/post/keepAcct', { authorization: 'Bearer wrong' });
+    expect(missing.status).toBe(403);
+    expect(invalid.status).toBe(403);
+    expect(missing.headers.get('x-aio-admin-auth-failure')).toBe('invalid');
+    expect(invalid.headers.get('x-aio-admin-auth-failure')).toBe('invalid');
   });
 
   it('allows dangerous APIs with either bearer or x-admin-token auth', async () => {

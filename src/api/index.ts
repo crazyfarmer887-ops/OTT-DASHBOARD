@@ -157,10 +157,12 @@ app.use('*', async (c, next) => {
 
   const token = configuredAdminToken();
   if (!token) {
+    c.header('x-aio-admin-auth-failure', 'unconfigured');
     return c.json({ ok: false, error: 'admin auth is not configured' }, 503);
   }
 
   if (!hasValidAdminToken(c, token)) {
+    c.header('x-aio-admin-auth-failure', 'invalid');
     return c.json({ ok: false, error: 'forbidden' }, 403);
   }
 

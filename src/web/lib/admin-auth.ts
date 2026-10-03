@@ -143,6 +143,7 @@ function authFailureMessage(status: 403 | 503): string {
 
 function notifyAuthFailure(response: Response, input: RequestInfo | URL): void {
   if (response.status !== 403 && response.status !== 503) return;
+  if (!response.headers.has('x-aio-admin-auth-failure')) return;
   if (!isSameOriginApiRequest(input)) return;
 
   const status = response.status as 403 | 503;
