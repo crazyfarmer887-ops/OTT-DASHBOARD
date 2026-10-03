@@ -1,11 +1,19 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createGbutsSpotifyNotionClient, createGbutsSpotifySellerClient, syncGbutsSpotifyCredentials, type SpotifyNotionRow } from '../src/scheduler/gbuts-spotify-sync';
 
-const member = { seq: 91, userSeq: 42, productId: 801, status: 'APPLY', cancelStatus: null };
+const member = { seq: 91, userSeq: 42, productId: '801', status: 'APPLY', cancelStatus: null };
 const credentialMessage = { senderSeq: 42, message: 'Spotify email: buyer@example.com\nPassword: secret123',
   messageType: 'TEXT', createdAt: '2026-10-02T10:00:00Z' };
 
 describe('GButs Spotify Notion sync', () => {
+  it('accepts the string product IDs returned by GButs seller members', async () => {
+    const liveFormatMember = { ...member, productId: 'SPOT1234' };
+    const transport = vi.fn(async () => new Response(JSON.stringify({ response: [liveFormatMember] }), { status: 200 })) as unknown as typeof fetch;
+    const client = createGbutsSpotifySellerClient('session-token', transport);
+
+    expect(await client.listMembers(15557)).toEqual([liveFormatMember]);
+  });
+
   it('uses the seller member and private chat endpoints observed in GButs', async () => {
     const urls: string[] = [];
     const transport = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {

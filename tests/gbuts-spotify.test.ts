@@ -8,12 +8,12 @@ const message = (senderSeq: number, text: string, createdAt: string) => ({
 
 describe('GButs Spotify invitation matching', () => {
   it('keys a buyer by the seller listing and member identity', () => {
-    expect(gbutsSpotifyOrderKey(15557, { seq: 9, userSeq: buyer, productId: 100, status: 'APPLY', cancelStatus: null }))
+    expect(gbutsSpotifyOrderKey(15557, { seq: 9, userSeq: buyer, productId: '100', status: 'APPLY', cancelStatus: null }))
       .toBe('15557:9');
   });
 
   it('skips cancelled and refunded members', () => {
-    const member = { seq: 9, userSeq: buyer, productId: 100, status: 'APPLY', cancelStatus: null };
+    const member = { seq: 9, userSeq: buyer, productId: '100', status: 'APPLY', cancelStatus: null };
     expect(isActiveGbutsSpotifyMember(member)).toBe(true);
     expect(isActiveGbutsSpotifyMember({ ...member, cancelStatus: 'REFUND_REJECTED' })).toBe(true);
     expect(isActiveGbutsSpotifyMember({ ...member, cancelStatus: 'REFUND_REQUESTED' })).toBe(false);

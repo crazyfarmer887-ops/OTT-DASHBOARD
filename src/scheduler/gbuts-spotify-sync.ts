@@ -148,6 +148,14 @@ function requiredInteger(value: unknown, name: string): number {
   return Number(value);
 }
 
+function requiredProductId(value: unknown): string {
+  const id = typeof value === 'number' && Number.isSafeInteger(value) && value > 0
+    ? String(value) : value;
+  if (typeof id !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(id))
+    throw new Error('productId invalid');
+  return id;
+}
+
 function richTextValue(value: unknown): string {
   if (!Array.isArray(value)) return '';
   return value.map((part) => String(part?.plain_text ?? part?.text?.content ?? '')).join('');
@@ -294,7 +302,7 @@ export function createGbutsSpotifySellerClient(token: string, transport: typeof 
       return rows.map((item: Record<string, unknown>) => ({
         seq: requiredInteger(item.seq, 'member seq'),
         userSeq: requiredInteger(item.userSeq, 'userSeq'),
-        productId: requiredInteger(item.productId, 'productId'),
+        productId: requiredProductId(item.productId),
         status: String(item.status ?? ''),
         cancelStatus: item.cancelStatus == null ? null : String(item.cancelStatus),
       }));

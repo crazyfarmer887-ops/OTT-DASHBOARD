@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { SPOTIFY_BUYER_GUIDE, syncGbutsSpotifyMessages, type GbutsSpotifyMessageJournal } from '../src/scheduler/gbuts-spotify-messages';
 import type { SpotifyNotionRow } from '../src/scheduler/gbuts-spotify-sync';
 
-const member = { seq: 91, userSeq: 42, productId: 801, status: 'APPLY', cancelStatus: null };
+const member = { seq: 91, userSeq: 42, productId: '801', status: 'APPLY', cancelStatus: null };
 const row: SpotifyNotionRow = { id: 'page-1', orderKey: '15557:91', email: 'buyer@example.com',
   emailHistory: [], password: 'secret123', invited: true, cancelled: false };
 const buyerMessage = { senderSeq: 42, message: 'Spotify email: buyer@example.com\nPassword: secret123',

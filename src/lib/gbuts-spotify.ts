@@ -2,7 +2,7 @@
 export interface GbutsSpotifyMember {
   seq: number;
   userSeq: number;
-  productId: number;
+  productId: string;
   status: string;
   cancelStatus: string | null;
 }
