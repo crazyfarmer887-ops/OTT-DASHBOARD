@@ -13,7 +13,7 @@ export function spotifyInvitedReply(email: string): string {
 }
 
 type MessageState = 'attempted' | 'confirmed';
-interface MessageRecord { state: MessageState; text: string; roomId: number; updatedAt: string }
+interface MessageRecord { state: MessageState; text: string; roomId: string; updatedAt: string }
 export interface GbutsSpotifyMessageJournal { version: 1; records: Record<string, MessageRecord> }
 
 export function readGbutsSpotifyMessageJournal(path = process.env.GBUTS_SPOTIFY_MESSAGE_JOURNAL_PATH || DEFAULT_JOURNAL_PATH): GbutsSpotifyMessageJournal {
@@ -31,11 +31,11 @@ export function writeGbutsSpotifyMessageJournal(journal: GbutsSpotifyMessageJour
 
 export interface GbutsSpotifyMessageDependencies {
   listMembers(postSeq: number): Promise<GbutsSpotifyMember[]>;
-  openPrivateRoom(postSeq: number, userSeq: number): Promise<number>;
-  getChat(roomId: number): Promise<{ messages: GbutsChatMessage[] }>;
+  openPrivateRoom(postSeq: number, userSeq: number): Promise<string>;
+  getChat(roomId: string): Promise<{ messages: GbutsChatMessage[] }>;
   sellerAccountSeq(): Promise<number>;
   listRows(): Promise<SpotifyNotionRow[]>;
-  sendText(roomId: number, accountSeq: number, text: string): Promise<void>;
+  sendText(roomId: string, accountSeq: number, text: string): Promise<void>;
   readJournal(): GbutsSpotifyMessageJournal;
   writeJournal(journal: GbutsSpotifyMessageJournal): void;
   now?(): string;
@@ -94,8 +94,8 @@ export async function syncGbutsSpotifyMessages(deps: GbutsSpotifyMessageDependen
 }
 
 /** GButs' web client sends the same text payload to the STOMP destination below. */
-export async function sendGbutsText(roomId: number, accountSeq: number, text: string): Promise<void> {
-  if (!Number.isSafeInteger(roomId) || roomId <= 0 || !Number.isSafeInteger(accountSeq) || accountSeq <= 0
+export async function sendGbutsText(roomId: string, accountSeq: number, text: string): Promise<void> {
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(roomId) || !Number.isSafeInteger(accountSeq) || accountSeq <= 0
     || !text.trim() || text.length > 2000) throw new Error('GButs chat message invalid');
   const payload = JSON.stringify({ accountSeq, payload: text.trim(), roomId, type: 'TEXT' });
   await new Promise<void>((resolve, reject) => {

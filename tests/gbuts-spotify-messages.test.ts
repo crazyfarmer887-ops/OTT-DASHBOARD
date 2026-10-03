@@ -13,13 +13,13 @@ describe('GButs Spotify buyer messages', () => {
     const journal: GbutsSpotifyMessageJournal = { version: 1, records: {} };
     const sendText = vi.fn(async () => { throw new Error('network outcome unknown'); });
     const deps = {
-      listMembers: async () => [member], openPrivateRoom: async () => 777,
+      listMembers: async () => [member], openPrivateRoom: async () => '777',
       getChat: async () => ({ messages: [] }), sellerAccountSeq: async () => 7,
       listRows: async () => [], sendText, readJournal: () => journal,
       writeJournal: vi.fn(), now: () => '2026-10-02T10:01:00Z',
     };
     expect(await syncGbutsSpotifyMessages(deps, 15557)).toMatchObject({ guidesAttempted: 1 });
-    expect(sendText).toHaveBeenCalledWith(777, 7, SPOTIFY_BUYER_GUIDE);
+    expect(sendText).toHaveBeenCalledWith('777', 7, SPOTIFY_BUYER_GUIDE);
     expect(await syncGbutsSpotifyMessages(deps, 15557)).toMatchObject({ guidesAttempted: 0 });
     expect(sendText).toHaveBeenCalledTimes(1);
   });
@@ -28,13 +28,13 @@ describe('GButs Spotify buyer messages', () => {
     const journal: GbutsSpotifyMessageJournal = { version: 1, records: {} };
     const sendText = vi.fn(async () => undefined);
     const deps = {
-      listMembers: async () => [member], openPrivateRoom: async () => 777,
+      listMembers: async () => [member], openPrivateRoom: async () => '777',
       getChat: async () => ({ messages: [buyerMessage] }), sellerAccountSeq: async () => 7,
       listRows: async () => [row], sendText, readJournal: () => journal,
       writeJournal: vi.fn(), now: () => '2026-10-02T10:01:00Z',
     };
     expect(await syncGbutsSpotifyMessages(deps, 15557)).toMatchObject({ invitedRepliesAttempted: 1, guidesAttempted: 0 });
-    expect(sendText).toHaveBeenCalledWith(777, 7, expect.stringContaining('buyer@example.com'));
+    expect(sendText).toHaveBeenCalledWith('777', 7, expect.stringContaining('buyer@example.com'));
     expect(await syncGbutsSpotifyMessages(deps, 15557)).toMatchObject({ invitedRepliesAttempted: 0 });
     expect(sendText).toHaveBeenCalledTimes(1);
   });
@@ -42,7 +42,7 @@ describe('GButs Spotify buyer messages', () => {
   it('does not confirm a stale checkbox after the buyer changes credentials', async () => {
     const sendText = vi.fn();
     const result = await syncGbutsSpotifyMessages({
-      listMembers: async () => [member], openPrivateRoom: async () => 777,
+      listMembers: async () => [member], openPrivateRoom: async () => '777',
       getChat: async () => ({ messages: [{ ...buyerMessage, message: 'Spotify email: new@example.com\nPassword: newsecret' }] }),
       sellerAccountSeq: async () => 7, listRows: async () => [row], sendText,
       readJournal: () => ({ version: 1, records: {} }), writeJournal: vi.fn(),

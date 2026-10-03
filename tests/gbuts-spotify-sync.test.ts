@@ -20,20 +20,20 @@ describe('GButs Spotify Notion sync', () => {
       urls.push(String(url));
       expect(new Headers(init?.headers).get('api_key')).toBe('Bearer session-token');
       const response = String(url).endsWith('/member') ? [member]
-        : String(url).endsWith('/api/room/chat') ? { roomId: 777 }
+        : String(url).endsWith('/api/room/chat') ? { roomId: 'ROOM123456789' }
           : String(url).endsWith('/chat') ? { members: [], messages: [credentialMessage] }
             : { seq: 7 };
       return new Response(JSON.stringify({ response }), { status: 200 });
     }) as unknown as typeof fetch;
     const client = createGbutsSpotifySellerClient('session-token', transport);
     expect(await client.listMembers(15557)).toEqual([member]);
-    expect(await client.openPrivateRoom(15557, 42)).toBe(777);
-    expect((await client.getChat(777)).messages).toEqual([credentialMessage]);
+    expect(await client.openPrivateRoom(15557, 42)).toBe('ROOM123456789');
+    expect((await client.getChat('ROOM123456789')).messages).toEqual([credentialMessage]);
     expect(await client.sellerAccountSeq()).toBe(7);
     expect(urls).toEqual([
       'https://api.gbuts.com/api/seller/subscribe/share/15557/member',
       'https://api.gbuts.com/api/room/chat',
-      'https://api.gbuts.com/api/rooms/777/chat',
+      'https://api.gbuts.com/api/rooms/ROOM123456789/chat',
       'https://api.gbuts.com/api/account/me',
     ]);
   });
@@ -47,8 +47,8 @@ describe('GButs Spotify Notion sync', () => {
     });
     const deps = {
       listMembers: async () => [member],
-      openPrivateRoom: vi.fn(async () => 777),
-      getChat: async () => ({ roomId: 777, members: [], messages: [
+      openPrivateRoom: vi.fn(async () => '777'),
+      getChat: async () => ({ roomId: '777', members: [], messages: [
         { ...credentialMessage, senderSeq: 7, message: 'Spotify email: wrong@example.com\nPassword: wrong123' },
         credentialMessage,
       ] }),
@@ -75,8 +75,8 @@ describe('GButs Spotify Notion sync', () => {
     const createRow = vi.fn();
     const deps = {
       listMembers: async () => [member],
-      openPrivateRoom: async () => 777,
-      getChat: async () => ({ roomId: 777, members: [], messages: [credentialMessage] }),
+      openPrivateRoom: async () => '777',
+      getChat: async () => ({ roomId: '777', members: [], messages: [credentialMessage] }),
       listRows: async () => [row],
       getRow: async () => row,
       createRow, claimRow, replaceCredentials: vi.fn(), cancelRow: vi.fn(),
@@ -94,9 +94,9 @@ describe('GButs Spotify Notion sync', () => {
     const secondMember = { ...member, seq: 92, userSeq: 43 };
     const result = await syncGbutsSpotifyCredentials({
       listMembers: async () => [member, secondMember],
-      openPrivateRoom: async (_postSeq, userSeq) => userSeq,
+      openPrivateRoom: async (_postSeq, userSeq) => String(userSeq),
       getChat: async (roomId) => ({ roomId, members: [], messages: [
-        { ...credentialMessage, senderSeq: roomId },
+        { ...credentialMessage, senderSeq: Number(roomId) },
       ] }),
       listRows: async () => [manual],
       getRow: vi.fn(), createRow, claimRow, replaceCredentials: vi.fn(), cancelRow: vi.fn(),

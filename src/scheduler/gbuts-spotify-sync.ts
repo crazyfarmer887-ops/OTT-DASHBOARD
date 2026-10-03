@@ -23,15 +23,15 @@ export interface SpotifyNotionRow {
 }
 
 interface GbutsChatRoom {
-  roomId: number;
+  roomId: string;
   members: unknown[];
   messages: GbutsChatMessage[];
 }
 
 export interface GbutsSpotifySyncDependencies {
   listMembers(postSeq: number): Promise<GbutsSpotifyMember[]>;
-  openPrivateRoom(postSeq: number, userSeq: number): Promise<number>;
-  getChat(roomId: number): Promise<GbutsChatRoom>;
+  openPrivateRoom(postSeq: number, userSeq: number): Promise<string>;
+  getChat(roomId: string): Promise<GbutsChatRoom>;
   listRows(): Promise<SpotifyNotionRow[]>;
   getRow(id: string): Promise<SpotifyNotionRow | null>;
   createRow(orderKey: string, credentials: SpotifyCredentials): Promise<SpotifyNotionRow>;
@@ -153,6 +153,14 @@ function requiredProductId(value: unknown): string {
     ? String(value) : value;
   if (typeof id !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(id))
     throw new Error('productId invalid');
+  return id;
+}
+
+function requiredRoomId(value: unknown): string {
+  const id = typeof value === 'number' && Number.isSafeInteger(value) && value > 0
+    ? String(value) : value;
+  if (typeof id !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(id))
+    throw new Error('roomId invalid');
   return id;
 }
 
@@ -307,14 +315,14 @@ export function createGbutsSpotifySellerClient(token: string, transport: typeof 
         cancelStatus: item.cancelStatus == null ? null : String(item.cancelStatus),
       }));
     },
-    async openPrivateRoom(postSeq: number, userSeq: number): Promise<number> {
+    async openPrivateRoom(postSeq: number, userSeq: number): Promise<string> {
       const room = await request('/api/room/chat', { method: 'POST', body: JSON.stringify({
         roomType: 'PERSONAL', typeSeq: postSeq, type: 'SUBSCRIPTION', userSeq,
       }) });
-      return requiredInteger(room.roomId, 'roomId');
+      return requiredRoomId(room.roomId);
     },
-    async getChat(roomId: number): Promise<GbutsChatRoom> {
-      const chat = await request(`/api/rooms/${requiredInteger(roomId, 'roomId')}/chat`);
+    async getChat(roomId: string): Promise<GbutsChatRoom> {
+      const chat = await request(`/api/rooms/${requiredRoomId(roomId)}/chat`);
       if (!chat || !Array.isArray(chat.messages) || !Array.isArray(chat.members))
         throw new Error('GButs chat response invalid');
       return { roomId, members: chat.members, messages: chat.messages.map((item: Record<string, unknown>) => ({
