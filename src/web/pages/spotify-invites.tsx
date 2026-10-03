@@ -84,8 +84,10 @@ export default function SpotifyInvitesPage() {
     <section style={{ marginTop: 24, padding: 20, background: '#f8fafc', borderRadius: 14,
       border: '1px solid #e2e8f0' }}>
       <h2 style={{ margin: '0 0 12px', fontSize: 20 }}>초대 진행</h2>
-      <p style={{ margin: '0 0 12px' }}>자동 입력: <strong>{status?.syncEnabled ? '실행 중' : '준비 중'}</strong></p>
-      <p style={{ margin: '0 0 12px' }}>구매자 자동 안내: <strong>{status?.autoMessageEnabled ? '실행 중' : '준비 중'}</strong></p>
+      <p style={{ margin: '0 0 12px' }}>자동 입력: <strong>{!status ? '확인 중'
+        : !status.syncEnabled ? '준비 중' : status.connected ? '실행 중 · 약 1분 간격' : 'GButs 연결 대기'}</strong></p>
+      <p style={{ margin: '0 0 12px' }}>구매자 자동 안내: <strong>{!status ? '확인 중'
+        : !status.autoMessageEnabled ? '준비 중' : status.connected ? '실행 중' : 'GButs 연결 대기'}</strong></p>
       <p style={{ color: '#475569', lineHeight: 1.6 }}>구매자가 1:1 채팅에 Spotify 아이디와 비밀번호를 남기면 노션 표에 기록합니다. 동업자는 초대 후 Invited를 체크합니다.</p>
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
         <a href="https://app.notion.com/p/Spotify-Family-Invitation-Checklist-3edff936cc9b81dda097cc7f352152ed" target="_blank" rel="noreferrer">Spotify 노션 표 열기</a>

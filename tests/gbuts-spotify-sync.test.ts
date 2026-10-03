@@ -57,6 +57,65 @@ describe('GButs Spotify Notion sync', () => {
     expect(await syncGbutsSpotifyCredentials(deps, 15557)).toMatchObject({ created: 0, updated: 0 });
   });
 
+  it('links a unique manually entered row to its order instead of duplicating it', async () => {
+    let row: SpotifyNotionRow = { id: 'manual-page', orderKey: '', email: 'buyer@example.com',
+      password: 'secret123', emailHistory: [], invited: false, cancelled: false };
+    const claimRow = vi.fn(async (_row: SpotifyNotionRow, orderKey: string) => {
+      row = { ...row, orderKey };
+      return row;
+    });
+    const createRow = vi.fn();
+    const deps = {
+      listMembers: async () => [member],
+      openPrivateRoom: async () => 777,
+      getChat: async () => ({ roomId: 777, members: [], messages: [credentialMessage] }),
+      listRows: async () => [row],
+      getRow: async () => row,
+      createRow, claimRow, replaceCredentials: vi.fn(), cancelRow: vi.fn(),
+    };
+    expect(await syncGbutsSpotifyCredentials(deps, 15557)).toMatchObject({ created: 0, updated: 0, conflicts: 0 });
+    expect(claimRow).toHaveBeenCalledWith(expect.objectContaining({ id: 'manual-page' }), '15557:91');
+    expect(createRow).not.toHaveBeenCalled();
+  });
+
+  it('does not claim a manual row when two members sent the same credentials', async () => {
+    const manual: SpotifyNotionRow = { id: 'manual-page', orderKey: '', email: 'buyer@example.com',
+      password: 'secret123', emailHistory: [], invited: false, cancelled: false };
+    const claimRow = vi.fn();
+    const createRow = vi.fn();
+    const secondMember = { ...member, seq: 92, userSeq: 43 };
+    const result = await syncGbutsSpotifyCredentials({
+      listMembers: async () => [member, secondMember],
+      openPrivateRoom: async (_postSeq, userSeq) => userSeq,
+      getChat: async (roomId) => ({ roomId, members: [], messages: [
+        { ...credentialMessage, senderSeq: roomId },
+      ] }),
+      listRows: async () => [manual],
+      getRow: vi.fn(), createRow, claimRow, replaceCredentials: vi.fn(), cancelRow: vi.fn(),
+    }, 15557);
+    expect(result.conflicts).toBe(2);
+    expect(claimRow).not.toHaveBeenCalled();
+    expect(createRow).not.toHaveBeenCalled();
+  });
+
+  it('claims a manual Notion row by setting only its order ID', async () => {
+    const row: SpotifyNotionRow = { id: 'manual-page', orderKey: '', email: 'buyer@example.com',
+      password: 'secret123', emailHistory: [], invited: true, cancelled: false };
+    const transport = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      expect(JSON.parse(String(init?.body))).toEqual({ properties: {
+        'GButs order ID': { rich_text: [{ text: { content: '15557:91' } }] },
+      } });
+      return new Response(JSON.stringify({ id: row.id, archived: false, in_trash: false, properties: {
+        'Spotify account': { title: [{ plain_text: row.email }] },
+        Password: { rich_text: [{ plain_text: row.password }] },
+        Invited: { checkbox: row.invited },
+        'GButs order ID': { rich_text: [{ plain_text: '15557:91' }] },
+      } }), { status: 200 });
+    }) as unknown as typeof fetch;
+    expect(await createGbutsSpotifyNotionClient('token', undefined, transport).claimRow(row, '15557:91'))
+      .toMatchObject({ orderKey: '15557:91', email: row.email, invited: true });
+  });
+
   it('does not import a cancelled member', async () => {
     const openPrivateRoom = vi.fn();
     const result = await syncGbutsSpotifyCredentials({

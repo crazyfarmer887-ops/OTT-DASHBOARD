@@ -28,6 +28,31 @@ describe('GButs Spotify invitation matching', () => {
     expect(result).toEqual({ email: 'buyer@example.com', password: 'secret123', receivedAt: '2026-10-02T10:01:00Z' });
   });
 
+  it('recognizes an email and password sent as separate replies to the seller request', () => {
+    const result = extractGbutsSpotifyCredentials([
+      message(7, '패밀리 플랜 들어가실 아이디 비밀번호 여기에 남겨주세요.', '2026-10-03T10:31:00Z'),
+      message(buyer, 'buyer@example.com', '2026-10-03T10:32:00Z'),
+      message(buyer, 'samplepass42!@#', '2026-10-03T10:32:01Z'),
+      message(buyer, 'ID 비번 남겼습니다 확인부탁드려요', '2026-10-03T10:33:00Z'),
+    ], buyer);
+    expect(result).toEqual({ email: 'buyer@example.com', password: 'samplepass42!@#',
+      receivedAt: '2026-10-03T10:32:01Z' });
+  });
+
+  it('does not guess an unlabeled password without a seller request or from a later reply', () => {
+    const buyerReplies = [
+      message(buyer, 'buyer@example.com', '2026-10-03T10:32:00Z'),
+      message(buyer, 'samplepass42!@#', '2026-10-03T10:32:01Z'),
+    ];
+    expect(extractGbutsSpotifyCredentials(buyerReplies, buyer)).toBeNull();
+    expect(extractGbutsSpotifyCredentials([
+      message(7, '아이디 비밀번호 남겨주세요.', '2026-10-03T10:31:00Z'),
+      buyerReplies[0],
+      message(buyer, '잠시만요', '2026-10-03T10:32:01Z'),
+      buyerReplies[1],
+    ], buyer)).toBeNull();
+  });
+
   it('requires a new password when the buyer changes the login', () => {
     expect(extractGbutsSpotifyCredentials([
       message(buyer, 'Spotify email: first@example.com\nPassword: firstpass', '2026-10-02T10:00:00Z'),

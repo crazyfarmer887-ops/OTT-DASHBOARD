@@ -35,6 +35,7 @@ export interface GbutsSpotifySyncDependencies {
   listRows(): Promise<SpotifyNotionRow[]>;
   getRow(id: string): Promise<SpotifyNotionRow | null>;
   createRow(orderKey: string, credentials: SpotifyCredentials): Promise<SpotifyNotionRow>;
+  claimRow?(row: SpotifyNotionRow, orderKey: string): Promise<SpotifyNotionRow>;
   replaceCredentials(row: SpotifyNotionRow, credentials: SpotifyCredentials): Promise<SpotifyNotionRow>;
   cancelRow(row: SpotifyNotionRow): Promise<SpotifyNotionRow>;
 }
@@ -44,6 +45,19 @@ export async function syncGbutsSpotifyCredentials(deps: GbutsSpotifySyncDependen
 }> {
   const [members, rows] = await Promise.all([deps.listMembers(postSeq), deps.listRows()]);
   const active = members.filter(isActiveGbutsSpotifyMember);
+  const credentialsByOrder = new Map<string, SpotifyCredentials | null>();
+  const credentialCounts = new Map<string, number>();
+  for (const member of active) {
+    const orderKey = gbutsSpotifyOrderKey(postSeq, member);
+    const roomId = await deps.openPrivateRoom(postSeq, member.userSeq);
+    const chat = await deps.getChat(roomId);
+    const credentials = extractGbutsSpotifyCredentials(chat.messages, member.userSeq);
+    credentialsByOrder.set(orderKey, credentials);
+    if (credentials) {
+      const fingerprint = JSON.stringify([credentials.email, credentials.password]);
+      credentialCounts.set(fingerprint, (credentialCounts.get(fingerprint) || 0) + 1);
+    }
+  }
   let created = 0;
   let updated = 0;
   let cancelled = 0;
@@ -56,11 +70,33 @@ export async function syncGbutsSpotifyCredentials(deps: GbutsSpotifySyncDependen
       conflicts += 1;
       continue;
     }
-    const roomId = await deps.openPrivateRoom(postSeq, member.userSeq);
-    const chat = await deps.getChat(roomId);
-    const credentials = extractGbutsSpotifyCredentials(chat.messages, member.userSeq);
+    const credentials = credentialsByOrder.get(orderKey);
     if (!credentials) { waitingForCredentials += 1; continue; }
     if (matches.length === 0) {
+      const manualMatches = rows.filter((row) => !row.orderKey && !row.cancelled
+        && row.email === credentials.email && row.password === credentials.password);
+      const fingerprint = JSON.stringify([credentials.email, credentials.password]);
+      if (manualMatches.length > 1) { conflicts += 1; continue; }
+      if (manualMatches.length === 1) {
+        if (credentialCounts.get(fingerprint) !== 1 || !deps.claimRow) { conflicts += 1; continue; }
+        const manual = manualMatches[0];
+        const current = await deps.getRow(manual.id);
+        const freshRows = await deps.listRows();
+        if (!current || current.orderKey || current.email !== manual.email
+          || current.password !== manual.password || current.invited !== manual.invited
+          || current.cancelled || freshRows.some((row) => row.orderKey === orderKey)
+          || freshRows.filter((row) => !row.orderKey && !row.cancelled
+            && row.email === credentials.email && row.password === credentials.password).length !== 1) {
+          conflicts += 1;
+          continue;
+        }
+        const claimed = await deps.claimRow(current, orderKey);
+        if (claimed.orderKey !== orderKey || claimed.email !== credentials.email
+          || claimed.password !== credentials.password || claimed.invited !== current.invited)
+          throw new Error('Spotify Notion manual row claim invalid');
+        rows.splice(rows.indexOf(manual), 1, claimed);
+        continue;
+      }
       // Re-read before creating: concurrent runs or a manually inserted row may have claimed this order.
       if ((await deps.listRows()).some((row) => row.orderKey === orderKey)) { conflicts += 1; continue; }
       const row = await deps.createRow(orderKey, credentials);
@@ -195,6 +231,18 @@ export function createGbutsSpotifyNotionClient(token: string, dataSourceId = SPO
       const row = parseNotionRow(await response.json());
       if (!row) throw new Error('Spotify Notion create response invalid');
       return row;
+    },
+    async claimRow(row: SpotifyNotionRow, orderKey: string): Promise<SpotifyNotionRow> {
+      const response = await transport(`https://api.notion.com/v1/pages/${encodeURIComponent(row.id)}`, {
+        method: 'PATCH', headers, signal: AbortSignal.timeout(15_000),
+        body: JSON.stringify({ properties: {
+          'GButs order ID': { rich_text: [{ text: { content: orderKey } }] },
+        } }),
+      });
+      if (!response.ok) throw new Error(`Spotify Notion order claim failed: HTTP ${response.status}`);
+      const claimed = parseNotionRow(await response.json());
+      if (!claimed) throw new Error('Spotify Notion order claim response invalid');
+      return claimed;
     },
     async replaceCredentials(row: SpotifyNotionRow, credentials: SpotifyCredentials): Promise<SpotifyNotionRow> {
       const history = row.email === credentials.email ? row.emailHistory : [...row.emailHistory, row.email];
