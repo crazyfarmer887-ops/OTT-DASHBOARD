@@ -340,6 +340,10 @@ export default function WritePage() {
           const payload = await response.json().catch(() => ({})) as { ok?: boolean; productUsid?: string; code?: string; error?: string; replayed?: boolean };
           const accepted = (response.status === 200 || response.status === 201) && payload.ok === true && typeof payload.productUsid === 'string' && payload.productUsid.length > 0;
           if (!accepted) {
+            if (payload.code === 'YOUTUBE_PROVIDER_ACCESS_DENIED') {
+              stopSafely = true;
+              throw new Error('그레이태그가 서버의 글 등록 요청을 거부했습니다(403). 등록 결과가 불확실하므로 판매내역 확인 전 재등록하지 마세요.');
+            }
             if (payload.code === 'YOUTUBE_FAMILY_GROUP_NO_CAPACITY') {
               await loadYoutubeGroups();
               stopSafely = true;
@@ -1105,6 +1109,12 @@ export default function WritePage() {
           </div>
         )}
       </div>
+
+      {error && (
+        <div role="alert" aria-live="assertive" style={{ background: '#FFF0F0', borderRadius: 12, padding: '12px 14px', marginBottom: 12, fontSize: 14, color: '#B91C1C' }}>
+          {error}
+        </div>
+      )}
 
       {/* 등록 버튼 */}
       <button onClick={handleSubmit} disabled={youtubeSubmitDisabled} style={{

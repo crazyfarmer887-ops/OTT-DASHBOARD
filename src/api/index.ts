@@ -53,11 +53,15 @@ import { buildMultipartJsonBody, curlFetch } from './http-transport';
 import chatNotificationStreamApp from './chat-notification-stream';
 import { createYouTubeInvitationsApp } from './youtube-invitations';
 import { YouTubeFamilyGroupsStore, YouTubeInvitationJobsStore } from '../lib/youtube-invitations';
-import { buildYouTubeEmailExtractionPrompt, buildYouTubeInvitationAlert, buildYouTubeNewSaleCandidate, isYouTubeAutoReplyProduct, parseYouTubeEmailExtractionJson, resolveYouTubeEmailModel, sendHumanReviewAlertIfEnabled, sendYouTubeInvitationAlert, shouldIncludeOffHoursNotice, YOUTUBE_EMAIL_INVITATION_ALERT_CATEGORY, YOUTUBE_NEW_SALE_GUIDE, YOUTUBE_NEW_SALE_GUIDE_CATEGORY } from './youtube-auto-reply';
+import { buildYouTubeEmailExtractionPrompt, buildYouTubeInvitationAlert, isYouTubeAutoReplyProduct, parseYouTubeEmailExtractionJson, resolveYouTubeEmailModel, sendHumanReviewAlertIfEnabled, sendYouTubeInvitationAlert, shouldIncludeOffHoursNotice, YOUTUBE_EMAIL_INVITATION_ALERT_CATEGORY, YOUTUBE_NEW_SALE_GUIDE, YOUTUBE_NEW_SALE_GUIDE_CATEGORY } from './youtube-auto-reply';
 import { normalizeYouTubeAuditReason } from '../lib/youtube-audit-reason';
 import { readAuthoritativeYouTubeSellerProducts, reconcileYouTubeProductRegistration, type YouTubeProductRegistrationReconciliationClaim } from '../lib/youtube-product-registration-reconciliation';
 import { YouTubeProductRegistrationsStore } from '../lib/youtube-product-registrations';
+import { DEFAULT_YOUTUBE_AUTO_LISTING_LOCK_PATH, enqueueYouTubeAutoListingManager, readYouTubeAutoListingState, removeQueuedYouTubeAutoListingManager, writeYouTubeAutoListingState } from '../scheduler/youtube-auto-listings';
+import { runWithExclusivePollLock } from '../scheduler/poll-daemon';
 import { ChatRoomOrganizationValidationError, createChatRoomCategory, deleteChatRoomCategory, loadChatRoomOrganization, renameChatRoomCategory, updateChatRoomOrganizationEntry } from '../lib/chat-room-organization';
+import { parseYouTubeInviteEmailCandidates } from '../lib/youtube-invite-email';
+import { resolveYouTubeBuyerEmailFromChat } from './youtube-chat-email';
 import {
   buildGraytagCookieHeader,
   loadGraytagAuthCookies,
@@ -68,6 +72,8 @@ import {
   YOUTUBE_SALES_SESSION_STATUS_PATH,
   type GraytagAuthCookies,
 } from '../lib/graytag-sales-session';
+import { loadGbutsSession, parseGbutsToken, saveGbutsSession } from '../lib/gbuts-session';
+import { createGbutsSpotifySellerClient, GBUTS_SPOTIFY_POST_SEQ } from '../scheduler/gbuts-spotify-sync';
 
 const EMAIL_SERVER = "http://127.0.0.1:3001";
 // MANAGEMENT_HIDDEN_ACCOUNTS_PATH is owned by src/lib/management-hidden-accounts.ts.
@@ -101,6 +107,7 @@ const ADMIN_REQUIRED_GET_PREFIXES = [
   '/operations-center',
   '/renewal-automation',
   '/youtube',
+  '/gbuts',
 ];
 
 function normalizedApiPath(path: string): string {
@@ -308,6 +315,55 @@ app.use('*', async (c, next) => {
   }, 423);
 });
 
+const autoListingStatePath = () => process.env.YOUTUBE_AUTO_LISTING_STATE_PATH || undefined;
+const autoListingLockPath = () => process.env.YOUTUBE_AUTO_LISTING_LOCK_PATH || DEFAULT_YOUTUBE_AUTO_LISTING_LOCK_PATH;
+const maskedAutoListingEmail = (email: string) => {
+  const [local, domain] = email.split('@');
+  return `${local.slice(0, 1)}***${local.slice(-1)}@${domain}`;
+};
+
+app.get('/youtube/auto-listings', (c) => {
+  try {
+    const state = readYouTubeAutoListingState(autoListingStatePath());
+    return c.json({ ok: true, enabled: process.env.YOUTUBE_AUTO_LISTING_ENABLED === 'true'
+      && process.env.YOUTUBE_INVITE_SALES_ENABLED === 'true'
+      && Boolean(process.env.NOTION_API_TOKEN?.trim()) && Boolean(process.env.AIO_ADMIN_TOKEN?.trim()),
+      queue: state.queue.map(({ id, managerEmail, addedAt }) => ({ id, managerEmailMasked: maskedAutoListingEmail(managerEmail), addedAt })),
+      batch: state.batch ? { label: state.batch.label, completed: state.batch.productUsids.length } : null,
+      lastBatch: state.lastBatch, lastCheck: state.lastCheck });
+  } catch { return c.json({ ok: false, error: 'auto listing state unavailable' }, 503); }
+});
+
+app.post('/youtube/auto-listings/queue', async (c) => {
+  const body = await c.req.json().catch(() => null) as { managerEmail?: unknown } | null;
+  if (typeof body?.managerEmail !== 'string') return c.json({ ok: false, error: 'manager email required' }, 400);
+  let result: { ok: boolean; error?: string } | null = null;
+  const locked = await runWithExclusivePollLock(autoListingLockPath(), async () => {
+    try {
+      const groupsPath = process.env.YOUTUBE_FAMILY_GROUPS_PATH || undefined;
+      const groups = new YouTubeFamilyGroupsStore(groupsPath).read().familyGroups;
+      const next = enqueueYouTubeAutoListingManager(readYouTubeAutoListingState(autoListingStatePath()), body.managerEmail as string, groups);
+      writeYouTubeAutoListingState(next, autoListingStatePath());
+      result = { ok: true };
+    } catch (error) { result = { ok: false, error: error instanceof Error ? error.message : 'queue unavailable' }; }
+  });
+  if (!locked) return c.json({ ok: false, error: 'auto listing busy' }, 409);
+  return c.json(result, result?.ok ? 201 : 400);
+});
+
+app.delete('/youtube/auto-listings/queue/:id', async (c) => {
+  let result: { ok: boolean; error?: string } | null = null;
+  const locked = await runWithExclusivePollLock(autoListingLockPath(), async () => {
+    try {
+      const next = removeQueuedYouTubeAutoListingManager(readYouTubeAutoListingState(autoListingStatePath()), c.req.param('id'));
+      writeYouTubeAutoListingState(next, autoListingStatePath());
+      result = { ok: true };
+    } catch (error) { result = { ok: false, error: error instanceof Error ? error.message : 'queue unavailable' }; }
+  });
+  if (!locked) return c.json({ ok: false, error: 'auto listing busy' }, 409);
+  return c.json(result, result?.ok ? 200 : 400);
+});
+
 app.route('/youtube', youtubeInvitationsApp);
 
 function auditResultFromResults(results: any[]): 'success' | 'blocked' | 'error' {
@@ -432,25 +488,34 @@ async function reconcileYouTubeProductRegistrationFromSeller(claim: YouTubeProdu
   return reconcileYouTubeProductRegistration(claim, observation);
 }
 
-async function finishYouTubeInvitationDelivery(dealUsid: string): Promise<Response> {
+export async function fetchAuthoritativeYouTubeSellerProductsForAutoListing() {
+  const cookies = loadGraytagAuthCookies();
+  if (!cookies) return { authoritative: false, rows: [] };
+  return readAuthoritativeYouTubeSellerProducts(
+    (url, options) => rateLimitedFetch(url, options, true),
+    { ...BASE_HEADERS, Cookie: buildGraytagCookieHeader(cookies),
+      Referer: 'https://graytag.co.kr/lender/deal/list' },
+  );
+}
+
+export async function finishYouTubeInvitationDelivery(dealUsid: string): Promise<Response> {
   const cookies = loadGraytagAuthCookies();
   if (!cookies) throw new Error('YouTube sales session unavailable');
-  const multipart = buildMultipartJsonBody({ dealUsid });
   return rateLimitedFetch('https://graytag.co.kr/ws/lender/finishProductDelivery', {
     method: 'POST',
     headers: {
       ...BASE_HEADERS,
       Cookie: buildGraytagCookieHeader(cookies),
-      'Content-Type': multipart.contentType,
+      'Content-Type': 'application/json',
       Referer: 'https://graytag.co.kr/lender/deal/list',
     },
-    body: multipart.body,
+    body: JSON.stringify({ dealUsid }),
     redirect: 'manual',
     signal: AbortSignal.timeout(30_000),
   }, true);
 }
 
-async function fetchYouTubeInvitationProviderStatus(dealUsid: string): Promise<string | null> {
+export async function fetchYouTubeInvitationProviderStatus(dealUsid: string): Promise<string | null> {
   const cookies = loadGraytagAuthCookies();
   if (!cookies) return null;
   const headers = (referer: string) => ({ ...BASE_HEADERS, Cookie: buildGraytagCookieHeader(cookies), Referer: referer });
@@ -475,7 +540,128 @@ async function fetchYouTubeInvitationProviderStatus(dealUsid: string): Promise<s
   return exact && typeof exact.dealStatus === 'string' && exact.dealStatus ? exact.dealStatus : null;
 }
 
-async function fetchYouTubeProviderProductStatuses(): Promise<{
+/** Read only. Return null unless the complete seller listing is authoritative. */
+export async function fetchNotionDeliveryDeals(): Promise<Array<{
+  dealUsid: string; chatRoomUuid: string; dealStatus: string;
+  productTypeString: string; productName: string;
+  registeredDateTime: string; borrowerName: string;
+}> | null> {
+  const cookies = loadGraytagAuthCookies();
+  if (!cookies) return null;
+  const deals: Array<{
+    dealUsid: string; chatRoomUuid: string; dealStatus: string;
+    productTypeString: string; productName: string;
+    registeredDateTime: string; borrowerName: string;
+  }> = [];
+  for (let page = 1; page <= 10; page++) {
+    try {
+      const response = await rateLimitedFetch(buildFinishedDealsUrl('before', page, 500, true), {
+        headers: { ...BASE_HEADERS, Cookie: buildGraytagCookieHeader(cookies),
+          Referer: 'https://graytag.co.kr/lender/deal/list' },
+        redirect: 'manual', signal: AbortSignal.timeout(30_000),
+      });
+      if (!response.ok || response.redirected) return null;
+      const payload = await response.json() as any;
+      const source = payload?.data?.data?.lenderDeals ?? payload?.data?.lenderDeals ?? payload?.lenderDeals;
+      if (payload?.succeeded !== true || !Array.isArray(source)) return null;
+      for (const deal of source) {
+        const dealUsid = String(deal?.dealUsid || '').trim();
+        const chatRoomUuid = String(deal?.chatRoomUuid || deal?.dealDetail?.chatRoomUuid || '').trim();
+        if (!dealUsid || !chatRoomUuid) continue;
+        deals.push({ dealUsid, chatRoomUuid, dealStatus: String(deal?.dealStatus || '').trim(),
+          productTypeString: String(deal?.productTypeString || deal?.productType || '').trim(),
+          productName: String(deal?.productName || '').trim(),
+          registeredDateTime: String(deal?.registeredDateTime || deal?.createdDateTime || '').trim(),
+          borrowerName: String(deal?.borrowerName || '').trim() });
+      }
+      if (source.length < 500) return deals;
+    } catch { return null; }
+  }
+  return null;
+}
+
+/** Authoritative read of both seller deal lists for post-delivery invitation corrections. */
+export async function fetchYouTubeSellerAllDeals(): Promise<Array<{
+  dealUsid: string; chatRoomUuid: string; dealStatus: string;
+  productTypeString: string; productName: string; borrowerName: string;
+}> | null> {
+  const cookies = loadGraytagAuthCookies();
+  if (!cookies) return null;
+  const deals = new Map<string, {
+    dealUsid: string; chatRoomUuid: string; dealStatus: string;
+    productTypeString: string; productName: string; borrowerName: string;
+  }>();
+  for (const [kind, referer] of [
+    ['before', 'https://graytag.co.kr/lender/deal/list'],
+    ['after', 'https://graytag.co.kr/lender/deal/listAfterUsing'],
+  ] as const) {
+    let complete = false;
+    for (let page = 1; page <= 10; page++) {
+      try {
+        const response = await rateLimitedFetch(buildFinishedDealsUrl(kind, page, 500, true), {
+          headers: { ...BASE_HEADERS, Cookie: buildGraytagCookieHeader(cookies), Referer: referer },
+          redirect: 'manual', signal: AbortSignal.timeout(30_000),
+        });
+        if (!response.ok || response.redirected) return null;
+        const payload = await response.json() as any;
+        const source = payload?.data?.data?.lenderDeals ?? payload?.data?.lenderDeals ?? payload?.lenderDeals;
+        if (payload?.succeeded !== true || !Array.isArray(source)) return null;
+        for (const deal of source) {
+          const dealUsid = String(deal?.dealUsid || '').trim();
+          const chatRoomUuid = String(deal?.chatRoomUuid || deal?.dealDetail?.chatRoomUuid || '').trim();
+          if (!dealUsid || !chatRoomUuid) continue;
+          deals.set(dealUsid, { dealUsid, chatRoomUuid,
+            dealStatus: String(deal?.dealStatus || '').trim(),
+            productTypeString: String(deal?.productTypeString || deal?.productType || '').trim(),
+            productName: String(deal?.productName || '').trim(),
+            borrowerName: String(deal?.borrowerName || '').trim() });
+        }
+        if (source.length < 500) { complete = true; break; }
+      } catch { return null; }
+    }
+    if (!complete) return null;
+  }
+  return [...deals.values()];
+}
+
+/** Only explicit buyer-authored messages can bind a Notion email to a sale. */
+export async function fetchNotionDeliveryBuyerEmails(chatRoomUuid: string): Promise<string[] | null> {
+  const cookies = loadGraytagAuthCookies();
+  if (!cookies || !/^[A-Za-z0-9_-]{1,200}$/.test(chatRoomUuid)) return null;
+  try {
+    const response = await rateLimitedFetch(
+      `https://graytag.co.kr/ws/chat/findChats?uuid=${encodeURIComponent(chatRoomUuid)}&page=1`,
+      { headers: { ...BASE_HEADERS, Cookie: buildGraytagCookieHeader(cookies),
+        Referer: `https://graytag.co.kr/chat/${encodeURIComponent(chatRoomUuid)}` },
+        redirect: 'manual', signal: AbortSignal.timeout(15_000) },
+    );
+    if (!response.ok || response.redirected) return null;
+    const payload = await response.json() as any;
+    if (payload?.succeeded !== true) return null;
+    // Give the conversation time to surface an alternate-account request before importing.
+    return resolveYouTubeBuyerEmailFromChat(chatRoomUuid, extractGraytagChats(payload), false, 5 * 60_000);
+  } catch { return null; }
+}
+
+/** Read the latest messages from the dedicated YouTube seller, including seller replies. */
+export async function fetchYouTubeSellerChatMessages(chatRoomUuid: string): Promise<GraytagChatMessage[] | null> {
+  const cookies = loadGraytagAuthCookies();
+  if (!cookies || !/^[A-Za-z0-9_-]{1,200}$/.test(chatRoomUuid)) return null;
+  try {
+    const response = await rateLimitedFetch(
+      `https://graytag.co.kr/ws/chat/findChats?uuid=${encodeURIComponent(chatRoomUuid)}&page=1`,
+      { headers: { ...BASE_HEADERS, Cookie: buildGraytagCookieHeader(cookies),
+        Referer: `https://graytag.co.kr/chat/${encodeURIComponent(chatRoomUuid)}` },
+        redirect: 'manual', signal: AbortSignal.timeout(15_000) },
+    );
+    if (!response.ok || response.redirected) return null;
+    const payload = await response.json() as any;
+    if (payload?.succeeded !== true) return null;
+    return extractGraytagChats(payload);
+  } catch { return null; }
+}
+
+export async function fetchYouTubeProviderProductStatuses(): Promise<{
   authoritative: boolean;
   rows: Array<{ productUsid: string; status: string; endDateTime: string | null }>;
 }> {
@@ -900,6 +1086,62 @@ app.post('/session/accounts/youtube-invite-sales/cookies', async (c) => {
   });
 });
 
+app.get('/gbuts/session', async (c) => {
+  const saved = loadGbutsSession();
+  const token = saved?.token || process.env.GBUTS_API_TOKEN?.trim();
+  if (!token) return c.json({ connected: false, syncEnabled: process.env.GBUTS_SPOTIFY_SYNC_ENABLED === 'true',
+    autoMessageEnabled: process.env.GBUTS_SPOTIFY_AUTO_MESSAGE_ENABLED === 'true' });
+  try {
+    const members = await createGbutsSpotifySellerClient(token).listMembers(
+      Number(process.env.GBUTS_SPOTIFY_POST_SEQ || GBUTS_SPOTIFY_POST_SEQ));
+    return c.json({ connected: true, sellerLabel: saved?.sellerLabel || 'GButs seller',
+      connectedAt: saved?.connectedAt || null, memberCount: members.length,
+      syncEnabled: process.env.GBUTS_SPOTIFY_SYNC_ENABLED === 'true',
+      autoMessageEnabled: process.env.GBUTS_SPOTIFY_AUTO_MESSAGE_ENABLED === 'true' });
+  } catch {
+    return c.json({ connected: false, expired: true, sellerLabel: saved?.sellerLabel || null,
+      syncEnabled: process.env.GBUTS_SPOTIFY_SYNC_ENABLED === 'true',
+      autoMessageEnabled: process.env.GBUTS_SPOTIFY_AUTO_MESSAGE_ENABLED === 'true' });
+  }
+});
+
+app.post('/gbuts/session', async (c) => {
+  const body = await c.req.json().catch(() => null) as { email?: unknown; password?: unknown; token?: unknown } | null;
+  let token: string;
+  let sellerLabel = 'GButs seller';
+  if (typeof body?.token === 'string') {
+    try { token = parseGbutsToken(body.token); }
+    catch { return c.json({ ok: false, error: 'GButs 로그인 토큰 형식이 올바르지 않습니다.' }, 400); }
+  } else {
+    if (typeof body?.email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.email.trim())
+      || typeof body.password !== 'string' || body.password.length < 6 || body.password.length > 256) {
+      return c.json({ ok: false, error: 'GButs 이메일과 비밀번호를 입력해 주세요.' }, 400);
+    }
+    try {
+      const response = await fetch('https://api.gbuts.com/api/auth', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(15_000),
+        body: JSON.stringify({ principal: body.email.trim(), credentials: body.password }),
+      });
+      if (!response.ok) return c.json({ ok: false, error: 'GButs 로그인 정보를 확인해 주세요.' }, 401);
+      const payload = await response.json() as { response?: { apiToken?: unknown; account?: { nickname?: unknown } } };
+      token = parseGbutsToken(payload.response?.apiToken);
+      if (typeof payload.response?.account?.nickname === 'string') sellerLabel = payload.response.account.nickname.slice(0, 80);
+    } catch { return c.json({ ok: false, error: 'GButs 로그인 연결에 실패했습니다.' }, 502); }
+  }
+  try {
+    // A buyer account must not be accepted as this listing's seller connection.
+    await createGbutsSpotifySellerClient(token).listMembers(
+      Number(process.env.GBUTS_SPOTIFY_POST_SEQ || GBUTS_SPOTIFY_POST_SEQ));
+    saveGbutsSession({ token, sellerLabel, connectedAt: new Date().toISOString() });
+  } catch { return c.json({ ok: false, error: '이 GButs 계정으로 Spotify 판매자 주문을 읽을 수 없습니다.' }, 403); }
+  writeAudit({ actor: authenticatedAdminActor(c), action: 'session.gbuts.updated', targetType: 'gbutsSession',
+    targetId: 'spotify-seller', summary: 'GButs Spotify seller session connected', result: 'success',
+    requestId: auditRequestId(c), details: { reason: 'seller-session-connect' } });
+  return c.json({ ok: true, connected: true, sellerLabel,
+    syncEnabled: process.env.GBUTS_SPOTIFY_SYNC_ENABLED === 'true',
+    autoMessageEnabled: process.env.GBUTS_SPOTIFY_AUTO_MESSAGE_ENABLED === 'true' });
+});
+
 // ─── 에브리뷰 세션 상태 (everyview session-keeper v1 상태 파일) ──
 const EVERYVIEW_SESSION_COOKIE_PATH = '/home/ubuntu/everyview-session/cookies.json';
 const EVERYVIEW_SESSION_STATUS_PATH = '/tmp/everyview-session-status.json';
@@ -1294,9 +1536,7 @@ const BASE_HEADERS = {
 };
 
 
-// ─── 프록시 로테이터 + Rate Limiter ──────────────────────────
-let _proxyList: string[] = [];       // "host:port" 형식
-let _proxyIndex = 0;
+// ─── Direct GrayTag requests + rate limiting ──────────────────
 let _lastGraytagRequest = 0;
 let _rateLimitUntil: number = 0;
 let _chatRoomsCache: FastChatRoomsSnapshot | null = null;
@@ -1306,53 +1546,12 @@ let _chatRoomsRefreshInFlight: Promise<void> | null = null;
 const CHAT_ROOMS_CACHE_TTL_MS = 60_000;
 const CHAT_RATE_LIMIT_BACKOFF_MS = 60_000;
 
-/** webshare 프록시 리스트 로드 (서버 시작 시 + 1시간마다 자동 갱신) */
-async function loadProxies() {
-  const url = 'https://proxy.webshare.io/api/v2/proxy/list/download/lmvkutzxtmxjggpoumjedbagwnijvfhgxwzptris/-/any/username/direct/-/?plan_id=13115101';
-  try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const text = await res.text();
-    // 포맷: ip:port:user:pass
-    const lines = text.split('\n').map(l => l.trim()).filter(l => l.includes(':'));
-    if (lines.length === 0) throw new Error('프록시 리스트 비어있음');
-    _proxyList = lines;
-    _proxyIndex = 0;
-    console.log(`[ProxyRotator] ✓ ${lines.length}개 프록시 로드됨`);
-  } catch (e: any) {
-    console.warn(`[ProxyRotator] 프록시 로드 실패: ${e.message}`);
-  }
-}
-
-/** ip:port:user:pass → http://user:pass@ip:port */
-function proxyToUrl(proxy: string): string {
-  const parts = proxy.split(':');
-  if (parts.length === 4) {
-    const [ip, port, user, pass] = parts;
-    return `http://${user}:${pass}@${ip}:${port}`;
-  }
-  return `http://${proxy}`;
-}
-
-/** 다음 프록시로 회전 */
-function rotateProxy(reason: string) {
-  if (_proxyList.length === 0) return;
-  const prev = _proxyList[_proxyIndex].split(':').slice(0,2).join(':');
-  _proxyIndex = (_proxyIndex + 1) % _proxyList.length;
-  const next = _proxyList[_proxyIndex].split(':').slice(0,2).join(':');
-  console.log(`[ProxyRotator] ${reason} → 회전: ${prev} → ${next} (${_proxyIndex + 1}/${_proxyList.length})`);
-}
-
-/** 직접 호출 (프록시 없음) */
 async function directFetch(url: string, options?: RequestInit): Promise<Response> {
-  return fetch(url, options);
+  const proxyUrl = process.env.GRAYTAG_PROXY_URL?.trim();
+  return proxyUrl ? curlFetch(url, options, proxyUrl) : fetch(url, options);
 }
 
-/**
- * rateLimitedFetch: 403 즉시 다음 프록시로 재시도
- * - 프록시 있으면: 1번 → 2번 → 3번 ... 전체 순환 후 포기
- * - 프록시 없으면: 기존 방식 (30초 백오프)
- */
+/** Use the configured transport once. Never retry uncertain writes. */
 async function rateLimitedFetch(url: string, options?: RequestInit, bypass = false): Promise<Response> {
   if (!bypass && Date.now() < _rateLimitUntil) {
     return new Response(JSON.stringify({ ok: false, error: 'rate_limit_backoff' }), {
@@ -1360,69 +1559,13 @@ async function rateLimitedFetch(url: string, options?: RequestInit, bypass = fal
       headers: { 'Content-Type': 'application/json', 'Retry-After': String(Math.max(1, Math.ceil((_rateLimitUntil - Date.now()) / 1000))) },
     });
   }
-  // Side effects with durable idempotency claims must make exactly one transport attempt.
-  if (bypass) {
-    const elapsed = Date.now() - _lastGraytagRequest;
-    if (elapsed < 1500) await new Promise(r => setTimeout(r, 1500 - elapsed));
-    _lastGraytagRequest = Date.now();
-    const proxyUrl = _proxyList.length > 0 ? proxyToUrl(_proxyList[_proxyIndex]) : null;
-    return proxyUrl ? curlFetch(url, options, proxyUrl) : fetch(url, options);
-  }
-  // 프록시 없으면 기존 방식
-  if (_proxyList.length === 0) {
-    const elapsed = Date.now() - _lastGraytagRequest;
-    if (elapsed < 1500) await new Promise(r => setTimeout(r, 1500 - elapsed));
-    _lastGraytagRequest = Date.now();
-    const resp = await fetch(url, options);
-    if (resp.status === 429) _rateLimitUntil = Math.max(_rateLimitUntil, Date.now() + CHAT_RATE_LIMIT_BACKOFF_MS);
-    if (resp.status === 403) console.log('[rate-limiter] 403 감지 (프록시 없음)');
-    return resp;
-  }
-
-  // 프록시 있으면: 최대 전체 프록시 수만큼 재시도
-  const maxAttempts = Math.min(_proxyList.length, 10);
-  let lastResp: Response | null = null;
-
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const elapsed = Date.now() - _lastGraytagRequest;
-    if (elapsed < 300) await new Promise(r => setTimeout(r, 300 - elapsed));
-    _lastGraytagRequest = Date.now();
-
-    try {
-      const proxyUrl = _proxyList.length > 0 ? proxyToUrl(_proxyList[_proxyIndex]) : null;
-      const resp = proxyUrl
-        ? await curlFetch(url, options, proxyUrl)
-        : await fetch(url, options);
-
-      if (resp.status === 403 || resp.status === 429) {
-        if (resp.status === 429) _rateLimitUntil = Math.max(_rateLimitUntil, Date.now() + CHAT_RATE_LIMIT_BACKOFF_MS);
-        console.log(`[ProxyRotator] 시도 ${attempt + 1}/${maxAttempts} — ${resp.status} 감지, 다음 프록시로`);
-        rotateProxy(`${resp.status}`);
-        lastResp = resp;
-        continue; // 즉시 다음 프록시
-      }
-
-      // 성공
-      if (attempt > 0) console.log(`[ProxyRotator] ✓ 시도 ${attempt + 1}번째에 성공`);
-      return resp;
-
-    } catch (e: any) {
-      console.log(`[ProxyRotator] 시도 ${attempt + 1}/${maxAttempts} — 연결 실패: ${e.message}, 다음 프록시로`);
-      rotateProxy('연결실패');
-      continue;
-    }
-  }
-
-  console.log(`[ProxyRotator] ✗ 모든 프록시 실패 — 마지막 응답 반환`);
-  return lastResp ?? new Response(JSON.stringify({ ok: false, error: '모든 프록시 실패' }), {
-    status: 429, headers: { 'Content-Type': 'application/json' }
-  });
+  const elapsed = Date.now() - _lastGraytagRequest;
+  if (elapsed < 1500) await new Promise(r => setTimeout(r, 1500 - elapsed));
+  _lastGraytagRequest = Date.now();
+  const response = await directFetch(url, options);
+  if (response.status === 429) _rateLimitUntil = Math.max(_rateLimitUntil, Date.now() + CHAT_RATE_LIMIT_BACKOFF_MS);
+  return response;
 }
-
-// 서버 시작 시 프록시 로드 + 1시간마다 갱신
-loadProxies();
-setInterval(loadProxies, 60 * 60 * 1000);
-
 
 function extractLenderDeals(payload: any): any[] {
   const data = payload?.data ?? payload;
@@ -2310,7 +2453,7 @@ app.post('/post/create', async (c) => {
     return c.json({ error: '쿠키가 만료됐어요.', code: 'COOKIE_EXPIRED' }, 401);
 
   try {
-    // multipart/form-data 구성 (string으로 직접 구성 - curlFetch 호환)
+    // multipart/form-data 구성 (string으로 직접 구성)
     const boundary = '----GraytagBoundary' + Date.now().toString(36);
     const productModelJson = JSON.stringify(productModel);
     const multipartBody = [
@@ -2860,23 +3003,24 @@ app.get('/chat/poll', async (c) => {
   } catch (e: any) { return c.json({ error: e.message }, 500); }
 });
 
-async function resolveGraytagChatUserId(accountId: GraytagAccountId, chatRoomUuid: string): Promise<string> {
+export async function resolveGraytagChatUserId(accountId: GraytagAccountId, chatRoomUuid: string): Promise<string> {
   if (accountId === 'primary') return process.env.GRAYTAG_PRIMARY_CHAT_USER_ID || '0000000001R20';
   const cookies = loadCookiesForAccount(accountId);
   if (!cookies) throw new Error('선택한 GrayTag 계정 세션이 없습니다.');
-  const response = await rateLimitedFetch(
-    `https://graytag.co.kr/ws/chat/findChats?uuid=${encodeURIComponent(chatRoomUuid)}&page=1`,
-    {
-      headers: { ...BASE_HEADERS, Cookie: buildCookieStr(cookies), Referer: `https://graytag.co.kr/chat/${chatRoomUuid}` },
-      redirect: 'manual',
-      signal: AbortSignal.timeout(10_000),
-    },
-  );
-  const parsed = response.ok ? await safeJson(response) : { data: null };
-  const ownedMessage = extractGraytagChats(parsed.data).find((message: any) => message?.owned === true && message?.userId);
-  const userId = String((ownedMessage as any)?.userId || '').trim();
-  if (!userId) throw new Error('전용 계정의 채팅 발신자 정보를 확인할 수 없습니다. GrayTag에서 이 채팅방에 한 번 메시지를 보낸 뒤 다시 시도해주세요.');
-  return userId;
+  if (!/^[A-Za-z0-9_-]{1,200}$/.test(chatRoomUuid)) throw new Error('채팅방 식별값이 올바르지 않습니다.');
+  // The authenticated chat page supplies the current seller's userId even
+  // before that seller has written the first message in this room.
+  const response = await rateLimitedFetch(`https://graytag.co.kr/chat/${encodeURIComponent(chatRoomUuid)}`, {
+    headers: { ...BASE_HEADERS, Cookie: buildCookieStr(cookies) },
+    redirect: 'manual', signal: AbortSignal.timeout(10_000),
+  });
+  if (!response.ok || response.redirected) throw new Error('전용 계정 채팅 화면을 열 수 없습니다.');
+  const html = await response.text();
+  if (!html.includes(chatRoomUuid)) throw new Error('채팅방 식별값을 확인할 수 없습니다.');
+  const input = html.match(/<input\b[^>]*\bid=["']userId["'][^>]*>/i)?.[0] || '';
+  const userId = input.match(/\bvalue=["']([A-Za-z0-9_-]{1,100})["']/i)?.[1] || '';
+  if (userId) return userId;
+  throw new Error('전용 계정의 채팅 발신자 정보를 확인할 수 없습니다.');
 }
 
 async function sendGraytagChatMessage(
@@ -2893,6 +3037,42 @@ async function sendGraytagChatMessage(
     env: { ...process.env, GRAYTAG_COOKIE_PATH: cookiePath },
   });
   return JSON.parse(stdout.trim());
+}
+
+export async function sendYouTubeBuyerGuide(deal: { dealUsid: string; chatRoomUuid: string }): Promise<boolean> {
+  const result = await sendGraytagChatMessage({
+    chatRoomUuid: deal.chatRoomUuid,
+    dealUsid: deal.dealUsid,
+    message: YOUTUBE_NEW_SALE_GUIDE,
+  }, 'youtube-invite-sales');
+  return result?.ok !== false;
+}
+
+export async function sendYouTubeJevReply(deal: { dealUsid: string; chatRoomUuid: string }, message: string): Promise<boolean> {
+  const result = await sendGraytagChatMessage({ chatRoomUuid: deal.chatRoomUuid, dealUsid: deal.dealUsid, message }, 'youtube-invite-sales');
+  return result?.ok !== false;
+}
+
+export async function alertYouTubeCountryIssue(deal: { dealUsid: string; chatRoomUuid: string }): Promise<void> {
+  await sendSellerAlert({
+    key: `youtube-country-issue-${deal.dealUsid}-${Date.now()}`,
+    title: '유튜브 초대 국가 오류',
+    body: `구매자가 국가가 다르다는 초대 오류를 신고했습니다. 실제 국가·거주지 요건을 확인하고 재초대 가능 여부를 판단해 주세요.\n거래: ${deal.dealUsid}\n채팅: https://graytag.co.kr/chat/${encodeURIComponent(deal.chatRoomUuid)}`,
+    severity: 'warning', category: 'auto-reply', throttleMs: 0,
+  });
+}
+
+export async function alertYouTubePostDeliveryIssue(
+  deal: { dealUsid: string; chatRoomUuid: string },
+  intent: 'delivered_no_invitation' | 'premium_lost',
+): Promise<void> {
+  const title = intent === 'premium_lost' ? '유튜브 프리미엄 이용 중단 문의' : '배송 완료 후 초대장 미도착 문의';
+  await sendSellerAlert({
+    key: `youtube-post-delivery-${intent}-${deal.dealUsid}-${Date.now()}`,
+    title,
+    body: `구매자가 ${title}를 보냈습니다. 초대 및 이용 상태를 직접 확인해 주세요.\n거래: ${deal.dealUsid}\n채팅: https://graytag.co.kr/chat/${encodeURIComponent(deal.chatRoomUuid)}`,
+    severity: 'warning', category: 'auto-reply', throttleMs: 0,
+  });
 }
 
 const RENEWAL_AUTOMATION_JOBS_PATH = process.env.RENEWAL_AUTOMATION_JOBS_PATH
@@ -3294,7 +3474,6 @@ function autoReplyJobsPath(): string {
   return process.env.AUTO_REPLY_JOBS_PATH || DEFAULT_AUTO_REPLY_JOBS_PATH;
 }
 let AUTO_REPLY_MEMORY_STORE: AutoReplyJobStore = loadAutoReplyJobStore(autoReplyJobsPath());
-const AUTO_REPLY_PROCESS_STARTED_AT = new Date();
 
 function persistAutoReplyJobs(): void {
   saveAutoReplyJobStore(autoReplyJobsPath(), AUTO_REPLY_MEMORY_STORE);
@@ -3718,11 +3897,12 @@ async function createAutoReplyPartyAccessUrl(job: any, persist = true): Promise<
 
 async function processYouTubeNewSaleGuide(job: any, dryRun: boolean): Promise<{ status: 'drafted' | 'sent' | 'blocked' | 'error' } | null> {
   if (job.internalCategory !== YOUTUBE_NEW_SALE_GUIDE_CATEGORY) return null;
-  if (dryRun || process.env.AUTO_REPLY_ENABLE_SEND !== 'true') {
+  if (dryRun || process.env.AUTO_REPLY_ENABLE_SEND !== 'true' || process.env.YOUTUBE_INVITE_AUTO_MESSAGE_ENABLED !== 'true') {
     updateAutoReplyJobPersisted(AUTO_REPLY_MEMORY_STORE, job.id, {
       status: 'drafted', category: YOUTUBE_NEW_SALE_GUIDE_CATEGORY, risk: 'low',
       draftReply: YOUTUBE_NEW_SALE_GUIDE,
-      blockReason: dryRun ? 'dry-run' : 'AUTO_REPLY_ENABLE_SEND 꺼짐',
+      blockReason: dryRun ? 'dry-run' : (process.env.YOUTUBE_INVITE_AUTO_MESSAGE_ENABLED !== 'true'
+        ? 'YOUTUBE_INVITE_AUTO_MESSAGE_ENABLED 꺼짐' : 'AUTO_REPLY_ENABLE_SEND 꺼짐'),
     });
     return { status: 'drafted' };
   }
@@ -3738,7 +3918,7 @@ async function processYouTubeNewSaleGuide(job: any, dryRun: boolean): Promise<{ 
       chatRoomUuid: job.chatRoomUuid,
       dealUsid: job.dealUsid,
       message: YOUTUBE_NEW_SALE_GUIDE,
-    });
+    }, 'youtube-invite-sales');
     const ok = result?.ok !== false;
     updateAutoReplyJobPersisted(AUTO_REPLY_MEMORY_STORE, job.id, {
       status: ok ? 'sent' : 'error', category: YOUTUBE_NEW_SALE_GUIDE_CATEGORY, risk: 'low',
@@ -4207,18 +4387,6 @@ async function scanAutoReplyCandidates(maxRooms = 10): Promise<any[]> {
   const profileNameByMember = buildPartyAccessDeliverySnapshotByMember(loadPartyAccessLinkStore());
   const seen = new Set<string>();
   const candidates: any[] = [];
-
-  // New YouTube purchases are deterministic sale events and do not require buyer unread state.
-  // The process-start timestamp gate prevents replaying historical current deals after restart.
-  for (const deal of allDeals) {
-    if (candidates.length >= maxRooms) break;
-    const candidate = buildYouTubeNewSaleCandidate(deal, AUTO_REPLY_PROCESS_STARTED_AT);
-    if (!candidate) continue;
-    const fingerprint = messageFingerprint(candidate as any);
-    if (AUTO_REPLY_MEMORY_STORE.fingerprintToJobId[fingerprint]) continue;
-    candidates.push(candidate);
-    seen.add(String(candidate.chatRoomUuid || ''));
-  }
 
   for (const deal of allDeals) {
     if (candidates.length >= maxRooms) break;

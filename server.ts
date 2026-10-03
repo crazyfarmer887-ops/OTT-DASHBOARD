@@ -4,7 +4,21 @@ import { readFile, stat } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { extname, resolve } from 'node:path';
 import { randomBytes } from 'node:crypto';
-import apiApp from './src/api/index.ts';
+import apiApp, {
+  fetchNotionDeliveryBuyerEmails,
+  fetchNotionDeliveryDeals,
+  fetchYouTubeSellerAllDeals,
+  fetchYouTubeSellerChatMessages,
+  fetchYouTubeInvitationProviderStatus,
+  finishYouTubeInvitationDelivery,
+  resolveGraytagChatUserId,
+  sendYouTubeBuyerGuide,
+  sendYouTubeJevReply,
+  alertYouTubeCountryIssue,
+  alertYouTubePostDeliveryIssue,
+  fetchAuthoritativeYouTubeSellerProductsForAutoListing,
+  fetchYouTubeProviderProductStatuses,
+} from './src/api/index.ts';
 import {
   createDashboardSessionToken,
   dashboardAdminPassword,
@@ -18,6 +32,14 @@ import { startUndercutterScheduler } from './src/scheduler/undercutter.ts';
 import { startPollDaemon } from './src/scheduler/poll-daemon.ts';
 import { startAutoReplyDaemon } from './src/scheduler/auto-reply-daemon.ts';
 import { startRenewalAutomationDaemon } from './src/scheduler/renewal-automation-daemon.ts';
+import { createNotionInvitationClient, createNotionSlotLedgerClient, DEFAULT_DATA_SOURCE_ID, DEFAULT_SLOT_LEDGER_DATA_SOURCE_ID, occupiedNotionSlots, startNotionInvitationSync } from './src/scheduler/notion-invitation-sync.ts';
+import { startGbutsSpotifySync } from './src/scheduler/gbuts-spotify-sync.ts';
+import { startYouTubeAutoListings } from './src/scheduler/youtube-auto-listings.ts';
+import { YouTubeFamilyGroupsStore, type YouTubeFamilyGroup } from './src/lib/youtube-invitations.ts';
+import { startYouTubeBuyerGuide } from './src/scheduler/youtube-buyer-guide.ts';
+import { startYouTubeEmailReceipts } from './src/scheduler/youtube-email-receipt.ts';
+import { startYouTubeJevReplies } from './src/scheduler/youtube-jev-replies.ts';
+import { startYouTubeFamilySwitches } from './src/scheduler/youtube-family-switch.ts';
 import { buildPartyAccessHtml } from './src/lib/party-access-page-html.ts';
 
 const distDir = resolve(process.cwd(), 'dist/client');
@@ -245,3 +267,80 @@ startUndercutterScheduler(port);
 startPollDaemon();
 startAutoReplyDaemon(port);
 startRenewalAutomationDaemon(port);
+startNotionInvitationSync({
+  listDeals: fetchNotionDeliveryDeals,
+  buyerEmails: fetchNotionDeliveryBuyerEmails,
+  providerStatus: fetchYouTubeInvitationProviderStatus,
+  finishDelivery: finishYouTubeInvitationDelivery,
+});
+startGbutsSpotifySync();
+startYouTubeBuyerGuide({
+  listDeals: fetchNotionDeliveryDeals,
+  buyerEmails: fetchNotionDeliveryBuyerEmails,
+  validateChat: async (room) => { await resolveGraytagChatUserId('youtube-invite-sales', room); },
+  sendGuide: sendYouTubeBuyerGuide,
+});
+startYouTubeEmailReceipts({
+  listDeals: fetchNotionDeliveryDeals,
+  listMessages: fetchYouTubeSellerChatMessages,
+  providerStatus: fetchYouTubeInvitationProviderStatus,
+  send: sendYouTubeJevReply,
+});
+startYouTubeJevReplies({
+  listDeals: fetchYouTubeSellerAllDeals,
+  listMessages: fetchYouTubeSellerChatMessages,
+  buyerEmails: fetchNotionDeliveryBuyerEmails,
+  providerStatus: fetchYouTubeInvitationProviderStatus,
+  send: sendYouTubeJevReply,
+  alertCountryIssue: alertYouTubeCountryIssue,
+  alertPostDeliveryIssue: alertYouTubePostDeliveryIssue,
+});
+startYouTubeFamilySwitches({
+  listDeals: fetchYouTubeSellerAllDeals,
+  listMessages: fetchYouTubeSellerChatMessages,
+  send: sendYouTubeJevReply,
+});
+
+const autoListingToken = process.env.NOTION_API_TOKEN?.trim();
+if (autoListingToken && process.env.YOUTUBE_AUTO_LISTING_ENABLED === 'true'
+  && process.env.YOUTUBE_INVITE_SALES_ENABLED === 'true') {
+  const notion = createNotionInvitationClient(autoListingToken,
+    process.env.NOTION_INVITATION_DATA_SOURCE_ID || DEFAULT_DATA_SOURCE_ID);
+  const ledger = createNotionSlotLedgerClient(autoListingToken,
+    process.env.NOTION_SLOT_LEDGER_DATA_SOURCE_ID || DEFAULT_SLOT_LEDGER_DATA_SOURCE_ID);
+  const groupsPath = process.env.YOUTUBE_FAMILY_GROUPS_PATH || undefined;
+  const adminToken = process.env.AIO_ADMIN_TOKEN?.trim();
+  if (!adminToken) console.error('[YouTubeAutoListings] admin token unavailable');
+  else startYouTubeAutoListings({
+    readNotionSlots: async () => {
+      const [capacity, rows] = await Promise.all([ledger.readSlotCapacity(), notion.listRows()]);
+      return { available: Math.max(0, capacity - occupiedNotionSlots(rows)) };
+    },
+    listGroups: async () => new YouTubeFamilyGroupsStore(groupsPath).read().familyGroups,
+    listSellerProducts: fetchAuthoritativeYouTubeSellerProductsForAutoListing,
+    listProductStatuses: fetchYouTubeProviderProductStatuses,
+    createGroup: async (input) => {
+      const response = await apiApp.request('http://localhost/youtube/family-groups', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'x-admin-token': adminToken,
+          'x-audit-reason': 'automatic YouTube listing replenishment' }, body: JSON.stringify(input),
+      });
+      const payload = await response.json().catch(() => null) as { familyGroup?: { id?: string }; error?: string } | null;
+      if (!response.ok || !payload?.familyGroup?.id) throw new Error(payload?.error || 'family group registration failed');
+      const group = new YouTubeFamilyGroupsStore(groupsPath).read().familyGroups
+        .find((candidate) => candidate.id === payload.familyGroup?.id);
+      if (!group) throw new Error('registered family group missing');
+      return group as YouTubeFamilyGroup;
+    },
+    registerProduct: async (input) => {
+      const { idempotencyKey, ...body } = input;
+      const response = await apiApp.request('http://localhost/youtube/products', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'x-admin-token': adminToken,
+          'x-audit-reason': 'automatic YouTube listing replenishment', 'idempotency-key': idempotencyKey },
+        body: JSON.stringify(body),
+      });
+      const payload = await response.json().catch(() => null) as { status?: string; productUsid?: string } | null;
+      return response.ok && payload?.status === 'registered' && payload.productUsid
+        ? { status: 'registered', productUsid: payload.productUsid } : { status: 'uncertain' };
+    },
+  });
+}

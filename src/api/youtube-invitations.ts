@@ -640,6 +640,7 @@ app.post('/products', async (c) => {
     if (!dependencies.registerProduct) throw new Error('provider unavailable');
     response = await dependencies.registerProduct(model);
   } catch { return finish('uncertain', 'provider-outcome-uncertain', 'YOUTUBE_PRODUCT_REGISTRATION_UNCERTAIN'); }
+  if (response.status === 403) return finish('uncertain', 'provider-http-403', 'YOUTUBE_PROVIDER_ACCESS_DENIED');
   let payload: unknown = null;
   try { payload = await response.json(); } catch {}
   const providerPayload = isRecord(payload) ? payload : null;

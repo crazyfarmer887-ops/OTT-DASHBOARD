@@ -21,6 +21,8 @@ export function normalizeBuyerMessage(input = ''): string {
     .replace(/<[^>]+>/g, '')
     .replace(/&nbsp;/gi, ' ')
     .replace(/&amp;/gi, '&')
+    .replace(/&#(?:0*64|x0*40);/gi, '@')
+    .replace(/&commat;/gi, '@')
     .replace(/&lt;/gi, '<')
     .replace(/&gt;/gi, '>')
     .replace(/\s+/g, ' ')

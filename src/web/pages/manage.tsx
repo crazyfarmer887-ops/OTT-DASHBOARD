@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import QuickAccountCreatedModal from "../components/quick-account-created-modal";
 import YouTubeSalesSessionCard from "../components/youtube-sales-session-card";
+import YouTubeAutoListingCard from "../components/youtube-auto-listing-card";
 import { findQuickPostAccount, type QuickGeneratedAccount } from "../lib/quick-generated-account-flow";
 import { CATEGORIES } from "../lib/constants";
 import { buildAccountSlotStates, calculateAccountVacancy, canAccountReceiveAutoFill, mergeRecruitingProducts, type SlotState } from "../lib/account-slots";
@@ -2053,6 +2054,7 @@ export default function ManagePage() {
                     </div>
                   </div>
                   {youtubeGroupsFeatureEnabled !== true && !youtubeGroupsLoading && !youtubeGroupsError && <div className="youtube-service-notice">유튜브 초대 판매 기능이 비활성화되어 있습니다. 조회만 가능합니다.</div>}
+                  <YouTubeAutoListingCard />
                   {youtubeGroupsLoading && <div role="status" className="youtube-service-notice"><Loader2 size={14} style={{ animation:'spin 1s linear infinite' }} /> 가족 그룹을 불러오는 중...</div>}
                   {!youtubeGroupsLoading && youtubeGroupsError && <div role="alert" className="youtube-service-notice is-error"><span>{youtubeGroupsError}</span><button type="button" className="management-touch-target" onClick={fetchYouTubeFamilyGroups}>다시 시도</button></div>}
                   {unmappedYouTubeRegistrationCount > 0 && (
