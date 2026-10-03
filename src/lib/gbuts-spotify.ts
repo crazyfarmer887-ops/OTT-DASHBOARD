@@ -76,7 +76,7 @@ export function extractGbutsSpotifyCredentials(
         receivedAt = entry.createdAt;
       }
     } else if (canUseStandalonePassword && !emailMatch && !standaloneEmail && email
-      && /^[\x21-\x7e]{6,128}$/.test(content) && /\d/.test(content)) {
+      && /^[\x21-\x7e]{6,128}$/.test(content) && /[a-z]/i.test(content) && /\d/.test(content)) {
       password = content;
       receivedAt = entry.createdAt;
     }

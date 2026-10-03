@@ -51,6 +51,11 @@ describe('GButs Spotify invitation matching', () => {
       message(buyer, '잠시만요', '2026-10-03T10:32:01Z'),
       buyerReplies[1],
     ], buyer)).toBeNull();
+    expect(extractGbutsSpotifyCredentials([
+      message(7, '아이디 비밀번호 남겨주세요.', '2026-10-03T10:31:00Z'),
+      buyerReplies[0],
+      message(buyer, '123456', '2026-10-03T10:32:01Z'),
+    ], buyer)).toBeNull();
   });
 
   it('requires a new password when the buyer changes the login', () => {
