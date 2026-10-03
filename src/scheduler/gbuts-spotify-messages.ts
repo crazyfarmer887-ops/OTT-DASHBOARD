@@ -6,7 +6,8 @@ import { extractGbutsSpotifyCredentials, gbutsSpotifyOrderKey, isActiveGbutsSpot
 import type { SpotifyNotionRow } from './gbuts-spotify-sync';
 
 const DEFAULT_JOURNAL_PATH = '/home/ubuntu/.hermes/hermes-agent/graytag-aio-manager-0606/data/gbuts-spotify-messages.json';
-export const SPOTIFY_BUYER_GUIDE = '구매 감사합니다. Spotify Family 초대를 받을 Spotify 계정 아이디(이메일)와 비밀번호를 이 1:1 채팅에 남겨주세요.\nSpotify 이메일: example@gmail.com\n비밀번호: 입력하실 비밀번호\n공개 댓글에는 비밀번호를 남기지 마세요. 해외 현지 담당자가 직접 초대하며 최대 24시간 소요될 수 있습니다.';
+export const SPOTIFY_BUYER_GUIDE = '안녕하세요~ 아래 2가지 중 하나를 선택해서 이 1:1 채팅에 남겨주세요!\n\n① 내 계정 등록\n사용 중인 Spotify 계정으로 이용하실 수 있습니다. 계정 ID(이메일)와 비밀번호를 이 채팅에 남겨주세요. 안전하게 처리하겠습니다. 기존 계정으로 초대가 어려우면 ②처럼 새 계정을 발급해드리고, 본인 이메일로 변경하실 수 있도록 안내해드리겠습니다.\n\n② 새 계정 발급\n새 계정을 원하시면 “새 계정 발급”이라고 말씀해주세요. 발급 후 이메일·비밀번호 변경이 가능하며, 기존 플레이리스트와 좋아요 이전도 지원합니다.';
+export const SPOTIFY_REQUEST_ACK = '넵, 24시간 이내로 초대해드릴게요. 초대가 지연되면 지연된 기간만큼 더 이용하실 수 있게 조치해드리겠습니다~ 초대가 완료되면 이 채팅으로 연락드리겠습니다!';
 
 export function spotifyInvitedReply(email: string): string {
   return `요청하신 Spotify Family 초대를 ${email} 계정으로 보냈습니다. Spotify에서 초대 알림을 확인해 주세요.`;
@@ -39,16 +40,38 @@ export interface GbutsSpotifyMessageDependencies {
   readJournal(): GbutsSpotifyMessageJournal;
   writeJournal(journal: GbutsSpotifyMessageJournal): void;
   now?(): string;
+  requestAckStartAt?: string;
+}
+
+/** A question about new accounts is not a request to issue one. */
+export function requestedSpotifyNewAccount(messages: readonly GbutsChatMessage[], buyerUserSeq: number): string | null {
+  const hasOptions = messages.some((message) => message.senderSeq !== buyerUserSeq && message.messageType === 'TEXT'
+    && /②\s*새\s*계정/.test(message.message));
+  const buyerMessages = messages.filter((message) => message.senderSeq === buyerUserSeq && message.messageType === 'TEXT')
+    .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+  for (const entry of buyerMessages) {
+    const content = entry.message.trim();
+    if (/[?？]/.test(content) || /(?:가능한가요|되나요|어떻게|뭔가요|무엇인가요|있나요)/.test(content)
+      || /(?:말고|아니|취소|안\s*(?:할|받|원)|필요\s*없)/.test(content)) continue;
+    const numberedChoice = hasOptions && /^(?:②|2\s*번)(?:\s*(?:으로|을|를))?(?:\s*(?:요|이요|선택|부탁|해주세요|해줘|할게요|원해요))?[.!~\s]*$/.test(content);
+    const namedChoice = /(?:새|신규)\s*(?:계정|아이디)/.test(content)
+      && /(?:발급|만들|생성|원해|원합|부탁|해주세요|해줘|할게|할래|선택)/.test(content);
+    if (numberedChoice || namedChoice) return entry.createdAt;
+  }
+  return null;
 }
 
 export async function syncGbutsSpotifyMessages(deps: GbutsSpotifyMessageDependencies, postSeq: number): Promise<{
-  guidesAttempted: number; invitedRepliesAttempted: number; confirmed: number;
+  guidesAttempted: number; acknowledgementsAttempted: number; invitedRepliesAttempted: number; confirmed: number;
 }> {
+  const ackStart = deps.requestAckStartAt == null ? null : Date.parse(deps.requestAckStartAt);
+  if (ackStart !== null && !Number.isFinite(ackStart)) throw new Error('GButs Spotify acknowledgment start time invalid');
   const [members, rows] = await Promise.all([deps.listMembers(postSeq), deps.listRows()]);
   const active = members.filter(isActiveGbutsSpotifyMember);
   const journal = deps.readJournal();
   const sellerSeq = active.length ? await deps.sellerAccountSeq() : 0;
   let guidesAttempted = 0;
+  let acknowledgementsAttempted = 0;
   let invitedRepliesAttempted = 0;
   let confirmed = 0;
   for (const member of active) {
@@ -57,13 +80,20 @@ export async function syncGbutsSpotifyMessages(deps: GbutsSpotifyMessageDependen
     const roomId = await deps.openPrivateRoom(postSeq, member.userSeq);
     const chat = await deps.getChat(roomId);
     const buyerCredentials = extractGbutsSpotifyCredentials(chat.messages, member.userSeq);
+    const newAccountRequestedAt = requestedSpotifyNewAccount(chat.messages, member.userSeq);
+    const buyerChoiceAt = [buyerCredentials?.receivedAt, newAccountRequestedAt]
+      .filter((value): value is string => Boolean(value)).sort().at(-1);
     const matches = rows.filter((row) => row.orderKey === orderKey);
     if (matches.length > 1) continue;
     const row = matches.length === 1 ? matches[0] : null;
     const desired: Array<{ suffix: string; text: string }> = [];
-    if (!buyerCredentials) desired.push({ suffix: 'guide', text: SPOTIFY_BUYER_GUIDE });
-    if (row?.invited && !row.cancelled && buyerCredentials && row.email === buyerCredentials.email
-      && row.password === buyerCredentials.password) {
+    if (!buyerCredentials && !newAccountRequestedAt) desired.push({ suffix: 'guide', text: SPOTIFY_BUYER_GUIDE });
+    const invitedMatches = row?.invited && !row.cancelled && buyerCredentials && row.email === buyerCredentials.email
+      && row.password === buyerCredentials.password && (!newAccountRequestedAt || newAccountRequestedAt <= buyerCredentials.receivedAt);
+    if (!invitedMatches && buyerChoiceAt && Number.isFinite(Date.parse(buyerChoiceAt))
+      && (ackStart === null || Date.parse(buyerChoiceAt) >= ackStart))
+      desired.push({ suffix: 'request-received', text: SPOTIFY_REQUEST_ACK });
+    if (invitedMatches && buyerCredentials) {
       const fingerprint = createHash('sha256').update(`${row.email}\0${row.password}`).digest('hex').slice(0, 16);
       desired.push({ suffix: `invited:${fingerprint}`, text: spotifyInvitedReply(row.email) });
     }
@@ -86,11 +116,12 @@ export async function syncGbutsSpotifyMessages(deps: GbutsSpotifyMessageDependen
         updatedAt: deps.now?.() ?? new Date().toISOString() };
       deps.writeJournal(journal);
       if (item.suffix === 'guide') guidesAttempted += 1;
+      else if (item.suffix === 'request-received') acknowledgementsAttempted += 1;
       else invitedRepliesAttempted += 1;
       try { await deps.sendText(roomId, sellerSeq, item.text); } catch { /* Delivery outcome unknown. */ }
     }
   }
-  return { guidesAttempted, invitedRepliesAttempted, confirmed };
+  return { guidesAttempted, acknowledgementsAttempted, invitedRepliesAttempted, confirmed };
 }
 
 /** GButs' web client sends the same text payload to the STOMP destination below. */

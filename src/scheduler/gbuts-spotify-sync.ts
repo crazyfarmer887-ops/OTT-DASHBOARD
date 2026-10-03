@@ -347,7 +347,7 @@ export function startGbutsSpotifySync(): void {
   const notion = createGbutsSpotifyNotionClient(notionToken,
     process.env.NOTION_SPOTIFY_DATA_SOURCE_ID?.trim() || SPOTIFY_NOTION_DATA_SOURCE_ID);
   const postSeq = Number(process.env.GBUTS_SPOTIFY_POST_SEQ || GBUTS_SPOTIFY_POST_SEQ);
-  const intervalMs = Math.max(30_000, Number(process.env.GBUTS_SPOTIFY_SYNC_INTERVAL_MS) || 60_000);
+  const intervalMs = Math.max(30_000, Number(process.env.GBUTS_SPOTIFY_SYNC_INTERVAL_MS) || 30_000);
   const run = createSingleFlightRunner(async () => {
     try {
       if (loadSafeModeConfig().enabled) return;
@@ -360,8 +360,10 @@ export function startGbutsSpotifySync(): void {
       if (process.env.GBUTS_SPOTIFY_AUTO_MESSAGE_ENABLED === 'true') {
         const messages = await syncGbutsSpotifyMessages({ ...deps, sendText: sendGbutsText,
           readJournal: readGbutsSpotifyMessageJournal,
-          writeJournal: writeGbutsSpotifyMessageJournal }, postSeq);
-        if (messages.guidesAttempted || messages.invitedRepliesAttempted || messages.confirmed)
+          writeJournal: writeGbutsSpotifyMessageJournal,
+          requestAckStartAt: process.env.GBUTS_SPOTIFY_ACK_START_AT }, postSeq);
+        if (messages.guidesAttempted || messages.acknowledgementsAttempted
+          || messages.invitedRepliesAttempted || messages.confirmed)
           console.log('[GbutsSpotifySync] messages', messages);
       }
     } catch (error) {
