@@ -114,6 +114,16 @@ test('write page consumes the vacancy-fill preset for service and repeat without
   assert.doesNotMatch(source, /유튜브 가족 그룹 \*/);
 });
 
+test('YouTube direct entry defaults to daily 150 won and keeps title and guide editable', () => {
+  const source = readFileSync(new URL('../src/web/pages/write.tsx', import.meta.url), 'utf8');
+  const home = readFileSync(new URL('../src/web/pages/home.tsx', import.meta.url), 'utf8');
+  assert.match(source, /new URLSearchParams\(window\.location\.search\)\.get\('service'\) === 'youtube'/);
+  assert.match(source, /initialService === 'youtube' \? '150' : ''/);
+  assert.match(source, /initialService === 'youtube' \? 'daily' : 'total'/);
+  assert.match(source, /제목·설명 수정 \(선택\)/);
+  assert.match(home, /navigate\('\/write\?service=youtube'\)/);
+});
+
 test('preview title and request name remove a legacy Gmail marker while preserving the clean title', () => {
   const name = '  유튜브!!  ABC123  프리미엄  ';
   const listingCode = 'abc123';

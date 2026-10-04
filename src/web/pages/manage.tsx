@@ -399,16 +399,6 @@ export default function ManagePage() {
     }
   };
 
-  const openYouTubeVacancyFill = (group: YouTubeFamilyGroupDto) => {
-    if (group.availableSeats <= 0) return;
-    const query = new URLSearchParams({
-      service: 'youtube',
-      familyGroupId: group.id,
-      repeat: String(Math.min(20, group.availableSeats)),
-    });
-    navigate(`/write?${query.toString()}`);
-  };
-
   const openYouTubeGroupCreateForm = () => {
     setYouTubeGroupDraft({ label: '', managerEmail: '', subscriptionEndDate: '', sellableSeats: '5' });
     setYouTubeGroupFormError(null);
@@ -2048,6 +2038,7 @@ export default function ManagePage() {
                   <div className="youtube-service-toolbar">
                     <p>관리자 계정과 가족 그룹 초대 상태를 관리합니다. ID/PW · PIN · 프로필은 전달하지 않습니다.</p>
                     <div className="youtube-service-toolbar-actions">
+                      <button type="button" className="management-touch-target management-primary-action" onClick={() => navigate('/write?service=youtube')} disabled={youtubeGroupsFeatureEnabled !== true}><PlusCircle size={14} /> 판매 글 바로 작성</button>
                       <button type="button" className="management-touch-target" onClick={() => void reconcileYouTubeCancelledProducts()} disabled={youtubeGroupsFeatureEnabled !== true || youtubeReconciliationLoading}>
                         {youtubeReconciliationLoading ? <Loader2 size={14} style={{ animation:'spin 1s linear infinite' }} /> : <RefreshCw size={14} />} 취소 거래 반영
                       </button>
@@ -2118,7 +2109,6 @@ export default function ManagePage() {
                               <div><dt>초대 / 파티원</dt><dd>{group.members.length}명</dd></div>
                             </dl>
                             <div className="management-account-actions youtube-family-group-actions">
-                              <button type="button" className="management-touch-target management-primary-action" onClick={() => openYouTubeVacancyFill(group)} disabled={!group.enabled || group.availableSeats <= 0 || youtubeGroupsFeatureEnabled !== true}>빈자리 {group.availableSeats}개 매꾸기</button>
                               <button type="button" className="management-touch-target" onClick={() => setOpenYouTubeGroup(isGroupOpen ? null : group.id)} aria-expanded={isGroupOpen} aria-controls={groupPanelId}>상세보기</button>
                               <button type="button" className="management-touch-target" onClick={() => navigate('/youtube-invites')}>초대 관리</button>
                               <button type="button" className="management-touch-target" onClick={() => openYouTubeGroupEditForm(group)} disabled={youtubeGroupsFeatureEnabled !== true || youtubeGroupMutationLoading}>수정</button>

@@ -89,7 +89,8 @@ function getPresetForService(serviceKey: string, store = loadWriteProductPresets
 export default function WritePage() {
   const cookies = loadCookies();
   const initialYouTubeRefill = typeof window === 'undefined' ? null : parseYouTubeRefillPreset(window.location.search);
-  const initialService = initialYouTubeRefill ? 'youtube' : DEFAULT_SERVICE_KEY;
+  const initialService = initialYouTubeRefill || (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('service') === 'youtube')
+    ? 'youtube' : DEFAULT_SERVICE_KEY;
   const [selectedId, setSelectedId] = useState(cookies[0]?.id || '');
   const [step, setStep] = useState<Step>('form');
 
@@ -102,6 +103,7 @@ export default function WritePage() {
   const [repeat, setRepeat] = useState(initialYouTubeRefill?.repeat || 1);
   const [productPresetStore, setProductPresetStore] = useState<WriteProductPresetStore>(() => loadWriteProductPresets());
   const [presetNotice, setPresetNotice] = useState('');
+  const [showYouTubeAdvanced, setShowYouTubeAdvanced] = useState(false);
   const [title, setTitle] = useState(() => getPresetForService(initialService).title);
 
   const makeDefaultKeepMemo = (_emailId?: number|string, _pin?: string, _profileName?: string) => {
@@ -848,8 +850,13 @@ export default function WritePage() {
       {service === 'youtube' && (
         <div style={{ ...card, borderColor: '#FECACA' }}>
           <div style={{ background:'#FFF7ED', color:'#9A3412', borderRadius:10, padding:'9px 11px', marginBottom:10, fontSize:11, lineHeight:1.55 }}>
-            <strong>구매 후 초대</strong> · 계정 등록 없이 글을 올립니다. 결제 후 구매자의 Google 이메일을 받아 동업자가 빈 가족 계정으로 초대합니다. 실제 초대 가능한 자리만큼 글을 등록해주세요.
+            <strong>계정 추가 없이 바로 등록</strong> · 기간과 하루 가격(기본 150원), 글 개수를 정하세요. 구매 후 동업자가 빈 가족 계정으로 초대합니다. 실제 초대 가능한 자리만큼 등록해주세요.
           </div>
+          <button type="button" onClick={() => setShowYouTubeAdvanced(current => !current)}
+            aria-expanded={showYouTubeAdvanced}
+            style={{ background:'#FEE2E2', color:'#B91C1C', border:0, borderRadius:8, padding:'7px 10px', fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}>
+            {showYouTubeAdvanced ? '제목·설명 닫기' : '제목·설명 수정 (선택)'}
+          </button>
           {youtubeStatusLoading && <div style={{ fontSize: 12, color: '#EF4444' }}>판매 상태를 확인하는 중...</div>}
           {!youtubeStatusLoading && youtubeStatusError && (
             <div style={{ background: '#FFF0F0', borderRadius: 10, padding: '10px 12px', color: '#DC2626', fontSize: 11 }}>{youtubeStatusError}</div>
@@ -861,6 +868,7 @@ export default function WritePage() {
       )}
 
       {/* 글 기본값 프리셋 */}
+      {(service !== 'youtube' || showYouTubeAdvanced) && <>
       <div style={{ ...card, background: '#FAFAFF' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 8 }}>
           <div>
@@ -908,6 +916,7 @@ export default function WritePage() {
           </div>
         )}
       </div>
+      </>}
 
       {/* ③ 기간 + 가격 */}
       <div style={card}>
@@ -1001,7 +1010,7 @@ export default function WritePage() {
       </div>
 
       {/* ④ 상품 설명 */}
-      <div style={card}>
+      {(service !== 'youtube' || showYouTubeAdvanced) && <div style={card}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
           <label style={{ ...labelStyle, marginBottom: 0 }}>상품 설명 *</label>
           <button onClick={() => setDescription(getCurrentPreset().description)} style={{
@@ -1025,7 +1034,7 @@ export default function WritePage() {
             {youtubeSellingGuideError}
           </div>
         )}
-      </div>
+      </div>}
 
       {/* ⑤ 반복 횟수 */}
       <div style={card}>

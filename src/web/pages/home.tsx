@@ -1094,6 +1094,12 @@ export default function HomePage() {
 
       {data && (
         <>
+          <button type="button" onClick={() => navigate('/write?service=youtube')}
+            style={{ width:'100%', display:'flex', justifyContent:'space-between', alignItems:'center', gap:12, marginBottom:18, padding:'16px 18px', border:'1px solid #FECACA', borderRadius:16, background:'#FFF1F1', color:'#991B1B', textAlign:'left', cursor:'pointer', fontFamily:'inherit' }}>
+            <span><strong style={{ display:'block', fontSize:15 }}>유튜브 판매 글 바로 작성</strong><span style={{ display:'block', marginTop:4, fontSize:12 }}>계정 추가 없이 기간·가격만 선택 · 기본 150원/일</span></span>
+            <ChevronRight size={18} />
+          </button>
+
           <section style={{ marginBottom: 18 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
               <h2 style={{ fontSize: 15, fontWeight: 900, color: 'var(--foreground)', margin: 0 }}>오늘 상태</h2>
