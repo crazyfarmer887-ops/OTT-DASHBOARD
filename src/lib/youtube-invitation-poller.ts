@@ -12,6 +12,7 @@ import {
 import { withYouTubeCapacityLock } from './youtube-capacity-lock';
 import {
   YouTubeProductRegistrationsStore,
+  YOUTUBE_VENDOR_POOL_ID,
   type YouTubeProductRegistrationRecord,
 } from './youtube-product-registrations';
 
@@ -212,6 +213,12 @@ export function reconcileYouTubeInvitationProviderDeals(
         }
         parsed = ingest;
         const registration = registeredByProduct.get(parsed.productUsid);
+        if (registration?.familyGroupId === YOUTUBE_VENDOR_POOL_ID) {
+          // The vendor picks the real family at invitation time. The Notion
+          // buyer-email and delivery flow owns these unassigned sales.
+          counts.unchanged += 1;
+          continue;
+        }
         if (!registration || !familyIds.has(registration.familyGroupId)) {
           counts.conflicts += 1;
           continue;
@@ -222,13 +229,13 @@ export function reconcileYouTubeInvitationProviderDeals(
           continue;
         }
         const ensured = ensureYouTubeInvitationJob(jobs, {
-          dealUsid: parsed.dealUsid,
-          productUsid: parsed.productUsid,
-          chatRoomUuid: parsed.chatRoomUuid,
+          dealUsid: ingest.dealUsid,
+          productUsid: ingest.productUsid,
+          chatRoomUuid: ingest.chatRoomUuid,
           familyGroupId: registration.familyGroupId,
-          buyerName: parsed.borrowerName,
+          buyerName: ingest.borrowerName,
           buyerGoogleEmail: null,
-          endDateTime: parsed.endDateTime,
+          endDateTime: ingest.endDateTime,
         }, createdAt);
         if (!ensured.created
           || ensured.job.dealUsid !== parsed.dealUsid

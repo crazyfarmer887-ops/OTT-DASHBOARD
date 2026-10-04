@@ -1791,7 +1791,8 @@ export default function ManagePage() {
   const youtubeRegistrationUncertainCount = youtubeProductRegistrations.filter(registration => registration.status === 'uncertain').length;
   const youtubeRegistrationFailedCount = youtubeProductRegistrations.filter(registration => registration.status === 'failed').length;
   const youtubeFamilyGroupIds = new Set(youtubeFamilyGroups.map(group => group.id));
-  const unmappedYouTubeRegistrationCount = youtubeProductRegistrations.filter(registration => !youtubeFamilyGroupIds.has(registration.familyGroupId)).length;
+  const pooledYouTubeRegistrations = youtubeProductRegistrations.filter(registration => registration.familyGroupId === 'youtube-vendor-pool');
+  const unmappedYouTubeRegistrationCount = youtubeProductRegistrations.filter(registration => registration.familyGroupId !== 'youtube-vendor-pool' && !youtubeFamilyGroupIds.has(registration.familyGroupId)).length;
   const unmappedYouTubeTransactionCount = unmappedYouTubeServices.reduce((sum, service) => sum + service.accounts.reduce((count, account) => count + account.members.length, 0), 0);
   const isYouTubeServiceOpen = openService === '유튜브 프리미엄';
   const serviceSections: ManagementServiceSection[] = [
@@ -2033,7 +2034,7 @@ export default function ManagePage() {
                   <div className="youtube-management-logo" aria-hidden="true"><Youtube size={24} /></div>
                   <div style={{ flex:1, minWidth:0 }}>
                     <div style={{ fontSize:15, fontWeight:800, color:'#1E1B4B' }}>유튜브 프리미엄</div>
-                    <div style={{ fontSize:11, color:'#6B7280', marginTop:2 }}>가족 그룹 {youtubeFamilyGroups.length}개 · 등록 판매 글 {youtubeRegisteredListingCount}개{youtubeRegistrationRecordCount !== youtubeRegisteredListingCount ? ` · 등록 기록 ${youtubeRegistrationRecordCount}건` : ''} · 현재 파티원 {youtubeCurrentCount}명 · 초대 대기 {youtubePendingCount}명{youtubeRegistrationPendingCount > 0 ? ` · 처리중 ${youtubeRegistrationPendingCount}건` : ''}{youtubeRegistrationUncertainCount > 0 ? ` · 확인필요 ${youtubeRegistrationUncertainCount}건` : ''}{youtubeRegistrationFailedCount + youtubeFailedCount > 0 ? ` · 실패 ${youtubeRegistrationFailedCount + youtubeFailedCount}건` : ''}{unmappedYouTubeRegistrationCount > 0 ? ` · 매칭 필요 ${unmappedYouTubeRegistrationCount}건` : ''}</div>
+                    <div style={{ fontSize:11, color:'#6B7280', marginTop:2 }}>가족 그룹 {youtubeFamilyGroups.length}개 · 등록 판매 글 {youtubeRegisteredListingCount}개{pooledYouTubeRegistrations.length > 0 ? ` · 자유 배정 ${pooledYouTubeRegistrations.length}건` : ''}{youtubeRegistrationRecordCount !== youtubeRegisteredListingCount ? ` · 등록 기록 ${youtubeRegistrationRecordCount}건` : ''} · 현재 파티원 {youtubeCurrentCount}명 · 초대 대기 {youtubePendingCount}명{youtubeRegistrationPendingCount > 0 ? ` · 처리중 ${youtubeRegistrationPendingCount}건` : ''}{youtubeRegistrationUncertainCount > 0 ? ` · 확인필요 ${youtubeRegistrationUncertainCount}건` : ''}{youtubeRegistrationFailedCount + youtubeFailedCount > 0 ? ` · 실패 ${youtubeRegistrationFailedCount + youtubeFailedCount}건` : ''}{unmappedYouTubeRegistrationCount > 0 ? ` · 매칭 필요 ${unmappedYouTubeRegistrationCount}건` : ''}</div>
                   </div>
                   <div className="youtube-service-vacancy"><strong>{youtubeVacancyCount}</strong><span>빈자리</span></div>
                   {isYouTubeServiceOpen ? <ChevronDown size={16} color="#DC2626" /> : <ChevronRight size={16} color="#DC2626" />}
@@ -2059,6 +2060,9 @@ export default function ManagePage() {
                   {!youtubeGroupsLoading && youtubeGroupsError && <div role="alert" className="youtube-service-notice is-error"><span>{youtubeGroupsError}</span><button type="button" className="management-touch-target" onClick={fetchYouTubeFamilyGroups}>다시 시도</button></div>}
                   {unmappedYouTubeRegistrationCount > 0 && (
                     <div className="youtube-unmapped-notice"><strong>상품 그룹 매칭 필요 · 등록 기록 {unmappedYouTubeRegistrationCount}건</strong><span>가족 그룹을 추측 연결하지 않습니다. 등록 판매 글의 실제 상품 그룹을 확인하세요.</span></div>
+                  )}
+                  {pooledYouTubeRegistrations.length > 0 && (
+                    <div className="youtube-service-notice"><strong>동업자 자유 배정 글 · {pooledYouTubeRegistrations.length}건</strong><span>구매 후 동업자가 빈 가족 계정으로 초대하는 판매 글입니다.</span></div>
                   )}
                   {unmappedYouTubeTransactionCount > 0 && (
                     <div className="youtube-unmapped-notice"><strong>그룹 매핑 필요 · 기존 거래 {unmappedYouTubeTransactionCount}건</strong><span>가족 그룹을 추측 연결하지 않습니다. 초대 관리에서 수동 매핑하세요. ID/PW · PIN · 프로필 · 접근 링크 작업을 제공하지 않습니다.</span></div>

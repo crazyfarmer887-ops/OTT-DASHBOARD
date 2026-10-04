@@ -20,7 +20,7 @@ import {
   type YouTubeInvitationStatus,
 } from '../lib/youtube-invitations';
 import { buildYouTubeSharingNoKeepProductModel, type YouTubeSharingNoKeepProductModel } from '../lib/graytag-fill';
-import { fingerprintYouTubeProductRegistration, YouTubeProductRegistrationsStore, type YouTubeProductRegistrationRecord } from '../lib/youtube-product-registrations';
+import { fingerprintYouTubeProductRegistration, YouTubeProductRegistrationsStore, YOUTUBE_VENDOR_POOL_ID, type YouTubeProductRegistrationRecord } from '../lib/youtube-product-registrations';
 import { withYouTubeCapacityLock } from '../lib/youtube-capacity-lock';
 import { maskYouTubeInviteEmail, parseYouTubeInviteEmailCandidates } from '../lib/youtube-invite-email';
 import { normalizeYouTubeAuditReason } from '../lib/youtube-audit-reason';
@@ -465,6 +465,7 @@ app.delete('/family-groups/:id', (c) => {
 });
 
 const PRODUCT_FIELDS = ['familyGroupId', 'endDate', 'price', 'name', 'sellingGuide'] as const;
+const POOLED_PRODUCT_FIELDS = ['endDate', 'price', 'name', 'sellingGuide'] as const;
 const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9._~:+-]{8,128}$/;
 const CAPACITY_CONSUMING_INVITATION_STATUSES = new Set([
   'waiting_for_group_assignment', 'waiting_for_buyer_email', 'email_candidate_found', 'email_confirmed',
@@ -524,8 +525,10 @@ app.post('/products', async (c) => {
   const idempotencyKey = c.req.header('idempotency-key')?.trim() || '';
   if (!IDEMPOTENCY_KEY_PATTERN.test(idempotencyKey)) return c.json({ ok: false, error: 'invalid idempotency key' }, 400);
   const body = await requestBody(c);
-  if (!body || !hasExactFields(body, PRODUCT_FIELDS) || typeof body.familyGroupId !== 'string'
-    || !body.familyGroupId.trim() || body.familyGroupId !== body.familyGroupId.trim() || body.familyGroupId.length > 200
+  const pooled = Boolean(body && hasExactFields(body, POOLED_PRODUCT_FIELDS));
+  if (!body || !(pooled || hasExactFields(body, PRODUCT_FIELDS))
+    || (!pooled && (typeof body.familyGroupId !== 'string'
+      || !body.familyGroupId.trim() || body.familyGroupId !== body.familyGroupId.trim() || body.familyGroupId.length > 200))
     || typeof body.endDate !== 'string' || typeof body.name !== 'string' || typeof body.sellingGuide !== 'string'
     || typeof body.price !== 'number') {
     return c.json({ ok: false, error: 'invalid request' }, 400);
@@ -544,32 +547,32 @@ app.post('/products', async (c) => {
   }).formatToParts(dependencies.now?.() ?? new Date()).map((part) => [part.type, part.value]));
   const todayCompact = `${seoulParts.year}${seoulParts.month}${seoulParts.day}`;
   if (submittedModel.endDate.slice(0, 8) <= todayCompact) return c.json({ ok: false, error: 'end date must be after today' }, 400);
-  const familyGroupId = body.familyGroupId;
+  const familyGroupId = pooled ? YOUTUBE_VENDOR_POOL_ID : body.familyGroupId as string;
   const actor = dependencies.actor?.(c)?.trim() || 'admin:authenticated';
   let model = submittedModel;
   let requestFingerprint = '';
   let claim;
   try {
     const atomicResult = withYouTubeCapacityLock(() => {
-      const familyGroup = readFamilyGroups().familyGroups.find((group) => group.id === familyGroupId);
-      if (!familyGroup) return { response: c.json({ ok: false, error: 'not found' }, 404) };
-      if (!familyGroup.enabled) return { response: c.json({ ok: false, error: 'family group disabled' }, 409) };
-      if (familyGroup.subscriptionEndDate && familyGroup.subscriptionEndDate.replaceAll('-', '') < todayCompact) {
+      const familyGroup = pooled ? null : readFamilyGroups().familyGroups.find((group) => group.id === familyGroupId);
+      if (!pooled && !familyGroup) return { response: c.json({ ok: false, error: 'not found' }, 404) };
+      if (familyGroup && !familyGroup.enabled) return { response: c.json({ ok: false, error: 'family group disabled' }, 409) };
+      if (familyGroup?.subscriptionEndDate && familyGroup.subscriptionEndDate.replaceAll('-', '') < todayCompact) {
         return { response: c.json({ ok: false, error: 'family group expired' }, 409) };
       }
-      if (familyGroup.subscriptionEndDate && submittedModel.endDate.slice(0, 8) > familyGroup.subscriptionEndDate.replaceAll('-', '')) {
+      if (familyGroup?.subscriptionEndDate && submittedModel.endDate.slice(0, 8) > familyGroup.subscriptionEndDate.replaceAll('-', '')) {
         return { response: c.json({ ok: false, error: 'end date exceeds family group subscription' }, 400) };
       }
-      const listingCode = youtubeListingCodeFromManagerEmail(familyGroup.managerEmail);
-      const nameWithoutListingCode = removeYouTubeListingCode(submittedModel.name, listingCode);
+      const listingCode = familyGroup ? youtubeListingCodeFromManagerEmail(familyGroup.managerEmail) : '';
+      const nameWithoutListingCode = listingCode ? removeYouTubeListingCode(submittedModel.name, listingCode) : submittedModel.name;
       model = {
         ...submittedModel,
         name: nameWithoutListingCode,
       };
       requestFingerprint = fingerprintYouTubeProductRegistration(familyGroupId, model);
       const compatibleRequestFingerprints = [fingerprintYouTubeProductRegistration(familyGroupId, submittedModel)];
-      const legacyCodedName = appendYouTubeListingCode(nameWithoutListingCode, listingCode);
-      if (legacyCodedName !== submittedModel.name) {
+      const legacyCodedName = listingCode ? appendYouTubeListingCode(nameWithoutListingCode, listingCode) : submittedModel.name;
+      if (listingCode && legacyCodedName !== submittedModel.name) {
         compatibleRequestFingerprints.push(fingerprintYouTubeProductRegistration(
           familyGroupId,
           { ...submittedModel, name: legacyCodedName },
@@ -592,7 +595,8 @@ app.post('/products', async (c) => {
         claim: productRegistrationsStore().claimWithCapacity(
           { idempotencyKey, requestFingerprint, compatibleRequestFingerprints, familyGroupId, actor, reasonCode: 'registration-requested', at: dependencies.now?.().toISOString() },
           {
-            familyCapacity: familyGroup.sellableSeats,
+            // A listing is not an occupied seat. The vendor assigns a real family after purchase.
+            familyCapacity: pooled ? Number.MAX_SAFE_INTEGER : familyGroup!.sellableSeats,
             externalOccupiedProductUsids,
             externalOccupiedFallbackCount: fallbackDealIds.size,
           },
@@ -604,7 +608,8 @@ app.post('/products', async (c) => {
   } catch { return unavailable(c); }
   if (claim.kind === 'no_capacity') return c.json({ ok: false, error: 'no available capacity', code: 'YOUTUBE_FAMILY_GROUP_NO_CAPACITY' }, 409);
   if (claim.kind === 'conflict') return registrationError(c, 409, 'YOUTUBE_PRODUCT_IDEMPOTENCY_CONFLICT');
-  if (claim.kind === 'replay') return c.json({ ok: true, replayed: true, productUsid: claim.record.productUsid, familyGroupId, status: 'registered' });
+  if (claim.kind === 'replay') return c.json({ ok: true, replayed: true, productUsid: claim.record.productUsid,
+    familyGroupId: pooled ? null : familyGroupId, status: 'registered' });
   if (claim.kind === 'blocked') {
     const code = claim.record.status === 'uncertain' ? 'YOUTUBE_PRODUCT_REGISTRATION_UNCERTAIN'
       : claim.record.status === 'failed' ? 'YOUTUBE_PRODUCT_REGISTRATION_FAILED'
@@ -622,7 +627,8 @@ app.post('/products', async (c) => {
       try { productRegistrationsStore().complete(idempotencyKey, 'registered', { attemptId: claim.record.attemptId, actor, reasonCode: 'provider-reconciled', productUsid, at: dependencies.now?.().toISOString() }); }
       catch { return unavailable(c); }
       dependencies.audit?.({ outcome: 'registered', actor, reason, familyGroupId, productUsid });
-      return c.json({ ok: true, replayed: true, productUsid, familyGroupId, status: 'registered' });
+      return c.json({ ok: true, replayed: true, productUsid,
+        familyGroupId: pooled ? null : familyGroupId, status: 'registered' });
     }
     try { productRegistrationsStore().complete(idempotencyKey, 'uncertain', { attemptId: claim.record.attemptId, actor, reasonCode: 'provider-reconciliation-uncertain', at: dependencies.now?.().toISOString() }); }
     catch { return unavailable(c); }
@@ -654,7 +660,7 @@ app.post('/products', async (c) => {
   try { productRegistrationsStore().complete(idempotencyKey, 'registered', { attemptId: claim.record.attemptId, actor, reasonCode: 'provider-succeeded', productUsid, at: dependencies.now?.().toISOString() }); }
   catch { return unavailable(c); }
   dependencies.audit?.({ outcome: 'registered', actor, reason, familyGroupId, productUsid });
-  return c.json({ ok: true, productUsid, familyGroupId, status: 'registered' }, 201);
+  return c.json({ ok: true, productUsid, familyGroupId: pooled ? null : familyGroupId, status: 'registered' }, 201);
 });
 
 app.get('/products/registrations', (c) => {
@@ -837,6 +843,10 @@ app.post('/invitations/ingest', async (c) => {
       const registration = productRegistrationsStore().list().find((record) =>
         record.status === 'registered' && record.productUsid === input.productUsid);
       if (!registration) return c.json({ ok: false, error: 'invitation product binding unavailable' }, 409);
+      if (registration.familyGroupId === YOUTUBE_VENDOR_POOL_ID) {
+        return c.json({ ok: false, error: 'vendor-pool sale uses the Notion invitation flow',
+          code: 'YOUTUBE_POOL_GROUP_UNASSIGNED' }, 409);
+      }
       const store = invitationJobsStore();
       const data = readOrEmpty(store, { version: 1, jobs: [] } satisfies YouTubeInvitationJobsStoreData);
       const ensured = ensureYouTubeInvitationJob(data.jobs, {

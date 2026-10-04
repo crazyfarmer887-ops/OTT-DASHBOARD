@@ -57,6 +57,14 @@ function reserve(key: string, outcome: 'registered' | 'uncertain' | 'failed', pr
 }
 
 describe('YouTube cross-store capacity invariant', () => {
+  test('accepts vendor-pool registrations without a fictitious family group', () => {
+    const journal = new YouTubeProductRegistrationsStore(process.env.YOUTUBE_PRODUCT_REGISTRATIONS_PATH!, { allowUnsafeIsolatedClaim: true });
+    journal.claim({ idempotencyKey: 'vendor-pool-reservation', requestFingerprint: 'a'.repeat(64),
+      familyGroupId: 'youtube-vendor-pool', actor: 'test', reasonCode: 'reserve', at: now });
+    const jobs = new YouTubeInvitationJobsStore(process.env.YOUTUBE_INVITATIONS_PATH!);
+    expect(() => jobs.write({ version: 1, jobs: [] })).not.toThrow();
+  });
+
   test('rejects an empty jobs write when a journal reservation references an unknown group without changing jobs', () => {
     const jobs = new YouTubeInvitationJobsStore(process.env.YOUTUBE_INVITATIONS_PATH!);
     jobs.write({ version: 1, jobs: [job('product-a')] });

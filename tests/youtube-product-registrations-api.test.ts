@@ -29,6 +29,23 @@ function post(app: ReturnType<typeof createYouTubeInvitationsApp>, key = 'reques
 }
 
 describe('YouTube product registration API', () => {
+  test('registers a pooled listing without inventing a family account and replays it safely', async () => {
+    new YouTubeFamilyGroupsStore(process.env.YOUTUBE_FAMILY_GROUPS_PATH!).write({ version: 1, familyGroups: [] });
+    const registerProduct = vi.fn(async () => new Response(JSON.stringify({ succeeded: true, data: 'pool-product-1' }), { status: 200 }));
+    const app = createYouTubeInvitationsApp({ registerProduct });
+    const pooled = { endDate: '20270831T2359', price: 7900, name: '유튜브 프리미엄', sellingGuide: '초대 안내' };
+    const first = await post(app, 'pool-request-1000', pooled);
+    expect(first.status).toBe(201);
+    expect(await first.json()).toMatchObject({ productUsid: 'pool-product-1', familyGroupId: null });
+    expect(registerProduct).toHaveBeenCalledWith(expect.objectContaining({ name: '유튜브 프리미엄' }));
+    const record = new YouTubeProductRegistrationsStore(process.env.YOUTUBE_PRODUCT_REGISTRATIONS_PATH!).list()[0];
+    expect(record.familyGroupId).toBe('youtube-vendor-pool');
+    const replay = await post(app, 'pool-request-1000', pooled);
+    expect(replay.status).toBe(200);
+    expect(await replay.json()).toMatchObject({ replayed: true, productUsid: 'pool-product-1', familyGroupId: null });
+    expect(registerProduct).toHaveBeenCalledTimes(1);
+  });
+
   test('returns an actionable validation error without claiming or calling the provider', async () => {
     const registerProduct = vi.fn();
     const app = createYouTubeInvitationsApp({ registerProduct });

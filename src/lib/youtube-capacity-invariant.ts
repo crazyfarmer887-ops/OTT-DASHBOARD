@@ -4,6 +4,7 @@ import type {
   YouTubeInvitationStatus,
 } from './youtube-invitations';
 import type { YouTubeProductRegistrationRecord } from './youtube-product-registrations';
+import { YOUTUBE_VENDOR_POOL_ID } from './youtube-product-registrations';
 
 const CAPACITY_CONSUMING_STATUSES = new Set<YouTubeInvitationStatus>([
   'waiting_for_group_assignment',
@@ -98,6 +99,8 @@ export function assertYouTubeCapacityInvariant(
 
   for (const registration of registrations) {
     if (registration.status === 'failed' || registration.status === 'deleted') continue;
+    // Pool listings reserve vendor-wide capacity, not a particular Google family.
+    if (normalize(registration.familyGroupId) === YOUTUBE_VENDOR_POOL_ID) continue;
     const groupId = requireGroup(registration.familyGroupId);
     if (registration.status === 'registered') {
       const productUsid = normalize(registration.productUsid);

@@ -7,6 +7,8 @@ import { basename, dirname, parse, resolve } from 'node:path';
 import type { YouTubeSharingNoKeepProductModel } from './graytag-fill';
 
 export type YouTubeProductRegistrationStatus = 'submitting' | 'registered' | 'uncertain' | 'failed' | 'deleted';
+/** A sale fulfilled from whichever family account the vendor chooses after purchase. */
+export const YOUTUBE_VENDOR_POOL_ID = 'youtube-vendor-pool';
 export interface YouTubeProductRegistrationHistoryEntry {
   from: YouTubeProductRegistrationStatus | null;
   to: YouTubeProductRegistrationStatus;

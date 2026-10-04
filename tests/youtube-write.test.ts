@@ -10,6 +10,7 @@ import {
   parseYouTubeRefillPreset,
   validateYouTubeSellingGuide,
   getSeoulTomorrow,
+  getSeoulEndDateForDuration,
   summarizeYouTubeRegistration,
   getYouTubePostRegistrationStep,
   appendYouTubeListingCode,
@@ -75,6 +76,16 @@ test('buildYouTubeProductRequest emits the exact safe endpoint, headers and body
   });
 });
 
+test('unassigned YouTube request does not invent a family account', () => {
+  const request = buildYouTubeProductRequest({
+    endDate: '2026-12-31', price: 27000, name: ' 유튜브 프리미엄 ',
+    sellingGuide: '초대 안내', idempotencyKey: 'yt-unassigned-1000',
+  });
+  assert.deepEqual(JSON.parse(String(request.init.body)), {
+    endDate: '20261231T2359', price: 27000, name: '유튜브 프리미엄', sellingGuide: '초대 안내',
+  });
+});
+
 test('YouTube selling guide validation matches the 300-character server contract', () => {
   assert.equal(validateYouTubeSellingGuide('가'.repeat(300)), null);
   assert.equal(
@@ -94,13 +105,13 @@ test('write page blocks invalid YouTube descriptions before progress and stops r
   assert.match(source, /입력 수정하기/);
 });
 
-test('write page consumes the vacancy-fill preset for service, group, date, and repeat', () => {
+test('write page consumes the vacancy-fill preset for service and repeat without asking for an account', () => {
   const source = readFileSync(new URL('../src/web/pages/write.tsx', import.meta.url), 'utf8');
   assert.match(source, /parseYouTubeRefillPreset\(window\.location\.search\)/);
   assert.match(source, /useState\(initialService\)/);
-  assert.match(source, /initialYouTubeRefill \? getSeoulTomorrow\(\) : ''/);
-  assert.match(source, /initialYouTubeRefill\?\.familyGroupId \|\| ''/);
+  assert.match(source, /const \[endDate, setEndDate\] = useState\(''\)/);
   assert.match(source, /initialYouTubeRefill\?\.repeat \|\| 1/);
+  assert.doesNotMatch(source, /유튜브 가족 그룹 \*/);
 });
 
 test('preview title and request name remove a legacy Gmail marker while preserving the clean title', () => {
@@ -167,14 +178,22 @@ test('appendYouTubeListingCode surgically cleans Unicode separators around a sta
   assert.equal(appendYouTubeListingCode('유튜브（abc123）프리미엄', 'abc123'), '유튜브 프리미엄 abc123');
 });
 
-test('write page previews the marker-free YouTube title but persists only the raw title preset', () => {
+test('write page previews the entered YouTube title and persists only the raw title preset', () => {
   const source = readFileSync(new URL('../src/web/pages/write.tsx', import.meta.url), 'utf8');
-  assert.match(source, /const youtubeFinalTitle = selectedYoutubeGroup[\s\S]*buildYouTubeListingTitle\(title, selectedYoutubeGroup\.listingCode\)/);
-  assert.match(source, /buildYouTubeProductRequest\(\{[\s\S]*name: title,[\s\S]*listingCode: selectedYoutubeGroup\.listingCode/);
+  assert.match(source, /const youtubeFinalTitle = title\.trim\(\)/);
+  assert.match(source, /buildYouTubeProductRequest\(\{[\s\S]*name: title,[\s\S]*sellingGuide: description\.trim\(\)/);
   assert.match(source, /최종 등록 제목:\s*<strong>\{youtubeFinalTitle\}<\/strong>/);
   assert.match(source, /\[service\]: \{ title: title\.trim\(\), description: description\.trim\(\), updatedAt:/);
   assert.doesNotMatch(source, /\[service\]: \{ title: youtubeFinalTitle/);
-  assert.doesNotMatch(source, /selectedYoutubeGroup\?\.managerEmail|selectedYoutubeGroup\.managerEmail\b/);
+  assert.doesNotMatch(source, /selectedYoutubeGroup/);
+});
+
+test('YouTube price starts at 150 won per day and supports quick subscription periods', () => {
+  const source = readFileSync(new URL('../src/web/pages/write.tsx', import.meta.url), 'utf8');
+  assert.match(source, /initialService === 'youtube' \? '150' : ''/);
+  assert.match(source, /setDailyPrice\('150'\)/);
+  assert.equal(getSeoulEndDateForDuration(30, () => new Date('2026-10-04T15:30:00.000Z')), '2026-11-04');
+  assert.equal(getSeoulEndDateForDuration(365, () => new Date('2026-10-04T15:30:00.000Z')), '2027-10-05');
 });
 
 test('getSeoulTomorrow uses the Asia/Seoul calendar day with an injected clock', () => {

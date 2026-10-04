@@ -38,6 +38,12 @@ export function getSeoulTomorrow(clock: () => Date = () => new Date()): string {
   return new Date(Date.UTC(year, month - 1, day + 1)).toISOString().slice(0, 10);
 }
 
+export function getSeoulEndDateForDuration(days: number, clock: () => Date = () => new Date()): string {
+  if (!Number.isSafeInteger(days) || days < 1 || days > 730) throw new TypeError('invalid YouTube duration');
+  const tomorrow = getSeoulTomorrow(clock);
+  return new Date(Date.parse(`${tomorrow}T00:00:00.000Z`) + (days - 1) * 86_400_000).toISOString().slice(0, 10);
+}
+
 export function summarizeYouTubeRegistration(items: YouTubeRegistrationProgress[]) {
   const errors = items.filter(item => item.status === 'error');
   const uncertainCount = errors.filter(item => /불확실|네트워크 오류/.test(item.error || '')).length;
@@ -107,16 +113,19 @@ export function toGraytagYouTubeDate(date: string): string {
 }
 
 interface YouTubeProductRequestInput {
-  familyGroupId: string;
+  familyGroupId?: string;
   endDate: string;
   price: number;
   name: string;
-  listingCode: string;
+  listingCode?: string;
   sellingGuide: string;
   idempotencyKey: string;
 }
 
 export function buildYouTubeProductRequest(input: YouTubeProductRequestInput): { url: string; init: RequestInit } {
+  const name = input.listingCode
+    ? buildYouTubeListingTitle(input.name, input.listingCode)
+    : input.name.trim();
   return {
     url: '/api/youtube/products',
     init: {
@@ -127,10 +136,10 @@ export function buildYouTubeProductRequest(input: YouTubeProductRequestInput): {
         'Idempotency-Key': input.idempotencyKey,
       },
       body: JSON.stringify({
-        familyGroupId: input.familyGroupId,
+        ...(input.familyGroupId ? { familyGroupId: input.familyGroupId } : {}),
         endDate: toGraytagYouTubeDate(input.endDate),
         price: Math.trunc(input.price),
-        name: buildYouTubeListingTitle(input.name, input.listingCode),
+        name,
         sellingGuide: input.sellingGuide,
       }),
     },

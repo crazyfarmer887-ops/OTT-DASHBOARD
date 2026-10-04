@@ -132,11 +132,11 @@ test('write page exposes invitation UX and bypasses credential delivery for YouT
   const write = readFileSync(new URL('../src/web/pages/write.tsx', import.meta.url), 'utf8');
   assert.match(write, /구매 후 초대/);
   assert.match(write, /ID\/PW는 전달하지 않아요/);
-  assert.match(write, /결제 후 구매자의 Google 이메일을 받아 수동으로 가족 초대/);
-  assert.match(write, /최대 \{youtubeRepeatMax\}개/);
+  assert.match(write, /결제 후 구매자의 Google 이메일을 받아 동업자가 빈 가족 계정으로 초대/);
+  assert.match(write, /실제 판매 가능한 자리만큼 선택/);
   assert.match(write, /getSeoulTomorrow/);
   assert.match(write, /getYouTubePostRegistrationStep/);
-  assert.match(write, /선택 가족 그룹/);
+  assert.doesNotMatch(write, /유튜브 가족 그룹 \*/);
   assert.match(write, /안전 중단/);
   assert.match(write, /결과 불확실/);
 });

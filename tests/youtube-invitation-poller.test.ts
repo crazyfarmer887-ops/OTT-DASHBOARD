@@ -103,6 +103,14 @@ describe('YouTube invitation poll reconciler', () => {
     expect(h.jobs()[0].history).toHaveLength(1);
   });
 
+  test('leaves unassigned vendor-pool sales to the Notion fulfillment flow', () => {
+    const h = harness();
+    h.readRegistrations.mockReturnValue([{ ...registration, familyGroupId: 'youtube-vendor-pool' }]);
+    expect(reconcileYouTubeInvitationProviderDeals([deal()], h.deps))
+      .toMatchObject({ observed: 1, created: 0, conflicts: 0, unchanged: 1, changed: false });
+    expect(h.write).not.toHaveBeenCalled();
+  });
+
   test('Delivered advances only invite sent or completion pending and Using advances only delivered waiting', () => {
     for (const start of ['invite_sent', 'delivery_completion_pending'] as const) {
       const h = harness([waitingJob(start)]);
