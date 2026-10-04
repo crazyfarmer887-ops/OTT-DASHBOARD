@@ -70,6 +70,27 @@ describe('YouTube product registration API', () => {
     expect(registerProduct).toHaveBeenCalledTimes(1);
   });
 
+  test('refuses a new product before claiming when both seller routes fail, then uses the recovered route once', async () => {
+    const selectRegistrationRoute = vi.fn(async () => null as 'direct' | 'proxy' | null);
+    const registerProduct = vi.fn(async () => new Response(JSON.stringify({ succeeded: true, data: 'recovered-product' }), { status: 200 }));
+    const app = createYouTubeInvitationsApp({ selectRegistrationRoute, registerProduct });
+    const first = await post(app, 'route-preflight-1000');
+    expect(first.status).toBe(503);
+    expect(first.headers.get('Retry-After')).toBe('60');
+    expect(await first.json()).toMatchObject({ code: 'YOUTUBE_PROVIDER_PREFLIGHT_FAILED' });
+    expect(registerProduct).not.toHaveBeenCalled();
+    expect(new YouTubeProductRegistrationsStore(process.env.YOUTUBE_PRODUCT_REGISTRATIONS_PATH!).list()).toHaveLength(0);
+
+    selectRegistrationRoute.mockResolvedValueOnce('direct');
+    const second = await post(app, 'route-preflight-1000');
+    expect(second.status).toBe(201);
+    expect(registerProduct).toHaveBeenCalledTimes(1);
+    expect(registerProduct).toHaveBeenCalledWith(expect.any(Object), 'direct');
+    expect((await post(app, 'route-preflight-1000')).status).toBe(200);
+    expect(selectRegistrationRoute).toHaveBeenCalledTimes(2);
+    expect(registerProduct).toHaveBeenCalledTimes(1);
+  });
+
   test('returns an actionable validation error without claiming or calling the provider', async () => {
     const registerProduct = vi.fn();
     const app = createYouTubeInvitationsApp({ registerProduct });

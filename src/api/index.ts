@@ -50,6 +50,7 @@ import { buildRenewalMessage, buildRenewalPreviewRows, type ExtensionProductMode
 import { reconcileRenewalRegistration, retryRenewalMessage, retryRenewalRegistration, runRenewalAutomation, runSelectedRenewalBatch } from '../renewal/orchestrator';
 import { buildRegistrationEvidenceSnapshot } from '../renewal/graytag-registration-verifier';
 import { buildMultipartJsonBody, curlFetch } from './http-transport';
+import { fetchGraytagReadWithFallback, selectGraytagSellerRoute, type GraytagSellerRoute } from './graytag-seller-transport';
 import chatNotificationStreamApp from './chat-notification-stream';
 import { createYouTubeInvitationsApp } from './youtube-invitations';
 import { YouTubeFamilyGroupsStore, YouTubeInvitationJobsStore } from '../lib/youtube-invitations';
@@ -206,6 +207,7 @@ app.use('*', async (c, next) => {
 
 const youtubeInvitationsApp = createYouTubeInvitationsApp({
   actor: authenticatedAdminActor,
+  selectRegistrationRoute: selectYouTubeRegistrationRoute,
   registerProduct: registerYouTubeSharingNoKeepProduct,
   reconcileProductRegistration: reconcileYouTubeProductRegistrationFromSeller,
   finishDelivery: finishYouTubeInvitationDelivery,
@@ -458,7 +460,20 @@ function buildCookieStr(cookies: { AWSALB: string; AWSALBCORS: string; JSESSIONI
   ].filter(Boolean).join('; ');
 }
 
-async function registerYouTubeSharingNoKeepProduct(model: YouTubeSharingNoKeepProductModel): Promise<Response> {
+async function selectYouTubeRegistrationRoute(): Promise<GraytagSellerRoute | null> {
+  const cookies = loadGraytagAuthCookies();
+  if (!cookies) return null;
+  return selectGraytagSellerRoute(
+    'https://graytag.co.kr/ws/lender/findBeforeUsingLenderDeals?finishedDealIncluded=false&sorting=Latest&page=1&rows=1',
+    { headers: { ...BASE_HEADERS, Cookie: buildGraytagCookieHeader(cookies),
+      Referer: 'https://graytag.co.kr/lender/deal/list' }, redirect: 'manual', signal: AbortSignal.timeout(15_000) },
+    process.env.GRAYTAG_PROXY_URL?.trim(),
+  );
+}
+
+async function registerYouTubeSharingNoKeepProduct(
+  model: YouTubeSharingNoKeepProductModel, route?: GraytagSellerRoute,
+): Promise<Response> {
   const cookies = loadGraytagAuthCookies();
   if (!cookies) throw new Error('YouTube sales session unavailable');
   const multipart = buildMultipartJsonBody(model);
@@ -473,7 +488,7 @@ async function registerYouTubeSharingNoKeepProduct(model: YouTubeSharingNoKeepPr
     body: multipart.body,
     redirect: 'manual',
     signal: AbortSignal.timeout(30_000),
-  }, true);
+  }, true, route);
 }
 
 async function reconcileYouTubeProductRegistrationFromSeller(claim: YouTubeProductRegistrationReconciliationClaim) {
@@ -1552,13 +1567,21 @@ let _chatRoomsRefreshInFlight: Promise<void> | null = null;
 const CHAT_ROOMS_CACHE_TTL_MS = 60_000;
 const CHAT_RATE_LIMIT_BACKOFF_MS = 60_000;
 
-async function directFetch(url: string, options?: RequestInit): Promise<Response> {
+async function directFetch(url: string, options?: RequestInit, route?: GraytagSellerRoute): Promise<Response> {
   const proxyUrl = process.env.GRAYTAG_PROXY_URL?.trim();
+  if (route === 'direct') return fetch(url, options);
+  if (route === 'proxy') {
+    if (!proxyUrl) throw new Error('GrayTag proxy unavailable');
+    return curlFetch(url, options, proxyUrl);
+  }
+  if ((options?.method || 'GET').toUpperCase() === 'GET') {
+    return fetchGraytagReadWithFallback(url, options, proxyUrl);
+  }
   return proxyUrl ? curlFetch(url, options, proxyUrl) : fetch(url, options);
 }
 
 /** Use the configured transport once. Never retry uncertain writes. */
-async function rateLimitedFetch(url: string, options?: RequestInit, bypass = false): Promise<Response> {
+async function rateLimitedFetch(url: string, options?: RequestInit, bypass = false, route?: GraytagSellerRoute): Promise<Response> {
   if (!bypass && Date.now() < _rateLimitUntil) {
     return new Response(JSON.stringify({ ok: false, error: 'rate_limit_backoff' }), {
       status: 429,
@@ -1568,7 +1591,7 @@ async function rateLimitedFetch(url: string, options?: RequestInit, bypass = fal
   const elapsed = Date.now() - _lastGraytagRequest;
   if (elapsed < 1500) await new Promise(r => setTimeout(r, 1500 - elapsed));
   _lastGraytagRequest = Date.now();
-  const response = await directFetch(url, options);
+  const response = await directFetch(url, options, route);
   if (response.status === 429) _rateLimitUntil = Math.max(_rateLimitUntil, Date.now() + CHAT_RATE_LIMIT_BACKOFF_MS);
   return response;
 }

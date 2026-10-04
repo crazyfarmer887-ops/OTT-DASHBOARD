@@ -26,6 +26,7 @@ import { maskYouTubeInviteEmail, parseYouTubeInviteEmailCandidates } from '../li
 import { normalizeYouTubeAuditReason } from '../lib/youtube-audit-reason';
 import { assertYouTubeCapacityInvariant, occupiedYouTubeFamilyGroupSeats, YouTubeCapacityInvariantError } from '../lib/youtube-capacity-invariant';
 import { appendYouTubeListingCode, removeYouTubeListingCode, youtubeListingCodeFromManagerEmail } from '../lib/youtube-listing-code';
+import type { GraytagSellerRoute } from './graytag-seller-transport';
 
 const DEFAULT_FAMILY_GROUPS_PATH = 'data/youtube-family-groups.json';
 const DEFAULT_INVITATIONS_PATH = 'data/youtube-invitations.json';
@@ -149,7 +150,8 @@ function disabledMutation(c: any) {
 }
 
 export interface YouTubeInvitationsAppDependencies {
-  registerProduct?: (model: YouTubeSharingNoKeepProductModel) => Promise<Response>;
+  selectRegistrationRoute?: () => Promise<GraytagSellerRoute | null>;
+  registerProduct?: (model: YouTubeSharingNoKeepProductModel, route?: GraytagSellerRoute) => Promise<Response>;
   reconcileProductRegistration?: (claim: { attemptId: string; requestFingerprint: string; familyGroupId: string }) => Promise<
     { status: 'registered'; productUsid: string } | { status: 'uncertain' }
   >;
@@ -552,6 +554,21 @@ app.post('/products', async (c) => {
   if (submittedModel.endDate.slice(0, 8) <= todayCompact) return c.json({ ok: false, error: 'end date must be after today' }, 400);
   const familyGroupId = pooled ? YOUTUBE_VENDOR_POOL_ID : body.familyGroupId as string;
   const actor = dependencies.actor?.(c)?.trim() || 'admin:authenticated';
+  let registrationRoute: GraytagSellerRoute | undefined;
+  if (dependencies.selectRegistrationRoute) {
+    try {
+      const existing = productRegistrationsStore().listForCapacityValidation()
+        .some((record) => record.idempotencyKey === idempotencyKey);
+      if (!existing) {
+        registrationRoute = await dependencies.selectRegistrationRoute() ?? undefined;
+        if (!registrationRoute) {
+          c.header('Retry-After', '60');
+          return c.json({ ok: false, code: 'YOUTUBE_PROVIDER_PREFLIGHT_FAILED',
+            error: '그레이태그 접속이 불안정해 글 등록 요청을 보내지 않았어요. 잠시 후 다시 시도해주세요.' }, 503);
+        }
+      }
+    } catch { return unavailable(c); }
+  }
   let model = submittedModel;
   let requestFingerprint = '';
   let claim;
@@ -664,7 +681,9 @@ app.post('/products', async (c) => {
   let response: Response;
   try {
     if (!dependencies.registerProduct) throw new Error('provider unavailable');
-    response = await dependencies.registerProduct(model);
+    response = registrationRoute
+      ? await dependencies.registerProduct(model, registrationRoute)
+      : await dependencies.registerProduct(model);
   } catch { return finish('uncertain', 'provider-outcome-uncertain', 'YOUTUBE_PRODUCT_REGISTRATION_UNCERTAIN'); }
   if (response.status === 403) return finish('uncertain', 'provider-http-403', 'YOUTUBE_PROVIDER_ACCESS_DENIED');
   let payload: unknown = null;

@@ -320,6 +320,11 @@ export default function WritePage() {
           const payload = await response.json().catch(() => ({})) as { ok?: boolean; productUsid?: string; code?: string; error?: string; replayed?: boolean };
           const accepted = (response.status === 200 || response.status === 201) && payload.ok === true && typeof payload.productUsid === 'string' && payload.productUsid.length > 0;
           if (!accepted) {
+            if (payload.code === 'YOUTUBE_PROVIDER_PREFLIGHT_FAILED') {
+              stopSafely = true;
+              pendingStopMessage = payload.error || '그레이태그 접속이 불안정해 등록을 잠시 중단했어요.';
+              throw new Error(pendingStopMessage);
+            }
             if (payload.code === 'YOUTUBE_PROVIDER_ACCESS_DENIED') {
               stopSafely = true;
               throw new Error('그레이태그가 서버의 글 등록 요청을 거부했습니다(403). 등록 결과가 불확실하므로 판매내역 확인 전 재등록하지 마세요.');

@@ -47,7 +47,7 @@ export function getSeoulEndDateForDuration(days: number, clock: () => Date = () 
 export function summarizeYouTubeRegistration(items: YouTubeRegistrationProgress[]) {
   const errors = items.filter(item => item.status === 'error');
   const uncertainCount = errors.filter(item => /불확실|네트워크 오류/.test(item.error || '')).length;
-  const safelyStoppedCount = errors.filter(item => /후속 등록을 중단|연속 등록 제한/.test(item.error || '')).length;
+  const safelyStoppedCount = errors.filter(item => /후속 등록을 중단|연속 등록 제한|등록 요청을 보내지 않았어요/.test(item.error || '')).length;
   return {
     successCount: items.filter(item => item.status === 'done').length,
     uncertainCount,

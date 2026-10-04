@@ -7,6 +7,7 @@ import { chatNotificationBroker } from '../realtime/chat-notification-broker';
 import { observeYouTubeInvitationPollSources } from '../lib/youtube-invitation-poller';
 import { buildGraytagCookieHeader, loadGraytagAuthCookies } from '../lib/graytag-sales-session';
 import { curlFetch } from '../api/http-transport';
+import { fetchGraytagReadWithFallback } from '../api/graytag-seller-transport';
 import { buildYouTubeInvitationAlert, sendYouTubeInvitationAlert } from '../api/youtube-auto-reply';
 import {
   normalizeYouTubeInvitationEmail,
@@ -46,7 +47,7 @@ export function fetchPollGraytag(
   viaProxy: (url: string, options: RequestInit, proxyUrl: string) => Promise<Response> = curlFetch,
 ): Promise<Response> {
   const proxyUrl = env.GRAYTAG_PROXY_URL?.trim();
-  return proxyUrl ? viaProxy(url, options, proxyUrl) : direct(url, options);
+  return fetchGraytagReadWithFallback(url, options, proxyUrl, direct, viaProxy);
 }
 
 export function buildPollDealsUrl(page = 1, rows = 500): string {
