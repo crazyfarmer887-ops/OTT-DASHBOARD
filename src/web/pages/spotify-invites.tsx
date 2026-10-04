@@ -8,6 +8,7 @@ type SessionStatus = {
   memberCount?: number;
   syncEnabled: boolean;
   autoMessageEnabled?: boolean;
+  chatAlertEnabled?: boolean;
 };
 
 const field = { width: '100%', padding: '12px 14px', border: '1px solid #cbd5e1', borderRadius: 10,
@@ -88,6 +89,8 @@ export default function SpotifyInvitesPage() {
         : !status.syncEnabled ? '준비 중' : status.connected ? '실행 중 · 약 30초 간격' : 'GButs 연결 대기'}</strong></p>
       <p style={{ margin: '0 0 12px' }}>구매자 자동 안내: <strong>{!status ? '확인 중'
         : !status.autoMessageEnabled ? '준비 중' : status.connected ? '실행 중' : 'GButs 연결 대기'}</strong></p>
+      <p style={{ margin: '0 0 12px' }}>채팅 텔레그램 알림: <strong>{!status ? '확인 중'
+        : !status.chatAlertEnabled ? '준비 중' : status.connected ? '실행 중' : 'GButs 연결 대기'}</strong></p>
       <p style={{ color: '#475569', lineHeight: 1.6 }}>구매자가 1:1 채팅에 Spotify 아이디와 비밀번호를 남기면 노션 표에 기록합니다. 동업자는 초대 후 Invited를 체크합니다.</p>
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
         <a href="https://app.notion.com/p/Spotify-Family-Invitation-Checklist-3edff936cc9b81dda097cc7f352152ed" target="_blank" rel="noreferrer">Spotify 노션 표 열기</a>

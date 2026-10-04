@@ -1,6 +1,9 @@
 import { createSingleFlightRunner } from './poll-daemon';
 import { loadGbutsSession } from '../lib/gbuts-session';
 import { loadSafeModeConfig } from '../api/safe-mode';
+import { sendSellerAlert } from '../alerts/telegram';
+import { readGbutsSpotifyChatAlertJournal, syncGbutsSpotifyChatAlerts,
+  writeGbutsSpotifyChatAlertJournal } from './gbuts-spotify-chat-alerts';
 import { readGbutsSpotifyMessageJournal, sendGbutsText, syncGbutsSpotifyMessages,
   writeGbutsSpotifyMessageJournal } from './gbuts-spotify-messages';
 import {
@@ -354,6 +357,17 @@ export function startGbutsSpotifySync(): void {
       const gbutsToken = loadGbutsSession()?.token || process.env.GBUTS_API_TOKEN?.trim();
       if (!gbutsToken) return;
       const deps = { ...notion, ...createGbutsSpotifySellerClient(gbutsToken) };
+      if (process.env.GBUTS_SPOTIFY_CHAT_ALERT_ENABLED === 'true') {
+        try {
+          const alerts = await syncGbutsSpotifyChatAlerts({ ...deps, sendAlert: sendSellerAlert,
+            readJournal: readGbutsSpotifyChatAlertJournal,
+            writeJournal: writeGbutsSpotifyChatAlertJournal,
+            startAt: process.env.GBUTS_SPOTIFY_CHAT_ALERT_START_AT || '' }, postSeq);
+          if (alerts.sent || alerts.failed) console.log('[GbutsSpotifySync] chat alerts', alerts);
+        } catch (error) {
+          console.error('[GbutsSpotifySync] chat alerts failed', error instanceof Error ? error.message : 'unknown error');
+        }
+      }
       const result = await syncGbutsSpotifyCredentials(deps, postSeq);
       if (result.created || result.updated || result.cancelled || result.conflicts)
         console.log('[GbutsSpotifySync] sync', result);

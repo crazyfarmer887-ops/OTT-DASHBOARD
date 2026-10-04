@@ -1092,18 +1092,21 @@ app.get('/gbuts/session', async (c) => {
   const saved = loadGbutsSession();
   const token = saved?.token || process.env.GBUTS_API_TOKEN?.trim();
   if (!token) return c.json({ connected: false, syncEnabled: process.env.GBUTS_SPOTIFY_SYNC_ENABLED === 'true',
-    autoMessageEnabled: process.env.GBUTS_SPOTIFY_AUTO_MESSAGE_ENABLED === 'true' });
+    autoMessageEnabled: process.env.GBUTS_SPOTIFY_AUTO_MESSAGE_ENABLED === 'true',
+    chatAlertEnabled: process.env.GBUTS_SPOTIFY_CHAT_ALERT_ENABLED === 'true' });
   try {
     const members = await createGbutsSpotifySellerClient(token).listMembers(
       Number(process.env.GBUTS_SPOTIFY_POST_SEQ || GBUTS_SPOTIFY_POST_SEQ));
     return c.json({ connected: true, sellerLabel: saved?.sellerLabel || 'GButs seller',
       connectedAt: saved?.connectedAt || null, memberCount: members.length,
       syncEnabled: process.env.GBUTS_SPOTIFY_SYNC_ENABLED === 'true',
-      autoMessageEnabled: process.env.GBUTS_SPOTIFY_AUTO_MESSAGE_ENABLED === 'true' });
+      autoMessageEnabled: process.env.GBUTS_SPOTIFY_AUTO_MESSAGE_ENABLED === 'true',
+      chatAlertEnabled: process.env.GBUTS_SPOTIFY_CHAT_ALERT_ENABLED === 'true' });
   } catch {
     return c.json({ connected: false, expired: true, sellerLabel: saved?.sellerLabel || null,
       syncEnabled: process.env.GBUTS_SPOTIFY_SYNC_ENABLED === 'true',
-      autoMessageEnabled: process.env.GBUTS_SPOTIFY_AUTO_MESSAGE_ENABLED === 'true' });
+      autoMessageEnabled: process.env.GBUTS_SPOTIFY_AUTO_MESSAGE_ENABLED === 'true',
+      chatAlertEnabled: process.env.GBUTS_SPOTIFY_CHAT_ALERT_ENABLED === 'true' });
   }
 });
 
@@ -1141,7 +1144,8 @@ app.post('/gbuts/session', async (c) => {
     requestId: auditRequestId(c), details: { reason: 'seller-session-connect' } });
   return c.json({ ok: true, connected: true, sellerLabel,
     syncEnabled: process.env.GBUTS_SPOTIFY_SYNC_ENABLED === 'true',
-    autoMessageEnabled: process.env.GBUTS_SPOTIFY_AUTO_MESSAGE_ENABLED === 'true' });
+    autoMessageEnabled: process.env.GBUTS_SPOTIFY_AUTO_MESSAGE_ENABLED === 'true',
+    chatAlertEnabled: process.env.GBUTS_SPOTIFY_CHAT_ALERT_ENABLED === 'true' });
 });
 
 // ─── 에브리뷰 세션 상태 (everyview session-keeper v1 상태 파일) ──
