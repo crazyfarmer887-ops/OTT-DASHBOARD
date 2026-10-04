@@ -91,7 +91,7 @@ export default function SpotifyInvitesPage() {
         : !status.autoMessageEnabled ? '준비 중' : status.connected ? '실행 중' : 'GButs 연결 대기'}</strong></p>
       <p style={{ margin: '0 0 12px' }}>채팅 텔레그램 알림: <strong>{!status ? '확인 중'
         : !status.chatAlertEnabled ? '준비 중' : status.connected ? '실행 중' : 'GButs 연결 대기'}</strong></p>
-      <p style={{ color: '#475569', lineHeight: 1.6 }}>구매자가 1:1 채팅에 Spotify 아이디와 비밀번호를 남기면 노션 표에 기록합니다. 동업자가 새 계정 생성 후 Registered와 Invited를 체크하면 새 계정 ID·비밀번호를, 기존 계정에 Invited만 체크하면 초대 완료 안내를 구매자 채팅에 보냅니다.</p>
+      <p style={{ color: '#475569', lineHeight: 1.6 }}>구매자가 1:1 채팅에 Spotify 아이디와 비밀번호를 남기면 노션 표에 기록합니다. 새 계정 발급을 선택한 주문에는 빈 행을 만듭니다. 동업자가 새 계정 생성 후 Registered와 Invited를 체크하면 새 계정 ID·비밀번호를, 기존 계정에 Invited만 체크하면 초대 완료 안내를 구매자 채팅에 보냅니다.</p>
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
         <a href="https://app.notion.com/p/Spotify-Family-Invitation-Checklist-3edff936cc9b81dda097cc7f352152ed" target="_blank" rel="noreferrer">Spotify 노션 표 열기</a>
         <a href="https://gbuts.com/seller/subscriptions/15557/members" target="_blank" rel="noreferrer">GButs 파티원 보기</a>

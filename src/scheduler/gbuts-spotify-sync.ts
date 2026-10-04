@@ -39,6 +39,7 @@ export interface GbutsSpotifySyncDependencies {
   listRows(): Promise<SpotifyNotionRow[]>;
   getRow(id: string): Promise<SpotifyNotionRow | null>;
   createRow(orderKey: string, credentials: SpotifyCredentials): Promise<SpotifyNotionRow>;
+  createNewAccountRequestRow?(orderKey: string): Promise<SpotifyNotionRow>;
   claimRow?(row: SpotifyNotionRow, orderKey: string): Promise<SpotifyNotionRow>;
   replaceCredentials(row: SpotifyNotionRow, credentials: SpotifyCredentials): Promise<SpotifyNotionRow>;
   cancelRow(row: SpotifyNotionRow): Promise<SpotifyNotionRow>;
@@ -50,6 +51,7 @@ export async function syncGbutsSpotifyCredentials(deps: GbutsSpotifySyncDependen
   const [members, rows] = await Promise.all([deps.listMembers(postSeq), deps.listRows()]);
   const active = members.filter(isActiveGbutsSpotifyMember);
   const credentialsByOrder = new Map<string, SpotifyCredentials | null>();
+  const newAccountRequestsByOrder = new Map<string, boolean>();
   const credentialCounts = new Map<string, number>();
   for (const member of active) {
     const orderKey = gbutsSpotifyOrderKey(postSeq, member);
@@ -60,6 +62,7 @@ export async function syncGbutsSpotifyCredentials(deps: GbutsSpotifySyncDependen
     const credentials = newAccountRequestedAt && (!submitted || newAccountRequestedAt > submitted.receivedAt)
       ? null : submitted;
     credentialsByOrder.set(orderKey, credentials);
+    newAccountRequestsByOrder.set(orderKey, Boolean(newAccountRequestedAt && !credentials));
     if (credentials) {
       const fingerprint = JSON.stringify([credentials.email, credentials.password]);
       credentialCounts.set(fingerprint, (credentialCounts.get(fingerprint) || 0) + 1);
@@ -78,7 +81,17 @@ export async function syncGbutsSpotifyCredentials(deps: GbutsSpotifySyncDependen
       continue;
     }
     const credentials = credentialsByOrder.get(orderKey);
-    if (!credentials) { waitingForCredentials += 1; continue; }
+    if (!credentials) {
+      if (newAccountRequestsByOrder.get(orderKey) && matches.length === 0 && deps.createNewAccountRequestRow) {
+        if ((await deps.listRows()).some((row) => row.orderKey === orderKey)) { conflicts += 1; continue; }
+        const row = await deps.createNewAccountRequestRow(orderKey);
+        if (row.orderKey !== orderKey || row.email || row.password || row.registered || row.invited || row.cancelled)
+          throw new Error('Spotify Notion new-account request response invalid');
+        rows.push(row);
+        created += 1;
+      } else waitingForCredentials += 1;
+      continue;
+    }
     if (matches.length === 0) {
       const manualMatches = rows.filter((row) => !row.orderKey && !row.cancelled
         && isSpotifyAccountForBuyer(row.email, credentials.email) && row.password === credentials.password);
@@ -197,6 +210,8 @@ function parseNotionRow(value: unknown): SpotifyNotionRow | null {
   const email = active.length === 1 ? active[0].email.toLowerCase() : '';
   const emailHistory = emailParts.filter((item: { struck: boolean }) => item.struck)
     .map((item: { email: string }) => item.email.toLowerCase());
+  const cancelledRequest = emailParts.length === 0 && title.some((part: any) =>
+    part?.annotations?.strikethrough === true && String(part?.plain_text ?? part?.text?.content ?? '').trim());
   return {
     id: page.id,
     orderKey: richTextValue(page.properties?.['GButs order ID']?.rich_text).trim(),
@@ -205,7 +220,7 @@ function parseNotionRow(value: unknown): SpotifyNotionRow | null {
     password: richTextValue(page.properties?.Password?.rich_text),
     registered: page.properties?.Registered?.checkbox === true,
     invited: page.properties?.Invited?.checkbox === true,
-    cancelled: active.length === 0 && emailParts.length > 0,
+    cancelled: (active.length === 0 && emailParts.length > 0) || Boolean(cancelledRequest),
   };
 }
 
@@ -265,6 +280,20 @@ export function createGbutsSpotifyNotionClient(token: string, dataSourceId = SPO
       if (!row) throw new Error('Spotify Notion create response invalid');
       return row;
     },
+    async createNewAccountRequestRow(orderKey: string): Promise<SpotifyNotionRow> {
+      const response = await transport('https://api.notion.com/v1/pages', {
+        method: 'POST', headers, signal: AbortSignal.timeout(15_000),
+        body: JSON.stringify({ parent: { type: 'data_source_id', data_source_id: dataSourceId }, properties: {
+          'Spotify account': { title: [{ text: { content: 'New account requested' } }] },
+          Registered: { checkbox: false }, Invited: { checkbox: false },
+          'GButs order ID': { rich_text: [{ text: { content: orderKey } }] },
+        } }),
+      });
+      if (!response.ok) throw new Error(`Spotify Notion new-account request failed: HTTP ${response.status}`);
+      const row = parseNotionRow(await response.json());
+      if (!row) throw new Error('Spotify Notion new-account request response invalid');
+      return row;
+    },
     async claimRow(row: SpotifyNotionRow, orderKey: string): Promise<SpotifyNotionRow> {
       const response = await transport(`https://api.notion.com/v1/pages/${encodeURIComponent(row.id)}`, {
         method: 'PATCH', headers, signal: AbortSignal.timeout(15_000),
@@ -278,7 +307,8 @@ export function createGbutsSpotifyNotionClient(token: string, dataSourceId = SPO
       return claimed;
     },
     async replaceCredentials(row: SpotifyNotionRow, credentials: SpotifyCredentials): Promise<SpotifyNotionRow> {
-      const history = row.email === credentials.email ? row.emailHistory : [...row.emailHistory, row.email];
+      const history = row.email && row.email !== credentials.email
+        ? [...row.emailHistory, row.email] : row.emailHistory;
       const response = await transport(`https://api.notion.com/v1/pages/${encodeURIComponent(row.id)}`, {
         method: 'PATCH', headers, signal: AbortSignal.timeout(15_000),
         body: JSON.stringify({ properties: {
@@ -297,8 +327,9 @@ export function createGbutsSpotifyNotionClient(token: string, dataSourceId = SPO
       const response = await transport(`https://api.notion.com/v1/pages/${encodeURIComponent(row.id)}`, {
         method: 'PATCH', headers, signal: AbortSignal.timeout(15_000),
         body: JSON.stringify({ properties: {
-          'Spotify account': { title: notionTitle(row.emailHistory, row.email, true) },
-          Password: { rich_text: [] }, Invited: { checkbox: false },
+          'Spotify account': { title: row.email ? notionTitle(row.emailHistory, row.email, true)
+            : [{ text: { content: 'New account requested' }, annotations: { strikethrough: true } }] },
+          Password: { rich_text: [] }, Registered: { checkbox: false }, Invited: { checkbox: false },
         } }),
       });
       if (!response.ok) throw new Error(`Spotify Notion refund update failed: HTTP ${response.status}`);
