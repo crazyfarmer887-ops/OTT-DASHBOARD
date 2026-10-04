@@ -10,6 +10,7 @@ import {
   createSingleFlightRunner,
   extractSingleYouTubeBuyerEmail,
   extractAuthoritativeLenderDeals,
+  fetchPollGraytag,
   isPollSessionAlertEnabled,
   parseGraytagMessageTime,
   persistAndSendDealAlerts,
@@ -20,6 +21,25 @@ import {
 } from '../src/scheduler/poll-daemon';
 
 describe('PollDaemon Graytag deal list URL', () => {
+  test('uses the configured seller proxy for deal and chat reads without falling back to blocked direct traffic', async () => {
+    const direct = vi.fn(async () => new Response('Forbidden', { status: 403 }));
+    const proxied = vi.fn(async () => new Response('{"succeeded":true}', { status: 200 }));
+    const options = { headers: { Cookie: 'session=redacted' } };
+    const response = await fetchPollGraytag('https://graytag.co.kr/ws/lender/findBeforeUsingLenderDeals',
+      options, { GRAYTAG_PROXY_URL: 'http://proxy.invalid' } as NodeJS.ProcessEnv, direct, proxied);
+    expect(response.status).toBe(200);
+    expect(proxied).toHaveBeenCalledOnce();
+    expect(direct).not.toHaveBeenCalled();
+    proxied.mockRejectedValueOnce(new Error('proxy unavailable'));
+    await expect(fetchPollGraytag('https://graytag.co.kr/ws/chat/findChats', options,
+      { GRAYTAG_PROXY_URL: 'http://proxy.invalid' } as NodeJS.ProcessEnv, direct, proxied))
+      .rejects.toThrow('proxy unavailable');
+    expect(direct).not.toHaveBeenCalled();
+    expect((await fetchPollGraytag('https://graytag.co.kr/ws/lender/findBeforeUsingLenderDeals', options,
+      {} as NodeJS.ProcessEnv, direct, proxied)).status).toBe(403);
+    expect(direct).toHaveBeenCalledOnce();
+  });
+
   test('uses the finished-included selling list that matches the updated 판매내역 toggle behavior', () => {
     const url = buildPollDealsUrl();
 

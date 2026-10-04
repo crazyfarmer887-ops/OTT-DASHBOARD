@@ -6,6 +6,7 @@ import { messageFingerprint, normalizeBuyerMessage, type AutoReplyCandidateMessa
 import { chatNotificationBroker } from '../realtime/chat-notification-broker';
 import { observeYouTubeInvitationPollSources } from '../lib/youtube-invitation-poller';
 import { buildGraytagCookieHeader, loadGraytagAuthCookies } from '../lib/graytag-sales-session';
+import { curlFetch } from '../api/http-transport';
 import { buildYouTubeInvitationAlert, sendYouTubeInvitationAlert } from '../api/youtube-auto-reply';
 import {
   normalizeYouTubeInvitationEmail,
@@ -36,6 +37,17 @@ const BASE_HEADERS = {
   'Accept': 'application/json, text/plain, */*',
   'Referer': 'https://graytag.co.kr/lender/deal/list',
 };
+
+export function fetchPollGraytag(
+  url: string,
+  options: RequestInit = {},
+  env: NodeJS.ProcessEnv = process.env,
+  direct: (url: string, options?: RequestInit) => Promise<Response> = fetch,
+  viaProxy: (url: string, options: RequestInit, proxyUrl: string) => Promise<Response> = curlFetch,
+): Promise<Response> {
+  const proxyUrl = env.GRAYTAG_PROXY_URL?.trim();
+  return proxyUrl ? viaProxy(url, options, proxyUrl) : direct(url, options);
+}
 
 export function buildPollDealsUrl(page = 1, rows = 500): string {
   // Graytag 판매내역 now only exposes current 판매중 rows when "종료된 거래 포함" is enabled.
@@ -82,8 +94,8 @@ async function fetchYouTubeSalesDealSources(): Promise<{
   const headers = { ...BASE_HEADERS, Cookie: buildGraytagCookieHeader(cookies) };
   try {
     const [beforeResponse, afterResponse] = await Promise.all([
-      fetch(buildPollDealsUrl(), { headers }),
-      fetch(buildPollAfterUsingDealsUrl(), { headers: { ...headers, Referer: 'https://graytag.co.kr/lender/deal/listAfterUsing' } }),
+      fetchPollGraytag(buildPollDealsUrl(), { headers }),
+      fetchPollGraytag(buildPollAfterUsingDealsUrl(), { headers: { ...headers, Referer: 'https://graytag.co.kr/lender/deal/listAfterUsing' } }),
     ]);
     if (!beforeResponse.ok || !afterResponse.ok) return null;
     const [beforePayload, afterPayload] = await Promise.all([beforeResponse.json(), afterResponse.json()]);
@@ -496,7 +508,7 @@ async function sendNewChatMessageAlerts(
   for (const deal of chatDeals) {
     const chatRoomUuid = String(deal.chatRoomUuid || deal.dealDetail?.chatRoomUuid || '').trim();
     try {
-      const msgResp = await fetch(`https://graytag.co.kr/ws/chat/findChats?uuid=${encodeURIComponent(chatRoomUuid)}&page=1`, {
+      const msgResp = await fetchPollGraytag(`https://graytag.co.kr/ws/chat/findChats?uuid=${encodeURIComponent(chatRoomUuid)}&page=1`, {
         headers: { ...headers, Referer: `https://graytag.co.kr/chat/${chatRoomUuid}` },
         redirect: 'manual',
         signal: AbortSignal.timeout(2500),
@@ -615,11 +627,11 @@ async function pollGraytag() {
     const cookieStr = `AWSALB=${cookies.AWSALB}; AWSALBCORS=${cookies.AWSALBCORS}; JSESSIONID=${cookies.JSESSIONID}`;
     const headers = { ...BASE_HEADERS, Cookie: cookieStr };
 
-    const resp = await fetch(
+    const resp = await fetchPollGraytag(
       buildPollDealsUrl(),
       { headers }
     );
-    const afterResp = await fetch(
+    const afterResp = await fetchPollGraytag(
       buildPollAfterUsingDealsUrl(),
       { headers: { ...headers, Referer: 'https://graytag.co.kr/lender/deal/listAfterUsing' } }
     );
