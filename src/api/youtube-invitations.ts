@@ -467,6 +467,8 @@ app.delete('/family-groups/:id', (c) => {
 const PRODUCT_FIELDS = ['familyGroupId', 'endDate', 'price', 'name', 'sellingGuide'] as const;
 const POOLED_PRODUCT_FIELDS = ['endDate', 'price', 'name', 'sellingGuide'] as const;
 const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9._~:+-]{8,128}$/;
+const PRODUCT_REGISTRATION_BURST_LIMIT = 5;
+const PRODUCT_REGISTRATION_BURST_WINDOW_MS = 8 * 60_000;
 const CAPACITY_CONSUMING_INVITATION_STATUSES = new Set([
   'waiting_for_group_assignment', 'waiting_for_buyer_email', 'email_candidate_found', 'email_confirmed',
   'invite_sent', 'delivery_completion_pending', 'delivered_waiting_inspection', 'active',
@@ -542,9 +544,10 @@ app.post('/products', async (c) => {
       : '입력값을 다시 확인해주세요.';
     return c.json({ ok: false, error: validationMessage, code: 'YOUTUBE_PRODUCT_VALIDATION_FAILED' }, 400);
   }
+  const requestTime = dependencies.now?.() ?? new Date();
   const seoulParts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit',
-  }).formatToParts(dependencies.now?.() ?? new Date()).map((part) => [part.type, part.value]));
+  }).formatToParts(requestTime).map((part) => [part.type, part.value]));
   const todayCompact = `${seoulParts.year}${seoulParts.month}${seoulParts.day}`;
   if (submittedModel.endDate.slice(0, 8) <= todayCompact) return c.json({ ok: false, error: 'end date must be after today' }, 400);
   const familyGroupId = pooled ? YOUTUBE_VENDOR_POOL_ID : body.familyGroupId as string;
@@ -562,6 +565,23 @@ app.post('/products', async (c) => {
       }
       if (familyGroup?.subscriptionEndDate && submittedModel.endDate.slice(0, 8) > familyGroup.subscriptionEndDate.replaceAll('-', '')) {
         return { response: c.json({ ok: false, error: 'end date exceeds family group subscription' }, 400) };
+      }
+      const registrationStore = productRegistrationsStore();
+      const records = registrationStore.listForCapacityValidation();
+      if (!records.some((record) => record.idempotencyKey === idempotencyKey)) {
+        const recentAttempts = records
+          .filter((record) => record.history[0]?.reasonCode === 'registration-requested')
+          .map((record) => Date.parse(record.createdAt))
+          .filter((createdAt) => createdAt <= requestTime.getTime()
+            && createdAt > requestTime.getTime() - PRODUCT_REGISTRATION_BURST_WINDOW_MS)
+          .sort((left, right) => left - right);
+        if (recentAttempts.length >= PRODUCT_REGISTRATION_BURST_LIMIT) {
+          const retryAfterSeconds = Math.max(1, Math.ceil((recentAttempts[recentAttempts.length - PRODUCT_REGISTRATION_BURST_LIMIT]
+            + PRODUCT_REGISTRATION_BURST_WINDOW_MS - requestTime.getTime()) / 1000));
+          c.header('Retry-After', String(retryAfterSeconds));
+          return { response: c.json({ ok: false, code: 'YOUTUBE_PRODUCT_RATE_LIMITED', retryAfterSeconds,
+            error: `연속 등록 제한을 피하려고 중단했어요. ${Math.ceil(retryAfterSeconds / 60)}분 후 남은 글을 등록해주세요.` }, 429) };
+        }
       }
       const listingCode = familyGroup ? youtubeListingCodeFromManagerEmail(familyGroup.managerEmail) : '';
       const nameWithoutListingCode = listingCode ? removeYouTubeListingCode(submittedModel.name, listingCode) : submittedModel.name;
@@ -592,8 +612,8 @@ app.post('/products', async (c) => {
         }
       }
       return {
-        claim: productRegistrationsStore().claimWithCapacity(
-          { idempotencyKey, requestFingerprint, compatibleRequestFingerprints, familyGroupId, actor, reasonCode: 'registration-requested', at: dependencies.now?.().toISOString() },
+        claim: registrationStore.claimWithCapacity(
+          { idempotencyKey, requestFingerprint, compatibleRequestFingerprints, familyGroupId, actor, reasonCode: 'registration-requested', at: requestTime.toISOString() },
           {
             // A listing is not an occupied seat. The vendor assigns a real family after purchase.
             familyCapacity: pooled ? Number.MAX_SAFE_INTEGER : familyGroup!.sellableSeats,

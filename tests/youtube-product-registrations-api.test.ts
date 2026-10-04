@@ -29,6 +29,30 @@ function post(app: ReturnType<typeof createYouTubeInvitationsApp>, key = 'reques
 }
 
 describe('YouTube product registration API', () => {
+  test('stops a burst before the provider rejects its sixth registration with 403', async () => {
+    let clock = new Date(now);
+    const registerProduct = vi.fn(async () => registerProduct.mock.calls.length > 5 && clock.getTime() < Date.parse(now) + 8 * 60_000
+      ? new Response('<h1>403 Forbidden</h1>', { status: 403 })
+      : new Response(JSON.stringify({ succeeded: true, data: `burst-product-${registerProduct.mock.calls.length}` }), { status: 200 }));
+    const app = createYouTubeInvitationsApp({ registerProduct, now: () => clock });
+    const pooled = { endDate: '20270831T2359', price: 7900, name: '유튜브 프리미엄', sellingGuide: '초대 안내' };
+    for (let index = 1; index <= 5; index++) {
+      expect((await post(app, `burst-product-key-${index}`, pooled)).status).toBe(201);
+    }
+    const secondApp = createYouTubeInvitationsApp({ registerProduct, now: () => clock });
+    const sixth = await post(secondApp, 'burst-product-key-6', pooled);
+    expect(sixth.status).toBe(429);
+    expect(await sixth.json()).toMatchObject({ code: 'YOUTUBE_PRODUCT_RATE_LIMITED', retryAfterSeconds: 480 });
+    expect(sixth.headers.get('Retry-After')).toBe('480');
+    expect(registerProduct).toHaveBeenCalledTimes(5);
+    expect(new YouTubeProductRegistrationsStore(process.env.YOUTUBE_PRODUCT_REGISTRATIONS_PATH!).list()).toHaveLength(5);
+    expect((await post(secondApp, 'burst-product-key-1', pooled)).status).toBe(200);
+    expect(registerProduct).toHaveBeenCalledTimes(5);
+    clock = new Date(Date.parse(now) + 8 * 60_000 + 1000);
+    expect((await post(secondApp, 'burst-product-key-6', pooled)).status).toBe(201);
+    expect(registerProduct).toHaveBeenCalledTimes(6);
+  });
+
   test('registers a pooled listing without inventing a family account and replays it safely', async () => {
     new YouTubeFamilyGroupsStore(process.env.YOUTUBE_FAMILY_GROUPS_PATH!).write({ version: 1, familyGroups: [] });
     const registerProduct = vi.fn(async () => new Response(JSON.stringify({ succeeded: true, data: 'pool-product-1' }), { status: 200 }));

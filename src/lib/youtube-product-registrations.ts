@@ -56,7 +56,7 @@ function validHistory(item: unknown): item is YouTubeProductRegistrationHistoryE
 function validTransition(from: YouTubeProductRegistrationStatus, to: YouTubeProductRegistrationStatus): boolean {
   return from === 'submitting'
     ? to === 'registered' || to === 'uncertain' || to === 'failed'
-    : from === 'registered' && to === 'deleted';
+    : (from === 'registered' && to === 'deleted') || (from === 'uncertain' && to === 'failed');
 }
 function validRegistration(item: unknown): item is YouTubeProductRegistrationRecord {
   if (!record(item) || !exact(item, EXACT_RECORD) || !SAFE_KEY.test(String(item.idempotencyKey ?? ''))
@@ -79,7 +79,9 @@ function validRegistration(item: unknown): item is YouTubeProductRegistrationRec
   }
   const last = history.at(-1)!;
   return last.to === item.status && last.at === item.updatedAt
-    && (item.status === 'deleted' ? history.length === 3 : history.length === 2);
+    && (item.status === 'deleted' ? history.length === 3
+      : item.status === 'failed' ? history.length === 2 || history.length === 3
+        : history.length === 2);
 }
 function validate(value: unknown): asserts value is YouTubeProductRegistrationsData {
   if (!record(value) || !exact(value, ['version', 'records']) || value.version !== 1 || !Array.isArray(value.records)
@@ -282,6 +284,27 @@ export class YouTubeProductRegistrationsStore {
       if (!current || current.status !== 'submitting' || attemptId !== current.attemptId || !text(input.actor, 200) || !text(input.reasonCode, 200) || !iso(at) || (to === 'registered' ? !text(input.productUsid, 200) : input.productUsid !== undefined)) throw new TypeError('Invalid YouTube product registration completion');
       const updated: YouTubeProductRegistrationRecord = { ...current, status: to, productUsid: to === 'registered' ? input.productUsid! : null, updatedAt: at, history: [...current.history, { from: 'submitting', to, actor: input.actor, reasonCode: input.reasonCode, at }] };
       const records = [...data.records]; records[index] = updated; writeStore(this.filePath, { version: 1, records }); return updated;
+    });
+  }
+  /** Operator action after an authoritative seller-inventory review finds no product for a provider 403. */
+  settleDeniedWithoutProduct(idempotencyKey: string, input: { actor: string; reasonCode: string; at?: string }): YouTubeProductRegistrationRecord {
+    const at = input.at ?? new Date().toISOString();
+    if (!SAFE_KEY.test(idempotencyKey) || !text(input.actor, 200) || !text(input.reasonCode, 200) || !iso(at)) {
+      throw new TypeError('Invalid denied registration settlement');
+    }
+    return withJournalLock(this.filePath, () => {
+      const data = readStore(this.filePath, false)!;
+      const index = data.records.findIndex((row) => row.idempotencyKey === idempotencyKey);
+      const current = data.records[index];
+      if (!current || current.status !== 'uncertain' || current.history.at(-1)?.reasonCode !== 'provider-http-403'
+        || current.productUsid !== null || at < current.updatedAt) {
+        throw new TypeError('Denied registration is not eligible for settlement');
+      }
+      const updated: YouTubeProductRegistrationRecord = { ...current, status: 'failed', updatedAt: at,
+        history: [...current.history, { from: 'uncertain', to: 'failed', actor: input.actor, reasonCode: input.reasonCode, at }] };
+      const records = [...data.records]; records[index] = updated;
+      writeStore(this.filePath, { version: 1, records });
+      return updated;
     });
   }
   markDeletedProducts(productUsids: readonly string[], input: { actor: string; reasonCode: string; at?: string }): YouTubeProductRegistrationRecord[] {

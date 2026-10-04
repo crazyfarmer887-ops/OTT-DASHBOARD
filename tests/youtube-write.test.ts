@@ -207,7 +207,8 @@ test('YouTube completion summary keeps success, safely stopped slots, and uncert
     { index: 1, status: 'done' },
     { index: 2, status: 'error', error: '등록 결과가 불확실합니다. 자동 재시도 금지' },
     { index: 3, status: 'error', error: '안전을 위해 후속 등록을 중단했어요.' },
-  ]), { successCount: 1, uncertainCount: 1, safelyStoppedCount: 1, failedCount: 0, requestedCount: 3 });
+    { index: 4, status: 'error', error: '연속 등록 제한을 피하려고 중단했어요.' },
+  ]), { successCount: 1, uncertainCount: 1, safelyStoppedCount: 2, failedCount: 0, requestedCount: 4 });
 });
 
 test('YouTube never enters the credential-delivery step after registration', () => {

@@ -46,6 +46,7 @@ interface ProgressItem {
   status: 'pending' | 'running' | 'done' | 'error';
   productUsid?: string;
   error?: string;
+  code?: string;
 }
 
 interface PriceRank {
@@ -301,6 +302,8 @@ export default function WritePage() {
     if (isYoutube) {
       const results: string[] = [];
       let stopSafely = false;
+      let pendingStopMessage = '안전을 위해 후속 등록을 중단했어요. 초대 관리를 확인해주세요.';
+      let rateLimitedAt: number | null = null;
       for (let i = 0; i < count; i++) {
         setProgressList(prev => prev.map(p => p.index === i + 1 ? { ...p, status: 'running' } : p));
         try {
@@ -323,6 +326,12 @@ export default function WritePage() {
               stopSafely = true;
               throw new Error('가족 그룹 자리가 모두 찼어요.');
             }
+            if (payload.code === 'YOUTUBE_PRODUCT_RATE_LIMITED') {
+              stopSafely = true;
+              rateLimitedAt = i + 1;
+              pendingStopMessage = payload.error || '잠시 후 남은 글을 등록해주세요.';
+              throw new Error(pendingStopMessage);
+            }
             const uncertain = response.status >= 500 || response.redirected || (response.status >= 200 && response.status < 300)
               || payload.code === 'YOUTUBE_PRODUCT_REGISTRATION_UNCERTAIN'
               || payload.code === 'YOUTUBE_PRODUCT_REGISTRATION_IN_PROGRESS';
@@ -340,11 +349,13 @@ export default function WritePage() {
           const visibleMessage = submitError instanceof TypeError
             ? '네트워크 오류로 등록 결과가 불확실합니다. 자동 재시도 금지 · 초대 관리 확인 후 처리해주세요.'
             : message;
-          setProgressList(prev => prev.map(p => p.index === i + 1 ? { ...p, status: 'error', error: visibleMessage } : p));
+          setProgressList(prev => prev.map(p => p.index === i + 1 ? { ...p, status: 'error', error: visibleMessage,
+            ...(rateLimitedAt === i + 1 ? { code: 'YOUTUBE_PRODUCT_RATE_LIMITED' } : {}) } : p));
           if (submitError instanceof TypeError) stopSafely = true;
         }
         if (stopSafely) {
-          setProgressList(prev => prev.map(p => p.status === 'pending' ? { ...p, status: 'error', error: '안전을 위해 후속 등록을 중단했어요. 초대 관리를 확인해주세요.' } : p));
+          setProgressList(prev => prev.map(p => p.status === 'pending' ? { ...p, status: 'error', error: pendingStopMessage,
+            ...(rateLimitedAt !== null ? { code: 'YOUTUBE_PRODUCT_RATE_LIMITED' } : {}) } : p));
           break;
         }
         if (i < count - 1) await new Promise(resolve => setTimeout(resolve, 800));
@@ -481,6 +492,7 @@ export default function WritePage() {
   // ── 완료 ────────────────────────────────────────────────────
   if (step === 'done') {
     const successItems = progressList.filter(p => p.status === 'done');
+    const rateLimitedItems = progressList.filter(p => p.code === 'YOUTUBE_PRODUCT_RATE_LIMITED');
     const youtubeSummary = summarizeYouTubeRegistration(progressList);
     const youtubeFailureMessages = [...new Set(progressList
       .filter(item => item.status === 'error' && item.error && !item.error.includes('후속 등록을 중단'))
@@ -505,7 +517,7 @@ export default function WritePage() {
           )}
           {progressList.some(item => item.status === 'error') && (
             <div style={{ background: '#FFF0F0', color: '#DC2626', borderRadius: 10, padding: '9px 12px', marginBottom: 14, fontSize: 11, textAlign: 'left' }}>
-              <strong>실패 원인</strong><br />
+              <strong>{rateLimitedItems.length > 0 ? '등록 중단 사유' : '실패 원인'}</strong><br />
               {youtubeFailureMessages.length > 0
                 ? youtubeFailureMessages.map(message => <span key={message}>{message}<br /></span>)
                 : '일부 등록이 완료되지 않았어요. 자동 재시도 금지 · 초대 관리에서 결과를 확인해주세요.'}
@@ -522,10 +534,13 @@ export default function WritePage() {
             ))}
           </div>
           <button
-            onClick={service === 'youtube' && successItems.length === 0 ? () => setStep('form') : reset}
+            onClick={rateLimitedItems.length > 0 ? () => {
+              setRepeat(rateLimitedItems.length); setProgressList([]); setDoneProductUsids([]); setStep('form');
+            } : service === 'youtube' && successItems.length === 0 ? () => setStep('form') : reset}
             style={{ width: '100%', ...btnStyle('#A78BFA', '#fff') }}
           >
-            {service === 'youtube' && successItems.length === 0 ? '입력 수정하기' : '새 글 작성'}
+            {rateLimitedItems.length > 0 ? `남은 ${rateLimitedItems.length}개 입력으로 돌아가기`
+              : service === 'youtube' && successItems.length === 0 ? '입력 수정하기' : '새 글 작성'}
           </button>
         </div>
       </div>
@@ -722,7 +737,7 @@ export default function WritePage() {
           <div style={{ background: '#EDE9FE', borderRadius: 8, height: 8, overflow: 'hidden' }}>
             <div style={{ background: 'linear-gradient(90deg, #A78BFA, #818CF8)', height: '100%', width: `${pct}%`, borderRadius: 8, transition: 'width 0.4s ease' }} />
           </div>
-          {errors > 0 && <div style={{ fontSize: 11, color: '#EF4444', marginTop: 6, display:'flex', alignItems:'center', gap:4 }}><AlertTriangle size={11} />{errors}개 실패</div>}
+          {errors > 0 && <div style={{ fontSize: 11, color: '#EF4444', marginTop: 6, display:'flex', alignItems:'center', gap:4 }}><AlertTriangle size={11} />{errors}개 중단 또는 실패</div>}
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

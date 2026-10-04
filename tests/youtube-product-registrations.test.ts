@@ -16,6 +16,24 @@ function withTemp(run: (root: string, path: string) => void) {
 }
 
 describe('YouTube product registration journal', () => {
+  test('settles a verified provider 403 without erasing its uncertainty history', () => withTemp((_root, path) => {
+    const store = new YouTubeProductRegistrationsStore(path, { allowUnsafeIsolatedClaim: true });
+    const input = { idempotencyKey: 'provider-denied-key', requestFingerprint: 'a'.repeat(64),
+      familyGroupId: 'youtube-vendor-pool', actor: 'admin', reasonCode: 'registration-requested', at };
+    store.claim(input);
+    store.complete(input.idempotencyKey, 'uncertain', { actor: 'admin', reasonCode: 'provider-http-403', at: '2026-08-11T00:00:01.000Z' });
+    expect(store.settleDeniedWithoutProduct(input.idempotencyKey, { actor: 'operator',
+      reasonCode: 'seller-inventory-verified-no-product', at: '2026-08-11T00:01:00.000Z' }))
+      .toMatchObject({ status: 'failed', productUsid: null });
+    expect(store.list()[0].history.map((entry) => entry.to)).toEqual(['submitting', 'uncertain', 'failed']);
+    expect(() => store.settleDeniedWithoutProduct(input.idempotencyKey, { actor: 'operator', reasonCode: 'repeat' }))
+      .toThrow(/not eligible/);
+    store.claim({ ...input, idempotencyKey: 'provider-timeout-key', requestFingerprint: 'b'.repeat(64) });
+    store.complete('provider-timeout-key', 'uncertain', { actor: 'admin', reasonCode: 'provider-outcome-uncertain', at: '2026-08-11T00:00:01.000Z' });
+    expect(() => store.settleDeniedWithoutProduct('provider-timeout-key', { actor: 'operator', reasonCode: 'wrong-type' }))
+      .toThrow(/not eligible/);
+  }));
+
   test('raw claim fails closed unless an isolated test explicitly opts out', () => withTemp((_root, path) => {
     const input = { idempotencyKey: 'request-key-raw-claim', requestFingerprint: 'a'.repeat(64), familyGroupId: 'group-1', actor: 'admin', reasonCode: 'create', at };
     expect(() => new YouTubeProductRegistrationsStore(path).claim(input)).toThrow(/capacity validation/i);
