@@ -14,6 +14,72 @@ describe('GButs Spotify Notion sync', () => {
     expect(await client.listMembers(15557)).toEqual([liveFormatMember]);
   });
 
+  it('keeps a partner-selected new login and its Registered checkbox during buyer chat sync', async () => {
+    const row: SpotifyNotionRow = { id: 'page-1', orderKey: '15557:91',
+      email: 'buyer@jamkkangudok.com', emailHistory: ['buyer@example.com'],
+      password: 'secret123', registered: true, invited: false, cancelled: false };
+    const replaceCredentials = vi.fn();
+    const result = await syncGbutsSpotifyCredentials({
+      listMembers: async () => [member], openPrivateRoom: async () => 'ROOM123',
+      getChat: async () => ({ roomId: 'ROOM123', members: [], messages: [credentialMessage] }),
+      listRows: async () => [row], getRow: async () => row,
+      createRow: vi.fn(), replaceCredentials, cancelRow: vi.fn(),
+    }, 15557);
+    expect(result).toMatchObject({ created: 0, updated: 0, conflicts: 0 });
+    expect(replaceCredentials).not.toHaveBeenCalled();
+  });
+
+  it('does not restore old buyer credentials after the buyer chooses a new account', async () => {
+    const row: SpotifyNotionRow = { id: 'page-1', orderKey: '15557:91',
+      email: 'issued@jamkkangudok.com', emailHistory: ['buyer@example.com'],
+      password: 'issued123', registered: true, invited: true, cancelled: false };
+    const replaceCredentials = vi.fn();
+    const result = await syncGbutsSpotifyCredentials({
+      listMembers: async () => [member], openPrivateRoom: async () => 'ROOM123',
+      getChat: async () => ({ roomId: 'ROOM123', members: [], messages: [
+        credentialMessage,
+        { ...credentialMessage, message: '새 계정 발급 부탁드립니다', createdAt: '2026-10-03T10:01:00Z' },
+      ] }),
+      listRows: async () => [row], getRow: async () => row,
+      createRow: vi.fn(), replaceCredentials, cancelRow: vi.fn(),
+    }, 15557);
+    expect(result).toMatchObject({ created: 0, updated: 0, waitingForCredentials: 1 });
+    expect(replaceCredentials).not.toHaveBeenCalled();
+  });
+
+  it('links a unique manually entered partner login to the buyer order', async () => {
+    const manual: SpotifyNotionRow = { id: 'manual-page', orderKey: '',
+      email: 'buyer@jamkkangudok.com', emailHistory: ['buyer@example.com'],
+      password: 'secret123', registered: true, invited: false, cancelled: false };
+    const claimed = { ...manual, orderKey: '15557:91' };
+    const claimRow = vi.fn(async () => claimed);
+    const result = await syncGbutsSpotifyCredentials({
+      listMembers: async () => [member], openPrivateRoom: async () => 'ROOM123',
+      getChat: async () => ({ roomId: 'ROOM123', members: [], messages: [credentialMessage] }),
+      listRows: async () => [manual], getRow: async () => manual,
+      createRow: vi.fn(), claimRow, replaceCredentials: vi.fn(), cancelRow: vi.fn(),
+    }, 15557);
+    expect(result).toMatchObject({ created: 0, conflicts: 0 });
+    expect(claimRow).toHaveBeenCalledWith(manual, '15557:91');
+  });
+
+  it('does not overwrite a partner-selected login when the buyer changes only the password', async () => {
+    const row: SpotifyNotionRow = { id: 'page-1', orderKey: '15557:91',
+      email: 'buyer@jamkkangudok.com', emailHistory: [], password: 'secret123',
+      registered: true, invited: false, cancelled: false };
+    const replaceCredentials = vi.fn();
+    const result = await syncGbutsSpotifyCredentials({
+      listMembers: async () => [member], openPrivateRoom: async () => 'ROOM123',
+      getChat: async () => ({ roomId: 'ROOM123', members: [], messages: [
+        { ...credentialMessage, message: 'Spotify email: buyer@example.com\nPassword: changed123' },
+      ] }),
+      listRows: async () => [row], getRow: async () => row,
+      createRow: vi.fn(), replaceCredentials, cancelRow: vi.fn(),
+    }, 15557);
+    expect(result.conflicts).toBe(1);
+    expect(replaceCredentials).not.toHaveBeenCalled();
+  });
+
   it('uses the seller member and private chat endpoints observed in GButs', async () => {
     const urls: string[] = [];
     const transport = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
@@ -150,7 +216,7 @@ describe('GButs Spotify Notion sync', () => {
       } }), { status: 200 });
     }) as unknown as typeof fetch;
     const row: SpotifyNotionRow = { id: 'page-1', orderKey: '15557:91', email: 'old@example.com',
-      emailHistory: [], password: 'oldpass', invited: true, cancelled: false };
+      emailHistory: [], password: 'oldpass', registered: true, invited: true, cancelled: false };
     const result = await createGbutsSpotifyNotionClient('token', undefined, transport).replaceCredentials(row, {
       email: 'new@example.com', password: 'newpass', receivedAt: '2026-10-02T10:00:00Z',
     });
@@ -160,6 +226,7 @@ describe('GButs Spotify Notion sync', () => {
       { text: { content: '\n\n↓\n\n' } },
       { text: { content: 'new@example.com' } },
     ]);
+    expect(JSON.parse(String(requests[0].init.body)).properties.Registered).toEqual({ checkbox: false });
     expect(result).toMatchObject({ email: 'new@example.com', emailHistory: ['old@example.com'], invited: false });
   });
 

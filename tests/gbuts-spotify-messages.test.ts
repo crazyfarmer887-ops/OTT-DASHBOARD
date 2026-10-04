@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { SPOTIFY_BUYER_GUIDE, SPOTIFY_REQUEST_ACK, requestedSpotifyNewAccount,
+import { SPOTIFY_BUYER_GUIDE, SPOTIFY_INVITED_REPLY, SPOTIFY_REQUEST_ACK, spotifyRegisteredAccountInvitedReply, requestedSpotifyNewAccount,
   syncGbutsSpotifyMessages, type GbutsSpotifyMessageJournal } from '../src/scheduler/gbuts-spotify-messages';
 import type { SpotifyNotionRow } from '../src/scheduler/gbuts-spotify-sync';
 
@@ -35,7 +35,8 @@ describe('GButs Spotify buyer messages', () => {
       writeJournal: vi.fn(), now: () => '2026-10-02T10:01:00Z', requestAckStartAt: '2026-10-03T00:00:00Z',
     };
     expect(await syncGbutsSpotifyMessages(deps, 15557)).toMatchObject({ invitedRepliesAttempted: 1, guidesAttempted: 0 });
-    expect(sendText).toHaveBeenCalledWith('777', 7, expect.stringContaining('buyer@example.com'));
+    expect(sendText).toHaveBeenCalledWith('777', 7, SPOTIFY_INVITED_REPLY);
+    expect(JSON.stringify(journal)).not.toContain('secret123');
     expect(await syncGbutsSpotifyMessages(deps, 15557)).toMatchObject({ invitedRepliesAttempted: 0 });
     expect(sendText).toHaveBeenCalledTimes(1);
   });
@@ -97,6 +98,14 @@ describe('GButs Spotify buyer messages', () => {
       ], 42)).toBeNull();
     });
 
+  it('uses the latest explicit new-account choice and respects a later cancellation', () => {
+    const first = { ...buyerMessage, message: '새 계정 발급 부탁드립니다', createdAt: '2026-10-03T10:00:00Z' };
+    const cancelled = { ...buyerMessage, message: '2번 말고 1번으로 할게요', createdAt: '2026-10-03T10:01:00Z' };
+    const selectedAgain = { ...first, createdAt: '2026-10-03T10:02:00Z' };
+    expect(requestedSpotifyNewAccount([first, cancelled], 42)).toBeNull();
+    expect(requestedSpotifyNewAccount([first, cancelled, selectedAgain], 42)).toBe(selectedAgain.createdAt);
+  });
+
   it('does not send a new acknowledgment for credentials received before activation', async () => {
     const sendText = vi.fn();
     const result = await syncGbutsSpotifyMessages({
@@ -107,6 +116,73 @@ describe('GButs Spotify buyer messages', () => {
       requestAckStartAt: '2026-10-03T10:00:00Z',
     }, 15557);
     expect(result.acknowledgementsAttempted).toBe(0);
+    expect(sendText).not.toHaveBeenCalled();
+  });
+
+  it('replies for a partner-created login only after Registered and Invited are both checked', async () => {
+    const rowWithNewLogin: SpotifyNotionRow = { ...row, email: 'buyer@jamkkangudok.com',
+      registered: false };
+    const sendText = vi.fn(async () => undefined);
+    const journal: GbutsSpotifyMessageJournal = { version: 1, records: {} };
+    const deps = {
+      listMembers: async () => [member], openPrivateRoom: async () => '777',
+      getChat: async () => ({ messages: [buyerMessage] }), sellerAccountSeq: async () => 7,
+      listRows: async () => [rowWithNewLogin], sendText, readJournal: () => journal,
+      writeJournal: vi.fn(), requestAckStartAt: '2026-10-03T00:00:00Z',
+    };
+    expect((await syncGbutsSpotifyMessages(deps, 15557)).invitedRepliesAttempted).toBe(0);
+    rowWithNewLogin.registered = true;
+    expect((await syncGbutsSpotifyMessages(deps, 15557)).invitedRepliesAttempted).toBe(1);
+    expect(sendText).toHaveBeenCalledWith('777', 7,
+      spotifyRegisteredAccountInvitedReply('buyer@jamkkangudok.com', 'secret123'));
+    expect(JSON.stringify(journal)).not.toContain('secret123');
+  });
+
+  it('sends the issued login when the buyer chose a new account and the partner checked both boxes', async () => {
+    const issuedRow: SpotifyNotionRow = { ...row, email: 'issued@jamkkangudok.com', password: 'issued123',
+      registered: true };
+    const sendText = vi.fn(async () => undefined);
+    const result = await syncGbutsSpotifyMessages({
+      listMembers: async () => [member], openPrivateRoom: async () => '777',
+      getChat: async () => ({ messages: [
+        { ...buyerMessage, senderSeq: 7, message: SPOTIFY_BUYER_GUIDE, createdAt: '2026-10-03T10:00:00Z' },
+        { ...buyerMessage, message: '②', createdAt: '2026-10-03T10:01:00Z' },
+      ] }), sellerAccountSeq: async () => 7, listRows: async () => [issuedRow], sendText,
+      readJournal: () => ({ version: 1, records: {} }), writeJournal: vi.fn(),
+      requestAckStartAt: '2026-10-03T10:00:30Z',
+    }, 15557);
+    expect(result.invitedRepliesAttempted).toBe(1);
+    expect(sendText).toHaveBeenCalledWith('777', 7,
+      spotifyRegisteredAccountInvitedReply('issued@jamkkangudok.com', 'issued123'));
+  });
+
+  it('sends the issued login when the buyer switches from an existing account to a new account', async () => {
+    const sendText = vi.fn(async () => undefined);
+    const result = await syncGbutsSpotifyMessages({
+      listMembers: async () => [member], openPrivateRoom: async () => '777',
+      getChat: async () => ({ messages: [
+        buyerMessage,
+        { ...buyerMessage, message: '새 계정 발급 부탁드립니다', createdAt: '2026-10-03T10:01:00Z' },
+      ] }), sellerAccountSeq: async () => 7,
+      listRows: async () => [{ ...row, email: 'issued@jamkkangudok.com', password: 'issued123', registered: true }],
+      sendText, readJournal: () => ({ version: 1, records: {} }), writeJournal: vi.fn(),
+      requestAckStartAt: '2026-10-03T10:00:30Z',
+    }, 15557);
+    expect(result.invitedRepliesAttempted).toBe(1);
+    expect(sendText).toHaveBeenCalledWith('777', 7,
+      spotifyRegisteredAccountInvitedReply('issued@jamkkangudok.com', 'issued123'));
+  });
+
+  it('never sends login details with only Invited checked for a newly issued account', async () => {
+    const sendText = vi.fn();
+    const result = await syncGbutsSpotifyMessages({
+      listMembers: async () => [member], openPrivateRoom: async () => '777',
+      getChat: async () => ({ messages: [buyerMessage] }), sellerAccountSeq: async () => 7,
+      listRows: async () => [{ ...row, email: 'buyer@jamkkangudok.com', registered: false }], sendText,
+      readJournal: () => ({ version: 1, records: {} }), writeJournal: vi.fn(),
+      requestAckStartAt: '2026-10-03T00:00:00Z',
+    }, 15557);
+    expect(result.invitedRepliesAttempted).toBe(0);
     expect(sendText).not.toHaveBeenCalled();
   });
 });

@@ -30,6 +30,19 @@ export function isActiveGbutsSpotifyMember(member: GbutsSpotifyMember): boolean 
   return member.status === 'APPLY' && (member.cancelStatus == null || member.cancelStatus === 'REFUND_REJECTED');
 }
 
+/** A partner-created Spotify login keeps the buyer email's local part. */
+export function jamkkangudokSpotifyEmail(buyerEmail: string): string | null {
+  const email = spotifyEmail(buyerEmail);
+  if (!email) return null;
+  return `${email.slice(0, email.indexOf('@'))}@jamkkangudok.com`;
+}
+
+export function isSpotifyAccountForBuyer(targetEmail: string, buyerEmail: string): boolean {
+  const normalized = spotifyEmail(targetEmail);
+  return normalized !== null && (normalized === spotifyEmail(buyerEmail)
+    || normalized === jamkkangudokSpotifyEmail(buyerEmail));
+}
+
 function spotifyEmail(value: string): string | null {
   const cleaned = value.trim().replace(/^[<([{\s]+|[>)}\].,;\s]+$/g, '').toLowerCase();
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleaned) && cleaned.length <= 254 ? cleaned : null;
@@ -53,13 +66,14 @@ export function extractGbutsSpotifyCredentials(
     const content = entry.message.trim();
     const canUseStandalonePassword = awaitingStandalonePassword;
     awaitingStandalonePassword = false;
-    if (/\b(?:google|apple|facebook|kakao)\s*(?:login|account|로그인|계정)\b/i.test(content)) {
+    const emailMatch = content.match(/(?:spotify\s*(?:account|id|email|계정|아이디|이메일)|스포티파이\s*(?:계정|아이디|이메일)|(?:^|\n)\s*(?:id|email|아이디|이메일))\s*[:：=]\s*([^\s,;]+)/im);
+    const passwordMatch = content.match(/(?:password|passwd|pass|pwd|비밀번호|비번)\s*[:：=]\s*([^\s]+)/i);
+    if (/\b(?:google|apple|facebook|kakao)\s*(?:login|account|로그인|계정)\b/i.test(content)
+      && (!emailMatch || !passwordMatch)) {
       email = null;
       password = null;
       continue;
     }
-    const emailMatch = content.match(/(?:spotify\s*(?:account|id|email|계정|아이디|이메일)|스포티파이\s*(?:계정|아이디|이메일)|(?:^|\n)\s*(?:id|email|아이디|이메일))\s*[:：=]\s*([^\s,;]+)/im);
-    const passwordMatch = content.match(/(?:password|passwd|pass|pwd|비밀번호|비번)\s*[:：=]\s*([^\s]+)/i);
     const standaloneEmail = sellerRequestedCredentials ? spotifyEmail(content) : null;
     if (emailMatch || standaloneEmail) {
       const parsed = spotifyEmail(emailMatch ? emailMatch[1] : content);

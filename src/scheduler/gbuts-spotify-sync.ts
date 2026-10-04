@@ -4,10 +4,10 @@ import { loadSafeModeConfig } from '../api/safe-mode';
 import { sendSellerAlert } from '../alerts/telegram';
 import { readGbutsSpotifyChatAlertJournal, syncGbutsSpotifyChatAlerts,
   writeGbutsSpotifyChatAlertJournal } from './gbuts-spotify-chat-alerts';
-import { readGbutsSpotifyMessageJournal, sendGbutsText, syncGbutsSpotifyMessages,
+import { readGbutsSpotifyMessageJournal, requestedSpotifyNewAccount, sendGbutsText, syncGbutsSpotifyMessages,
   writeGbutsSpotifyMessageJournal } from './gbuts-spotify-messages';
 import {
-  extractGbutsSpotifyCredentials, gbutsSpotifyOrderKey, isActiveGbutsSpotifyMember,
+  extractGbutsSpotifyCredentials, gbutsSpotifyOrderKey, isActiveGbutsSpotifyMember, isSpotifyAccountForBuyer,
   type GbutsChatMessage, type GbutsSpotifyMember, type SpotifyCredentials,
 } from '../lib/gbuts-spotify';
 
@@ -21,6 +21,7 @@ export interface SpotifyNotionRow {
   email: string;
   emailHistory: string[];
   password: string;
+  registered?: boolean;
   invited: boolean;
   cancelled: boolean;
 }
@@ -54,7 +55,10 @@ export async function syncGbutsSpotifyCredentials(deps: GbutsSpotifySyncDependen
     const orderKey = gbutsSpotifyOrderKey(postSeq, member);
     const roomId = await deps.openPrivateRoom(postSeq, member.userSeq);
     const chat = await deps.getChat(roomId);
-    const credentials = extractGbutsSpotifyCredentials(chat.messages, member.userSeq);
+    const submitted = extractGbutsSpotifyCredentials(chat.messages, member.userSeq);
+    const newAccountRequestedAt = requestedSpotifyNewAccount(chat.messages, member.userSeq);
+    const credentials = newAccountRequestedAt && (!submitted || newAccountRequestedAt > submitted.receivedAt)
+      ? null : submitted;
     credentialsByOrder.set(orderKey, credentials);
     if (credentials) {
       const fingerprint = JSON.stringify([credentials.email, credentials.password]);
@@ -77,7 +81,7 @@ export async function syncGbutsSpotifyCredentials(deps: GbutsSpotifySyncDependen
     if (!credentials) { waitingForCredentials += 1; continue; }
     if (matches.length === 0) {
       const manualMatches = rows.filter((row) => !row.orderKey && !row.cancelled
-        && row.email === credentials.email && row.password === credentials.password);
+        && isSpotifyAccountForBuyer(row.email, credentials.email) && row.password === credentials.password);
       const fingerprint = JSON.stringify([credentials.email, credentials.password]);
       if (manualMatches.length > 1) { conflicts += 1; continue; }
       if (manualMatches.length === 1) {
@@ -86,16 +90,18 @@ export async function syncGbutsSpotifyCredentials(deps: GbutsSpotifySyncDependen
         const current = await deps.getRow(manual.id);
         const freshRows = await deps.listRows();
         if (!current || current.orderKey || current.email !== manual.email
-          || current.password !== manual.password || current.invited !== manual.invited
+          || current.password !== manual.password || current.registered !== manual.registered
+          || current.invited !== manual.invited
           || current.cancelled || freshRows.some((row) => row.orderKey === orderKey)
           || freshRows.filter((row) => !row.orderKey && !row.cancelled
-            && row.email === credentials.email && row.password === credentials.password).length !== 1) {
+            && isSpotifyAccountForBuyer(row.email, credentials.email) && row.password === credentials.password).length !== 1) {
           conflicts += 1;
           continue;
         }
         const claimed = await deps.claimRow(current, orderKey);
-        if (claimed.orderKey !== orderKey || claimed.email !== credentials.email
-          || claimed.password !== credentials.password || claimed.invited !== current.invited)
+        if (claimed.orderKey !== orderKey || !isSpotifyAccountForBuyer(claimed.email, credentials.email)
+          || claimed.password !== credentials.password || claimed.registered !== current.registered
+          || claimed.invited !== current.invited)
           throw new Error('Spotify Notion manual row claim invalid');
         rows.splice(rows.indexOf(manual), 1, claimed);
         continue;
@@ -111,13 +117,19 @@ export async function syncGbutsSpotifyCredentials(deps: GbutsSpotifySyncDependen
     }
     const current = await deps.getRow(matches[0].id);
     if (!current || current.orderKey !== orderKey || current.email !== matches[0].email
-      || current.password !== matches[0].password || current.invited !== matches[0].invited
+      || current.password !== matches[0].password || current.registered !== matches[0].registered
+      || current.invited !== matches[0].invited
       || current.cancelled !== matches[0].cancelled || current.cancelled) {
       conflicts += 1;
       continue;
     }
-    if (current.email === credentials.email && current.password === credentials.password) continue;
-    if (current.invited && current.email === credentials.email) {
+    if (isSpotifyAccountForBuyer(current.email, credentials.email) && current.password === credentials.password) continue;
+    if (current.email !== credentials.email && isSpotifyAccountForBuyer(current.email, credentials.email)) {
+      // A manually selected new login must not be replaced with the buyer's original email.
+      conflicts += 1;
+      continue;
+    }
+    if (current.invited && isSpotifyAccountForBuyer(current.email, credentials.email)) {
       // A password-only change after an invitation does not prove the invite needs repeating.
       conflicts += 1;
       continue;
@@ -191,6 +203,7 @@ function parseNotionRow(value: unknown): SpotifyNotionRow | null {
     email,
     emailHistory,
     password: richTextValue(page.properties?.Password?.rich_text),
+    registered: page.properties?.Registered?.checkbox === true,
     invited: page.properties?.Invited?.checkbox === true,
     cancelled: active.length === 0 && emailParts.length > 0,
   };
@@ -242,6 +255,7 @@ export function createGbutsSpotifyNotionClient(token: string, dataSourceId = SPO
         body: JSON.stringify({ parent: { type: 'data_source_id', data_source_id: dataSourceId }, properties: {
           'Spotify account': { title: notionTitle([], credentials.email) },
           Password: { rich_text: [{ text: { content: credentials.password } }] },
+          Registered: { checkbox: false },
           Invited: { checkbox: false },
           'GButs order ID': { rich_text: [{ text: { content: orderKey } }] },
         } }),
@@ -270,6 +284,7 @@ export function createGbutsSpotifyNotionClient(token: string, dataSourceId = SPO
         body: JSON.stringify({ properties: {
           'Spotify account': { title: notionTitle(history, credentials.email) },
           Password: { rich_text: [{ text: { content: credentials.password } }] },
+          ...(row.email !== credentials.email ? { Registered: { checkbox: false } } : {}),
           Invited: { checkbox: false },
         } }),
       });

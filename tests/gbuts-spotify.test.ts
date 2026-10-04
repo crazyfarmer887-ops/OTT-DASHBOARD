@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { extractGbutsSpotifyCredentials, gbutsSpotifyOrderKey, isActiveGbutsSpotifyMember } from '../src/lib/gbuts-spotify';
+import { extractGbutsSpotifyCredentials, gbutsSpotifyOrderKey, isActiveGbutsSpotifyMember,
+  isSpotifyAccountForBuyer, jamkkangudokSpotifyEmail } from '../src/lib/gbuts-spotify';
 
 const buyer = 42;
 const message = (senderSeq: number, text: string, createdAt: string) => ({
@@ -65,12 +66,21 @@ describe('GButs Spotify invitation matching', () => {
     ], buyer)).toBeNull();
   });
 
-  it('does not take credentials from unlabeled text or social login', () => {
+  it('does not take credentials from unlabeled text or a social login without a labeled pair', () => {
     expect(extractGbutsSpotifyCredentials([
       message(buyer, 'myemail@example.com / secret123', '2026-10-02T10:00:00Z'),
     ], buyer)).toBeNull();
     expect(extractGbutsSpotifyCredentials([
-      message(buyer, 'Google login\nSpotify email: x@example.com\nPassword: secret123', '2026-10-02T10:00:00Z'),
+      message(buyer, 'Google login\nSpotify email: x@example.com', '2026-10-02T10:00:00Z'),
     ], buyer)).toBeNull();
+  });
+
+  it('accepts an explicitly supplied social-login email and password for manual new-account registration', () => {
+    expect(extractGbutsSpotifyCredentials([
+      message(buyer, 'Google login\nSpotify email: abc123@gmail.com\nPassword: abc123', '2026-10-02T10:00:00Z'),
+    ], buyer)).toEqual({ email: 'abc123@gmail.com', password: 'abc123', receivedAt: '2026-10-02T10:00:00Z' });
+    expect(jamkkangudokSpotifyEmail('abc123@gmail.com')).toBe('abc123@jamkkangudok.com');
+    expect(isSpotifyAccountForBuyer('abc123@jamkkangudok.com', 'abc123@gmail.com')).toBe(true);
+    expect(isSpotifyAccountForBuyer('other@jamkkangudok.com', 'abc123@gmail.com')).toBe(false);
   });
 });
