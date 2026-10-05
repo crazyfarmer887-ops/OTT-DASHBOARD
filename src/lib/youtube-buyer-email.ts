@@ -33,7 +33,7 @@ export function isBuyerEmailWithdrawal(text: string): boolean {
 }
 
 export function parseYouTubeBuyerEmailSubmission(text: string):
-  { kind: 'none' | 'ambiguous' } | { kind: 'single_candidate'; candidate: string } {
+  { kind: 'none' } | { kind: 'ambiguous' } | { kind: 'single_candidate'; candidate: string } {
   if (isBuyerEmailWithdrawal(text)) return { kind: 'ambiguous' };
   const candidates = explicitYouTubeBuyerEmails(text);
   if (!candidates.length) return { kind: 'none' };
