@@ -52,6 +52,17 @@ describe('OpenRouter Notion extraction',()=>{
   const changed:ExtractionTurn[]=[{role:'buyer',text:'암호: PaSs579#@!'}, {role:'buyer',text:'ID: buyer@yahoo.com'}];
   expect(await extractNotionChatWithOpenRouter(changed,'credentials',transportFor(changed),'key')).toBeNull();
  });
+ test('refuses stale model selections after an email replacement or seller rejection',async()=>{
+  const changed:ExtractionTurn[]=[{role:'buyer',text:'ID: buyer@yahoo.com 암호: PaSs579#@!'}, {role:'buyer',text:'아이디 new@gmail.com으로 바꿀게요'}];
+  expect(await extractNotionChatWithOpenRouter(changed,'credentials',transportFor(changed),'key')).toBeNull();
+  const rejected:ExtractionTurn[]=[turns[0], {role:'seller',text:'다른 계정으로 보내주세요'}, {role:'seller',text:'일단 기존 걸로 해드릴게요'}];
+  const transport=transportFor(rejected);expect(await extractNotionChatWithOpenRouter(rejected,'credentials',transport,'key')).toBeNull();expect(transport).not.toHaveBeenCalled();
+ });
+ test('excludes the order-number reference from the password tool choices',async()=>{
+  const transport=transportFor(turns);await extractNotionChatWithOpenRouter(turns,'credentials',transport,'key');
+  const body=JSON.parse(String(transport.mock.calls[0][1]?.body));const masked=maskNotionChat(turns);
+  expect(body.tools[0].function.parameters.properties.password.enum).not.toContain(masked.evidence.find(item=>item.kind==='order')?.id);
+ });
  test.each([0.5,NaN,1.01])('rejects low or invalid confidence %s',async confidence=>{
   expect(await extractNotionChatWithOpenRouter(turns,'credentials',transportFor(turns,undefined,undefined,confidence),'key')).toBeNull();
  });
@@ -70,6 +81,16 @@ describe('OpenRouter Notion extraction',()=>{
    expect(await cachedNotionChatExtraction([...input,{role:'buyer',text:'재시도캐시'}],'credentials')).toBeNull();
    expect(transport.mock.calls.every(call=>String(call[0]).startsWith('https://openrouter.ai/'))).toBe(true);
   }finally{vi.unstubAllGlobals();vi.unstubAllEnvs();}
+ });
+ test('caches a valid abstention until the conversation changes, without spending requests every minute',async()=>{
+  const input:ExtractionTurn[]=[{role:'buyer',text:'stable-a@gmail.com 또는 stable-b@gmail.com 중 뭐가 좋나요?'}];
+  const transport=vi.fn(async()=>Response.json({choices:[{finish_reason:'tool_calls',message:{tool_calls:[{function:{name:'submit_buyer_account',arguments:JSON.stringify({email:null,password:null,confidence:1})}}]}}]}));
+  vi.useFakeTimers();vi.stubEnv('OPENROUTER_API_KEY','key');vi.stubGlobal('fetch',transport);
+  try{
+   expect(await cachedNotionChatExtraction(input,'email')).toBeNull();vi.advanceTimersByTime(120_000);
+   expect(await cachedNotionChatExtraction(input,'email')).toBeNull();expect(transport).toHaveBeenCalledTimes(1);
+   await cachedNotionChatExtraction([...input,{role:'buyer',text:'두번째로 부탁드려요'}],'email');expect(transport).toHaveBeenCalledTimes(2);
+  }finally{vi.useRealTimers();vi.unstubAllGlobals();vi.unstubAllEnvs();}
  });
  test('imports the original missed message into one order-linked Notion row using the model extractor',async()=>{
   let rows:SpotifyNotionRow[]=[];const transport=transportFor(turns);

@@ -10,11 +10,16 @@ const cases=[
 {name:'unrelated-negation',mode:'email',turns:[buyer('buyer@gmail.com으로 초대해주세요. 새 계정은 아니에요')],email:'buyer@gmail.com'},
 {name:'seller-reversal-no-buyer-resend',mode:'email',turns:[buyer('old@gmail.com'),seller('다른 계정으로 보내주세요'),seller('일단 기존 걸로 해드릴게요'),buyer('네 부탁드려요')],email:null},
 ];
+const selectedCases = process.env.NOTION_EXTRACTION_VERIFY_CASES?.split(',');
+const runCases = selectedCases?.length ? cases.filter(item=>selectedCases.includes(item.name)) : cases;
 let passed=0;
-for(const item of cases){
+for(const item of runCases){
  try{
   let structuredReply = false;
+  let modelAttempted = false;
+  let decision: unknown = null;
   const actual=await extractNotionChatWithOpenRouter(item.turns,item.mode,async(url,init)=>{
+    modelAttempted = true;
     const response=await fetch(url,init);const body=await response.clone().json().catch(()=>null);
     const choice=body?.choices?.[0];
     const calls=choice?.message?.tool_calls;
@@ -22,6 +27,7 @@ for(const item of cases){
     if(response.ok && ['stop','tool_calls'].includes(choice?.finish_reason) && typeof content==='string') {
       try {
         const parsed=JSON.parse(content.trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,''));
+        decision={email: parsed.email===null || /^VALUE_\d+$/.test(parsed.email) ? parsed.email : 'invalid', password: parsed.password===null || /^VALUE_\d+$/.test(parsed.password) ? parsed.password : 'invalid', confidence:parsed.confidence};
         structuredReply=Number.isFinite(parsed?.confidence) && parsed.confidence>=0 && parsed.confidence<=1
           && (parsed.email===null || /^VALUE_\d+$/.test(parsed.email))
           && (parsed.password===null || /^VALUE_\d+$/.test(parsed.password));
@@ -29,9 +35,9 @@ for(const item of cases){
     }
     return response;
   });
-  const ok=structuredReply && (actual?.email??null)===item.email&&(!item.password||actual?.password===item.password);
+  const ok=(structuredReply || (!modelAttempted && actual === null && item.email === null)) && (actual?.email??null)===item.email&&(!item.password||actual?.password===item.password);
   if(ok)passed++;
-  console.log(JSON.stringify({case:item.name,ok,resultPresent:Boolean(actual)}));
+  console.log(JSON.stringify({case:item.name,ok,resultPresent:Boolean(actual),...(!ok?{decision}: {})}));
  }catch(e){console.log(JSON.stringify({case:item.name,ok:false,error:e instanceof Error&&/^OpenRouter extraction HTTP \d+$/.test(e.message)?e.message:'model unavailable'}));}
 }
-console.log(JSON.stringify({cases:cases.length,passed,realMessagesSent:0}));process.exit(passed===cases.length?0:1);
+console.log(JSON.stringify({cases:runCases.length,passed,realMessagesSent:0}));process.exit(passed===runCases.length?0:1);
