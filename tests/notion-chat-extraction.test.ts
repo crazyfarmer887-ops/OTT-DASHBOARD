@@ -58,6 +58,11 @@ describe('OpenRouter Notion extraction',()=>{
   const rejected:ExtractionTurn[]=[turns[0], {role:'seller',text:'다른 계정으로 보내주세요'}, {role:'seller',text:'일단 기존 걸로 해드릴게요'}];
   const transport=transportFor(rejected);expect(await extractNotionChatWithOpenRouter(rejected,'credentials',transport,'key')).toBeNull();expect(transport).not.toHaveBeenCalled();
  });
+ test('does not let the model confirm either address when the buyer asks which one to use',async()=>{
+  const input:ExtractionTurn[]=[{role:'buyer',text:'first@gmail.com 아니면 second@gmail.com 중 뭐가 좋나요?'}];
+  const transport=transportFor(input,'second@gmail.com',null,0.9);
+  expect(await extractNotionChatWithOpenRouter(input,'email',transport,'key')).toBeNull();expect(transport).not.toHaveBeenCalled();
+ });
  test('excludes the order-number reference from the password tool choices',async()=>{
   const transport=transportFor(turns);await extractNotionChatWithOpenRouter(turns,'credentials',transport,'key');
   const body=JSON.parse(String(transport.mock.calls[0][1]?.body));const masked=maskNotionChat(turns);

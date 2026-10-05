@@ -80,6 +80,9 @@ const pendingReply: ExtractionOutcome = { credentials: null, settled: true };
 async function classifyNotionChat(turns: readonly ExtractionTurn[], mode: 'email' | 'credentials',
   transport: typeof fetch = fetch, apiKey = process.env.OPENROUTER_API_KEY || ''): Promise<ExtractionOutcome> {
   if (!apiKey || !turns.length || turns.length > 1000 || turns.some(turn => turn.text.length > 6000)) return invalidReply;
+  const latestBuyer = turns.filter(turn => turn.role === 'buyer').at(-1);
+  if (latestBuyer && explicitYouTubeBuyerEmails(latestBuyer.text).length > 1
+    && /(?:중|아니면|또는|혹은)[^.!\n]{0,60}(?:뭐|어느|어떤|무엇)/.test(latestBuyer.text)) return pendingReply;
   const masked = maskNotionChat(turns);
   const eligible = eligibleBuyerEvidence(turns, masked.evidence);
   if (!eligible.some(item => item.kind === 'email')) return pendingReply;
@@ -152,6 +155,8 @@ export async function cachedNotionChatExtraction(turns: readonly ExtractionTurn[
   const entry = { expires: Date.now() + 60_000, pending: Promise.resolve<SpotifyCredentials | null>(null) };
   entry.pending = classifyNotionChat(turns, mode).then(result => {
     entry.expires = Date.now() + (result.settled ? 24 * 60 * 60_000 : 60_000);
+    console.info('[NotionChatExtraction] decision', { model: NOTION_CHAT_EXTRACTION_MODEL, mode,
+      outcome: result.credentials ? 'confirmed' : result.settled ? 'pending' : 'invalid' });
     return result.credentials;
   }).catch(() => { console.error('[NotionChatExtraction] OpenRouter unavailable; awaiting retry'); return null; });
   cache.delete(key);cache.set(key, entry);
