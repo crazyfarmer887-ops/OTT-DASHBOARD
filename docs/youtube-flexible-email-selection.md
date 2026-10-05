@@ -18,5 +18,5 @@ The user requested conversational judgement instead of rigid email-token matchin
 - [x] Informal wording and withdrawal regression failed before the flexible parser; passes after it.
 - [x] Tests for contextual selection, no invented addresses, role boundaries, seller rejection, cancellation and low-confidence/failure behavior.
 - [x] Seven relevant suites passed (140 tests). Broad worker type diagnostics remain pre-existing; no diagnostics in the new modules.
-- [x] Actual Jev connection passed four synthetic cases: second-address reference, reversed correction, later submission and unresolved alternatives. No real customer message was sent.
-- [ ] Deploy committed release and check current Notion reconciliation.
+- [x] Actual Jev connection passed six synthetic cases: second-address reference, reversed correction, later submission, unresolved alternatives, unrelated account negation and actual address denial. No real customer message was sent.
+- [x] Deployed committed release `cf4f1bb`; service active, health endpoint HTTP 200, and normal Notion polling observed. Current delivering-order audit found three submitted emails and all three matched Notion. Three buyers had no confirmed email; one older cancellation remained unresolved. No diagnostic customer message was sent.
