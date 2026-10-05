@@ -51,4 +51,4 @@ The completion journal fingerprint now uses the delivered address, so changing t
 
 - [x] Regression: original ID + both checks sends the derived login, including after a buyer requests a new account.
 - [x] Regression: later editing Notion to the derived address does not send twice; Registered alone does not send completion.
-- [ ] Verify, commit, deploy, and perform a read-only production check.
+- [x] Six relevant suites passed (81 tests), code/whitespace review completed, committed and pushed, and runtime release `57bde7c` deployed. Production fixture smoke confirms domain conversion and duplicate suppression without sending real messages; health and authenticated GButs connection return 200.
