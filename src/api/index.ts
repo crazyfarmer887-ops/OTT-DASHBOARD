@@ -74,6 +74,7 @@ import {
   type GraytagAuthCookies,
 } from '../lib/graytag-sales-session';
 import { loadGbutsSession, parseGbutsToken, saveGbutsSession } from '../lib/gbuts-session';
+import { dedupeGraytagManagementDeals, verifiedGraytagManagementDeals } from '../lib/graytag-management-snapshot';
 import { gbutsOttClient, registerGbutsOttRoutes, reserveGraytagOttPlace, settleGraytagOttPlace } from './gbuts-ott';
 import { deliverableOttOrder, isGbutsOttBuyerMatch, mergeGbutsOttManagement, ottKey, ottDate } from '../lib/gbuts-ott';
 import { readGbutsOttStore, withGbutsOttInventory, writeGbutsOttStore } from '../lib/gbuts-ott-store';
@@ -1897,10 +1898,7 @@ app.post('/my/management', async (c) => {
         }
         const r = await safeJson(resp);
         if (body.gbutsInventory === false) {
-          const payload = r.data;
-          const rows = payload?.data?.data?.lenderDeals ?? payload?.data?.lenderDeals ?? payload?.lenderDeals;
-          if (!resp.ok || !r.ok || !Array.isArray(rows) || payload?.succeeded === false
-            || rows.some((x: any) => !x || !x.dealUsid || typeof x.dealStatus !== 'string')) throw new Error('그레이태그 재고 응답을 확인하지 못했습니다.');
+          verifiedGraytagManagementDeals(r.data, resp.ok, r.ok);
         }
         const deals: any[] = extractLenderDeals(r.data);
         collected.push(...deals);
@@ -1923,14 +1921,7 @@ app.post('/my/management', async (c) => {
     console.log(`[management] after=${afterDeals.length}, before=${beforeDeals.length}`);
 
     // 중복 제거 후 합치기 (dealUsid 기준)
-    const seenDeals = new Set<string>();
-    const allDeals: any[] = [];
-    for (const deal of [...afterDeals, ...beforeDeals]) {
-      if (!seenDeals.has(deal.dealUsid)) {
-        seenDeals.add(deal.dealUsid);
-        allDeals.push(deal);
-      }
-    }
+    const allDeals = dedupeGraytagManagementDeals([...afterDeals, ...beforeDeals]);
 
     // 일별 파티 유입: 계정확인중 최초 반영일을 저장한다.
     // 계정 사용중으로 바뀌면 최초 반영일을 유지해서 중복 유입으로 잡지 않고,
