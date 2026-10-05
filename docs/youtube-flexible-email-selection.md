@@ -17,5 +17,6 @@ The user requested conversational judgement instead of rigid email-token matchin
 
 - [x] Informal wording and withdrawal regression failed before the flexible parser; passes after it.
 - [x] Tests for contextual selection, no invented addresses, role boundaries, seller rejection, cancellation and low-confidence/failure behavior.
-- [x] Seven relevant suites passed (138 tests). Broad worker type diagnostics remain pre-existing; no diagnostics in the new modules.
-- [ ] Validate Jev with synthetic conversational cases, deploy committed release, and check current Notion reconciliation.
+- [x] Seven relevant suites passed (139 tests). Broad worker type diagnostics remain pre-existing; no diagnostics in the new modules.
+- [x] Actual Jev connection passed four synthetic cases: second-address reference, reversed correction, later submission and unresolved alternatives. No real customer message was sent.
+- [ ] Deploy committed release and check current Notion reconciliation.

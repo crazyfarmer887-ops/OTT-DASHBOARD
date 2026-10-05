@@ -35,6 +35,22 @@ describe('contextual YouTube email selection', () => {
     expect(await resolveYouTubeBuyerEmailWithContext('room', [buyer('a@gmail.com 또는 b@gmail.com')], async () => { throw new Error('offline'); })).toBeNull();
   });
 
+  test('coalesces repeated context checks but reclassifies a changed buyer message', async () => {
+    const transport = vi.fn(async () => Response.json({ answers: { address: {
+      choice: 'email_1', confidence: 0.99, probabilities: { email_0: 0.005, email_1: 0.99, none: 0.005 },
+    } } }));
+    vi.stubEnv('TYPESAFE_API_KEY', 'fixture-key');
+    vi.stubGlobal('fetch', transport);
+    try {
+      const messages = [buyer('cache-first@gmail.com 또는 cache-second@gmail.com'), buyer('두 번째 부탁드려요')];
+      expect(await Promise.all([resolveYouTubeBuyerEmailWithContext('cache-room', messages),
+        resolveYouTubeBuyerEmailWithContext('cache-room', messages)])).toEqual([['cache-second@gmail.com'], ['cache-second@gmail.com']]);
+      expect(transport).toHaveBeenCalledTimes(1);
+      await resolveYouTubeBuyerEmailWithContext('cache-room', [...messages, buyer('방금 보낸 내용대로 부탁드립니다')]);
+      expect(transport).toHaveBeenCalledTimes(2);
+    } finally { vi.unstubAllGlobals(); vi.unstubAllEnvs(); }
+  });
+
   test.each([
     ['email_1', 0.97, { email_0: 0.01, email_1: 0.97, none: 0.02 }, 'b@gmail.com'],
     ['email_1', 0.6, { email_0: 0.1, email_1: 0.6, none: 0.3 }, null],
