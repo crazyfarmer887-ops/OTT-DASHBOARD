@@ -37,7 +37,7 @@ Strict inventory reads use a separate in-flight cache key so a simultaneous norm
 
 ## Deployment evidence
 
-- Commit 868d02f deployed from the clean committed local source; service is active and private journal permissions are 0600.
+- Final runtime commit 5bd2e92 deployed from the clean committed local source; service is active and private journal permissions are 0600.
 - Production smoke: dashboard HTML/client asset 200, authenticated inventory 200, unauthenticated inventory 403, validated seller session 200, worker enabled and no journal error. No OTT listings/orders were created.
 - At smoke time the inventory showed available places: Netflix 5, Disney+ 8, TVING 10, Wavve 3. These are point-in-time counts and refresh from the provider.
 - Final profile review also excludes existing manual and recruiting profile names when allocating a new buyer.
