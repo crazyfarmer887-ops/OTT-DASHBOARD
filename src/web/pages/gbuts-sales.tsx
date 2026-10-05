@@ -70,7 +70,7 @@ export default function GbutsSalesPage() {
     {!!data?.unlinked.length && <p style={{ ...styles.card, color: '#B91C1C' }}>계정 연결이 없는 기존 벗츠 판매글 {data.unlinked.map(x => x.seq).join(', ')}의 재고 확인이 필요합니다.</p>}
     <section style={styles.card}><h2 style={{ fontSize: 17 }}>벗츠에서 판매할 자리</h2>
       <label>계정<select style={styles.input} aria-label="판매 계정" value={key} onChange={e => choose(e.target.value)}><option value="">계정을 선택해주세요</option>
-        {data?.accounts.map(x => <option key={x.key} value={x.key}>{x.serviceType} · {x.accountEmail} · 남은 {x.available}자리</option>)}</select></label>
+        {data?.accounts.filter(x => x.available > 0).map(x => <option key={x.key} value={x.key}>{x.serviceType} · {x.accountEmail} · 남은 {x.available}자리</option>)}</select></label>
       {account && <p style={{ fontSize: 12 }}>전체 {account.total}자리 · 그레이태그 {account.graytag} · 수동 {account.manual} · 벗츠 {account.gbuts} · 등록 확인 중 {account.claims} · 남은 {account.available}자리</p>}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginTop: 15 }}>
         <label>이용 종료일<input aria-label="이용 종료일" type="date" style={styles.input} max={account?.endDate} value={endDate} onChange={e => { setEndDate(e.target.value); requestId.current = crypto.randomUUID(); }} /></label>

@@ -1879,7 +1879,6 @@ app.post('/my/management', async (c) => {
     if (testResp.status === 302 || testResp.status === 301) {
       throw new Error('쿠키가 만료됐어요.');
     }
-    if (body.gbutsInventory === false && !testResp.ok) throw new Error('그레이태그 공동 재고 확인 실패');
 
     // 무한스크롤 완전 소진: page 반복으로 모든 거래 가져오기
     // - findAfterUsingLenderDeals: 이용중(Using) 파티원 - 핵심 데이터
@@ -2450,7 +2449,7 @@ app.post('/my/management', async (c) => {
 
   try {
     if (isAutoSessionManagementRequest(body)) {
-      const cached = await managementCache.get(managementCacheKey(accountId), loadManagementFresh, {
+      const cached = await managementCache.get(managementCacheKey(accountId) + (body.gbutsInventory === false ? ':verified-inventory' : ''), loadManagementFresh, {
         forceRefresh: shouldForceManagementRefresh(body, c.req.query('refresh'), c.req.header('cache-control')),
       });
       const response = c.json({

@@ -25,10 +25,12 @@ Live publication requires the seller to choose the account, period, daily price 
 
 ## Verification
 
-- 141 relevant tests pass across inventory, API publication, private delivery, access control, existing Spotify delivery and GrayTag fill.
+- 147 relevant tests pass across inventory, API publication, private delivery, access control, existing Spotify delivery and GrayTag fill.
 - Production client build passes; desktop/mobile browser checks have no page errors and no mobile horizontal overflow.
 - Self-review added exact buyer/account ownership checks, incomplete-roster protection on close, calendar validation, shared-account checks before GrayTag assignment, and persistent uncertain-send protection.
 - The existing project-wide TypeScript checks report pre-existing errors outside the new modules. The pre-existing party-access extension source-pattern test also fails on the unchanged HEAD pattern; neither is claimed as passing.
 - Live OTT publication and a new paid buyer are not exercised by deployment. No test sale is published.
 
 Production preflight found that unsold GrayTag rows have `productUsid` but no buyer `dealUsid`. The strict snapshot now accepts either stable identity, and management deduplication preserves distinct unsold products. The regression was reproduced before the fix (2 failures), then corrected locally.
+
+Strict inventory reads use a separate in-flight cache key so a simultaneous normal dashboard load cannot bypass provider validation. Only verified seller-list responses determine shared capacity; a denial on the unrelated borrower probe does not substitute for these checks.
