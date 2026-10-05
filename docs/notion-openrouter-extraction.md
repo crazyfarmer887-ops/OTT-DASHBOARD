@@ -35,3 +35,5 @@ Resume gate: run `node --import tsx scripts/verify-notion-extraction.mts` with t
 ## Replacement-key verification
 
 The user supplied a replacement key. A production-host probe returned HTTP 200 and the exact requested model ID. Initial live fixture calls revealed that the model's default reasoning exhausted the 300-token budget and returned analysis without extraction JSON. Disable reasoning explicitly and reserve 600 output tokens. Strengthen the live gate so null expectations only pass after a complete, valid, confident structured reply, rather than treating truncated or malformed output as a correct abstention.
+
+Disabling reasoning resolved response truncation, but unforced text responses often abstained on clear opaque references. An actual forced-function-call probe selected the correct email/password references with confidence 0.95. Use the model's supported tool-calling interface with a candidate-ID enum and parse its single `submit_buyer_account` call. A regression reproduces the provider's actual tool response shape. The live gate accepts confident selections or valid structured abstentions, and rejects empty/truncated output.

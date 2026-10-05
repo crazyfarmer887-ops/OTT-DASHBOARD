@@ -14,9 +14,17 @@ describe('OpenRouter Notion extraction',()=>{
   const request=JSON.parse(String(transport.mock.calls[0][1]?.body));
   expect(request.model).toBe(NOTION_CHAT_EXTRACTION_MODEL);
   expect(request.reasoning).toEqual({enabled:false});
+  expect(request.tool_choice.function.name).toBe('submit_buyer_account');
   expect(request.max_tokens).toBeGreaterThanOrEqual(600);
   for(const secret of ['buyer@yahoo.com','PaSs579#@!','261005TEST1'])expect(String(transport.mock.calls[0][1]?.body)).not.toContain(secret);
   expect(request.messages[1].content).toContain('암호:');
+ });
+ test('restores account values from the actual forced-tool response shape',async()=>{
+  const masked=maskNotionChat(turns);
+  const email=masked.evidence.find(item=>item.kind==='email')!.id;
+  const password=masked.evidence.find(item=>item.value==='PaSs579#@!')!.id;
+  const transport=vi.fn(async()=>Response.json({choices:[{finish_reason:'tool_calls',message:{content:null,tool_calls:[{type:'function',function:{name:'submit_buyer_account',arguments:JSON.stringify({email,password,confidence:0.95})}}]}}]}));
+  expect(await extractNotionChatWithOpenRouter(turns,'credentials',transport,'key')).toMatchObject({email:'buyer@yahoo.com',password:'PaSs579#@!'});
  });
  test('masks labeled unicode passwords and standalone passwords even when matching a common label',()=>{
   for(const text of ['아이디: buyer@yahoo.com 암호: 한글비번123!','아이디: buyer@yahoo.com\npassword: password','buyer@yahoo.com\npassword']){

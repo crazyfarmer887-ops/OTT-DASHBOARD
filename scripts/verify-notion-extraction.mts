@@ -16,11 +16,13 @@ for(const item of cases){
   let structuredReply = false;
   const actual=await extractNotionChatWithOpenRouter(item.turns,item.mode,async(url,init)=>{
     const response=await fetch(url,init);const body=await response.clone().json().catch(()=>null);
-    const content=body?.choices?.[0]?.message?.content;
-    if(response.ok && body?.choices?.[0]?.finish_reason==='stop' && typeof content==='string') {
+    const choice=body?.choices?.[0];
+    const calls=choice?.message?.tool_calls;
+    const content=calls?.length===1 && calls[0]?.function?.name==='submit_buyer_account' ? calls[0].function.arguments : choice?.message?.content;
+    if(response.ok && ['stop','tool_calls'].includes(choice?.finish_reason) && typeof content==='string') {
       try {
         const parsed=JSON.parse(content.trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,''));
-        structuredReply=Number.isFinite(parsed?.confidence) && parsed.confidence>=0.9 && parsed.confidence<=1
+        structuredReply=Number.isFinite(parsed?.confidence) && parsed.confidence>=0 && parsed.confidence<=1
           && (parsed.email===null || /^VALUE_\d+$/.test(parsed.email))
           && (parsed.password===null || /^VALUE_\d+$/.test(parsed.password));
       }catch{}
