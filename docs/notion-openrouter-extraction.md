@@ -16,7 +16,7 @@ Mask credential and ASCII token values with opaque IDs locally. The model select
 
 - [x] Reproduce incident-shaped message.
 - [x] Add primary OpenRouter interpretation to production Spotify Notion sync and completion chat recheck, plus YouTube Notion email selection.
-- [x] Verify masking, malformed/low-confidence responses, role boundaries, changed credentials and offline behavior locally. Twelve relevant suites passed; client build passed. Broad worker type diagnostics remain the existing 17 lines; no new extraction diagnostics.
+- [x] Verify masking, malformed/low-confidence responses, role boundaries, changed credentials and offline behavior locally. Twelve relevant suites passed (202 tests); client build passed. Broad worker type diagnostics remain the existing 17 lines; no new extraction diagnostics.
 - [ ] Verify actual model interpretations after account recovery.
 - [ ] Commit/push, deploy and reconcile the actual incident against Notion.
 
@@ -29,3 +29,5 @@ Production audit found the incident as active order `15557:42184`, two buyer mes
 ## Incident recovery evidence
 
 A guarded operational import using the committed staged release's corrected explicit-label parser created one row for `15557:42184`. A fresh Notion read verified exactly one matching order row and exact equality of its ID/password with buyer-authored chat; both Invited and Registered were false. No customer message was sent. This is a one-time data repair, not evidence that the requested OpenRouter model has been activated. Production continues the previously working `cf4f1bb` runtime until provider verification can succeed.
+
+Resume gate: run `node --import tsx scripts/verify-notion-extraction.mts` with the server environment after OpenRouter account recovery. All eight live synthetic cases must pass before committed-source deployment and fresh Notion reconciliation. The verifier sends no buyer messages and prints no credentials.
