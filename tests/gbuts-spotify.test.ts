@@ -8,6 +8,12 @@ const message = (senderSeq: number, text: string, createdAt: string) => ({
 });
 
 describe('GButs Spotify invitation matching', () => {
+  it('reads credentials next to an order number and the Korean 암호 label', () => {
+    expect(extractGbutsSpotifyCredentials([
+      message(buyer, '주문번호: 261005EXAMPLE1, 스포티파이 아이디: buyer@yahoo.com 암호: sample579#@!', '2026-10-05T10:35:00Z'),
+    ], buyer)).toEqual({email: 'buyer@yahoo.com', password: 'sample579#@!', receivedAt: '2026-10-05T10:35:00Z'});
+  });
+
   it('keys a buyer by the seller listing and member identity', () => {
     expect(gbutsSpotifyOrderKey(15557, { seq: 9, userSeq: buyer, productId: '100', status: 'APPLY', cancelStatus: null }))
       .toBe('15557:9');

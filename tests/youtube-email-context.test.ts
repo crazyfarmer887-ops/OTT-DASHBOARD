@@ -1,13 +1,13 @@
 import { describe, expect, test, vi } from 'vitest';
-import { resolveYouTubeBuyerEmailWithContext, selectYouTubeEmailWithJev } from '../src/api/youtube-email-context';
+import { resolveYouTubeBuyerEmailWithContext } from '../src/api/youtube-email-context';
 const buyer = (message: string) => ({ message, owned: false });
 const seller = (message: string) => ({ message, owned: true });
 
 describe('contextual YouTube email selection', () => {
-  test('does not wait for AI for an explicit informal submission', async () => {
-    const select = vi.fn();
+  test('interprets even an explicit informal submission through the selected provider', async () => {
+    const select = vi.fn(async () => 'buyer@gmail.com');
     expect(await resolveYouTubeBuyerEmailWithContext('room', [buyer('ID:buyer＠gmail．com입니다')], select)).toEqual(['buyer@gmail.com']);
-    expect(select).not.toHaveBeenCalled();
+    expect(select).toHaveBeenCalled();
   });
 
   test('uses context to confirm a previously ambiguous selection without allowing an invented address', async () => {
@@ -43,10 +43,8 @@ describe('contextual YouTube email selection', () => {
   });
 
   test('coalesces repeated context checks but reclassifies a changed buyer message', async () => {
-    const transport = vi.fn(async () => Response.json({ answers: { address: {
-      choice: 'email_1', confidence: 0.99, probabilities: { email_0: 0.005, email_1: 0.99, none: 0.005 },
-    } } }));
-    vi.stubEnv('TYPESAFE_API_KEY', 'fixture-key');
+    const transport = vi.fn(async () => Response.json({ choices: [{message:{content: JSON.stringify({email:'VALUE_1',password:null,confidence:0.99})}}] }));
+    vi.stubEnv('OPENROUTER_API_KEY', 'fixture-key');
     vi.stubGlobal('fetch', transport);
     try {
       const messages = [buyer('cache-first@gmail.com 또는 cache-second@gmail.com'), buyer('두 번째 부탁드려요')];
@@ -58,16 +56,4 @@ describe('contextual YouTube email selection', () => {
     } finally { vi.unstubAllGlobals(); vi.unstubAllEnvs(); }
   });
 
-  test.each([
-    ['email_1', 0.97, { email_0: 0.01, email_1: 0.97, none: 0.02 }, 'b@gmail.com'],
-    ['email_1', 0.6, { email_0: 0.1, email_1: 0.6, none: 0.3 }, null],
-    ['email_99', 1, { email_99: 1 }, null],
-    ['none', 0.99, { none: 0.99 }, null],
-  ])('validates Jev choice and confidence: %s', async (choice, confidence, probabilities, expected) => {
-    const transport = vi.fn(async (_url: string | URL | Request, _init?: RequestInit) => Response.json({ answers: { address: { choice, confidence, probabilities } } }));
-    const result = await selectYouTubeEmailWithJev(['a@gmail.com', 'b@gmail.com'], [{ role: 'buyer', text: '두번째로 해주세요' }], transport, 'fixture-key');
-    expect(result).toBe(expected);
-    const request = JSON.parse(String(transport.mock.calls[0]?.[1]?.body));
-    expect(request.questions.address.criteria.email_1).toContain('b@gmail.com');
-  });
 });

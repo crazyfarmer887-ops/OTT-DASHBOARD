@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { writeJsonAtomic } from '../lib/graytag-sales-session';
 import { extractGbutsSpotifyCredentials, gbutsSpotifyOrderKey, isActiveGbutsSpotifyMember, isSpotifyAccountForBuyer, jamkkangudokSpotifyEmail,
-  type GbutsChatMessage, type GbutsSpotifyMember } from '../lib/gbuts-spotify';
+  type GbutsChatMessage, type GbutsSpotifyMember, type SpotifyCredentials } from '../lib/gbuts-spotify';
 import type { SpotifyNotionRow } from './gbuts-spotify-sync';
 
 const DEFAULT_JOURNAL_PATH = '/home/ubuntu/.hermes/hermes-agent/graytag-aio-manager-0606/data/gbuts-spotify-messages.json';
@@ -33,6 +33,7 @@ export function writeGbutsSpotifyMessageJournal(journal: GbutsSpotifyMessageJour
 }
 
 export interface GbutsSpotifyMessageDependencies {
+  extractCredentials?(messages: readonly GbutsChatMessage[], buyer: number): Promise<SpotifyCredentials | null>;
   listMembers(postSeq: number): Promise<GbutsSpotifyMember[]>;
   openPrivateRoom(postSeq: number, userSeq: number): Promise<string>;
   getChat(roomId: string): Promise<{ messages: GbutsChatMessage[] }>;
@@ -82,7 +83,7 @@ export async function syncGbutsSpotifyMessages(deps: GbutsSpotifyMessageDependen
     if (active.filter((candidate) => gbutsSpotifyOrderKey(postSeq, candidate) === orderKey).length !== 1) continue;
     const roomId = await deps.openPrivateRoom(postSeq, member.userSeq);
     const chat = await deps.getChat(roomId);
-    const buyerCredentials = extractGbutsSpotifyCredentials(chat.messages, member.userSeq);
+    const buyerCredentials = await (deps.extractCredentials || extractGbutsSpotifyCredentials)(chat.messages, member.userSeq);
     const newAccountRequestedAt = requestedSpotifyNewAccount(chat.messages, member.userSeq);
     const buyerChoiceAt = [buyerCredentials?.receivedAt, newAccountRequestedAt]
       .filter((value): value is string => Boolean(value)).sort().at(-1);
@@ -136,7 +137,7 @@ export async function syncGbutsSpotifyMessages(deps: GbutsSpotifyMessageDependen
         if (!fresh || fresh.id !== row.id || fresh.email !== row.email || fresh.password !== row.password
           || fresh.registered !== row.registered || !fresh.invited || fresh.cancelled) continue;
         const latestChat = await deps.getChat(roomId);
-        const latestCredentials = extractGbutsSpotifyCredentials(latestChat.messages, member.userSeq);
+        const latestCredentials = await (deps.extractCredentials || extractGbutsSpotifyCredentials)(latestChat.messages, member.userSeq);
         if (JSON.stringify(latestCredentials) !== JSON.stringify(buyerCredentials)
           || requestedSpotifyNewAccount(latestChat.messages, member.userSeq) !== newAccountRequestedAt) continue;
       }

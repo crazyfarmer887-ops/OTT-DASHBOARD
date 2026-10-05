@@ -1,3 +1,4 @@
+import { extractGbutsCredentialsWithOpenRouter } from '../api/notion-chat-extraction';
 import { createSingleFlightRunner } from './poll-daemon';
 import { loadGbutsSession } from '../lib/gbuts-session';
 import { loadSafeModeConfig } from '../api/safe-mode';
@@ -33,6 +34,7 @@ interface GbutsChatRoom {
 }
 
 export interface GbutsSpotifySyncDependencies {
+  extractCredentials?(messages: readonly GbutsChatMessage[], buyer: number): Promise<SpotifyCredentials | null>;
   listMembers(postSeq: number): Promise<GbutsSpotifyMember[]>;
   openPrivateRoom(postSeq: number, userSeq: number): Promise<string>;
   getChat(roomId: string): Promise<GbutsChatRoom>;
@@ -57,7 +59,7 @@ export async function syncGbutsSpotifyCredentials(deps: GbutsSpotifySyncDependen
     const orderKey = gbutsSpotifyOrderKey(postSeq, member);
     const roomId = await deps.openPrivateRoom(postSeq, member.userSeq);
     const chat = await deps.getChat(roomId);
-    const submitted = extractGbutsSpotifyCredentials(chat.messages, member.userSeq);
+    const submitted = await (deps.extractCredentials || extractGbutsSpotifyCredentials)(chat.messages, member.userSeq);
     const newAccountRequestedAt = requestedSpotifyNewAccount(chat.messages, member.userSeq);
     const credentials = newAccountRequestedAt && (!submitted || newAccountRequestedAt > submitted.receivedAt)
       ? null : submitted;
@@ -393,7 +395,7 @@ export function startGbutsSpotifySync(): void {
       if (loadSafeModeConfig().enabled) return;
       const gbutsToken = loadGbutsSession()?.token || process.env.GBUTS_API_TOKEN?.trim();
       if (!gbutsToken) return;
-      const deps = { ...notion, ...createGbutsSpotifySellerClient(gbutsToken) };
+      const deps = { ...notion, ...createGbutsSpotifySellerClient(gbutsToken), extractCredentials: extractGbutsCredentialsWithOpenRouter };
       if (process.env.GBUTS_SPOTIFY_CHAT_ALERT_ENABLED === 'true') {
         try {
           const alerts = await syncGbutsSpotifyChatAlerts({ ...deps, sendAlert: sendSellerAlert,

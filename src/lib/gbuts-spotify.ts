@@ -67,7 +67,7 @@ export function extractGbutsSpotifyCredentials(
     const canUseStandalonePassword = awaitingStandalonePassword;
     awaitingStandalonePassword = false;
     const emailMatch = content.match(/(?:spotify\s*(?:account|id|email|계정|아이디|이메일)|스포티파이\s*(?:계정|아이디|이메일)|(?:^|\n)\s*(?:id|email|아이디|이메일))\s*[:：=]\s*([^\s,;]+)/im);
-    const passwordMatch = content.match(/(?:password|passwd|pass|pwd|비밀번호|비번)\s*[:：=]\s*([^\s]+)/i);
+    const passwordMatch = content.match(/(?:password|passwd|pass|pwd|비밀번호|비번|암호)\s*[:：=]\s*([^\s]+)/i);
     if (/\b(?:google|apple|facebook|kakao)\s*(?:login|account|로그인|계정)\b/i.test(content)
       && (!emailMatch || !passwordMatch)) {
       email = null;
