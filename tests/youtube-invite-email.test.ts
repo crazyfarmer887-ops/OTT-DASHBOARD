@@ -18,6 +18,22 @@ describe('parseYouTubeInviteEmailCandidates', () => {
     expect(result).not.toHaveProperty('confirmed');
   });
 
+  test.each([
+    'buyer@example.com입니다.',
+    'buyer@example.com이에요!',
+    '이메일은buyer@example.com입니다',
+    '(buyer@example.com)으로부탁드립니다',
+    '이메일:buyer@example.com으로해주세요~',
+  ])('recognizes an address adjoining Korean chat text: %s', text => {
+    expect(parseYouTubeInviteEmailCandidates(text)).toMatchObject({ kind: 'single_candidate', candidate: 'buyer@example.com' });
+  });
+
+  test('keeps adjoining addresses ambiguous and rejects Hangul inserted inside an address', () => {
+    expect(parseYouTubeInviteEmailCandidates('first@example.com입니다 second@example.com으로해주세요')).toMatchObject({ kind: 'ambiguous' });
+    expect(parseYouTubeInviteEmailCandidates('bu한yer@example.com')).toEqual({ kind: 'none' });
+    expect(parseYouTubeInviteEmailCandidates('buyer@exam한ple.com')).toEqual({ kind: 'none' });
+  });
+
   test('deduplicates independently valid repeated candidates case-insensitively', () => {
     expect(parseYouTubeInviteEmailCandidates('Buyer@Example.com buyer@example.COM')).toEqual({
       kind: 'single_candidate',

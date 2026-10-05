@@ -22,6 +22,12 @@ describe('YouTube buyer email from chat', () => {
       .toEqual(['second@gmail.com']);
   });
 
+  test('imports a buyer address with the real Korean suffix without requiring another message', () => {
+    const messages = [seller('구매 감사합니다. 이메일 주소를 남겨주세요.'), buyer('buyer@gmail.com입니다.')];
+    expect(resolveYouTubeBuyerEmailFromChat('room', messages)).toEqual(['buyer@gmail.com']);
+    expect(resolveYouTubeBuyerEmailFromChat('room', [...messages, seller('다른 계정으로 초대받으셔야 해요')])).toBeNull();
+  });
+
   test('ignores seller and system addresses; blocks conflicting buyer addresses until clarified', () => {
     expect(resolveYouTubeBuyerEmailFromChat('room-1', [seller('support@gmail.com'),
       { ...buyer('buyer@gmail.com'), messageType: 'Information' }])).toEqual([]);

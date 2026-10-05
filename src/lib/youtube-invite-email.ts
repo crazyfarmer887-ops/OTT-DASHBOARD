@@ -57,6 +57,9 @@ export function maskYouTubeInviteEmail(email: string): string {
 
 function cleanCandidateToken(token: string): string {
   let cleaned = token.replace(KNOWN_EMAIL_LABEL_PATTERN, '');
+  // Buyer chat often has no space before Korean particles: address입니다.
+  // Strip only Hangul at the outer edges; never splice through an address.
+  cleaned = cleaned.replace(/^[가-힣]+(?=[A-Z0-9])/iu, '').replace(/[가-힣]+[.!~]*$/u, '');
 
   while (cleaned.length >= 2 && OUTER_WRAPPER_PAIRS[cleaned[0]] === cleaned.at(-1)) {
     cleaned = cleaned.slice(1, -1);

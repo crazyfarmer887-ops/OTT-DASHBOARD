@@ -224,15 +224,8 @@ function parseNotionRow(value: unknown): SpotifyNotionRow | null {
   };
 }
 
-function notionTitle(history: readonly string[], email: string, cancelled = false) {
-  return [
-    ...history.flatMap((old, index) => [
-      ...(index ? [{ text: { content: '\n\n↓\n\n' } }] : []),
-      { text: { content: old }, annotations: { strikethrough: true } },
-    ]),
-    ...(history.length ? [{ text: { content: '\n\n↓\n\n' } }] : []),
-    { text: { content: email }, ...(cancelled ? { annotations: { strikethrough: true } } : {}) },
-  ];
+function notionTitle(email: string, cancelled = false) {
+  return [{ text: { content: email }, ...(cancelled ? { annotations: { strikethrough: true } } : {}) }];
 }
 
 export function createGbutsSpotifyNotionClient(token: string, dataSourceId = SPOTIFY_NOTION_DATA_SOURCE_ID,
@@ -268,7 +261,7 @@ export function createGbutsSpotifyNotionClient(token: string, dataSourceId = SPO
       const response = await transport('https://api.notion.com/v1/pages', {
         method: 'POST', headers, signal: AbortSignal.timeout(15_000),
         body: JSON.stringify({ parent: { type: 'data_source_id', data_source_id: dataSourceId }, properties: {
-          'Spotify account': { title: notionTitle([], credentials.email) },
+          'Spotify account': { title: notionTitle(credentials.email) },
           Password: { rich_text: [{ text: { content: credentials.password } }] },
           Registered: { checkbox: false },
           Invited: { checkbox: false },
@@ -307,12 +300,10 @@ export function createGbutsSpotifyNotionClient(token: string, dataSourceId = SPO
       return claimed;
     },
     async replaceCredentials(row: SpotifyNotionRow, credentials: SpotifyCredentials): Promise<SpotifyNotionRow> {
-      const history = row.email && row.email !== credentials.email
-        ? [...row.emailHistory, row.email] : row.emailHistory;
       const response = await transport(`https://api.notion.com/v1/pages/${encodeURIComponent(row.id)}`, {
         method: 'PATCH', headers, signal: AbortSignal.timeout(15_000),
         body: JSON.stringify({ properties: {
-          'Spotify account': { title: notionTitle(history, credentials.email) },
+          'Spotify account': { title: notionTitle(credentials.email) },
           Password: { rich_text: [{ text: { content: credentials.password } }] },
           ...(row.email !== credentials.email ? { Registered: { checkbox: false } } : {}),
           Invited: { checkbox: false },
@@ -327,7 +318,7 @@ export function createGbutsSpotifyNotionClient(token: string, dataSourceId = SPO
       const response = await transport(`https://api.notion.com/v1/pages/${encodeURIComponent(row.id)}`, {
         method: 'PATCH', headers, signal: AbortSignal.timeout(15_000),
         body: JSON.stringify({ properties: {
-          'Spotify account': { title: row.email ? notionTitle(row.emailHistory, row.email, true)
+          'Spotify account': { title: row.email ? notionTitle(row.email, true)
             : [{ text: { content: 'New account requested' }, annotations: { strikethrough: true } }] },
           Password: { rich_text: [] }, Registered: { checkbox: false }, Invited: { checkbox: false },
         } }),

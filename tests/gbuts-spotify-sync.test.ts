@@ -247,7 +247,7 @@ describe('GButs Spotify Notion sync', () => {
     expect(openPrivateRoom).not.toHaveBeenCalled();
   });
 
-  it('formats a corrected account with the previous address struck above a down arrow', async () => {
+  it('shows only the current Spotify account without an arrow or old address', async () => {
     const requests: Array<{ url: string; init: RequestInit }> = [];
     const transport = vi.fn(async (url: string | URL | Request, init: RequestInit = {}) => {
       requests.push({ url: String(url), init });
@@ -267,12 +267,10 @@ describe('GButs Spotify Notion sync', () => {
     });
     const title = JSON.parse(String(requests[0].init.body)).properties['Spotify account'].title;
     expect(title).toEqual([
-      { text: { content: 'old@example.com' }, annotations: { strikethrough: true } },
-      { text: { content: '\n\n↓\n\n' } },
       { text: { content: 'new@example.com' } },
     ]);
     expect(JSON.parse(String(requests[0].init.body)).properties.Registered).toEqual({ checkbox: false });
-    expect(result).toMatchObject({ email: 'new@example.com', emailHistory: ['old@example.com'], invited: false });
+    expect(result).toMatchObject({ email: 'new@example.com', emailHistory: [], invited: false });
   });
 
   it('strikes a refunded buyer account and clears its password', async () => {
