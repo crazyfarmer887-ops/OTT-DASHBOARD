@@ -62,7 +62,7 @@ import { DEFAULT_YOUTUBE_AUTO_LISTING_LOCK_PATH, enqueueYouTubeAutoListingManage
 import { runWithExclusivePollLock } from '../scheduler/poll-daemon';
 import { ChatRoomOrganizationValidationError, createChatRoomCategory, deleteChatRoomCategory, loadChatRoomOrganization, renameChatRoomCategory, updateChatRoomOrganizationEntry } from '../lib/chat-room-organization';
 import { parseYouTubeInviteEmailCandidates } from '../lib/youtube-invite-email';
-import { resolveYouTubeBuyerEmailFromChat } from './youtube-chat-email';
+import { resolveYouTubeBuyerEmailWithContext } from './youtube-email-context';
 import {
   buildGraytagCookieHeader,
   loadGraytagAuthCookies,
@@ -662,7 +662,7 @@ export async function fetchNotionDeliveryBuyerEmails(chatRoomUuid: string): Prom
     const payload = await response.json() as any;
     if (payload?.succeeded !== true) return null;
     // Import explicit addresses on the next poll; corrections reset Invited atomically.
-    return resolveYouTubeBuyerEmailFromChat(chatRoomUuid, extractGraytagChats(payload));
+    return await resolveYouTubeBuyerEmailWithContext(chatRoomUuid, extractGraytagChats(payload));
   } catch { return null; }
 }
 

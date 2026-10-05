@@ -1,12 +1,23 @@
 import { normalizeBuyerMessage, isBuyerTextMessage } from './auto-reply-message';
 import type { GraytagChatMessage } from './chat-message-summary';
 import { parseYouTubeInviteEmailCandidates } from '../lib/youtube-invite-email';
+import { parseYouTubeBuyerEmailSubmission } from '../lib/youtube-buyer-email';
 
 const DIFFERENT_ACCOUNT = /(?:다른|새로운|새)\s*(?:(?:구글|Google)\s*)?(?:계정|이메일|메일|주소)|(?:계정|이메일|메일|주소)[^.!?\n]{0,30}(?:초대\s*(?:불가|불가능|안\s*됨|못)|사용\s*(?:불가|불가능))/i;
 const CORRECTION = /정정|수정|대신|말고|아니라|바꿔|변경|이걸로|이\s*(?:계정|이메일|주소)으로/i;
 const PROCEED_WITH_ORIGINAL = /(?:기존|처음|원래|앞서\s*(?:주신|보내주신))\s*(?:계정|이메일|메일|주소)[^.!?\n]{0,30}초대/i;
 
-function sortTime(value?: string): number {
+export function normalizeYouTubeEmailChatMessage(raw: string): string {
+  // Angle-wrapped addresses are buyer text, not HTML tags.
+  return normalizeBuyerMessage(raw.replace(/<([^<>]+@[^<>]+)>/g, (whole, email: string) =>
+    parseYouTubeInviteEmailCandidates(email).kind === 'single_candidate' ? email : whole));
+}
+
+export function isYouTubeDifferentAccountRequest(text: string): boolean {
+  return DIFFERENT_ACCOUNT.test(text);
+}
+
+export function youtubeChatEmailTime(value?: string): number {
   const dotted = /^(\d{4})\.(\d{1,2})\.(\d{1,2})\s+(\d{1,2}):(\d{1,2})/.exec(value || '');
   if (dotted) return Date.UTC(Number(dotted[1]), Number(dotted[2]) - 1, Number(dotted[3]), Number(dotted[4]), Number(dotted[5])) - 9 * 60 * 60_000;
   const parsed = Date.parse(value || '');
@@ -22,8 +33,8 @@ export function resolveYouTubeBuyerEmailFromChat(
   now = Date.now(),
 ): string[] | null {
   const ordered = messages.map((message, index) => ({ message, index })).sort((a, b) => {
-    const left = sortTime(a.message.registeredDateTime || a.message.createdAt || a.message.updatedAt);
-    const right = sortTime(b.message.registeredDateTime || b.message.createdAt || b.message.updatedAt);
+    const left = youtubeChatEmailTime(a.message.registeredDateTime || a.message.createdAt || a.message.updatedAt);
+    const right = youtubeChatEmailTime(b.message.registeredDateTime || b.message.createdAt || b.message.updatedAt);
     return left && right && left !== right ? left - right : a.index - b.index;
   });
   let selected: string | null = null;
@@ -31,7 +42,7 @@ export function resolveYouTubeBuyerEmailFromChat(
   let prior: string | null = null;
   let unresolved = false;
   for (const { message } of ordered) {
-    const text = normalizeBuyerMessage(String(message.message || ''));
+    const text = normalizeYouTubeEmailChatMessage(String(message.message || ''));
     if (!text || message.informationMessage || message.isInfo || message.messageType === 'Information') continue;
     if (message.owned === true || message.isOwned === true) {
       if (DIFFERENT_ACCOUNT.test(text)) {
@@ -46,7 +57,7 @@ export function resolveYouTubeBuyerEmailFromChat(
       continue;
     }
     if (!isBuyerTextMessage({ chatRoomUuid, ...message, message: text })) continue;
-    const parsed = parseYouTubeInviteEmailCandidates(text);
+    const parsed = parseYouTubeBuyerEmailSubmission(text);
     if (parsed.kind === 'none') continue;
     if (parsed.kind === 'ambiguous') {
       selected = null;
@@ -56,7 +67,7 @@ export function resolveYouTubeBuyerEmailFromChat(
     }
     if (unresolved || !selected || selected === parsed.candidate || CORRECTION.test(text)) {
       selected = parsed.candidate;
-      selectedAt = sortTime(message.registeredDateTime || message.createdAt || message.updatedAt);
+      selectedAt = youtubeChatEmailTime(message.registeredDateTime || message.createdAt || message.updatedAt);
       unresolved = false;
     } else {
       selected = null;

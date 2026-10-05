@@ -28,6 +28,26 @@ describe('YouTube buyer email from chat', () => {
     expect(resolveYouTubeBuyerEmailFromChat('room', [...messages, seller('다른 계정으로 초대받으셔야 해요')])).toBeNull();
   });
 
+  test.each([
+    'ID:buyer@gmail.com입니다',
+    '이메일은(buyer@gmail.com)입니다',
+    '<buyer@gmail.com>입니다',
+    'buyer＠gmail．com이에요!',
+    'buyer @ gmail . com 으로 해주세요',
+    'buyer 골뱅이 gmail 점 com 입니다',
+    'buyer@gmail.com, 부탁드립니다',
+    'old@gmail.com말고buyer@gmail.com으로해주세요',
+    'old@gmail.com 대신 buyer@gmail.com으로 해주세요',
+  ])('understands an explicit buyer submission in informal wording: %s', message => {
+    expect(resolveYouTubeBuyerEmailFromChat('room', [buyer(message)])).toEqual(['buyer@gmail.com']);
+  });
+
+  test('does not import a withdrawn address or choose from actual alternatives', () => {
+    expect(resolveYouTubeBuyerEmailFromChat('room', [buyer('old@gmail.com 말고 다른 주소 보내드릴게요')])).toBeNull();
+    expect(resolveYouTubeBuyerEmailFromChat('room', [buyer('old@gmail.com'), buyer('다른 계정으로 바꿀게요')])).toBeNull();
+    expect(resolveYouTubeBuyerEmailFromChat('room', [buyer('old@gmail.com 아니면 buyer@gmail.com 중 어느걸로 할까요?')])).toBeNull();
+  });
+
   test('ignores seller and system addresses; blocks conflicting buyer addresses until clarified', () => {
     expect(resolveYouTubeBuyerEmailFromChat('room-1', [seller('support@gmail.com'),
       { ...buyer('buyer@gmail.com'), messageType: 'Information' }])).toEqual([]);
