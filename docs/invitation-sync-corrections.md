@@ -25,11 +25,19 @@ Investigated configured settling delay, historical chat scans, and upstream/sess
 - [x] Rotate at most two unrepresented historical cancellation chats per poll. Existing linked cancellations remain immediate; active imports run first.
 - [x] Reuse a fresh seller-list snapshot within one locked cycle. Keep a fresh buyer chat and provider-status check before finishing delivery.
 - [x] Regression for bounded history scanning and buyer correction before delivery failed before the fix and passes after it.
-- [ ] Deploy committed release and verify operation. Correct the incident Notion row only after verifying seller-authored delivery of the actual issued address; preserve evidence in the private journal to suppress a duplicate buyer message.
+- [x] Deploy committed release and verify operation. Correct the incident Notion row only after verifying seller-authored delivery of the actual issued address; preserve evidence in the private journal to suppress a duplicate buyer message.
 
 ## Verification
 
 Nine relevant suites passed (167 tests); client build and whitespace review passed. The broad worker type check still reports pre-existing errors in chat streaming, API typing and WebSocket handler typing; none involve the changed guard or synchronization logic.
+
+## Production evidence
+
+- Runtime release `7850a06`, built from committed local source and pushed to the existing branch. Service active; imports and deliveries enabled; interval explicitly 30,000 ms.
+- Two Spotify rows had the unchanged original address despite verified seller-authored delivery of the issued account. Corrected both to the actual `jamkkangudok.com` login, retained struck original history and both completion checks. Recorded manual delivery evidence in the private message journal; read-only send simulation attempted zero duplicate messages.
+- Live YouTube import returned created=0, bound=0, updated=0, cancelled=0, capacityBlocked=0. All currently eligible addresses were already represented. Repeated audits found the same six pending orders: one represented email and five with no buyer email.
+- Production logs after restart show successful delivery polling at 30-second intervals. API health and authenticated GButs seller connection return 200.
+- Removed a lock left by the stopped service only after verifying its owner process was dead. Retained the previous release configuration and private journal backup for recovery.
 
 ## Limitations
 
