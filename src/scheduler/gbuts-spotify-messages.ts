@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { writeJsonAtomic } from '../lib/graytag-sales-session';
-import { extractGbutsSpotifyCredentials, gbutsSpotifyOrderKey, isActiveGbutsSpotifyMember, isSpotifyAccountForBuyer,
+import { extractGbutsSpotifyCredentials, gbutsSpotifyOrderKey, isActiveGbutsSpotifyMember, isSpotifyAccountForBuyer, jamkkangudokSpotifyEmail,
   type GbutsChatMessage, type GbutsSpotifyMember } from '../lib/gbuts-spotify';
 import type { SpotifyNotionRow } from './gbuts-spotify-sync';
 
@@ -43,7 +43,6 @@ export interface GbutsSpotifyMessageDependencies {
   writeJournal(journal: GbutsSpotifyMessageJournal): void;
   now?(): string;
   requestAckStartAt?: string;
-  reportBlocked?(orderKey: string): Promise<void>;
 }
 
 /** A question about new accounts is not a request to issue one. */
@@ -66,7 +65,7 @@ export function requestedSpotifyNewAccount(messages: readonly GbutsChatMessage[]
 }
 
 export async function syncGbutsSpotifyMessages(deps: GbutsSpotifyMessageDependencies, postSeq: number): Promise<{
-  guidesAttempted: number; acknowledgementsAttempted: number; invitedRepliesAttempted: number; confirmed: number; blocked: number;
+  guidesAttempted: number; acknowledgementsAttempted: number; invitedRepliesAttempted: number; confirmed: number;
 }> {
   const ackStart = deps.requestAckStartAt == null ? null : Date.parse(deps.requestAckStartAt);
   if (ackStart !== null && !Number.isFinite(ackStart)) throw new Error('GButs Spotify acknowledgment start time invalid');
@@ -78,7 +77,6 @@ export async function syncGbutsSpotifyMessages(deps: GbutsSpotifyMessageDependen
   let acknowledgementsAttempted = 0;
   let invitedRepliesAttempted = 0;
   let confirmed = 0;
-  let blocked = 0;
   for (const member of active) {
     const orderKey = gbutsSpotifyOrderKey(postSeq, member);
     if (active.filter((candidate) => gbutsSpotifyOrderKey(postSeq, candidate) === orderKey).length !== 1) continue;
@@ -97,25 +95,22 @@ export async function syncGbutsSpotifyMessages(deps: GbutsSpotifyMessageDependen
       && isSpotifyAccountForBuyer(row.email, buyerCredentials.email)
       && row.password === buyerCredentials.password
       && (!newAccountRequestedAt || newAccountRequestedAt <= buyerCredentials.receivedAt));
-    // Registered means an issued login, so the buyer's old address cannot be delivered as the new account.
-    const originalStillSelected = Boolean(row?.registered && buyerCredentials
-      && row.email.trim().toLowerCase() === buyerCredentials.email.trim().toLowerCase());
-    if (row?.invited && originalStillSelected) {
-      blocked += 1; await deps.reportBlocked?.(orderKey); continue;
-    }
+    // The partner's Registered check confirms creation under the agreed domain.
+    // The Notion ID may remain the buyer's original address.
+    const deliveryEmail = row?.registered ? jamkkangudokSpotifyEmail(row.email) : row?.email;
     const manuallyIssuedLogin = Boolean(row?.registered && newAccountRequestedAt
       && (!buyerCredentials || newAccountRequestedAt > buyerCredentials.receivedAt)
       && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.email) && row.password.length >= 6);
-    const invitedMatches = Boolean(row?.invited && !row.cancelled
+    const invitedMatches = Boolean(row?.invited && deliveryEmail && !row.cancelled
       && (row.registered ? matchesBuyerCredentials || manuallyIssuedLogin
         : matchesBuyerCredentials && row.email === buyerCredentials?.email));
     if (!invitedMatches && buyerChoiceAt && Number.isFinite(Date.parse(buyerChoiceAt))
       && (ackStart === null || Date.parse(buyerChoiceAt) >= ackStart))
       desired.push({ suffix: 'request-received', text: SPOTIFY_REQUEST_ACK });
-    if (invitedMatches && row) {
-      const fingerprint = createHash('sha256').update(`${row.email}\0${row.password}`).digest('hex').slice(0, 16);
+    if (invitedMatches && row && deliveryEmail) {
+      const fingerprint = createHash('sha256').update(`${deliveryEmail}\0${row.password}`).digest('hex').slice(0, 16);
       desired.push({ suffix: row.registered ? `registered-invited:${fingerprint}` : `invited:${fingerprint}`,
-        text: row.registered ? spotifyRegisteredAccountInvitedReply(row.email, row.password) : SPOTIFY_INVITED_REPLY });
+        text: row.registered ? spotifyRegisteredAccountInvitedReply(deliveryEmail, row.password) : SPOTIFY_INVITED_REPLY });
     }
     for (const item of desired) {
       const key = `${orderKey}:${item.suffix}`;
@@ -154,7 +149,7 @@ export async function syncGbutsSpotifyMessages(deps: GbutsSpotifyMessageDependen
       try { await deps.sendText(roomId, sellerSeq, item.text); } catch { /* Delivery outcome unknown. */ }
     }
   }
-  return { guidesAttempted, acknowledgementsAttempted, invitedRepliesAttempted, confirmed, blocked };
+  return { guidesAttempted, acknowledgementsAttempted, invitedRepliesAttempted, confirmed };
 }
 
 /** GButs' web client sends the same text payload to the STOMP destination below. */

@@ -421,14 +421,9 @@ export function startGbutsSpotifySync(): void {
         const messages = await syncGbutsSpotifyMessages({ ...deps, sendText: sendGbutsText,
           readJournal: readGbutsSpotifyMessageJournal,
           writeJournal: writeGbutsSpotifyMessageJournal,
-          requestAckStartAt: process.env.GBUTS_SPOTIFY_ACK_START_AT,
-          reportBlocked: async (orderKey) => {
-            await sendSellerAlert({ key: `spotify-issued-account-review:${orderKey}`, title: 'Spotify 새 계정 주소 확인 필요',
-              body: `주문 ${orderKey}: Registered와 Invited가 체크됐지만 노션 주소가 구매자의 기존 계정과 같습니다. 실제 발급한 새 계정 주소를 노션에 입력해주세요. 계정 정보 자동 발송은 보류했습니다.`,
-              category: 'system', throttleMs: 24 * 60 * 60 * 1000 });
-          } }, postSeq);
+          requestAckStartAt: process.env.GBUTS_SPOTIFY_ACK_START_AT }, postSeq);
         if (messages.guidesAttempted || messages.acknowledgementsAttempted
-          || messages.invitedRepliesAttempted || messages.confirmed || messages.blocked)
+          || messages.invitedRepliesAttempted || messages.confirmed)
           console.log('[GbutsSpotifySync] messages', messages);
       }
     } catch (error) {

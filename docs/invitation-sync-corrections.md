@@ -4,7 +4,7 @@
 
 Fix two reported problems in the established local repository and deploy committed source.
 
-- Spotify: `Registered + Invited` means an actually issued new login. The buyer's unchanged original login must never be delivered with the new-account message. A newly issued login must be recorded by the partner; do not fabricate an account by substituting its domain.
+- Spotify: `Registered + Invited` means an actually issued new login. The buyer's unchanged original login must never be delivered with the new-account message. The user's subsequent clarification supersedes the manual-ID requirement: `Registered` confirms that the partner created the same local part under `@jamkkangudok.com`, with the same password. Derive the delivered address without requiring a Notion ID edit.
 - GrayTag YouTube: import an unambiguous buyer email on the next polling cycle, without an arbitrary settling delay. Keep the buyer-resend requirement after a seller asks for a different account. A correction updates the same Notion row and resets `Invited`.
 - Keep cancellation handling and at-most-once delivery journals. Do not send another account correction to the incident buyer; the seller already corrected the address manually.
 
@@ -20,7 +20,7 @@ Investigated configured settling delay, historical chat scans, and upstream/sess
 ## Tickets and implementation
 
 - [x] Reproduce unchanged original Spotify credentials being sent as a newly issued login. Regression failed before the guard and passes after it.
-- [x] Block that send, notify the seller without credentials, and recheck Notion and buyer chat immediately before a new completion send.
+- [x] Initially block that send; subsequently replace the manual-ID restriction with the user-authorized Registered domain conversion. Keep Notion and buyer chat rechecks immediately before a new completion send.
 - [x] Remove the six-minute hold from the live YouTube email reader; default polling becomes 30 seconds.
 - [x] Rotate at most two unrepresented historical cancellation chats per poll. Existing linked cancellations remain immediate; active imports run first.
 - [x] Reuse a fresh seller-list snapshot within one locked cycle. Keep a fresh buyer chat and provider-status check before finishing delivery.
@@ -42,3 +42,13 @@ Nine relevant suites passed (167 tests); client build and whitespace review pass
 ## Limitations
 
 Thirty seconds is the poll interval, not a guaranteed end-to-end deadline. API latency, rate limits and upstream unavailability can add delay. Messages with multiple conflicting addresses or an unresolved different-account request remain pending intentionally. Checkbox checks do not verify Spotify authentication or prove that the supplier actually created the account.
+
+## Registered workflow clarification
+
+The user explicitly rejected requiring the partner to edit the Notion ID. Registered confirms a newly created `@jamkkangudok.com` account using the local part of the displayed ID and its existing password. Registered + Invited sends this derived address. Invited alone keeps the existing-account completion reply. Registered alone does not confirm invitation completion.
+
+The completion journal fingerprint now uses the delivered address, so changing the Notion ID from the original to the same issued address does not trigger another message. Remove the unchanged-ID block and its seller alert. Preserve chat freshness, cancellation checks and uncertain-send protection.
+
+- [x] Regression: original ID + both checks sends the derived login, including after a buyer requests a new account.
+- [x] Regression: later editing Notion to the derived address does not send twice; Registered alone does not send completion.
+- [ ] Verify, commit, deploy, and perform a read-only production check.

@@ -138,12 +138,43 @@ describe('GButs Spotify buyer messages', () => {
     expect(JSON.stringify(journal)).not.toContain('secret123');
   });
 
-  it.each([false, true])('blocks an unchanged original login even after a new-account request: %s', async (newAccountRequest) => {
+  it.each([false, true])('uses Registered as confirmation of the derived new login: %s', async (newAccountRequest) => {
     const sendText = vi.fn();
     const result = await syncGbutsSpotifyMessages({
       listMembers: async () => [member], openPrivateRoom: async () => '777',
       getChat: async () => ({ messages: [buyerMessage, ...(newAccountRequest ? [{ ...buyerMessage, message: '새 계정 발급 부탁드립니다', createdAt: '2026-10-03T10:01:00Z' }] : [])] }), sellerAccountSeq: async () => 7,
       listRows: async () => [{ ...row, registered: true }], sendText,
+      readJournal: () => ({ version: 1, records: {} }), writeJournal: vi.fn(),
+      requestAckStartAt: '2026-10-03T00:00:00Z',
+    }, 15557);
+    expect(result.invitedRepliesAttempted).toBe(1);
+    expect(sendText).toHaveBeenCalledExactlyOnceWith('777', 7,
+      spotifyRegisteredAccountInvitedReply('buyer@jamkkangudok.com', 'secret123'));
+  });
+
+  it('keeps one delivery journal identity when the original Notion address is later changed to the issued address', async () => {
+    let current = { ...row, registered: true };
+    const journal: GbutsSpotifyMessageJournal = { version: 1, records: {} };
+    const sendText = vi.fn(async () => undefined);
+    const deps = {
+      listMembers: async () => [member], openPrivateRoom: async () => '777',
+      getChat: async () => ({ messages: [buyerMessage] }), sellerAccountSeq: async () => 7,
+      listRows: async () => [current], sendText, readJournal: () => journal, writeJournal: vi.fn(),
+      requestAckStartAt: '2026-10-03T00:00:00Z',
+    };
+    expect((await syncGbutsSpotifyMessages(deps, 15557)).invitedRepliesAttempted).toBe(1);
+    current = { ...current, email: 'buyer@jamkkangudok.com' };
+    expect((await syncGbutsSpotifyMessages(deps, 15557)).invitedRepliesAttempted).toBe(0);
+    expect(sendText).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(journal)).not.toContain('secret123');
+  });
+
+  it('does not send completion while Registered is checked without Invited', async () => {
+    const sendText = vi.fn();
+    const result = await syncGbutsSpotifyMessages({
+      listMembers: async () => [member], openPrivateRoom: async () => '777',
+      getChat: async () => ({ messages: [buyerMessage] }), sellerAccountSeq: async () => 7,
+      listRows: async () => [{ ...row, registered: true, invited: false }], sendText,
       readJournal: () => ({ version: 1, records: {} }), writeJournal: vi.fn(),
       requestAckStartAt: '2026-10-03T00:00:00Z',
     }, 15557);
