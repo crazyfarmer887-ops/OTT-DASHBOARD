@@ -11,6 +11,7 @@ const navGroups = [
     { path: "/renewals", label: "연장 관리", Icon: RefreshCw },
     { path: "/youtube-invites", label: "유튜브 초대", Icon: Youtube },
     { path: "/spotify-invites", label: "Spotify 초대", Icon: Music2 },
+    { path: "/gbuts-sales", label: "벗츠 판매 연결", Icon: LayoutGrid },
     { path: "/party-info", label: "파티정보", Icon: Info },
     { path: "/edit-price", label: "게시물",  Icon: Settings2 },
   ] },

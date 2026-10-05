@@ -37,6 +37,7 @@ interface Account {
   email: string; serviceType: string; members: Member[]; usingCount: number;
   activeCount: number; totalSlots: number; totalIncome: number; totalRealizedIncome: number; expiryDate: string | null; keepPasswd?: string;
   archivedAccount?: boolean;
+  gbutsInventory?: { currentUsers: number; recruiting: number; claims: number; members: Array<{ key: string; name: string; profileName?: string; endDate: string }> };
   credentialSource?: 'maintenance' | 'party-access-history';
   archivedCredential?: { id: string; password: string; pin: string };
   paymentCard?: ManagementPaymentCard;
@@ -1154,6 +1155,7 @@ export default function ManagePage() {
     const names = [
       ...acct.members.map(m => m.profileName || ''),
       ...onSaleList.map(p => p.profileName || ''),
+      ...(acct.gbutsInventory?.members || []).map(m => m.profileName || ''),
     ]
       .map(name => normalizeProfileNickname(String(name || '')))
       .filter(name => isValidProfileNickname(name));
@@ -1270,7 +1272,11 @@ export default function ManagePage() {
     return calculateAccountVacancy<OnSaleProduct>({
       serviceType: acct.serviceType,
       maxSlots,
-      members: acct.members,
+      members: [...acct.members,
+        ...(acct.gbutsInventory?.members || []).map(m => ({ dealUsid: `gbuts:${m.key}`, status: 'Using', endDateTime: m.endDate })),
+        ...Array.from({ length: (acct.gbutsInventory?.recruiting || 0) + (acct.gbutsInventory?.claims || 0) }, (_, index) => ({
+          productUsid: `gbuts-reserved:${acct.email}:${index}`, status: 'OnSale', endDateTime: acct.expiryDate || '2099-12-31' })),
+      ],
       manualCount,
       recruitingProducts: data?.onSaleByKeepAcct?.[acct.email] || [],
     });
@@ -1402,7 +1408,7 @@ export default function ManagePage() {
           sellingGuide: makeDefaultProductDescription(fillModal.serviceType),
         });
         const body = cs.id === AUTO_COOKIE_ID ? { productModel } : { AWSALB: cs.AWSALB, AWSALBCORS: cs.AWSALBCORS, JSESSIONID: cs.JSESSIONID, productModel };
-        const res = await fetch('/api/post/create', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        const res = await fetch('/api/post/create', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, inventoryAccount: fillModal.email }) });
         const json = await res.json().catch(() => ({})) as any;
         if (!res.ok || !json.productUsid) {
           errors.push(`${i + 1}번째 게시글 등록 실패: ${json.error || '알 수 없는 오류'}`);
@@ -1627,7 +1633,7 @@ export default function ManagePage() {
         sellingGuide: makeDefaultProductDescription(draft.modal.serviceType),
       });
       const body = cs.id === AUTO_COOKIE_ID ? { productModel } : { AWSALB: cs.AWSALB, AWSALBCORS: cs.AWSALBCORS, JSESSIONID: cs.JSESSIONID, productModel };
-      const res = await fetch('/api/post/create', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const res = await fetch('/api/post/create', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, inventoryAccount: draft.modal.email }) });
       const json = await res.json() as any;
       if (!res.ok || !json.productUsid) throw new Error(json.error || '게시글 등록 실패');
 
@@ -2306,6 +2312,7 @@ export default function ManagePage() {
                                   {isNetflixManagementService(acct.serviceType) && renewalDaySummary && <span style={{ color:'#059669' }}> · {renewalDaySummary}</span>}
                                 </div>
                                 <div style={{ display:'flex', gap:6, alignItems:'center', marginTop:3, flexWrap:'wrap' }}>
+                                  {acct.gbutsInventory && (acct.gbutsInventory.currentUsers + acct.gbutsInventory.recruiting > 0) && <button onClick={ev => { ev.stopPropagation(); navigate('/gbuts-sales'); }} style={{ border:0, background:'#EDE9FE', color:'#6D28D9', borderRadius:6, fontSize:10, padding:'2px 7px', cursor:'pointer' }}>벗츠 이용 {acct.gbutsInventory.currentUsers} · 모집 {acct.gbutsInventory.recruiting}</button>}
                                   {acct.generatedAccount && <span style={{ fontSize:10, color:acct.generatedAccount.paymentStatus==='paid'?'#059669':'#C2410C', fontWeight:900, display:'flex', alignItems:'center', gap:3, background:acct.generatedAccount.paymentStatus==='paid'?'#ECFDF5':'#FFEDD5', borderRadius:6, padding:'1px 7px' }}>
                                     <KeyRound size={10} /> {acct.generatedAccount.paymentStatus==='paid'?'결제 완료':'생성만 완료'}
                                   </span>}

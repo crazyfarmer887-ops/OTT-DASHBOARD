@@ -6,7 +6,7 @@ import type { ProfileAssignment } from './profile-nickname';
 import { DOUBLE_PASS_LABEL, TVING_SERVICE, WAVVE_SERVICE, resolveDoublePassBundleNo } from './tving-wavve-bundle';
 export { buildPartyAccessDeliveryTemplate } from './party-access-template';
 
-export type PartyAccessMemberKind = 'graytag' | 'manual';
+export type PartyAccessMemberKind = 'graytag' | 'manual' | 'gbuts';
 
 export interface PartyAccessMemberRef {
   kind: PartyAccessMemberKind;
@@ -16,6 +16,7 @@ export interface PartyAccessMemberRef {
   statusName?: string;
   startDateTime?: string | null;
   endDateTime?: string | null;
+  verifiedAt?: string;
 }
 
 export interface PartyAccessLinkRecord {
@@ -283,6 +284,7 @@ export function createPartyAccessLinkRecord(input: {
       statusName: normalizeKeyPart(input.member.statusName || input.member.status),
       startDateTime: input.member.startDateTime || null,
       endDateTime: input.member.endDateTime || null,
+      ...(input.member.verifiedAt ? { verifiedAt: input.member.verifiedAt } : {}),
     },
     createdAt: now,
     revokedAt: null,
@@ -291,11 +293,17 @@ export function createPartyAccessLinkRecord(input: {
   };
 }
 
-export function isPartyAccessAllowed(record: PartyAccessLinkRecord, now = new Date().toISOString()): { allowed: boolean; reason: 'active' | 'revoked' | 'ended-status' | 'expired' | 'missing-record' } {
+export function isPartyAccessAllowed(record: PartyAccessLinkRecord, now = new Date().toISOString()): { allowed: boolean; reason: 'active' | 'revoked' | 'ended-status' | 'expired' | 'missing-record' | 'verification-unavailable' } {
   if (!record) return { allowed: false, reason: 'missing-record' };
   const end = parseDateEndOfDay(record.member.endDateTime);
   const isExpiredByDate = Boolean(end && end.getTime() < new Date(now).getTime());
   if (isExpiredByDate) return { allowed: false, reason: 'expired' };
+  if (record.member.kind === 'gbuts') {
+    if (record.revokedAt) return { allowed: false, reason: 'revoked' };
+    if (record.member.status !== 'active') return { allowed: false, reason: 'ended-status' };
+    const verified = Date.parse(record.member.verifiedAt || '');
+    if (!Number.isFinite(verified) || Date.parse(now) - verified > 120_000) return { allowed: false, reason: 'verification-unavailable' };
+  }
 
   // Buyer-facing access URLs must remain usable until the paid end date.
   // Graytag status/revokedAt can change because of internal cancellation/conflict flows,
@@ -418,7 +426,7 @@ export function syncPartyAccessStoreWithMembers(input: {
   const now = input.now || new Date().toISOString();
   const statusByKey = new Map<string, PartyAccessMemberStatusLike>();
   for (const member of input.members || []) {
-    const kind = member.kind === 'manual' ? 'manual' : 'graytag';
+    const kind = member.kind === 'manual' ? 'manual' : member.kind === 'gbuts' ? 'gbuts' : 'graytag';
     const memberId = normalizeKeyPart(member.memberId);
     if (!memberId) continue;
     statusByKey.set(`${kind}:${memberId}`, member);
@@ -811,7 +819,7 @@ export function buildPartyAccessProfileStatuses(
   // token history must not inflate or duplicate the buyer-facing profile list.
   const managementSiblings = activeSiblings.filter(isManagementSyntheticPartyAccessRecord);
   const authoritativeSiblings = managementSiblings.length > 0
-    ? [...managementSiblings, ...activeSiblings.filter((sibling) => sibling.member.kind === 'manual')]
+    ? [...managementSiblings, ...activeSiblings.filter((sibling) => sibling.member.kind !== 'graytag')]
     : activeSiblings;
   const exactCurrentKey = authoritativeSiblings.find((sibling) => sibling.member.kind === record.member.kind && sibling.member.memberId === record.member.memberId);
   const currentProfileName = normalizeKeyPart(record.profileName || record.member.memberName || '');

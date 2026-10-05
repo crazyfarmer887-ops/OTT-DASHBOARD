@@ -114,6 +114,15 @@ export default function WritePage() {
 
   // 계정 전달
   const [keepAcct, setKeepAcct] = useState('');
+  const [sharedOttAccounts, setSharedOttAccounts] = useState<Array<{ serviceType: string; accountEmail: string; available: number; endDate: string }>>([]);
+  const [sharedOttEnabled, setSharedOttEnabled] = useState(false);
+  const [inventoryAccount, setInventoryAccount] = useState('');
+  const ottService = ({ netflix: '넷플릭스', disney: '디즈니플러스', tving: '티빙', wavve: '웨이브' } as Record<string, string>)[service];
+  useEffect(() => {
+    fetch('/api/gbuts/ott').then(res => res.json()).then(payload => {
+      if (payload.ok) { setSharedOttEnabled(payload.enabled === true); setSharedOttAccounts(payload.accounts || []); }
+    }).catch(() => {});
+  }, []);
   const [keepPasswd, setKeepPasswd] = useState('');
   const [keepMemo, setKeepMemo] = useState(() => makeDefaultKeepMemo());
   const [slAliases, setSlAliases] = useState<SlAlias[]>([]);
@@ -282,6 +291,10 @@ export default function WritePage() {
     const isYoutube = service === 'youtube';
     const cs = isYoutube ? null : cookies.find(c => c.id === selectedId);
     if (!isYoutube && !cs) { setError('계정을 선택해주세요'); return; }
+    if (sharedOttEnabled && ottService) {
+      const account = sharedOttAccounts.find(x => x.accountEmail === inventoryAccount && x.serviceType === ottService);
+      if (!account || account.available < repeat || endDate > account.endDate) { setError('공동 재고에서 남은 자리와 이용 기간을 확인하고 계정을 선택해주세요.'); return; }
+    }
     if (isYoutube) {
       if (youtubeEnabled !== true) { setError('유튜브 초대형 상품 판매 기능이 비활성화되어 있어요.'); return; }
       if (repeat > youtubeRepeatMax) { setError('한 번에 최대 20개까지 등록할 수 있어요.'); return; }
@@ -393,7 +406,8 @@ export default function WritePage() {
         const res = await fetch('/api/post/create', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...(cs!.id === AUTO_COOKIE_ID ? {} : { AWSALB: cs!.AWSALB, AWSALBCORS: cs!.AWSALBCORS, JSESSIONID: cs!.JSESSIONID }), productModel }),
+          body: JSON.stringify({ ...(cs!.id === AUTO_COOKIE_ID ? {} : { AWSALB: cs!.AWSALB, AWSALBCORS: cs!.AWSALBCORS, JSESSIONID: cs!.JSESSIONID }), productModel,
+            ...(inventoryAccount && ottService ? { inventoryAccount } : {}) }),
         });
         const json = await res.json() as any;
         if (!res.ok || !json.productUsid) throw new Error(json.error || '등록 실패');
@@ -436,6 +450,7 @@ export default function WritePage() {
     const cs = cookies.find(c => c.id === selectedId);
     if (!cs) return;
     if (!keepAcct.trim() || !keepPasswd.trim()) { setError('아이디와 비밀번호를 입력해주세요'); return; }
+    if (sharedOttEnabled && ottService && inventoryAccount.toLowerCase() !== keepAcct.trim().toLowerCase()) { setError('공동 재고에서 선택한 계정으로 전달해주세요.'); return; }
     if (!isValidProfileNickname(profileNickname)) { setError('프로필명은 한글 2~4글자로 입력해주세요'); return; }
 
     setSubmitting(true); setError(null);
@@ -806,6 +821,10 @@ export default function WritePage() {
       )}
 
       {error && <div style={{ background: '#FFF0F0', borderRadius: 12, padding: '10px 14px', marginBottom: 12, fontSize: 12, color: '#EF4444' }}>{error}</div>}
+      {sharedOttEnabled && ottService && <div style={card}><label style={labelStyle}>판매할 계정 · 벗츠와 공동 재고</label>
+        <select value={inventoryAccount} onChange={e => { setInventoryAccount(e.target.value); setKeepAcct(e.target.value); }} style={inputStyle}>
+          <option value="">계정을 선택해주세요</option>{sharedOttAccounts.filter(x => x.serviceType === ottService).map(x => <option key={x.accountEmail} value={x.accountEmail}>{x.accountEmail} · 남은 {x.available}자리</option>)}
+        </select></div>}
 
       {/* ① 서비스 선택 */}
       <div style={card}>

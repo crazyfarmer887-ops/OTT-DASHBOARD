@@ -74,6 +74,10 @@ import {
   type GraytagAuthCookies,
 } from '../lib/graytag-sales-session';
 import { loadGbutsSession, parseGbutsToken, saveGbutsSession } from '../lib/gbuts-session';
+import { gbutsOttClient, registerGbutsOttRoutes, reserveGraytagOttPlace, settleGraytagOttPlace } from './gbuts-ott';
+import { deliverableOttOrder, isGbutsOttBuyerMatch, mergeGbutsOttManagement, ottKey, ottDate } from '../lib/gbuts-ott';
+import { readGbutsOttStore, withGbutsOttInventory, writeGbutsOttStore } from '../lib/gbuts-ott-store';
+import type { GbutsOttRuntimeDependencies } from '../scheduler/gbuts-ott-sync';
 import { createGbutsSpotifySellerClient, GBUTS_SPOTIFY_POST_SEQ } from '../scheduler/gbuts-spotify-sync';
 
 const EMAIL_SERVER = "http://127.0.0.1:3001";
@@ -287,6 +291,7 @@ function isSafeModeRiskyOperation(method: string, path: string): boolean {
   if (upperMethod === 'GET' || upperMethod === 'HEAD' || upperMethod === 'OPTIONS') return false;
   const normalizedPath = normalizedApiPath(path);
   return SAFE_MODE_RISKY_PATHS.has(normalizedPath)
+    || normalizedPath.startsWith('/gbuts/ott/listings')
     || /^\/youtube\/invitations\/[^/]+\/finish-delivery$/.test(normalizedPath)
     || /^\/renewal-automation\/(?:batch|reviews\/action)$/.test(normalizedPath)
     || /^\/renewal-automation\/jobs\/[^/]+\/(?:retry-message|retry-registration|reconcile-registration)$/.test(normalizedPath);
@@ -1873,6 +1878,7 @@ app.post('/my/management', async (c) => {
     if (testResp.status === 302 || testResp.status === 301) {
       throw new Error('쿠키가 만료됐어요.');
     }
+    if (body.gbutsInventory === false && !testResp.ok) throw new Error('그레이태그 공동 재고 확인 실패');
 
     // 무한스크롤 완전 소진: page 반복으로 모든 거래 가져오기
     // - findAfterUsingLenderDeals: 이용중(Using) 파티원 - 핵심 데이터
@@ -1885,11 +1891,21 @@ app.post('/my/management', async (c) => {
           buildFinishedDealsUrl(kind, page, 500, includeFinished),
           { headers: authedHeaders(referer), redirect: 'manual' }
         );
-        if (resp.status === 302 || resp.status === 301) break;
+        if (resp.status === 302 || resp.status === 301) {
+          if (body.gbutsInventory === false) throw new Error('쿠키가 만료됐어요.');
+          break;
+        }
         const r = await safeJson(resp);
+        if (body.gbutsInventory === false) {
+          const payload = r.data;
+          const rows = payload?.data?.data?.lenderDeals ?? payload?.data?.lenderDeals ?? payload?.lenderDeals;
+          if (!resp.ok || !r.ok || !Array.isArray(rows) || payload?.succeeded === false
+            || rows.some((x: any) => !x || !x.dealUsid || typeof x.dealStatus !== 'string')) throw new Error('그레이태그 재고 응답을 확인하지 못했습니다.');
+        }
         const deals: any[] = extractLenderDeals(r.data);
         collected.push(...deals);
         if (deals.length < 500) break;
+        if (body.gbutsInventory === false && page === 10) throw new Error('그레이태그 재고 페이지를 모두 확인하지 못했습니다.');
       }
       return collected;
     };
@@ -2447,7 +2463,7 @@ app.post('/my/management', async (c) => {
         forceRefresh: shouldForceManagementRefresh(body, c.req.query('refresh'), c.req.header('cache-control')),
       });
       const response = c.json({
-        ...cached.data,
+        ...(body.gbutsInventory === false || !managementScope.useLocalAccountRecords ? cached.data : mergeGbutsOttManagement(cached.data, readGbutsOttStore())),
         cache: {
           status: cached.cacheStatus,
           updatedAt: new Date(cached.updatedAt).toISOString(),
@@ -2458,7 +2474,8 @@ app.post('/my/management', async (c) => {
       return response;
     }
 
-    return c.json(await loadManagementFresh());
+    const management = await loadManagementFresh();
+    return c.json(body.gbutsInventory === false || !managementScope.useLocalAccountRecords ? management : mergeGbutsOttManagement(management, readGbutsOttStore()));
   } catch (e: any) {
     if (e?.message === '쿠키가 만료됐어요.') return c.json({ error: e.message, code: 'COOKIE_EXPIRED' }, 401);
     return c.json({ error: e.message }, 500);
@@ -2481,6 +2498,14 @@ app.post('/post/create', async (c) => {
   if (test.status === 302 || test.status === 301)
     return c.json({ error: '쿠키가 만료됐어요.', code: 'COOKIE_EXPIRED' }, 401);
 
+  let ottClaim: string | undefined;
+  const ottService = ({ Netflix: '넷플릭스', disney: '디즈니플러스', tving: '티빙', wavve: '웨이브' } as Record<string, string>)[productModel?.tempProductCategory];
+  if (ottService && process.env.GBUTS_OTT_SYNC_ENABLED === 'true') {
+    if (!body.inventoryAccount || body.JSESSIONID || graytagAccountIdFromRequest(c) !== 'primary')
+      return c.json({ error: '공동 재고에서 판매할 계정을 먼저 선택해주세요.' }, 409);
+    try { ottClaim = await reserveGraytagOttPlace(ottService, String(body.inventoryAccount), gbutsOttRuntimeDependencies, ottDate(productModel.endDate)); }
+    catch (e) { return c.json({ error: e instanceof Error ? e.message : '공동 재고 확인 실패' }, 409); }
+  }
   try {
     // multipart/form-data 구성 (string으로 직접 구성)
     const boundary = '----GraytagBoundary' + Date.now().toString(36);
@@ -2510,11 +2535,13 @@ app.post('/post/create', async (c) => {
     });
 
     const r = await safeJson(resp);
-    if (!r.ok) return c.json({ error: `등록 실패 (${resp.status})`, detail: r.html }, 500);
-    if (!r.data?.succeeded) return c.json({ error: r.data?.message || '등록 실패' }, 400);
+    if (!r.ok) { if (ottClaim) await settleGraytagOttPlace(ottClaim, {}); return c.json({ error: `등록 실패 (${resp.status})`, detail: r.html }, 500); }
+    if (!r.data?.succeeded) { if (ottClaim) await settleGraytagOttPlace(ottClaim, { failed: true }); return c.json({ error: r.data?.message || '등록 실패' }, 400); }
+    if (ottClaim) await settleGraytagOttPlace(ottClaim, { productUsid: String(r.data.data) });
 
     return c.json({ productUsid: r.data.data, ok: true });
   } catch (e: any) {
+    if (ottClaim) await settleGraytagOttPlace(ottClaim, {});
     return c.json({ error: e.message }, 500);
   }
 });
@@ -2558,6 +2585,13 @@ app.post('/post/keepAcct', async (c) => {
   const normalizedKeepPasswd = String(keepPasswd || '').trim();
   const placeholderMapping = validatePlaceholderKeepAcctMapping({ productUsid: String(productUsid || ''), keepAcct: normalizedKeepAcct, keepPasswd: normalizedKeepPasswd, keepMemo: String(keepMemo || '') });
   if (!placeholderMapping.ok) return c.json({ error: placeholderMapping.error }, 400);
+  const claim = Object.values(readGbutsOttStore().graytagClaims).find(x => x.productUsid === String(productUsid));
+  if (claim) {
+    const access = Object.values(loadPartyAccessLinkStore()).find(x => x.member.memberId === `fill:${productUsid}` && !x.revokedAt);
+    const actualAccount = isGraytagAccessNoticeCredential(normalizedKeepAcct) ? access?.accountEmail : normalizedKeepAcct;
+    if (!actualAccount || actualAccount.trim().toLowerCase() !== claim.accountEmail.trim().toLowerCase())
+      return c.json({ error: '공동 재고에서 선택한 계정으로 자동 전달을 설정해주세요.' }, 409);
+  }
 
   const cookieStr = buildCookieStr(cookies);
 
@@ -2586,6 +2620,7 @@ app.post('/post/keepAcct', async (c) => {
     if (!r.data?.succeeded) return c.json({ error: r.data?.message || '계정 설정 실패' }, 400);
 
     clearManagementAccountCaches();
+    await releaseGraytagOttClaims([String(productUsid)]);
     return c.json({ ok: true, managementCacheCleared: true });
   } catch (e: any) {
     return c.json({ error: e.message }, 500);
@@ -4606,6 +4641,7 @@ app.post('/my/delete-products', async (c) => {
 
   const successCount = results.filter(r => r.ok).length;
   const deletedProductUsids = results.filter(r => r.ok).map(r => String(r.usid));
+  await releaseGraytagOttClaims(deletedProductUsids);
   let deletedRegistrationCount = 0;
   let registrationCleanupPending = false;
   if (accountId === 'youtube-invite-sales' && deletedProductUsids.length > 0) {
@@ -6472,6 +6508,10 @@ app.post('/party-access-links', async (c) => {
   if (!serviceType || !accountEmail || !member.memberId) {
     return c.json({ ok: false, error: 'serviceType, accountEmail, member.memberId required' }, 400);
   }
+  const fillProductId = String(member.memberId || '').replace(/^fill:/, '');
+  const claim = Object.values(readGbutsOttStore().graytagClaims).find(x => x.productUsid === fillProductId);
+  if (claim && ottKey(claim.serviceType, claim.accountEmail) !== ottKey(serviceType, accountEmail))
+    return c.json({ ok: false, error: '등록 전에 선택한 공동 재고 계정으로 전달해주세요.' }, 409);
   const store = loadPartyAccessLinkStore();
   const record = await enrichPartyAccessRecordForPersist(createPartyAccessLinkRecord({
     token,
@@ -6559,6 +6599,23 @@ function isFillPartyAccessRecord(record: PartyAccessLinkRecord | null | undefine
 async function loadPartyAccessStoreForPublicView(token: string): Promise<PartyAccessLinkStore> {
   const localStore = loadPartyAccessLinkStoreForToken(token);
   const localRecord = localStore[partyAccessTokenHash(token)] || null;
+  if (localRecord?.member.kind === 'gbuts') {
+    const [postSeq, memberSeq] = localRecord.member.memberId.split(':').map(Number);
+    try {
+      const members = await gbutsOttClient().listOttMembers(postSeq);
+      const member = members.find(x => x.seq === memberSeq);
+      const active = isGbutsOttBuyerMatch(readGbutsOttStore(), localRecord, member)
+        && member && deliverableOttOrder({ ...member, endDate: ottDate(member.subscriptionEndsAt) });
+      const updated = { ...localRecord, revokedAt: active ? null : (localRecord.revokedAt || new Date().toISOString()),
+        member: { ...localRecord.member, status: active ? 'active' : 'cancelled',
+          endDateTime: member ? ottDate(member.subscriptionEndsAt) : localRecord.member.endDateTime,
+          verifiedAt: new Date().toISOString() } };
+      const next = { ...loadPartyAccessLinkStore(), [localRecord.tokenHash]: updated };
+      savePartyAccessLinkStore(next); return next;
+    } catch {
+      return { ...localStore, [localRecord.tokenHash]: { ...localRecord, member: { ...localRecord.member, verifiedAt: '' } } };
+    }
+  }
   return loadPartyAccessStoreForPublicViewWithPolicy({
     localStore,
     isFillRecord: isFillPartyAccessRecord(localRecord),
@@ -6596,6 +6653,67 @@ app.get('/party-access/:token', async (c) => {
   }
   return publicPartyAccessResponse(c, responsePayload);
 });
+
+async function releaseGraytagOttClaims(productUsids: string[]): Promise<void> {
+  if (!productUsids.length) return;
+  await withGbutsOttInventory(async () => {
+    const store = readGbutsOttStore(); const ids = new Set(productUsids);
+    if (!Object.values(store.graytagClaims).some(claim => claim.productUsid && ids.has(claim.productUsid))) return;
+    for (const [id, claim] of Object.entries(store.graytagClaims)) if (claim.productUsid && ids.has(claim.productUsid)) delete store.graytagClaims[id];
+    writeGbutsOttStore(store);
+  });
+}
+
+async function readGraytagOttManagement() {
+  const adminToken = configuredAdminToken();
+  if (!adminToken) throw new Error('관리자 인증 연결을 확인해주세요.');
+  const response = await app.request('/my/management', { method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-admin-token': adminToken, 'x-graytag-account': 'primary' },
+    body: JSON.stringify({ forceRefresh: true, gbutsInventory: false }) });
+  const payload = await response.json() as any;
+  if (!response.ok || !Array.isArray(payload.services)) throw new Error(payload.error || '그레이태그 공동 재고를 확인하지 못했습니다.');
+  return payload;
+}
+
+export const gbutsOttRuntimeDependencies: GbutsOttRuntimeDependencies = {
+  management: readGraytagOttManagement,
+  manualMembers: loadManualMembers,
+  async access(order, listing, profileName) {
+    const store = loadPartyAccessLinkStore();
+    const existing = Object.values(store).filter(x => x.member.kind === 'gbuts' && x.member.memberId === order.key)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+    if (existing && ottKey(existing.serviceType, existing.accountEmail) !== ottKey(listing.serviceType, listing.accountEmail)) throw new Error('구매자의 기존 계정 배정이 다릅니다.');
+    const token = existing?.shareToken || createPartyAccessToken();
+    let record = await enrichPartyAccessRecordForPersist(createPartyAccessLinkRecord({ token,
+      serviceType: listing.serviceType, accountEmail: listing.accountEmail, fallbackPassword: existing?.fallbackPassword,
+      fallbackPin: existing?.fallbackPin, emailAccessUrl: existing?.emailAccessUrl, profileName,
+      member: { kind: 'gbuts', memberId: order.key, memberName: order.name, status: 'active', statusName: '벗츠 이용 중',
+        startDateTime: order.startDate, endDateTime: order.endDate, verifiedAt: order.verifiedAt } }), store);
+    if (!record.fallbackPassword) {
+      const management = await readGraytagOttManagement();
+      const account = management.services.flatMap((x: any) => x.accounts).find((x: any) => ottKey(x.serviceType, x.email) === ottKey(listing.serviceType, listing.accountEmail));
+      record = { ...record, fallbackPassword: String(account?.keepPasswd || '') };
+    }
+    if (!record.fallbackPassword || isGraytagAccessNoticeCredential(record.fallbackPassword)) throw new Error('이 계정의 최신 비밀번호를 먼저 저장해주세요.');
+    if (order.status === 'PREVIEW') return 'validated';
+    if (existing) record = { ...record, createdAt: existing.createdAt, lastViewedAt: existing.lastViewedAt, viewCount: existing.viewCount };
+    savePartyAccessLinkStore({ ...loadPartyAccessLinkStore(), [record.tokenHash]: record });
+    return partyAccessUrlFromToken(token);
+  },
+  async refreshAccess(orders) {
+    const store = loadPartyAccessLinkStore(); const byKey = new Map(orders.map(x => [x.key, x])); let changed = false;
+    for (const [hash, record] of Object.entries(store)) {
+      if (record.member.kind !== 'gbuts') continue;
+      const order = byKey.get(record.member.memberId); if (!order) continue;
+      const active = deliverableOttOrder(order);
+      store[hash] = { ...record, revokedAt: active ? null : (record.revokedAt || order.verifiedAt),
+        member: { ...record.member, status: active ? 'active' : 'cancelled', statusName: active ? '벗츠 이용 중' : '벗츠 이용 종료',
+          endDateTime: order.endDate, verifiedAt: order.verifiedAt } }; changed = true;
+    }
+    if (changed) savePartyAccessLinkStore(store);
+  },
+};
+registerGbutsOttRoutes(app, gbutsOttRuntimeDependencies);
 
 app.post('/party-access/:token/consent', async (c) => {
   const token = normalizePartyAccessToken(c.req.param('token'));

@@ -92,6 +92,8 @@ describe('AIO admin auth guard', () => {
     await expect(apiApp.request('/chat/rooms')).resolves.toHaveProperty('status', 503);
     await expect(apiApp.request('/chat/messages/example-room')).resolves.toHaveProperty('status', 503);
     await expect(apiApp.request('/chat/poll')).resolves.toHaveProperty('status', 503);
+    await expect(apiApp.request('/gbuts/ott')).resolves.toHaveProperty('status', 503);
+    await expect(post('/gbuts/ott/listings')).resolves.toHaveProperty('status', 503);
     await expect(apiApp.request('/chat/notifications/stream')).resolves.toHaveProperty('status', 503);
     await expect(apiApp.request('/api/session/cookies')).resolves.toHaveProperty('status', 503);
     await expect(apiApp.request('/api/chat/rooms')).resolves.toHaveProperty('status', 503);
