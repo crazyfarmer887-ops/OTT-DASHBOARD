@@ -18,6 +18,13 @@ describe('contextual YouTube email selection', () => {
     expect(await resolveYouTubeBuyerEmailWithContext('room', messages, async () => 'made-up@gmail.com')).toBeNull();
   });
 
+  test('asks about negation context instead of discarding an unrelated address', async () => {
+    const select = vi.fn(async () => 'buyer@gmail.com');
+    expect(await resolveYouTubeBuyerEmailWithContext('room', [buyer('buyer@gmail.com으로 초대해주세요. 새 계정은 아니에요')], select)).toEqual(['buyer@gmail.com']);
+    expect(select).toHaveBeenCalled();
+    expect(await resolveYouTubeBuyerEmailWithContext('room', [buyer('buyer@gmail.com은 아닙니다. 잘못 보냈어요')], async () => null)).toBeNull();
+  });
+
   test('never revives an address after a seller asks for another account until the buyer writes an address again', async () => {
     const select = vi.fn(async () => 'old@gmail.com');
     expect(await resolveYouTubeBuyerEmailWithContext('room', [buyer('old@gmail.com'), seller('다른 계정으로 초대받으셔야 해요'), seller('일단 초대해드릴게요'), buyer('네 부탁드려요')], select)).toBeNull();

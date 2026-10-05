@@ -28,8 +28,7 @@ export function isBuyerEmailWithdrawal(text: string): boolean {
   const count = explicitYouTubeBuyerEmails(text).length;
   return /(?:취소|환불)\s*(?:할|해|부탁|요청|원)/.test(text)
     || (count <= 1 && /말고\s*(?:다른|새|다시)[^.!?]{0,30}(?:보낼|보내|드릴|알려)/.test(text))
-    || (count === 0 && /(?:다른|새|새로운)\s*(?:계정|이메일|메일|주소)[^.!?]{0,30}(?:바꿀|변경할|보낼|보내드|드릴|알려드)/.test(text))
-    || (count === 1 && /아니에요|아닙니다|잘못\s*보냈|틀린\s*(?:주소|메일)/.test(text));
+    || (count === 0 && /(?:다른|새|새로운)\s*(?:계정|이메일|메일|주소)[^.!?]{0,30}(?:바꿀|변경할|보낼|보내드|드릴|알려드)/.test(text));
 }
 
 export function parseYouTubeBuyerEmailSubmission(text: string):
@@ -37,7 +36,12 @@ export function parseYouTubeBuyerEmailSubmission(text: string):
   if (isBuyerEmailWithdrawal(text)) return { kind: 'ambiguous' };
   const candidates = explicitYouTubeBuyerEmails(text);
   if (!candidates.length) return { kind: 'none' };
-  if (candidates.length === 1) return { kind: 'single_candidate', candidate: candidates[0] };
+  if (candidates.length === 1) {
+    // A negation may refer to account creation rather than the address itself.
+    // Let context distinguish those meanings instead of discarding the address.
+    if (/아니에요|아닙니다|잘못\s*보냈|틀린\s*(?:주소|메일)/.test(text)) return { kind: 'ambiguous' };
+    return { kind: 'single_candidate', candidate: candidates[0] };
+  }
   if (candidates.length === 2 && !/아니면|또는|혹은|어느|둘\s*중/.test(text)) {
     const normalized = normalizeYouTubeEmailWording(text).toLowerCase();
     const left = normalized.indexOf(candidates[0]);
