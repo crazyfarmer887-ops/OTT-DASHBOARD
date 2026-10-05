@@ -12,7 +12,7 @@ export const DEFAULT_SLOT_LEDGER_DATA_SOURCE_ID = '0162c5cb-60f8-414c-beeb-9ec78
 const DEFAULT_SLOT_SUMMARY_BLOCK_ID = '3e5ff936-cc9b-8037-b082-c540e7640d9f';
 const DEFAULT_JOURNAL_PATH = '/home/ubuntu/.hermes/hermes-agent/graytag-aio-manager-0606/data/notion-invitation-deliveries.json';
 const DEFAULT_LOCK_PATH = '/home/ubuntu/.hermes/hermes-agent/graytag-aio-manager-0606/data/notion-invitation-deliveries.lock';
-const DEFAULT_INTERVAL_MS = 60_000;
+const DEFAULT_INTERVAL_MS = 30_000;
 
 export interface NotionInvitationRow {
   id: string;
@@ -72,6 +72,9 @@ export interface NotionEmailSyncDependencies {
   cancelRow(row: NotionInvitationRow): Promise<NotionInvitationRow>;
   listDeals(): Promise<NotionDeliveryDeal[] | null>;
   buyerEmails(chatRoomUuid: string): Promise<string[] | null>;
+  /** Bound old unrepresented cancellations so they cannot monopolize the live import poll. */
+  cancelledBackfillLimit?: number;
+  cancelledBackfillCursor?: { offset: number };
 }
 
 function emailHash(email: string): string {
@@ -95,6 +98,12 @@ export async function syncNotionBuyerEmails(deps: NotionEmailSyncDependencies): 
   if (!deals) throw new Error('YouTube seller deals unavailable');
   const active = deals.filter((deal) => deal.dealStatus === 'Delivering' && isYouTubeInvitationSellerDeal(deal));
   const cancelledDeals = deals.filter((deal) => /^Cancel/i.test(deal.dealStatus) && isYouTubeInvitationSellerDeal(deal));
+  const unrepresented = cancelledDeals.filter(deal => !rows.some(row => row.dealUsid === deal.dealUsid));
+  const limit = deps.cancelledBackfillLimit == null ? unrepresented.length
+    : Math.max(0, Math.min(unrepresented.length, Math.floor(deps.cancelledBackfillLimit)));
+  const offset = unrepresented.length ? (deps.cancelledBackfillCursor?.offset ?? 0) % unrepresented.length : 0;
+  const backfill = new Set(Array.from({ length: limit }, (_, i) => unrepresented[(offset + i) % unrepresented.length].dealUsid));
+  if (deps.cancelledBackfillCursor) deps.cancelledBackfillCursor.offset = unrepresented.length ? (offset + limit) % unrepresented.length : 0;
   const emailByDeal = new Map<string, string>();
   for (const deal of active) {
     const emails = await deps.buyerEmails(deal.chatRoomUuid);
@@ -187,6 +196,7 @@ export async function syncNotionBuyerEmails(deps: NotionEmailSyncDependencies): 
       cancelled += 1;
       continue;
     }
+    if (!backfill.has(deal.dealUsid)) continue;
     const emails = await deps.buyerEmails(deal.chatRoomUuid);
     if (emails?.length !== 1) continue;
     const email = normalizeYouTubeInvitationEmail(emails[0]);
@@ -369,6 +379,8 @@ export async function syncNotionInvitationDeliveries(deps: NotionInvitationSyncD
     if (!sameRow(current, row)) continue;
     const status = await deps.providerStatus(deal.dealUsid);
     if (status !== 'Delivering') continue;
+    const freshEmails = await deps.buyerEmails(deal.chatRoomUuid);
+    if (freshEmails?.length !== 1 || normalizeYouTubeInvitationEmail(freshEmails[0]) !== normalizeYouTubeInvitationEmail(row.email)) continue;
 
     journal.records[row.id] = {
       emailHash: emailHash(normalizeYouTubeInvitationEmail(row.email)!),
@@ -589,12 +601,18 @@ export function startNotionInvitationSync(dependencies: Pick<NotionInvitationSyn
   const journalPath = process.env.NOTION_INVITATION_JOURNAL_PATH || DEFAULT_JOURNAL_PATH;
   const lockPath = process.env.NOTION_INVITATION_LOCK_PATH || DEFAULT_LOCK_PATH;
   const intervalMs = Math.max(30_000, Number(process.env.NOTION_INVITATION_INTERVAL_MS) || DEFAULT_INTERVAL_MS);
+  const cancelledBackfillCursor = { offset: 0 };
   const run = createSingleFlightRunner(async () => {
     if (loadSafeModeConfig().enabled) return;
     await runWithExclusivePollLock(lockPath, async () => {
+      // One fresh seller snapshot per locked poll; provider status and buyer chat
+      // are still re-read immediately before delivery.
+      let dealSnapshot: Promise<NotionDeliveryDeal[] | null> | undefined;
+      const cycleDependencies = { ...dependencies, listDeals: () => dealSnapshot ??= dependencies.listDeals() };
       try {
         if (importEnabled) {
-          const imported = await syncNotionBuyerEmails({ ...client, ...ledger, ...dependencies,
+          const imported = await syncNotionBuyerEmails({ ...client, ...ledger, ...cycleDependencies,
+            cancelledBackfillLimit: 2, cancelledBackfillCursor,
             readSlotCapacity: () => ledger.readSlotCapacity().catch((error: unknown) => {
               console.error('[NotionInvitationSync] slot ledger unavailable',
                 error instanceof Error ? error.message : 'unknown error');
@@ -606,7 +624,7 @@ export function startNotionInvitationSync(dependencies: Pick<NotionInvitationSyn
         }
         if (deliveryEnabled) {
           const result = await syncNotionInvitationDeliveries({
-            ...client, ...dependencies,
+            ...client, ...cycleDependencies,
             readJournal: () => readJournal(journalPath),
             writeJournal: (journal) => writeJsonAtomic(journalPath, journal),
           });

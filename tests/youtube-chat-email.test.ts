@@ -38,6 +38,15 @@ describe('YouTube buyer email from chat', () => {
     expect(resolveYouTubeBuyerEmailFromChat('room-1', messages)).toEqual(['new@gmail.com']);
   });
 
+  test('imports a just-posted address immediately and still requires a buyer resend after an account rejection', () => {
+    const at = '2026.10.05 19:00';
+    const submitted = [buyer('buyer@gmail.com', at)];
+    expect(resolveYouTubeBuyerEmailFromChat('room', submitted)).toEqual(['buyer@gmail.com']);
+    const rejected = [...submitted, seller('다른 계정으로 초대받으셔야 해요', at), seller('일단 초대해드릴게요', at)];
+    expect(resolveYouTubeBuyerEmailFromChat('room', rejected)).toBeNull();
+    expect(resolveYouTubeBuyerEmailFromChat('room', [...rejected, buyer('buyer@gmail.com', at)])).toEqual(['buyer@gmail.com']);
+  });
+
   test('waits a full five minutes before publishing an email from a minute-precision chat timestamp', () => {
     const messages = [buyer('buyer&#64;gmail.com', '2026.09.23 22:45')];
     const at = (time: string) => Date.parse(time);

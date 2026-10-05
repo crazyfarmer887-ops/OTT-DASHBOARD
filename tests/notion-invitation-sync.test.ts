@@ -22,6 +22,42 @@ const row = (id: string, email: string, invited = false, dealUsid = ''): NotionI
 });
 
 describe('Notion invitation synchronization', () => {
+  test('imports active buyers first and rotates a bounded historical cancellation backfill', async () => {
+    const rows: NotionInvitationRow[] = [];
+    const events: string[] = [];
+    const cursor = { offset: 0 };
+    const deps = {
+      listRows: async () => [...rows], getRow: async () => null,
+      bindRow: vi.fn(), updateRowEmail: vi.fn(), cancelRow: vi.fn(),
+      cancelledBackfillLimit: 2, cancelledBackfillCursor: cursor,
+      listDeals: async () => [deal('active'), ...Array.from({ length: 5 }, (_, i) => ({ ...deal(`old-${i}`), dealStatus: 'Cancelled' }))],
+      buyerEmails: async (room: string) => { events.push(room); return room === 'active' ? ['buyer@example.com'] : []; },
+      createRow: async (email: string, order: string) => { events.push('create-active'); const added = row('r', email, false, order); rows.push(added); return added; },
+    };
+    expect((await syncNotionBuyerEmails(deps)).created).toBe(1);
+    expect(events).toEqual(['active', 'create-active', 'old-0', 'old-1']);
+    events.length = 0;
+    await syncNotionBuyerEmails(deps);
+    expect(events).toEqual(['active', 'old-2', 'old-3']);
+    events.length = 0;
+    await syncNotionBuyerEmails(deps);
+    expect(events).toEqual(['active', 'old-0', 'old-4']);
+  });
+
+  test('does not deliver if the buyer corrects their address after the initial match', async () => {
+    const checked = row('r', 'old@example.com', true, 'order');
+    const finishDelivery = vi.fn();
+    const buyerEmails = vi.fn().mockResolvedValueOnce(['old@example.com']).mockResolvedValue(['new@example.com']);
+    const result = await syncNotionInvitationDeliveries({
+      listCheckedRows: async () => [checked], getRow: async () => checked,
+      listDeals: async () => [deal('order')], buyerEmails,
+      providerStatus: async () => 'Delivering', finishDelivery,
+      readJournal: () => ({ version: 1, records: {} }), writeJournal: vi.fn(),
+    });
+    expect(result.attempted).toBe(0);
+    expect(finishDelivery).not.toHaveBeenCalled();
+  });
+
   test('records a buyer email once and binds an existing manual row', async () => {
     const rows = [row('manual', 'buyer@example.com')];
     const createRow = vi.fn(async (email: string, dealUsid: string) => row('created', email, false, dealUsid));

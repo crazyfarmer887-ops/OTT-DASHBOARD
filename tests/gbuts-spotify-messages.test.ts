@@ -138,6 +138,31 @@ describe('GButs Spotify buyer messages', () => {
     expect(JSON.stringify(journal)).not.toContain('secret123');
   });
 
+  it.each([false, true])('blocks an unchanged original login even after a new-account request: %s', async (newAccountRequest) => {
+    const sendText = vi.fn();
+    const result = await syncGbutsSpotifyMessages({
+      listMembers: async () => [member], openPrivateRoom: async () => '777',
+      getChat: async () => ({ messages: [buyerMessage, ...(newAccountRequest ? [{ ...buyerMessage, message: '새 계정 발급 부탁드립니다', createdAt: '2026-10-03T10:01:00Z' }] : [])] }), sellerAccountSeq: async () => 7,
+      listRows: async () => [{ ...row, registered: true }], sendText,
+      readJournal: () => ({ version: 1, records: {} }), writeJournal: vi.fn(),
+      requestAckStartAt: '2026-10-03T00:00:00Z',
+    }, 15557);
+    expect(result.invitedRepliesAttempted).toBe(0);
+    expect(sendText).not.toHaveBeenCalled();
+  });
+
+  it('rechecks the Notion login before sending and pauses if the partner edits it mid-poll', async () => {
+    const sendText = vi.fn();
+    const listRows = vi.fn().mockResolvedValueOnce([{ ...row, email: 'buyer@jamkkangudok.com', registered: true }]).mockResolvedValue([{ ...row, registered: true }]);
+    const result = await syncGbutsSpotifyMessages({
+      listMembers: async () => [member], openPrivateRoom: async () => '777',
+      getChat: async () => ({ messages: [buyerMessage] }), sellerAccountSeq: async () => 7,
+      listRows, sendText, readJournal: () => ({ version: 1, records: {} }), writeJournal: vi.fn(),
+      requestAckStartAt: '2026-10-03T00:00:00Z',
+    }, 15557);
+    expect(result.invitedRepliesAttempted).toBe(0); expect(sendText).not.toHaveBeenCalled();
+  });
+
   it('sends the issued login when the buyer chose a new account and the partner checked both boxes', async () => {
     const issuedRow: SpotifyNotionRow = { ...row, email: 'issued@jamkkangudok.com', password: 'issued123',
       registered: true };

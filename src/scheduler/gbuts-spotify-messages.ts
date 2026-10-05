@@ -43,6 +43,7 @@ export interface GbutsSpotifyMessageDependencies {
   writeJournal(journal: GbutsSpotifyMessageJournal): void;
   now?(): string;
   requestAckStartAt?: string;
+  reportBlocked?(orderKey: string): Promise<void>;
 }
 
 /** A question about new accounts is not a request to issue one. */
@@ -65,7 +66,7 @@ export function requestedSpotifyNewAccount(messages: readonly GbutsChatMessage[]
 }
 
 export async function syncGbutsSpotifyMessages(deps: GbutsSpotifyMessageDependencies, postSeq: number): Promise<{
-  guidesAttempted: number; acknowledgementsAttempted: number; invitedRepliesAttempted: number; confirmed: number;
+  guidesAttempted: number; acknowledgementsAttempted: number; invitedRepliesAttempted: number; confirmed: number; blocked: number;
 }> {
   const ackStart = deps.requestAckStartAt == null ? null : Date.parse(deps.requestAckStartAt);
   if (ackStart !== null && !Number.isFinite(ackStart)) throw new Error('GButs Spotify acknowledgment start time invalid');
@@ -77,6 +78,7 @@ export async function syncGbutsSpotifyMessages(deps: GbutsSpotifyMessageDependen
   let acknowledgementsAttempted = 0;
   let invitedRepliesAttempted = 0;
   let confirmed = 0;
+  let blocked = 0;
   for (const member of active) {
     const orderKey = gbutsSpotifyOrderKey(postSeq, member);
     if (active.filter((candidate) => gbutsSpotifyOrderKey(postSeq, candidate) === orderKey).length !== 1) continue;
@@ -95,6 +97,12 @@ export async function syncGbutsSpotifyMessages(deps: GbutsSpotifyMessageDependen
       && isSpotifyAccountForBuyer(row.email, buyerCredentials.email)
       && row.password === buyerCredentials.password
       && (!newAccountRequestedAt || newAccountRequestedAt <= buyerCredentials.receivedAt));
+    // Registered means an issued login, so the buyer's old address cannot be delivered as the new account.
+    const originalStillSelected = Boolean(row?.registered && buyerCredentials
+      && row.email.trim().toLowerCase() === buyerCredentials.email.trim().toLowerCase());
+    if (row?.invited && originalStillSelected) {
+      blocked += 1; await deps.reportBlocked?.(orderKey); continue;
+    }
     const manuallyIssuedLogin = Boolean(row?.registered && newAccountRequestedAt
       && (!buyerCredentials || newAccountRequestedAt > buyerCredentials.receivedAt)
       && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.email) && row.password.length >= 6);
@@ -126,6 +134,17 @@ export async function syncGbutsSpotifyMessages(deps: GbutsSpotifyMessageDependen
         continue;
       }
       if (existing) continue; // An uncertain send is reconciled only; it is never repeated automatically.
+      if (item.suffix.includes('invited:') && row) {
+        // Re-read both inputs immediately before sending account details.
+        const freshRows = (await deps.listRows()).filter(value => value.orderKey === orderKey);
+        const fresh = freshRows.length === 1 ? freshRows[0] : null;
+        if (!fresh || fresh.id !== row.id || fresh.email !== row.email || fresh.password !== row.password
+          || fresh.registered !== row.registered || !fresh.invited || fresh.cancelled) continue;
+        const latestChat = await deps.getChat(roomId);
+        const latestCredentials = extractGbutsSpotifyCredentials(latestChat.messages, member.userSeq);
+        if (JSON.stringify(latestCredentials) !== JSON.stringify(buyerCredentials)
+          || requestedSpotifyNewAccount(latestChat.messages, member.userSeq) !== newAccountRequestedAt) continue;
+      }
       journal.records[key] = { state: 'attempted', textHash, roomId,
         updatedAt: deps.now?.() ?? new Date().toISOString() };
       deps.writeJournal(journal);
@@ -135,7 +154,7 @@ export async function syncGbutsSpotifyMessages(deps: GbutsSpotifyMessageDependen
       try { await deps.sendText(roomId, sellerSeq, item.text); } catch { /* Delivery outcome unknown. */ }
     }
   }
-  return { guidesAttempted, acknowledgementsAttempted, invitedRepliesAttempted, confirmed };
+  return { guidesAttempted, acknowledgementsAttempted, invitedRepliesAttempted, confirmed, blocked };
 }
 
 /** GButs' web client sends the same text payload to the STOMP destination below. */

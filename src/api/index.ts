@@ -661,8 +661,8 @@ export async function fetchNotionDeliveryBuyerEmails(chatRoomUuid: string): Prom
     if (!response.ok || response.redirected) return null;
     const payload = await response.json() as any;
     if (payload?.succeeded !== true) return null;
-    // Give the conversation time to surface an alternate-account request before importing.
-    return resolveYouTubeBuyerEmailFromChat(chatRoomUuid, extractGraytagChats(payload), false, 5 * 60_000);
+    // Import explicit addresses on the next poll; corrections reset Invited atomically.
+    return resolveYouTubeBuyerEmailFromChat(chatRoomUuid, extractGraytagChats(payload));
   } catch { return null; }
 }
 
