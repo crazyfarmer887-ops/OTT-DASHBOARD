@@ -1,3 +1,4 @@
+import { explicitYouTubeBuyerEmails } from '../lib/youtube-buyer-email';
 import { existsSync, readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { writeJsonAtomic } from '../lib/graytag-sales-session';
@@ -85,6 +86,10 @@ export async function syncGbutsSpotifyMessages(deps: GbutsSpotifyMessageDependen
     const chat = await deps.getChat(roomId);
     const buyerCredentials = await (deps.extractCredentials || extractGbutsSpotifyCredentials)(chat.messages, member.userSeq);
     const newAccountRequestedAt = requestedSpotifyNewAccount(chat.messages, member.userSeq);
+    // A submitted account waiting for model interpretation is not a missing submission.
+    if (deps.extractCredentials && !buyerCredentials && !newAccountRequestedAt
+      && chat.messages.some(message => message.senderSeq === member.userSeq && message.messageType === 'TEXT'
+        && explicitYouTubeBuyerEmails(message.message).length > 0)) continue;
     const buyerChoiceAt = [buyerCredentials?.receivedAt, newAccountRequestedAt]
       .filter((value): value is string => Boolean(value)).sort().at(-1);
     const matches = rows.filter((row) => row.orderKey === orderKey);

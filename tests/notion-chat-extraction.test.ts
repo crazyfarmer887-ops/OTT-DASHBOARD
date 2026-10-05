@@ -31,6 +31,11 @@ describe('OpenRouter Notion extraction',()=>{
   const input:ExtractionTurn[]=[{role:'seller',text:'아이디 비번 남겨주세요'}, {role:'buyer',text:'buyer@yahoo.com',time:'first'}, {role:'buyer',text:'PaSs579#@!',time:'second'}];
   expect(await extractNotionChatWithOpenRouter(input,'credentials',transportFor(input),'key')).toMatchObject({receivedAt:'second'});
  });
+ test('preserves an entire standalone multilingual password reply',async()=>{
+  const input:ExtractionTurn[]=[{role:'seller',text:'아이디 비번 남겨주세요'}, {role:'buyer',text:'buyer@yahoo.com'}, {role:'buyer',text:'하늘ABC123!'}];
+  expect(JSON.stringify(maskNotionChat(input).conversation)).not.toContain('하늘ABC123!');
+  expect(await extractNotionChatWithOpenRouter(input,'credentials',transportFor(input,'buyer@yahoo.com','하늘ABC123!'),'key')).toMatchObject({password:'하늘ABC123!'});
+ });
  test('rejects seller credentials and reusing an old password after a changed email',async()=>{
   const input:ExtractionTurn[]=[{role:'seller',text:'ID: buyer@yahoo.com 암호: PaSs579#@!'}];
   const request=transportFor(input);expect(await extractNotionChatWithOpenRouter(input,'credentials',request,'key')).toBeNull();expect(request).not.toHaveBeenCalled();

@@ -31,7 +31,7 @@ export async function resolveYouTubeBuyerEmailWithContext(room: string, messages
     turns.push({ role: seller ? 'seller' : 'buyer', text: text.slice(0, 3000) });
     if (buyer) candidates = [...new Set([...candidates, ...explicitYouTubeBuyerEmails(text)])];
   }
-  if (!candidates.length || candidates.length > 4) return fast;
+  if (!candidates.length) return fast;
   const selected = await select(candidates, turns).catch(() => null);
   return selected && candidates.includes(selected) ? [selected] : null;
 }

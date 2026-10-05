@@ -10,6 +10,18 @@ const buyerMessage = { senderSeq: 42, message: 'Spotify email: buyer@example.com
   messageType: 'TEXT', createdAt: '2026-10-02T10:00:00Z' };
 
 describe('GButs Spotify buyer messages', () => {
+  it('keeps submitted credentials pending when the primary model is unavailable instead of asking again', async () => {
+    const sendText = vi.fn();
+    const result = await syncGbutsSpotifyMessages({
+      listMembers: async () => [member], openPrivateRoom: async () => '777',
+      getChat: async () => ({messages:[buyerMessage]}), sellerAccountSeq: async () => 7,
+      listRows: async () => [], extractCredentials: async () => null, sendText,
+      readJournal: () => ({version:1,records:{}}), writeJournal: vi.fn(),
+    },15557);
+    expect(result).toMatchObject({guidesAttempted:0,acknowledgementsAttempted:0,invitedRepliesAttempted:0});
+    expect(sendText).not.toHaveBeenCalled();
+  });
+
   it('asks an active buyer for credentials once and records an uncertain send', async () => {
     const journal: GbutsSpotifyMessageJournal = { version: 1, records: {} };
     const sendText = vi.fn(async () => { throw new Error('network outcome unknown'); });

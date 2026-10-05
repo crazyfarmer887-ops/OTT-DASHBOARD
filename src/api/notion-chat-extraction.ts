@@ -30,6 +30,14 @@ export function maskNotionChat(turns: readonly ExtractionTurn[]) {
         return `\uE000${String.fromCharCode(0xE100 + slot)}\uE001`;
       });
     }
+    // Standalone multilingual password replies must stay one exact opaque value.
+    if (!emails.length && /^\S{6,128}$/.test(turn.text.trim()) && /[A-Za-z0-9]/.test(turn.text)
+      && !protectedValues.length) {
+      const id = `VALUE_${evidence.length}`;
+      evidence.push({ id, value: turn.text.trim(), role: turn.role, turn: index, kind: 'token' });
+      const slot = protectedValues.push(`[${id}]`) - 1;
+      source = `\uE000${String.fromCharCode(0xE100 + slot)}\uE001`;
+    }
     const text = source.replace(/[A-Za-z0-9.!#$%&'*+/?^_`{|}~@\\-]+/g, (token, offset: number) => {
       if (visibleLabels.test(token) && /^\s*[:：=]/.test(source.slice(offset + token.length))) return token;
       const id = `VALUE_${evidence.length}`;
@@ -44,7 +52,7 @@ export function maskNotionChat(turns: readonly ExtractionTurn[]) {
 interface Selection { email: string | null; password: string | null; confidence: number }
 export async function extractNotionChatWithOpenRouter(turns: readonly ExtractionTurn[], mode: 'email' | 'credentials',
   transport: typeof fetch = fetch, apiKey = process.env.OPENROUTER_API_KEY || ''): Promise<SpotifyCredentials | null> {
-  if (!apiKey || !turns.length || turns.length > 100 || turns.some(turn => turn.text.length > 6000)) return null;
+  if (!apiKey || !turns.length || turns.length > 1000 || turns.some(turn => turn.text.length > 6000)) return null;
   const masked = maskNotionChat(turns);
   if (!masked.evidence.some(item => item.role === 'buyer' && item.kind === 'email')) return null;
   const response = await transport('https://openrouter.ai/api/v1/chat/completions', {
