@@ -6667,7 +6667,15 @@ async function readGraytagOttManagement() {
 
 export const gbutsOttRuntimeDependencies: GbutsOttRuntimeDependencies = {
   management: readGraytagOttManagement,
-  manualMembers: loadManualMembers,
+  manualMembers: () => {
+    const records = Object.values(loadPartyAccessLinkStore());
+    return loadManualMembers().map(member => {
+      const access = records.filter(x => x.member.kind === 'manual' && x.member.memberId === member.id
+        && ottKey(x.serviceType, x.accountEmail) === ottKey(member.serviceType, member.accountEmail))
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+      return { ...member, profileName: access?.profileName || member.memberName };
+    });
+  },
   async access(order, listing, profileName) {
     const store = loadPartyAccessLinkStore();
     const existing = Object.values(store).filter(x => x.member.kind === 'gbuts' && x.member.memberId === order.key)

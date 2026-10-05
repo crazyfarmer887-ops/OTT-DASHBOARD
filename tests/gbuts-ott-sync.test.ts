@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { generateUniqueProfileNicknames, stableRandomFromSeed } from '../src/lib/profile-nickname';
 import { emptyGbutsOttStore } from '../src/lib/gbuts-ott';
 import { syncGbutsOtt } from '../src/scheduler/gbuts-ott-sync';
 import { fixtureListing, fixtureManagement, fixtureOrder } from './fixtures/gbuts-ott';
@@ -8,7 +9,7 @@ function fixture() {
   let members = [{ seq: 1, userSeq: 10, productId: 'BUY1', nickname: '구매자', status: 'APPLY', cancelStatus: null as string | null, createdAt: '2026-10-05 10:00:00', subscriptionEndsAt: '2026-12-01 23:59:59' }];
   const client = { getPost: vi.fn(async () => ({ seq: 100, category1: { seq: 5 }, memberLimit: 2, memberCount: members.length, status: 'ON_SALE', subscriptionEndsAt: '2026-12-01 23:59:59' })),
     listOttMembers: vi.fn(async () => members), sellerAccountSeq: async () => 99, openPrivateRoom: async (_p: number, user: number) => `room-${user}`, getChat: async () => ({ messages }) };
-  const deps = { management: async () => fixtureManagement(), manualMembers: () => [], readStore: () => structuredClone(store), writeStore: (next: typeof store) => { store = structuredClone(next); },
+  const deps = { management: async () => fixtureManagement(), manualMembers: () => [] as any[], readStore: () => structuredClone(store), writeStore: (next: typeof store) => { store = structuredClone(next); },
     access: vi.fn(async (order: any) => `https://email-verify.one/dashboard/access/token-${order.key}`), refreshAccess: vi.fn(async () => {}) };
   const send = vi.fn(async (_r: string, _s: number, text: string) => { messages.push({ senderSeq: 99, messageType: 'TEXT', message: text }); });
   return { client, deps, send, get store() { return store; }, set members(value: typeof members) { members = value; }, get members() { return members; }, set messages(value: any[]) { messages = value; } };
@@ -29,6 +30,14 @@ describe('GButs OTT order delivery', () => {
     await syncGbutsOtt(f.deps, f.client as any, f.send); expect(f.send).toHaveBeenCalledTimes(2);
     expect(f.store.orders['100:1'].accessUrl).not.toBe(f.store.orders['100:2'].accessUrl);
     expect(f.store.orders['100:1'].profileName).not.toBe(f.store.orders['100:2'].profileName);
+  });
+  it('avoids the existing manual member profile when assigning a new buyer', async () => {
+    const f = fixture(); const manualProfile = generateUniqueProfileNicknames(1, '', stableRandomFromSeed('100:1'), [])[0];
+    f.deps.writeStore({ ...f.store, listings: { 'request-1': fixtureListing({ capacity: 1 }) } });
+    f.client.getPost.mockResolvedValue({ seq: 100, category1: { seq: 5 }, memberLimit: 1, memberCount: 1, status: 'ON_SALE', subscriptionEndsAt: '2026-12-01 23:59:59' });
+    f.deps.manualMembers = () => [{ serviceType: '넷플릭스', accountEmail: 'account@example.com', status: 'active', endDate: '2026-12-01', profileName: manualProfile }];
+    await syncGbutsOtt(f.deps, f.client as any, f.send);
+    expect(f.send).toHaveBeenCalledOnce(); expect(f.store.orders['100:1'].profileName).not.toBe(manualProfile);
   });
   it('refreshes cancellation status and sends nothing for refunded orders', async () => {
     const f = fixture(); f.members = [{ ...f.members[0], cancelStatus: 'REFUNDED' }];

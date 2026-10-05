@@ -38,7 +38,8 @@ export async function syncGbutsOtt(deps: GbutsOttRuntimeDependencies,
   await deps.refreshAccess(Object.values(store.orders));
   if (!listings.length) return { orders: 0, attempted, confirmed };
   const management = await deps.management();
-  const inventory = sharedOttAccounts(management, deps.manualMembers(), store);
+  const manualMembers = deps.manualMembers();
+  const inventory = sharedOttAccounts(management, manualMembers, store);
   const sellerSeq = await client.sellerAccountSeq();
   for (const order of Object.values(store.orders)) {
     if (!deliverableOttOrder(order) || order.verifiedAt !== now) continue;
@@ -49,6 +50,9 @@ export async function syncGbutsOtt(deps: GbutsOttRuntimeDependencies,
     }
     const rawAccount = management.services.flatMap(x => x.accounts).find(x => x.serviceType === listing.serviceType && x.email.toLowerCase() === listing.accountEmail.toLowerCase());
     const excluded = [...(rawAccount?.members || []).map(x => x.profileName || x.name || ''),
+      ...(management.onSaleByKeepAcct[listing.accountEmail] || []).map(x => x.profileName || ''),
+      ...manualMembers.filter(x => x.serviceType === listing.serviceType && String(x.accountEmail || '').toLowerCase() === listing.accountEmail.toLowerCase()
+        && x.status === 'active').map(x => x.profileName || x.memberName || x.name || ''),
       ...Object.values(store.orders).filter(x => x.key !== order.key && activeOttOrder(x)
         && store.listings[x.listingId]?.accountEmail === listing.accountEmail).map(x => x.profileName || '')];
     order.profileName ||= generateUniqueProfileNicknames(1, '', stableRandomFromSeed(order.key), excluded)[0];
