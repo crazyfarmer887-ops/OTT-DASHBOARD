@@ -88,7 +88,7 @@ describe('OpenRouter Notion extraction',()=>{
   }finally{vi.unstubAllGlobals();vi.unstubAllEnvs();}
  });
  test('caches a valid abstention until the conversation changes, without spending requests every minute',async()=>{
-  const input:ExtractionTurn[]=[{role:'buyer',text:'stable-a@gmail.com 또는 stable-b@gmail.com 중 뭐가 좋나요?'}];
+  const input:ExtractionTurn[]=[{role:'buyer',text:'stable-a@gmail.com 또는 stable-b@gmail.com 아직 선택하지 않았어요'}];
   const transport=vi.fn(async()=>Response.json({choices:[{finish_reason:'tool_calls',message:{tool_calls:[{function:{name:'submit_buyer_account',arguments:JSON.stringify({email:null,password:null,confidence:1})}}]}}]}));
   vi.useFakeTimers();vi.stubEnv('OPENROUTER_API_KEY','key');vi.stubGlobal('fetch',transport);
   try{
