@@ -13,8 +13,21 @@ const cases=[
 let passed=0;
 for(const item of cases){
  try{
-  const actual=await extractNotionChatWithOpenRouter(item.turns,item.mode);
-  const ok=(actual?.email??null)===item.email&&(!item.password||actual?.password===item.password);
+  let structuredReply = false;
+  const actual=await extractNotionChatWithOpenRouter(item.turns,item.mode,async(url,init)=>{
+    const response=await fetch(url,init);const body=await response.clone().json().catch(()=>null);
+    const content=body?.choices?.[0]?.message?.content;
+    if(response.ok && body?.choices?.[0]?.finish_reason==='stop' && typeof content==='string') {
+      try {
+        const parsed=JSON.parse(content.trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,''));
+        structuredReply=Number.isFinite(parsed?.confidence) && parsed.confidence>=0.9 && parsed.confidence<=1
+          && (parsed.email===null || /^VALUE_\d+$/.test(parsed.email))
+          && (parsed.password===null || /^VALUE_\d+$/.test(parsed.password));
+      }catch{}
+    }
+    return response;
+  });
+  const ok=structuredReply && (actual?.email??null)===item.email&&(!item.password||actual?.password===item.password);
   if(ok)passed++;
   console.log(JSON.stringify({case:item.name,ok,resultPresent:Boolean(actual)}));
  }catch(e){console.log(JSON.stringify({case:item.name,ok:false,error:e instanceof Error&&/^OpenRouter extraction HTTP \d+$/.test(e.message)?e.message:'model unavailable'}));}

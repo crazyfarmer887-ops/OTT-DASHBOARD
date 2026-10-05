@@ -31,3 +31,7 @@ Production audit found the incident as active order `15557:42184`, two buyer mes
 A guarded operational import using the committed staged release's corrected explicit-label parser created one row for `15557:42184`. A fresh Notion read verified exactly one matching order row and exact equality of its ID/password with buyer-authored chat; both Invited and Registered were false. No customer message was sent. This is a one-time data repair, not evidence that the requested OpenRouter model has been activated. Production continues the previously working `cf4f1bb` runtime until provider verification can succeed.
 
 Resume gate: run `node --import tsx scripts/verify-notion-extraction.mts` with the server environment after OpenRouter account recovery. All eight live synthetic cases must pass before committed-source deployment and fresh Notion reconciliation. The verifier sends no buyer messages and prints no credentials.
+
+## Replacement-key verification
+
+The user supplied a replacement key. A production-host probe returned HTTP 200 and the exact requested model ID. Initial live fixture calls revealed that the model's default reasoning exhausted the 300-token budget and returned analysis without extraction JSON. Disable reasoning explicitly and reserve 600 output tokens. Strengthen the live gate so null expectations only pass after a complete, valid, confident structured reply, rather than treating truncated or malformed output as a correct abstention.

@@ -13,6 +13,8 @@ describe('OpenRouter Notion extraction',()=>{
   expect(await extractNotionChatWithOpenRouter(turns,'credentials',transport,'fixture-key')).toEqual({email:'buyer@yahoo.com',password:'PaSs579#@!',receivedAt:turns[0].time});
   const request=JSON.parse(String(transport.mock.calls[0][1]?.body));
   expect(request.model).toBe(NOTION_CHAT_EXTRACTION_MODEL);
+  expect(request.reasoning).toEqual({enabled:false});
+  expect(request.max_tokens).toBeGreaterThanOrEqual(600);
   for(const secret of ['buyer@yahoo.com','PaSs579#@!','261005TEST1'])expect(String(transport.mock.calls[0][1]?.body)).not.toContain(secret);
   expect(request.messages[1].content).toContain('암호:');
  });
