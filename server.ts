@@ -42,7 +42,7 @@ import { startYouTubeBuyerGuide } from './src/scheduler/youtube-buyer-guide.ts';
 import { startYouTubeEmailReceipts } from './src/scheduler/youtube-email-receipt.ts';
 import { startYouTubeJevReplies } from './src/scheduler/youtube-jev-replies.ts';
 import { startYouTubeFamilySwitches } from './src/scheduler/youtube-family-switch.ts';
-import { buildPartyAccessHtml } from './src/lib/party-access-page-html.ts';
+import { buildPartyAccessHtml, partyAccessContentSecurityPolicy } from './src/lib/party-access-page-html.ts';
 
 const distDir = resolve(process.cwd(), 'dist/client');
 const accessNoticeAssetsDir = resolve(process.cwd(), 'access-notice-assets');
@@ -188,7 +188,7 @@ function partyAccessHtmlResponse(token: string): Response {
     headers: {
       'content-type': 'text/html; charset=utf-8',
       'cache-control': 'no-store',
-      'content-security-policy': `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline'; img-src 'self' https: data:; connect-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'none'`,
+      'content-security-policy': partyAccessContentSecurityPolicy(nonce),
     },
   });
 }

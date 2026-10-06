@@ -1,5 +1,11 @@
+import { GBUTS_ACCOUNT_CHANGE_WARNING } from './gbuts-ott-templates';
+
 function jsonForScript(value: string): string {
   return JSON.stringify(value).replace(/</g, '\\u003c').replace(/>/g, '\\u003e').replace(/&/g, '\\u0026');
+}
+
+export function partyAccessContentSecurityPolicy(nonce: string): string {
+  return `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline'; img-src 'self' https: data:; connect-src 'self'; frame-src https://email-verify.one/email/mail/; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'none'`;
 }
 
 export function buildPartyAccessHtml(token: string, nonce = ''): string {
@@ -31,6 +37,7 @@ export function buildPartyAccessHtml(token: string, nonce = ''): string {
       const AGREEMENT_1 = '계정 정보를 절대 변경하지 않겠습니다.';
       const AGREEMENT_2 = '로그인 안 될 때 이 페이지를 먼저 확인하겠습니다.';
       const AGREEMENT_3 = '배정된 1개 프로필만 사용하겠습니다.';
+      const accountChangeWarning = ${jsonForScript(GBUTS_ACCOUNT_CHANGE_WARNING)};
       const fmtDate = (value) => {
         if (!value) return '-'; const s = String(value);
         const m = s.match(/(\\d{4})[-./]?(\\d{2})[-./]?(\\d{2})/) || s.match(/(\\d{2})\\.\\s*(\\d{1,2})\\.\\s*(\\d{1,2})/);
@@ -87,7 +94,23 @@ export function buildPartyAccessHtml(token: string, nonce = ''): string {
         const actions = el('div','email-dialog-actions'); const copyButton = el('button','email-copy-button',c.pin ? 'PIN 복사' : '등록된 PIN이 없어요'); copyButton.type='button'; copyButton.disabled=!c.pin; copyButton.onclick=async()=>{ copyButton.textContent=(await copy(c.pin))?'복사했어요':'복사 실패 · 길게 눌러주세요'; };
         const direct = el('a','email-direct-link','바로가기'); direct.href=emailAccessUrl; direct.target = '_blank'; direct.rel = 'noreferrer'; direct.onclick=()=>overlay.remove(); actions.appendChild(copyButton); actions.appendChild(direct); dialog.appendChild(actions); overlay.appendChild(dialog); document.body.appendChild(overlay);
       };
+      const renderNumberedEmailPanel = (payload) => {
+        const section = el('section'); section.setAttribute('aria-label','가구 인증·로그인 코드 확인');
+        const url = safeEmailVerifyUrl(payload.emailAccessUrl);
+        if (!url) { section.appendChild(el('p',null,'이메일 인증이 필요하지만 확인 화면이 없으면 구매하신 1:1 채팅으로 문의해 주세요.')); return section; }
+        const button = el('button','email-access-button','가구 인증·로그인 코드 확인'); button.type='button'; button.setAttribute('aria-expanded','false');
+        const content = el('div'); content.hidden=true;
+        button.onclick=()=>{
+          const open = content.hidden; content.hidden=!open; button.setAttribute('aria-expanded',String(open)); button.textContent=open?'인증 확인 화면 닫기':'가구 인증·로그인 코드 확인';
+          if (open && !content.childNodes.length) {
+            content.appendChild(el('p',null,'아래 이메일 확인 화면에 위에 표시된 이메일 PIN을 입력한 뒤 넷플릭스 인증 메일을 확인하세요. 메일 안의 로그인 코드 또는 가구 인증 안내를 따라 진행해주세요.'));
+            const frame=document.createElement('iframe'); frame.src=url; frame.title='넷플릭스 인증 이메일'; frame.referrerPolicy='no-referrer'; frame.setAttribute('sandbox','allow-scripts allow-forms allow-same-origin allow-popups'); frame.style.cssText='width:100%;height:560px;border:1px solid #ddd6fe;border-radius:14px;background:#fff'; content.appendChild(frame);
+          }
+        };
+        section.appendChild(button); section.appendChild(content); return section;
+      };
       const renderConsent = (profileName, payload, onDone) => {
+        const numberedNetflix = payload.presentation === 'gbuts-netflix-numbered';
         let step = 0;
         const values = ['', '', ''];
         const overlay = el('div','consent');
@@ -97,9 +120,9 @@ export function buildPartyAccessHtml(token: string, nonce = ''): string {
         overlay.addEventListener('contextmenu', (e) => e.preventDefault());
         const card = el('div','consent-card');
         const cards = [
-          { cls:'s1', no:'01', title:'계정 정보 수정 금지', image:'/dashboard/access-notice-assets/complaint-case.jpg', imageLabel:'고소장 실제사례 이미지', text:'비밀번호·이메일·프로필 잠금·결제 설정은 바꾸지 마세요.', required:AGREEMENT_1 },
+          { cls:'s1', no:'01', title:'계정 정보 수정 금지', image:'/dashboard/access-notice-assets/complaint-case.jpg', imageLabel:'고소장 실제사례 이미지', text:numberedNetflix ? '계정 이메일·비밀번호·PIN·결제 설정은 바꾸지 마세요. ' + accountChangeWarning : '비밀번호·이메일·프로필 잠금·결제 설정은 바꾸지 마세요.', required:AGREEMENT_1 },
           { cls:'s2', no:'02', title:'최신 정보 먼저 확인', image:'/dashboard/access-notice-assets/disney-profiles.jpg', imageLabel:'프로필 수정 화면 예시', text:'로그인이 안 되면 먼저 이 페이지를 새로고침해 확인하세요.', required:AGREEMENT_2 },
-          { cls:'s3', no:'03', title:'1인 1프로필 사용', text:'배정된 프로필 1개만 쓰고, 현황에 없는 프로필만 삭제하세요.', required:AGREEMENT_3 },
+          { cls:'s3', no:'03', title:'1인 1프로필 사용', text:numberedNetflix ? '1:1 채팅에서 안내받은 번호의 프로필만 사용하세요. 프로필 이름·PIN 변경, 생성·삭제는 금지합니다.' : '배정된 프로필 1개만 쓰고, 현황에 없는 프로필만 삭제하세요.', required:AGREEMENT_3 },
         ];
         const completed = () => values.filter((value, i) => value.trim() === cards[i].required).length;
         const renderStep = () => {
@@ -111,7 +134,7 @@ export function buildPartyAccessHtml(token: string, nonce = ''): string {
           card.appendChild(dots);
           const cfg = cards[step];
           const sec = el('section','consent-section ' + cfg.cls); const head = el('div','section-head'); head.appendChild(el('span','section-no',cfg.no)); head.appendChild(el('div','section-title',cfg.title)); sec.appendChild(head);
-          if (cfg.image) { const ib = el('div','copybox'); const label = el('div','copy-label',cfg.imageLabel); const img = document.createElement('img'); img.src = cfg.image; img.alt = cfg.imageLabel; img.draggable = false; img.style.cssText='width:100%;max-height:260px;object-fit:contain;border-radius:12px;display:block;user-select:none;pointer-events:none'; ib.appendChild(label); ib.appendChild(img); sec.appendChild(ib); }
+          if (!numberedNetflix && cfg.image) { const ib = el('div','copybox'); const label = el('div','copy-label',cfg.imageLabel); const img = document.createElement('img'); img.src = cfg.image; img.alt = cfg.imageLabel; img.draggable = false; img.style.cssText='width:100%;max-height:260px;object-fit:contain;border-radius:12px;display:block;user-select:none;pointer-events:none'; ib.appendChild(label); ib.appendChild(img); sec.appendChild(ib); }
           const txt = el('div','section-text',cfg.text); txt.style.userSelect = 'none'; sec.appendChild(txt);
 
           const cb = el('div','copybox'); cb.appendChild(el('div','copy-label','아래 문장을 복붙 없이 그대로 입력')); const req = el('div','required',cfg.required); req.style.userSelect = 'none'; cb.appendChild(req); const ta = el('textarea','agree-input'); ta.rows = 4; ta.placeholder = '직접 입력해주세요. 붙여넣기는 막혀 있어요.'; ta.value = values[step]; ta.addEventListener('paste', (e) => e.preventDefault()); ta.addEventListener('copy', (e) => e.preventDefault()); ta.addEventListener('cut', (e) => e.preventDefault()); ta.addEventListener('drop', (e) => e.preventDefault()); ta.addEventListener('focus', () => setTimeout(() => ta.scrollIntoView({ block:'center', behavior:'smooth' }), 80)); cb.appendChild(ta); sec.appendChild(cb); card.appendChild(sec);
@@ -159,20 +182,26 @@ export function buildPartyAccessHtml(token: string, nonce = ''): string {
       };
       const render = (payload) => {
         if (!payload || !payload.ok) return blocked();
+        const numberedNetflix = payload.presentation === 'gbuts-netflix-numbered';
         const c = payload.credentials || {}; const profileName = payload.profileName || payload.memberName || '(미확인)';
         const emailAccessUrl = safeEmailVerifyUrl(payload.emailAccessUrl);
-        const showEmailAccess = Boolean(emailAccessUrl) && !isWavveService(payload.serviceType);
+        const showEmailAccess = !numberedNetflix && Boolean(emailAccessUrl) && !isWavveService(payload.serviceType);
         const isAdminAccess = payload.adminAccess === true;
         if (!isAdminAccess && payload.sensitiveRedacted) {
           try { if (localStorage.getItem('access-consent-v3:' + token) === 'ok') return revealAfterConsent(); } catch (_) {}
           root.innerHTML = ''; renderConsent(profileName, payload, revealAfterConsent); return;
         }
         root.innerHTML = ''; const wrap = el('div','wrap'); const card = el('div','card');
-        const header = el('div','header'); header.appendChild(el('div','icon','🛡️')); const ht = el('div'); ht.appendChild(el('div','title',showEmailAccess ? '최신 ID · PW · PIN' : '최신 ID · PW')); ht.appendChild(el('div','sub','이용기간 중에만 계정 정보를 확인할 수 있어요')); header.appendChild(ht); card.appendChild(header);
+        const header = el('div','header'); header.appendChild(el('div','icon','🛡️')); const ht = el('div'); ht.appendChild(el('div','title',numberedNetflix ? '아이디 · 비밀번호 · 이메일 PIN' : showEmailAccess ? '최신 ID · PW · PIN' : '최신 ID · PW')); ht.appendChild(el('div','sub','이용기간 중에만 계정 정보를 확인할 수 있어요')); header.appendChild(ht); card.appendChild(header);
         card.appendChild(el('div','top-warning', isAdminAccess ? '⚠️ 관리자 인증으로 동의 절차를 건너뛰었습니다. 구매자 화면에서는 기존처럼 필수 동의 후 계정 정보가 표시됩니다.' : '⚠️ 계정 정보와 추가회원/자리 설정은 절대 변경하지 마세요. 로그인 안 될 때는 이 페이지를 새로고침해 최신 정보를 먼저 확인해주세요.'));
         const info = el('div','info'); info.appendChild(el('div','service',(payload.serviceType || '') + ' · ' + (payload.memberName || ''))); info.appendChild(el('div','period',fmtDate(payload.period && payload.period.startDateTime) + ' ~ ' + fmtDate(payload.period && payload.period.endDateTime))); card.appendChild(info);
-        card.appendChild(renderProfilePicker(payload, profileName));
+        if (!numberedNetflix) card.appendChild(renderProfilePicker(payload, profileName));
         const rows = el('div','rows'); addCredentialRow(rows,'ID',c.id || ''); addCredentialRow(rows,'PW',c.password || ''); card.appendChild(rows);
+        if (numberedNetflix) {
+          addCredentialRow(rows,'이메일 PIN',c.pin || '등록된 PIN이 없어요');
+          card.appendChild(renderNumberedEmailPanel(payload));
+          card.appendChild(el('p',null,'프로필 이름·PIN 변경, 프로필 생성·삭제 및 계정 정보 변경은 금지합니다. ' + accountChangeWarning));
+        }
         if (showEmailAccess) { const emailButton = el('button','email-access-button','이메일 확인하러 가기'); emailButton.type='button'; emailButton.onclick=()=>openEmailAccessDialog(payload); card.appendChild(emailButton); }
         if (isAdminAccess) card.appendChild(renderAdminCredentialEditor(payload));
         card.appendChild(el('div','note','이 페이지는 최신 로그인 정보를 실시간으로 보여줍니다. 비밀번호가 갑자기 안 되면 먼저 새로고침 후 다시 확인해주세요.'));

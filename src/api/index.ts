@@ -77,7 +77,8 @@ import { loadGbutsSession, parseGbutsToken, saveGbutsSession } from '../lib/gbut
 import { dedupeGraytagManagementDeals, verifiedGraytagManagementDeals } from '../lib/graytag-management-snapshot';
 import { gbutsOttClient, registerGbutsOttRoutes, reserveGraytagOttPlace, settleGraytagOttPlace } from './gbuts-ott';
 import { registerManualAccountRoutes } from './manual-account-registration';
-import { deliverableOttOrder, isGbutsOttBuyerMatch, mergeGbutsOttManagement, ottKey, ottDate } from '../lib/gbuts-ott';
+import { assertUnclaimedGbutsNetflixProfile, availableNetflixProfiles } from '../lib/gbuts-netflix-profiles';
+import { deliverableOttOrder, hasGbutsOttProfileLease, isGbutsOttBuyerMatch, mergeGbutsOttManagement, sharedOttAccounts, ottKey, ottDate } from '../lib/gbuts-ott';
 import { readGbutsOttStore, withGbutsOttInventory, writeGbutsOttStore } from '../lib/gbuts-ott-store';
 import type { GbutsOttRuntimeDependencies } from '../scheduler/gbuts-ott-sync';
 import { createGbutsSpotifySellerClient, GBUTS_SPOTIFY_POST_SEQ } from '../scheduler/gbuts-spotify-sync';
@@ -5691,6 +5692,20 @@ function saveManualMembers(members: ManualMember[]) {
   writeFileSync(MANUAL_MEMBERS_PATH, JSON.stringify(members, null, 2), "utf8");
 }
 
+async function validateManualNetflixChange(member: ManualMember, members: ManualMember[]) {
+  if (member.serviceType !== '넷플릭스' || member.status !== 'active' || member.endDate < ottDate(new Date().toISOString())) return;
+  const inventory = readGbutsOttStore();
+  if (!Object.values(inventory.listings).some(listing => ottKey(listing.serviceType, listing.accountEmail) === ottKey(member.serviceType, member.accountEmail))) return;
+  const current = gbutsOttRuntimeDependencies.manualMembers();
+  const enriched = members.map(item => ({ ...item, profileName: current.find(existing => existing.id === item.id)?.profileName || item.memberName }));
+  const profile = enriched.find(item => item.id === member.id)!.profileName;
+  assertUnclaimedGbutsNetflixProfile(inventory, member.serviceType, member.accountEmail, profile);
+  const management = await readGraytagOttManagement({ forceRefresh: true });
+  availableNetflixProfiles(inventory, management, enriched, member.accountEmail);
+  const account = sharedOttAccounts(management, enriched, inventory).find(item => item.key === ottKey(member.serviceType, member.accountEmail));
+  if (!account || account.overbooked) throw new Error('벗츠에 확보된 자리와 겹칩니다. 남은 공동 재고를 확인해주세요.');
+}
+
 // 전체 조회
 app.get("/manual-members", (c) => {
   const members = loadManualMembers();
@@ -5708,7 +5723,7 @@ app.get("/manual-members", (c) => {
 });
 
 // 추가
-app.post("/manual-members", async (c) => {
+app.post("/manual-members", async (c) => withGbutsOttInventory(async () => {
   const body = await c.req.json() as any;
   const { serviceType, accountEmail, memberName, startDate, endDate, price, source, memo } = body;
   if (!serviceType || !memberName || !startDate || !endDate || !price) {
@@ -5729,13 +5744,14 @@ app.post("/manual-members", async (c) => {
     createdAt: new Date().toISOString(),
     status: "active",
   };
+  try { await validateManualNetflixChange(newMember, [...members, newMember]); } catch (error) { return c.json({ error: error instanceof Error ? error.message : "공동 재고 확인 실패" }, 409); }
   members.push(newMember);
   saveManualMembers(members);
   return c.json({ ok: true, member: newMember });
-});
+}));
 
 // 수정
-app.put("/manual-members/:id", async (c) => {
+app.put("/manual-members/:id", async (c) => withGbutsOttInventory(async () => {
   const { id } = c.req.param();
   const body = await c.req.json() as any;
   const members = loadManualMembers();
@@ -5753,13 +5769,14 @@ app.put("/manual-members/:id", async (c) => {
   if (body.accountEmail !== undefined) m.accountEmail = body.accountEmail;
   if (body.serviceType !== undefined) m.serviceType = body.serviceType;
 
+  try { await validateManualNetflixChange(m, members); } catch (error) { return c.json({ error: error instanceof Error ? error.message : "공동 재고 확인 실패" }, 409); }
   members[idx] = m;
   saveManualMembers(members);
   return c.json({ ok: true, member: m });
-});
+}));
 
 // 삭제
-app.delete("/manual-members/:id", (c) => {
+app.delete("/manual-members/:id", (c) => withGbutsOttInventory(async () => {
   const { id } = c.req.param();
   let members = loadManualMembers();
   const before = members.length;
@@ -5767,7 +5784,7 @@ app.delete("/manual-members/:id", (c) => {
   if (members.length === before) return c.json({ error: "멤버를 찾을 수 없습니다" }, 404);
   saveManualMembers(members);
   return c.json({ ok: true });
-});
+}));
 
 
 // ─── 서버 사이드 Undercutter 상태 관리 ──────────────────────
@@ -6498,7 +6515,7 @@ app.get('/party-maintenance-checklists', (c) => {
   return c.json({ ok: true, store, keys: Object.keys(store).length, updatedAt: new Date().toISOString() });
 });
 
-app.post('/party-access-links', async (c) => {
+app.post('/party-access-links', async (c) => withGbutsOttInventory(async () => {
   const body = await c.req.json().catch(() => ({})) as any;
   const token = createPartyAccessToken();
   const serviceType = String(body.serviceType || '').trim();
@@ -6530,6 +6547,7 @@ app.post('/party-access-links', async (c) => {
       endDateTime: member.endDateTime || null,
     },
   }), store);
+  try { assertUnclaimedGbutsNetflixProfile(readGbutsOttStore(), serviceType, accountEmail, record.profileName); } catch (error) { return c.json({ ok: false, error: error instanceof Error ? error.message : '공동 프로필 확인 실패' }, 409); }
   const next = { ...store, [record.tokenHash]: record };
   savePartyAccessLinkStore(next);
   writeAudit({
@@ -6543,7 +6561,7 @@ app.post('/party-access-links', async (c) => {
     details: { serviceType, accountEmail, memberId: record.member.memberId, memberKind: record.member.kind },
   });
   return c.json({ ok: true, token, url: partyAccessShareUrl(c, token), item: record });
-});
+}));
 
 app.patch('/party-access/:token/credentials', async (c) => {
   const token = normalizePartyAccessToken(c.req.param('token'));
@@ -6708,11 +6726,11 @@ export const gbutsOttRuntimeDependencies: GbutsOttRuntimeDependencies = {
     return partyAccessUrlFromToken(token);
   },
   async refreshAccess(orders) {
-    const store = loadPartyAccessLinkStore(); const byKey = new Map(orders.map(x => [x.key, x])); let changed = false;
+    const store = loadPartyAccessLinkStore(); const inventory = readGbutsOttStore(); const byKey = new Map(orders.map(x => [x.key, x])); let changed = false;
     for (const [hash, record] of Object.entries(store)) {
       if (record.member.kind !== 'gbuts') continue;
       const order = byKey.get(record.member.memberId); if (!order) continue;
-      const active = deliverableOttOrder(order);
+      const active = deliverableOttOrder(order) && hasGbutsOttProfileLease(inventory, order, record.profileName);
       store[hash] = { ...record, revokedAt: active ? null : (record.revokedAt || order.verifiedAt),
         member: { ...record.member, status: active ? 'active' : 'cancelled', statusName: active ? '벗츠 이용 중' : '벗츠 이용 종료',
           endDateTime: order.endDate, verifiedAt: order.verifiedAt } }; changed = true;

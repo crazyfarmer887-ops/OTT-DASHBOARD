@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest';
-import { allocateNetflixProfiles, availableNetflixProfiles } from '../src/lib/gbuts-netflix-profiles';
-import { accountGbutsInventory, emptyGbutsOttStore } from '../src/lib/gbuts-ott';
+import { allocateNetflixProfiles, assertUnclaimedGbutsNetflixProfile, availableNetflixProfiles } from '../src/lib/gbuts-netflix-profiles';
+import { accountGbutsInventory, emptyGbutsOttStore, hasGbutsOttProfileLease, isGbutsOttBuyerMatch } from '../src/lib/gbuts-ott';
 import { fixtureListing, fixtureOrder } from './fixtures/gbuts-ott';
 const now = new Date('2026-10-06T08:00:00Z');
 const management = () => ({ services: [{ serviceType: '넷플릭스', accounts: [{ serviceType: '넷플릭스', email: 'account@example.com', members: [], totalSlots: 5 }] }], onSaleByKeepAcct: {} });
@@ -80,4 +80,24 @@ test('rejects existing duplicate assignments and never renumbers a previously de
   expect(() => allocateNetflixProfiles(store, management(), [], now)).toThrow('중복 배정');
   const old = fixture(); old.orders['100:1'].profileName = '감귤'; old.orders['100:1'].delivery = 'confirmed';
   expect(() => allocateNetflixProfiles(old, management(), [], now)).toThrow('자동으로 번호를 변경');
+});
+
+test('released then reactivated buyer cannot regain access after another buyer takes the number', () => {
+  const store = fixture(); allocateNetflixProfiles(store, management(), [], now);
+  store.orders['100:3'].cancelStatus = 'REFUNDED';
+  store.orders['100:6'] = fixtureOrder({ key: '100:6', memberSeq: 6, userSeq: 6, listingId: 'l', purchasedAt: '2026-10-06 12:00:00' });
+  allocateNetflixProfiles(store, management(), [], now);
+  store.orders['100:3'].cancelStatus = null;
+  const record = { serviceType: '넷플릭스', accountEmail: 'account@example.com', profileName: '3', member: { memberId: '100:3' } };
+  expect(isGbutsOttBuyerMatch(store, record, { seq: 3, userSeq: 3, subscriptionEndsAt: '2026-12-01' })).toBe(false);
+  expect(hasGbutsOttProfileLease(store, store.orders['100:3'], '3', now)).toBe(false);
+  expect(hasGbutsOttProfileLease(store, store.orders['100:6'], '3', now)).toBe(true);
+  expect(() => assertUnclaimedGbutsNetflixProfile(store, '넷플릭스', 'account@example.com', '3', now)).toThrow('벗츠 구매자');
+  expect(() => assertUnclaimedGbutsNetflixProfile(store, '넷플릭스', 'account@example.com', '감귤', now)).toThrow('번호를 지정');
+});
+test('missing recruiting identities do not silently deduplicate different occupied profiles', () => {
+  const store = emptyGbutsOttStore();
+  const m: any = management();
+  m.onSaleByKeepAcct['account@example.com'] = [1, 2].map(number => ({ profileName: String(number), productType: '넷플릭스', endDateTime: '20261231T2359' }));
+  expect(availableNetflixProfiles(store, m, [], 'account@example.com', now)).toEqual([3, 4, 5]);
 });

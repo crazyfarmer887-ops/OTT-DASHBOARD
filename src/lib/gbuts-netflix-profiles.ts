@@ -21,9 +21,9 @@ export function availableNetflixProfiles(store: GbutsOttStore, management: Gbuts
     const owner = `graytag:${member.productUsid || member.dealUsid || `unknown-${index}`}`;
     occupy(used, profileNumber(member.profileName), owner);
   }
-  for (const product of management.onSaleByKeepAcct[raw.email] || []) {
+  for (const [index, product] of (management.onSaleByKeepAcct[raw.email] || []).entries()) {
     if ((product.productType && product.productType !== '넷플릭스') || !isActiveRecruitingSlot(product, now)) continue;
-    const owner = `graytag:${product.productUsid || ''}`;
+    const owner = `graytag:${product.productUsid || `unknown-product-${index}`}`;
     if (Array.from(used.values()).includes(owner)) continue;
     occupy(used, profileNumber(product.profileName), owner);
   }
@@ -61,4 +61,17 @@ export function allocateNetflixProfiles(store: GbutsOttStore, management: GbutsO
     order.profileNumber = number; order.profileName = String(number);
   }
   for (const email of new Set(eligible.map(order => store.listings[order.listingId].accountEmail.toLowerCase()))) availableNetflixProfiles(store, management, manualMembers, email, now);
+}
+
+export function assertUnclaimedGbutsNetflixProfile(store: GbutsOttStore, serviceType: string, accountEmail: string, name: string, now = new Date()): void {
+  if (serviceType !== '넷플릭스') return;
+  const key = ottKey(serviceType, accountEmail);
+  const held = Object.values(store.orders).filter(order => {
+    const listing = store.listings[order.listingId];
+    return ottKey(listing.serviceType, listing.accountEmail) === key && holdsNetflixProfile(order, listing, now);
+  });
+  if (!held.length) return;
+  const number = profileNumber(name);
+  if (number === null) throw new Error('벗츠와 함께 사용하는 넷플릭스 계정은 1~5번 프로필 번호를 지정해주세요.');
+  if (held.some(order => order.profileNumber === number)) throw new Error(`${number}번 프로필은 벗츠 구매자가 이용 중입니다.`);
 }

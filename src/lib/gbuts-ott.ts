@@ -79,10 +79,21 @@ export function updateGbutsOttOrders(store: GbutsOttStore, listing: GbutsOttList
     order.status = 'MISSING'; if (order.delivery === 'ready') order.delivery = 'blocked'; order.verifiedAt = now; order.error = '판매자 주문 목록에서 확인되지 않습니다.';
   }
 }
-export function isGbutsOttBuyerMatch(store: GbutsOttStore, record: { serviceType: string; accountEmail: string; member: { memberId: string } },
+export function hasGbutsOttProfileLease(store: GbutsOttStore, order: GbutsOttOrder, expectedProfileName?: string, now = new Date()): boolean {
+  const listing = store.listings[order.listingId];
+  if (!listing || order.profileReleasedAt) return false;
+  if (listing.serviceType !== '넷플릭스' || order.profileNumber === undefined) return true;
+  if (!holdsNetflixProfile(order, listing, now) || order.profileName !== String(order.profileNumber)
+    || (expectedProfileName !== undefined && expectedProfileName !== order.profileName)) return false;
+  return !Object.values(store.orders).some(other => other.key !== order.key && other.profileNumber === order.profileNumber
+    && ottKey(store.listings[other.listingId].serviceType, store.listings[other.listingId].accountEmail) === ottKey(listing.serviceType, listing.accountEmail)
+    && holdsNetflixProfile(other, store.listings[other.listingId], now));
+}
+export function isGbutsOttBuyerMatch(store: GbutsOttStore, record: { serviceType: string; accountEmail: string; profileName?: string; member: { memberId: string } },
   member: { seq: number; userSeq: number; subscriptionEndsAt: string } | undefined): boolean {
   const order = store.orders[record.member.memberId]; const listing = order && store.listings[order.listingId];
   return Boolean(order && listing && member && order.memberSeq === member.seq && order.userSeq === member.userSeq
+    && hasGbutsOttProfileLease(store, order, record.profileName)
     && `${listing.postSeq}:${member.seq}` === record.member.memberId
     && ottKey(listing.serviceType, listing.accountEmail) === ottKey(record.serviceType, record.accountEmail)
     && ottDate(member.subscriptionEndsAt) <= listing.endDate);
