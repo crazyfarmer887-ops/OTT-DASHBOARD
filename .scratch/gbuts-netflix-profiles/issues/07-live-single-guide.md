@@ -21,3 +21,9 @@ No new test messages to customers; no profile reassignment, no stale/unverified 
 - Committed ba993ba pushed and deployed via Git archive; service active, worker enabled and configured proxy retained.
 - Production smoke: ping/session200, unauthorized403. All3 current buyers confirmed with no order error. Recovered buyer retains profile3, exact saved guide and3 total chat messages; no duplicate was sent.
 - Future formatted guide:215 characters /392 UTF-8 bytes, five paragraphs, one526-byte SEND. Formatting is tested locally; no new duplicate customer message was used as a live formatting test.
+
+
+## Actual GButs renderer follow-up
+Existing chat DOM uses white-space:normal, so ordinary LF blank lines collapse visually. Future guides use U+2028 forced line separators between the same five paragraphs (CSS Text3/4 specifies mandatory breaks independently of white-space). Raw UTF-8 text remains within the same one-message guard. References: https://www.w3.org/TR/css-text-3/#line-breaking and https://bugs.webkit.org/show_bug.cgi?id=235753 . No third-party HTML or chat-type change.
+Browser security policy rejected localhost render-test navigation; no bypass was attempted. Consequently new formatted buyer rendering is not yet live-verified; no duplicate customer test message was sent. Existing recovered buyer is confirmed with the prior saved text.
+Inventory runtime measurement: original65.23s; after deployment a transient403 was rejected twice, then fresh validated management succeeded in65.09s. Do not claim the entire inventory delay has been eliminated. Full roster verification and external service latency remain.

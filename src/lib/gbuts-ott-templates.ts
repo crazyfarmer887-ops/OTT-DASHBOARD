@@ -61,7 +61,9 @@ function netflixDeliveryParagraphs(accessUrl: string, number: number): string[] 
   ];
 }
 export function buildGbutsNetflixDeliveryText(accessUrl: string, number: number): string {
-  return netflixDeliveryParagraphs(accessUrl, number).join('\n\n');
+  // GButs renders text with white-space:normal, which collapses ordinary LF.
+  // CSS forced line separators preserve paragraph boundaries in plain text.
+  return netflixDeliveryParagraphs(accessUrl, number).join('\u2028\u2028');
 }
 /** History-only compatibility for the already delivered operational recovery. */
 export function buildGbutsNetflixUnformattedDeliveryText(accessUrl: string, number: number): string {

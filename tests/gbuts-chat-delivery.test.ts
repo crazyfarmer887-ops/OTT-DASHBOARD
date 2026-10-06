@@ -64,7 +64,7 @@ test('sends the approved compact guide and actual-length buyer URL in exactly on
   await sendGbutsSingleText('xxxxxxxxxxxx', 123456, text);
   expect(text.length).toBeLessThanOrEqual(400);
   expect(accepted).toEqual([text]);
-  expect(text).toContain('5번'); expect(text).toContain('\n\nhttps://'); expect(Buffer.byteLength(text)).toBeLessThanOrEqual(500); expect(text).not.toContain('[구매자 전용 링크]');
+  expect(text).toContain('5번'); expect(text).toContain('\u2028\u2028https://'); expect(Buffer.byteLength(text)).toBeLessThanOrEqual(500); expect(text).not.toContain('[구매자 전용 링크]');
 });
 test('single-message delivery rejects an oversized guide before opening a socket', async () => {
   const accepted = broker({ frameBudget: true });
