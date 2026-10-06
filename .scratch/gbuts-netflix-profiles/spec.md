@@ -31,3 +31,6 @@ Actually creating/deleting Netflix profiles, logging out streaming devices or ch
 
 ## Further Notes
 User reviewed exact listing and chat copy and explicitly approved implementation and deployment. Preserve local workflow; no further interview is needed.
+
+## Registration follow-up — 2026-10-06
+User reported that registration was unavailable. Live page and a deterministic UI test showed a newly generated account with no suggestedDailyPrice, an empty daily-price input and an unexplained disabled registration button. Filling150 immediately enabled it; server journal showed no submitted listings or errors. New accounts should prefill150 won/day (editable), retain a valid known suggested price, and explain missing/invalid price, capacity and end-date inputs beside the button. Clearing account selection leaves price blank. No listing is automatically published as part of selecting an account or deploying this fix.

@@ -25,6 +25,17 @@ export default function GbutsSalesPage({ view = 'sales' }: { view?: 'sales' | 'o
   const selectionRequest = `${requestedService}:${requestedAccount}`;
   const previousService = useRef(selectionRequest);
   const account = data?.accounts.find(x => x.key === key && (!requestedService || x.serviceType === requestedService));
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  const registrationIssue = !data ? '공동 재고를 확인하고 있습니다.'
+    : !data.enabled ? '벗츠 판매자 연결을 확인해주세요.'
+    : !account ? '판매할 계정을 선택해주세요.'
+    : data.unlinked.length ? '위에 표시된 기존 판매글의 계정 연결을 먼저 확인해주세요.'
+    : !price.trim() || !Number.isSafeInteger(Number(price)) || Number(price) < 1 || Number(price) > 100000 ? '하루 요금을 1~100,000원 사이의 정수로 입력해주세요.'
+    : !count.trim() || !Number.isSafeInteger(Number(count)) || Number(count) < 1 ? '모집 인원을 1명 이상의 정수로 입력해주세요.'
+    : Number(count) > account.available ? `현재 남은 ${account.available}자리 이내로 모집 인원을 정해주세요.`
+    : !endDate || endDate <= today ? '이용 종료일을 오늘 이후로 정해주세요.'
+    : endDate > account.endDate ? `이 계정은 ${account.endDate}까지 판매할 수 있습니다.`
+    : null;
   const loadInFlight = useRef(false);
   const load = useCallback(async () => {
     if (loadInFlight.current) return;
@@ -40,7 +51,9 @@ export default function GbutsSalesPage({ view = 'sales' }: { view?: 'sales' | 'o
   }, [load]);
   const choose = useCallback((value: string) => {
     setKey(value); const selected = data?.accounts.find(x => x.key === value);
-    setEndDate(selected?.endDate || ''); setPrice(selected?.suggestedDailyPrice?.toString() || ''); setCount('1');
+    const suggestedPrice = Number(selected?.suggestedDailyPrice);
+    const initialPrice = Number.isSafeInteger(suggestedPrice) && suggestedPrice >= 1 && suggestedPrice <= 100000 ? suggestedPrice : 150;
+    setEndDate(selected?.endDate || ''); setPrice(selected ? String(initialPrice) : ''); setCount('1');
     setTitle(selected ? makeDefaultProductTitle(selected.serviceType) : ''); setDescription(selected ? makeGbutsOttDescription(selected.serviceType) : '');
     requestId.current = crypto.randomUUID(); setMessage('');
   }, [data?.accounts]);
@@ -53,7 +66,7 @@ export default function GbutsSalesPage({ view = 'sales' }: { view?: 'sales' | 'o
     }
   }, [data, key, requestedService, requestedAccount, selectionRequest, choose]);
   const publish = async () => {
-    if (!account || busy) return; setBusy(true); setMessage('');
+    if (!account || busy || registrationIssue) return; setBusy(true); setMessage('');
     try {
       const response = await fetch('/api/gbuts/ott/listings', { method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ requestId: requestId.current, serviceType: account.serviceType, accountEmail: account.accountEmail,
@@ -103,8 +116,9 @@ export default function GbutsSalesPage({ view = 'sales' }: { view?: 'sales' | 'o
       </div>
       <label style={{ display: 'block', marginTop: 15 }}>판매글 제목<input style={styles.input} value={title} maxLength={80} onChange={e => { setTitle(e.target.value); requestId.current = crypto.randomUUID(); }} /></label>
       <label style={{ display: 'block', marginTop: 15 }}>이용 안내<textarea style={{ ...styles.input, minHeight: 120 }} value={description} onChange={e => { setDescription(e.target.value); requestId.current = crypto.randomUUID(); }} /></label>
-      <p style={{ fontSize: 12 }}>등록 시 벗츠 판매글이 공개되며, 모집 인원만큼 공동 재고에서 자리가 확보됩니다. 요금·기간의 기본값은 기존 그레이태그 정보로 채워집니다.</p>
-      <button style={styles.button} disabled={busy || !data?.enabled || !account || account.available < Number(count) || Number(count) < 1 || Number(price) < 1 || !endDate || !!data?.unlinked.length} onClick={publish}>{busy ? '처리 중' : '벗츠 판매글 등록'}</button>
+      <p style={{ fontSize: 12 }}>등록 시 벗츠 판매글이 공개되며, 모집 인원만큼 공동 재고에서 자리가 확보됩니다. 기존 판매 요금이 없는 새 계정은 하루 150원으로 시작하며, 원하는 요금으로 수정할 수 있습니다.</p>
+      {registrationIssue && <p id="gbuts-registration-reason" role="status" style={{ fontSize: 13, color: '#B45309' }}>{registrationIssue}</p>}
+      <button style={styles.button} aria-describedby={registrationIssue ? 'gbuts-registration-reason' : undefined} disabled={busy || !!registrationIssue} onClick={publish}>{busy ? '처리 중' : '벗츠 판매글 등록'}</button>
     </section>}
     <section style={styles.card}><h2 style={{ fontSize: 17 }}>연결된 판매글</h2>{!data?.listings.length && <p>아직 연결된 판매글이 없습니다.</p>}
       {data?.listings.map(x => <div key={x.id} style={{ borderTop: '1px solid #EDE9FE', padding: '13px 0' }}><strong>{x.serviceType} · {labels[x.state] || x.state}</strong>

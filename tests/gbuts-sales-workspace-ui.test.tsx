@@ -43,3 +43,48 @@ test('account management handoff selects the exact newly registered account rath
   await act(async () => { window.history.pushState(null, '', '/gbuts-sales?service=' + encodeURIComponent('넷플릭스') + '&account=older%40example.com'); });
   expect(host.querySelector<HTMLSelectElement>('[aria-label="판매 계정"]')!.value).toBe('넷플릭스:older@example.com');
 });
+
+test('a newly registered account without a suggested daily price defaults to 150 won and can be registered', async () => {
+  const accounts = [{ key: '넷플릭스:new@example.com', serviceType: '넷플릭스', accountEmail: 'new@example.com',
+    total: 5, graytag: 0, manual: 0, gbuts: 0, claims: 0, available: 5, overbooked: false,
+    endDate: '2099-10-01', suggestedDailyPrice: null }];
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true, enabled: true,
+    accounts, listings: [], orders: [], unlinked: [] }) }));
+  const host = document.createElement('div'); document.body.append(host); const root = createRoot(host);
+  dispose = () => { root.unmount(); host.remove(); };
+  window.history.replaceState(null, '', '/gbuts-sales?service=' + encodeURIComponent('넷플릭스') + '&account=new%40example.com');
+  await act(async () => root.render(<Router><GbutsSalesPage /></Router>));
+
+  expect(host.querySelector<HTMLSelectElement>('[aria-label="판매 계정"]')!.value).toBe('넷플릭스:new@example.com');
+  expect.soft(host.querySelector<HTMLInputElement>('[aria-label="하루 요금"]')!.value).toBe('150');
+  const register = Array.from(host.querySelectorAll('button')).find(button => button.textContent === '벗츠 판매글 등록')!;
+  expect(register.disabled).toBe(false);
+});
+
+test('clearing the daily price explains why registration is blocked and entering a valid price enables it again', async () => {
+  const accounts = [{ key: '넷플릭스:new@example.com', serviceType: '넷플릭스', accountEmail: 'new@example.com',
+    total: 5, graytag: 0, manual: 0, gbuts: 0, claims: 0, available: 5, overbooked: false,
+    endDate: '2099-10-01', suggestedDailyPrice: null }];
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true, enabled: true,
+    accounts, listings: [], orders: [], unlinked: [] }) }));
+  const host = document.createElement('div'); document.body.append(host); const root = createRoot(host);
+  dispose = () => { root.unmount(); host.remove(); };
+  window.history.replaceState(null, '', '/gbuts-sales?service=' + encodeURIComponent('넷플릭스') + '&account=new%40example.com');
+  await act(async () => root.render(<Router><GbutsSalesPage /></Router>));
+  const price = host.querySelector<HTMLInputElement>('[aria-label="하루 요금"]')!;
+  const register = Array.from(host.querySelectorAll('button')).find(button => button.textContent === '벗츠 판매글 등록')!;
+  const changePrice = async (value: string) => act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(price, value);
+    price.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+
+  await changePrice('');
+  expect(host.querySelector('[role="status"]')?.textContent).toContain('하루 요금');
+  expect(register.disabled).toBe(true);
+  await act(async () => register.click());
+  expect(fetch).not.toHaveBeenCalledWith('/api/gbuts/ott/listings', expect.objectContaining({ method: 'POST' }));
+
+  await changePrice('150');
+  expect(register.disabled).toBe(false);
+  expect(host.querySelector('[role="status"]')).toBeNull();
+});
