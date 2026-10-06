@@ -40,7 +40,7 @@ test('updated payment and expiry overlay a cached account without dropping reser
   const pending = buildGeneratedAccount({ serviceType: '넷플릭스', alias: { id: 123, email: 'new@example.com' }, password: 'secret!', pin: '123456', memo: '' });
   const cached = mergeGeneratedAccountsIntoManagement({ services: [], summary: { totalAccounts: 0 }, onSaleByKeepAcct: {} }, { [pending.id]: pending });
   const paid = { ...pending, ...normalizeGeneratedAccountPatch({ paymentStatus: 'paid', expiryDate: '2099-12-01' }) };
-  const member = { dealStatus: 'Using', endDateTime: '2099-12-01', productUsid: 'old-member' };
+  const member = { status: 'Using', endDateTime: '2099-12-01', productUsid: 'old-member' };
   cached.services[0].accounts[0].members = [member];
   const updated = mergeGeneratedAccountsIntoManagement(cached, { [paid.id]: paid });
   expect(updated.services[0].accounts[0].members).toEqual([member]);
@@ -65,7 +65,7 @@ test('unchecking bundle payment on a cached account immediately stops further sa
   const { buildGeneratedAccount } = await import('../src/lib/generated-accounts');
   const account = { ...buildGeneratedAccount({ serviceType: '티빙+웨이브', alias: { id: 8, email: 'gtwavve8.example@aleeas.com' }, password: 'secret!', pin: '', memo: '' }), paymentStatus: 'paid' as const, expiryDate: '2099-12-01' };
   const cached = mergeGeneratedAccountsIntoManagement({ services: [], summary: { totalAccounts: 0 }, onSaleByKeepAcct: {} }, { [account.id]: account });
-  cached.services[0].accounts[0].members = [{ dealStatus: 'Using', endDateTime: '2099-12-01', productUsid: 'existing' }];
+  cached.services[0].accounts[0].members = [{ status: 'Using', endDateTime: '2099-12-01', productUsid: 'existing' }];
   const updated = mergeGeneratedAccountsIntoManagement(cached, { [account.id]: { ...account, paymentStatus: 'pending', expiryDate: null } });
   const inventory = sharedOttAccounts(updated, [], emptyGbutsOttStore());
   expect(inventory.every(row => row.available === 0)).toBe(true);
@@ -83,4 +83,25 @@ test('manual bundle uses the supplied TVING login and rejects a second registrat
   expect(registeredAccountSalesTargets((await response.json()).account)).toContainEqual({ serviceType: '티빙', email: 'alice_tving' });
   expect((await register({ serviceType: '웨이브', email: 'alice2026@example.com', password: 'different' })).status).toBe(409);
   expect((await register({ serviceType: '티빙', email: 'alice_tving', password: 'different' })).status).toBe(409);
+});
+
+test('buyer delivery resolves the explicit manual TVING login before any unrelated numeric bundle', async () => {
+  const { buildGeneratedAccount, manualRegisteredAccount } = await import('../src/lib/generated-accounts');
+  const { createPartyAccessLinkRecord, enrichPartyAccessRecordWithKnownCredentials } = await import('../src/lib/party-access');
+  const unrelated = buildGeneratedAccount({ serviceType: '티빙+웨이브', alias: { id: 4, email: 'gtwavve4.example@aleeas.com' }, password: 'wrong-password', pin: '444444', memo: '' });
+  const manual = manualRegisteredAccount({ serviceType: '티빙+웨이브', email: 'alice2026@example.com', tvingLoginId: 'mytving4', password: 'correct-password' }, 'manual-1');
+  const record = createPartyAccessLinkRecord({ token: 'a'.repeat(32), serviceType: '티빙', accountEmail: 'mytving4', member: { kind: 'gbuts', memberId: '100:1', memberName: 'buyer', status: 'active' } });
+  const enriched = enrichPartyAccessRecordWithKnownCredentials(record, {}, {}, { [unrelated.id]: unrelated, [manual.id]: manual });
+  expect(enriched.fallbackPassword).toBe('correct-password');
+  expect(enriched.fallbackPin).toBe(''); expect(enriched.emailAccessUrl).toBe('');
+});
+
+test('pending bundle overlays fresh provider rows by canonical login without requiring generated metadata', async () => {
+  const { manualRegisteredAccount } = await import('../src/lib/generated-accounts');
+  const account = manualRegisteredAccount({ serviceType: '티빙+웨이브', email: 'bundle@example.com', tvingLoginId: 'bundle_id', password: 'secret!', expiryDate: null }, 'bundle');
+  const services = [{ serviceType: '티빙', email: 'bundle_id' }, { serviceType: '웨이브', email: 'bundle@example.com' }].map(row => ({ serviceType: row.serviceType,
+    accounts: [{ ...row, totalSlots: 4, expiryDate: '2099-12-01', members: [{ status: 'Using', endDateTime: '2099-12-01', productUsid: row.serviceType }] }], totalUsingMembers: 1, totalActiveMembers: 1, totalIncome: 0, totalRealized: 0 }));
+  const updated = mergeGeneratedAccountsIntoManagement({ services, summary: { totalAccounts: 2 }, onSaleByKeepAcct: {} }, { [account.id]: account });
+  expect(updated.summary.totalAccounts).toBe(2);
+  expect(sharedOttAccounts(updated, [], emptyGbutsOttStore()).map(row => ({ occupied: row.occupied, available: row.available }))).toEqual([{ occupied: 1, available: 0 }, { occupied: 1, available: 0 }]);
 });

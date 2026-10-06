@@ -356,10 +356,16 @@ export function mergeGeneratedAccountsIntoManagement<T extends {
     services: management.services.map(service => ({ ...service, accounts: [...service.accounts] })),
     summary: { ...management.summary },
   };
+  const canonicalBundleIds = new Set(Object.values(store).filter(account => {
+    if (account.serviceType !== DOUBLE_PASS_SERVICE) return false;
+    const keys = new Set(registeredAccountIdentityKeys(account));
+    return account.paymentStatus === 'paid' || next.services.some(service => service.accounts.some(row =>
+      keys.has(generatedAccountKey(row.serviceType || service.serviceType, row.email))));
+  }).map(account => account.id));
   // A cached pending bundle becomes two service rows after payment.
   for (const service of next.services) service.accounts = service.accounts.filter(row => {
     const latest = store[String(row.generatedAccount?.id || '')];
-    return !(latest && isPaidDoublePassGeneratedAccount(latest) && row.serviceType === DOUBLE_PASS_SERVICE && !(row.members || []).length);
+    return !(latest && canonicalBundleIds.has(latest.id) && row.serviceType === DOUBLE_PASS_SERVICE && !(row.members || []).length);
   });
   const existing = new Set<string>();
   for (const service of next.services) {
@@ -370,8 +376,7 @@ export function mergeGeneratedAccountsIntoManagement<T extends {
 
   const generated = Object.values(store).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   for (const account of generated) {
-    const hasCanonicalBundle = account.serviceType === DOUBLE_PASS_SERVICE && next.services.some(service => service.accounts.some(row =>
-      row.generatedAccount?.id === account.id && (row.serviceType === DOUBLE_PASS_TVING_SERVICE || row.serviceType === DOUBLE_PASS_WAVVE_SERVICE)));
+    const hasCanonicalBundle = canonicalBundleIds.has(account.id);
     const rows = hasCanonicalBundle && account.paymentStatus === 'pending'
       ? generatedManagementRows({ ...account, paymentStatus: 'paid' }).map(row => ({ ...row, generatedAccount: { ...row.generatedAccount, paymentStatus: 'pending', paidAt: null } }))
       : generatedManagementRows(account);

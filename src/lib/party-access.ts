@@ -677,6 +677,7 @@ function findGeneratedAccount(store: GeneratedAccountStore, serviceType: string,
     const accountAny = account as any;
     const accountService = normalizeKeyPart(accountAny.serviceType);
     const accountEmail = normalizeKeyPart(accountAny.email).toLowerCase();
+    if (normalizedService === TVING_SERVICE && accountService === DOUBLE_PASS_LABEL && normalizeKeyPart(accountAny.tvingLoginId).toLowerCase() === lowerEmail) return true;
     if (partyAccessAccountKey(accountAny.serviceType, accountAny.email) === exactKey) return true;
     if (accountEmail === lowerEmail && accountService === normalizedService) return true;
     if (accountEmail === lowerEmail && normalizeKeyPart(accountAny.sourceServiceType || '') === normalizedService) return true;
@@ -691,6 +692,7 @@ function findGeneratedAccount(store: GeneratedAccountStore, serviceType: string,
   return Object.values(store || {}).find((account) => {
     const accountAny = account as any;
     const accountService = normalizeKeyPart(accountAny.serviceType);
+    if (accountAny.registrationKind === 'manual' && accountAny.tvingLoginId) return false;
     if (accountService !== DOUBLE_PASS_LABEL && accountService !== WAVVE_SERVICE) return false;
     const wavveBundleNo = resolveDoublePassBundleNo({ serviceType: WAVVE_SERVICE, email: accountAny.email, accountId: accountAny.email });
     return wavveBundleNo === tvingBundleNo;

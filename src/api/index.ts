@@ -159,7 +159,7 @@ function privacySafeAuditId(scope: string, value: string): string {
 
 app.use('*', async (c, next) => {
   const normalizedPath = normalizedApiPath(c.req.path);
-  if (/^\/(?:api\/)?youtube(?:\/|$)/.test(normalizedPath)) c.header('Cache-Control', 'no-store');
+  if (/^\/(?:api\/)?(?:youtube|generated-accounts)(?:\/|$)/.test(normalizedPath)) c.header('Cache-Control', 'no-store');
   if (!requiresAdminAuth(c.req.method, c.req.path)) return next();
 
   const token = configuredAdminToken();
@@ -2024,6 +2024,7 @@ app.post('/my/management', async (c) => {
       return Object.values(generatedStore || {}).find((account: any) => {
         const accountService = String(account?.serviceType || '').trim();
         const accountEmail = String(account?.email || '').trim().toLowerCase();
+        if (normalizedService === '티빙' && accountService === '티빙+웨이브' && String(account?.tvingLoginId || '').trim().toLowerCase() === normalizedEmail) return true;
         if (accountEmail !== normalizedEmail) return false;
         if (accountService === normalizedService) return true;
         return accountService === '티빙+웨이브' && (normalizedService === '웨이브' || normalizedService === '티빙');

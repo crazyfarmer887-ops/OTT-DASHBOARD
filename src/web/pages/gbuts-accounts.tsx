@@ -19,6 +19,7 @@ function RegisteredAccountCard({ account, onSaved, expanded }: { account: Genera
   const [expiry, setExpiry] = useState(account.expiryDate || '');
   const [paid, setPaid] = useState(account.paymentStatus === 'paid');
   const [busy, setBusy] = useState(false); const [message, setMessage] = useState('');
+  const tvingLoginId = account.serviceType === '티빙+웨이브' ? registeredAccountSalesTargets({ ...account, paymentStatus: 'paid' }).find(target => target.serviceType === '티빙')?.email : '';
   const ready = account.paymentStatus === 'paid' && !!account.expiryDate && account.expiryDate > new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul' }).format(new Date());
   const save = async () => {
     setBusy(true); setMessage('');
@@ -33,10 +34,11 @@ function RegisteredAccountCard({ account, onSaved, expanded }: { account: Genera
     <details open={expanded || undefined}>
       <summary style={{ cursor: 'pointer', padding: '8px 0' }}>계정 정보·이용 기간</summary>
       <label>로그인 ID<input style={styles.input} readOnly value={account.email} /></label>
+      {tvingLoginId && <label>티빙 로그인 ID<input style={styles.input} readOnly value={tvingLoginId} /></label>}
       <label>비밀번호<input style={styles.input} type="password" readOnly value={account.password} /></label>
       {account.pin && <p style={{ fontSize: 13 }}>이메일 PIN: {account.pin}</p>}
       <button style={styles.button} onClick={async () => {
-        try { await navigator.clipboard.writeText(buildQuickAccountClipboard(account)); setMessage('계정 정보를 복사했습니다.'); }
+        try { await navigator.clipboard.writeText(buildQuickAccountClipboard(account) + (tvingLoginId ? `\n티빙 ID: ${tvingLoginId}` : '')); setMessage('계정 정보를 복사했습니다.'); }
         catch { setMessage('복사 권한을 확인하거나 입력 칸에서 직접 복사해주세요.'); }
       }}>계정 정보 복사</button>
       <fieldset disabled={busy} style={{ border: 0, padding: '15px 0 0', margin: 0 }}>
