@@ -59,6 +59,11 @@ test('a newly registered account without a suggested daily price defaults to 150
   expect.soft(host.querySelector<HTMLInputElement>('[aria-label="하루 요금"]')!.value).toBe('150');
   const register = Array.from(host.querySelectorAll('button')).find(button => button.textContent === '벗츠 판매글 등록')!;
   expect(register.disabled).toBe(false);
+  const account = host.querySelector<HTMLSelectElement>('[aria-label="판매 계정"]')!;
+  await act(async () => { account.value = ''; account.dispatchEvent(new Event('change', { bubbles: true })); });
+  expect(account.value).toBe('');
+  expect(host.querySelector<HTMLInputElement>('[aria-label="하루 요금"]')!.value).toBe('');
+  expect(register.disabled).toBe(true);
 });
 
 test('clearing the daily price explains why registration is blocked and entering a valid price enables it again', async () => {

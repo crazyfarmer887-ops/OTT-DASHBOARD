@@ -24,6 +24,7 @@ export default function GbutsSalesPage({ view = 'sales' }: { view?: 'sales' | 'o
   const requestedAccount = query.get('account') || '';
   const selectionRequest = `${requestedService}:${requestedAccount}`;
   const previousService = useRef(selectionRequest);
+  const allowAutomaticSelection = useRef(true);
   const account = data?.accounts.find(x => x.key === key && (!requestedService || x.serviceType === requestedService));
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
   const registrationIssue = !data ? '공동 재고를 확인하고 있습니다.'
@@ -60,7 +61,8 @@ export default function GbutsSalesPage({ view = 'sales' }: { view?: 'sales' | 'o
   useEffect(() => {
     const serviceChanged = previousService.current !== selectionRequest;
     previousService.current = selectionRequest;
-    if (serviceChanged || (!key && data && requestedService)) {
+    if (serviceChanged) allowAutomaticSelection.current = true;
+    if (serviceChanged || (!key && data && requestedService && allowAutomaticSelection.current)) {
       const selected = requestedService ? data?.accounts.find(item => item.serviceType === requestedService && item.available > 0 && (!requestedAccount || item.accountEmail.toLowerCase() === requestedAccount.toLowerCase())) : undefined;
       choose(selected?.key || '');
     }
@@ -104,7 +106,7 @@ export default function GbutsSalesPage({ view = 'sales' }: { view?: 'sales' | 'o
     {view === 'sales' && loading && !data && <p role="status">공동 재고와 계정 이용 기간을 확인하고 있습니다.</p>}
     {view === 'sales' && <section style={styles.card}><h2 style={{ fontSize: 17 }}>벗츠에서 판매할 자리{requestedService && ` · ${requestedService}`}</h2>
       <button style={styles.button} onClick={() => navigate(`/gbuts-accounts${requestedService ? `?service=${encodeURIComponent(requestedService)}` : ""}`)}>계정 추가·관리</button>
-      <label>계정<select style={styles.input} aria-label="판매 계정" value={key} onChange={e => choose(e.target.value)}><option value="">계정을 선택해주세요</option>
+      <label>계정<select style={styles.input} aria-label="판매 계정" value={key} onChange={e => { allowAutomaticSelection.current = false; choose(e.target.value); }}><option value="">계정을 선택해주세요</option>
         {data?.accounts.filter(x => x.available > 0 && (!requestedService || x.serviceType === requestedService)).map(x => <option key={x.key} value={x.key}>{x.serviceType} · {x.accountEmail} · 남은 {x.available}자리</option>)}</select></label>
       {data && !data.accounts.some(x => x.available > 0 && (!requestedService || x.serviceType === requestedService)) && <p style={{ color: '#B45309', fontSize: 13 }}>현재 판매 가능한 자리가 없습니다. 기존 계정의 결제·이용 기간과 공동 재고를 확인해 주세요.</p>}
       {account?.serviceType === '넷플릭스' && <p style={{ fontSize:12, lineHeight:1.6 }}>넷플릭스 프로필 이름을 1, 2, 3, 4, 5로 미리 만들어주세요. 구매자에게 빈 프로필 번호를 순서대로 안내하며, 환불 완료·이용 종료된 번호는 재사용합니다.</p>}
