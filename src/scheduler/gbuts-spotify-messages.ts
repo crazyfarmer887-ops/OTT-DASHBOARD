@@ -153,7 +153,7 @@ export async function syncGbutsSpotifyMessages(deps: GbutsSpotifyMessageDependen
       else if (item.suffix === 'request-received') acknowledgementsAttempted += 1;
       else invitedRepliesAttempted += 1;
       try { await deps.sendText(roomId, sellerSeq, item.text); } catch (error) {
-        if (error instanceof GbutsChatDeliveryError && !error.submitted) {
+        if (error instanceof GbutsChatDeliveryError && !error.submitted && error.retryable) {
           delete journal.records[key]; deps.writeJournal(journal);
         } // Submitted but uncertain sends are reconciled only.
       }
@@ -165,10 +165,10 @@ export async function syncGbutsSpotifyMessages(deps: GbutsSpotifyMessageDependen
 /** Subscribe like the web client and await a saved-message echo for every part. */
 export async function sendGbutsText(roomId: string, accountSeq: number, text: string): Promise<void> {
   if (!/^[A-Za-z0-9_-]{1,128}$/.test(roomId) || !Number.isSafeInteger(accountSeq) || accountSeq <= 0
-    || !text.trim() || text.length > 2000) throw new GbutsChatDeliveryError('GButs chat message invalid', false);
+    || !text.trim() || text.length > 2000) throw new GbutsChatDeliveryError('GButs chat message invalid', false, false);
   let parts: string[];
   try { parts = splitGbutsChatText(text); }
-  catch { throw new GbutsChatDeliveryError('GButs chat message exceeds transmission limits', false); }
+  catch { throw new GbutsChatDeliveryError('GButs chat message exceeds transmission limits', false, false); }
   return sendGbutsChatParts(roomId, accountSeq, parts);
 }
 
@@ -176,7 +176,7 @@ export async function sendGbutsText(roomId: string, accountSeq: number, text: st
 export async function sendGbutsSingleText(roomId: string, accountSeq: number, text: string): Promise<void> {
   if (!/^[A-Za-z0-9_-]{1,128}$/.test(roomId) || !Number.isSafeInteger(accountSeq) || accountSeq <= 0
     || !text.trim() || text.trim().length > 500 || Buffer.byteLength(gbutsTextSendFrame(roomId, accountSeq, text.trim())) > 1000)
-    throw new GbutsChatDeliveryError('GButs single chat message exceeds transmission limits', false);
+    throw new GbutsChatDeliveryError('단일 안내문이 전송 크기 제한을 초과했습니다. 링크와 문구 길이를 확인해주세요.', false, false);
   return sendGbutsChatParts(roomId, accountSeq, [text.trim()]);
 }
 function gbutsTextSendFrame(roomId: string, accountSeq: number, text: string): string {

@@ -65,7 +65,7 @@ export async function syncGbutsOtt(deps: GbutsOttRuntimeDependencies,
     } else order.error = '채팅 발송 결과 확인 중 — 안내문이 모두 저장되지 않았습니다.';
     write(store);
   }
-  const pendingOrders = eligible.filter(order => !order.attemptedAt && order.delivery !== 'attempted' && order.delivery !== 'confirmed');
+  const pendingOrders = eligible.filter(order => !order.attemptedAt && order.delivery !== 'attempted' && order.delivery !== 'confirmed' && order.delivery !== 'blocked');
   if (!pendingOrders.length) {
     store.lastSuccess = new Date().toISOString(); store.lastError = null; write(store);
     return { orders: Object.values(store.orders).filter(x => activeOttOrder(x)).length, attempted, confirmed };
@@ -114,7 +114,9 @@ export async function syncGbutsOtt(deps: GbutsOttRuntimeDependencies,
       if (contains((await client.getChat(roomId)).messages)) { order.delivery = 'confirmed'; write(store); confirmed++; }
     } catch (error) {
       if (error instanceof GbutsChatDeliveryError && !error.submitted) {
-        order.delivery = 'ready'; delete order.attemptedAt; order.error = '채팅 연결 실패 — 다음 확인 때 자동 재시도합니다.';
+        delete order.attemptedAt;
+        order.delivery = error.retryable ? 'ready' : 'blocked';
+        order.error = error.retryable ? '채팅 연결 실패 — 다음 확인 때 자동 재시도합니다.' : error.message;
       } else order.error = '채팅 발송 결과 확인 중';
       write(store);
     }

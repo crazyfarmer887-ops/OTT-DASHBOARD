@@ -74,7 +74,7 @@ export function updateGbutsOttOrders(store: GbutsOttStore, listing: GbutsOttList
     store.orders[key] = { ...prev, key, listingId: listing.id, postSeq: listing.postSeq!,
       memberSeq: member.seq, userSeq: member.userSeq, name: member.nickname, status: member.status,
       cancelStatus: member.cancelStatus, startDate, endDate, purchasedAt: prev?.purchasedAt || member.createdAt,
-      delivery: prev?.delivery || 'ready', verifiedAt: now };
+      delivery: prev?.delivery === 'blocked' && prev.status === 'MISSING' && !prev.attemptedAt ? 'ready' : prev?.delivery || 'ready', verifiedAt: now };
   }
   for (const order of Object.values(store.orders).filter(x => x.listingId === listing.id && !seen.has(x.key))) {
     order.status = 'MISSING'; if (order.delivery === 'ready') order.delivery = 'blocked'; order.verifiedAt = now; order.error = '판매자 주문 목록에서 확인되지 않습니다.';

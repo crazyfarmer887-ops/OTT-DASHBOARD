@@ -17,7 +17,7 @@ function broker({ echo = true, failConnect = false, frameBudget = false } = {}) 
       // Reproduces the observed silent rejection of long multibyte messages.
       if (frameBudget ? Buffer.byteLength(frame) > 1000 : Buffer.byteLength(payload.payload) > 500) return;
       accepted.push(payload.payload);
-      if (echo) queueMicrotask(() => this.onmessage?.({ data: `MESSAGE\ndestination:/sub/chat/room/test-room\n\n${JSON.stringify({ id: accepted.length, accountSeq: 99, type: 'TEXT', payload: payload.payload })}\0` }));
+      if (echo) queueMicrotask(() => this.onmessage?.({ data: `MESSAGE\ndestination:/sub/chat/room/${payload.roomId}\n\n${JSON.stringify({ id: accepted.length, accountSeq: payload.accountSeq, type: 'TEXT', payload: payload.payload })}\0` }));
     }
     close() {}
   }
@@ -61,7 +61,7 @@ test('splits a long paragraph without corrupting emoji, words or the account URL
 test('sends the approved compact guide and actual-length buyer URL in exactly one frame', async () => {
   const text = buildGbutsNetflixDeliveryText('https://email-verify.one/dashboard/access/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx', 5);
   const accepted = broker({ frameBudget: true });
-  await sendGbutsSingleText('test-room', 99, text);
+  await sendGbutsSingleText('xxxxxxxxxxxx', 123456, text);
   expect(text.length).toBeLessThanOrEqual(400);
   expect(accepted).toEqual([text]);
   expect(text).toContain('「5번」'); expect(text).not.toContain('[구매자 전용 링크]');
@@ -69,5 +69,12 @@ test('sends the approved compact guide and actual-length buyer URL in exactly on
 test('single-message delivery rejects an oversized guide before opening a socket', async () => {
   const accepted = broker({ frameBudget: true });
   await expect(sendGbutsSingleText('test-room', 99, guide)).rejects.toMatchObject({ submitted: false });
+  expect(accepted).toEqual([]);
+});
+
+test('a permanent size failure is explicit and cannot be mistaken for a retryable connection failure', async () => {
+  const accepted = broker({ frameBudget: true });
+  const text = buildGbutsNetflixDeliveryText('https://email-verify.one/dashboard/access/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx', 1);
+  await expect(sendGbutsSingleText('x'.repeat(36), 123456, text)).rejects.toMatchObject({ submitted: false, retryable: false });
   expect(accepted).toEqual([]);
 });

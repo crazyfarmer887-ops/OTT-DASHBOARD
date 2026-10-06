@@ -96,6 +96,22 @@ describe('GButs OTT order delivery', () => {
       expect(f.store.orders['100:1'].deliveryMessage).toContain('token-100:1');
     } finally { vi.unstubAllGlobals(); }
   });
+  it('does not repeat permanent preflight failures or label them connection errors', async () => {
+    const f = fixture();
+    f.send.mockImplementation(async () => { throw new GbutsChatDeliveryError('단일 안내문 크기 초과', false, false); });
+    await syncGbutsOtt(f.deps, f.client as any, f.send);
+    await syncGbutsOtt(f.deps, f.client as any, f.send);
+    expect(f.send).toHaveBeenCalledOnce(); expect(f.store.orders['100:1'].delivery).toBe('blocked');
+    expect(f.store.orders['100:1'].error).toBe('단일 안내문 크기 초과');
+    expect(f.store.orders['100:1'].attemptedAt).toBeUndefined();
+  });
+  it('resumes a never-sent buyer when a temporarily missing roster entry returns', async () => {
+    const f = fixture(); const saved = f.members;
+    f.deps.writeStore({ ...f.store, orders: { '100:1': fixtureOrder() } });
+    f.members = []; await syncGbutsOtt(f.deps, f.client as any, f.send);
+    f.members = saved; await syncGbutsOtt(f.deps, f.client as any, f.send);
+    expect(f.send).toHaveBeenCalledOnce(); expect(f.store.orders['100:1'].delivery).toBe('confirmed');
+  });
   it('keeps distinct orders separate even when buyer names are identical', async () => {
     const f = fixture(); f.members = [...f.members, { ...f.members[0], seq: 2, userSeq: 20 }];
     await syncGbutsOtt(f.deps, f.client as any, f.send); expect(f.send).toHaveBeenCalledTimes(2);

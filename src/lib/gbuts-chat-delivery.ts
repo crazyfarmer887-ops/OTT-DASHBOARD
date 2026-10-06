@@ -29,5 +29,5 @@ export function gbutsChatContainsText(messages: readonly GbutsTextMessage[], sel
 }
 /** Only a failure before any SEND is safe to retry without an uncertain outcome. */
 export class GbutsChatDeliveryError extends Error {
-  constructor(message: string, readonly submitted: boolean) { super(message); this.name = 'GbutsChatDeliveryError'; }
+  constructor(message: string, readonly submitted: boolean, readonly retryable = !submitted) { super(message); this.name = 'GbutsChatDeliveryError'; }
 }

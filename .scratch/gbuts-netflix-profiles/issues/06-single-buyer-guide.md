@@ -17,3 +17,8 @@ Use the user's shortened Netflix guide, replacing the placeholder with each actu
 
 ## Live scope
 No test messages to existing customers. GButs does not allow self PERSONAL rooms or empty GROUP rooms; live receipt of the new single guide can only be verified when a genuinely new buyer arrives or a separate authorized test recipient is supplied. Deployment smoke checks must report this limitation accurately.
+
+## Review correction / verification
+- Standards review identified a valid long room ID could exceed the conservative frame budget and retry forever. Permanent preflight failures now block with their actual explanation; temporary connection failures still retry. Recovery of never-sent MISSING orders is preserved.
+- Actual production identifier sizes: room ID12 characters, seller ID6 digits, buyer token32 characters. The one-frame test now uses those exact lengths. Longer IDs are covered by explicit permanent-failure tests.
+- Focused tests: 61 passed. Targeted server typecheck/build passed before review correction; repeated release checks follow.
