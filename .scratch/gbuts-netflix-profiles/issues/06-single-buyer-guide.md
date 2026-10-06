@@ -1,6 +1,6 @@
 # One private guide for future Netflix buyers
 
-Status: implementing
+Status: deployed (dc98f28); live single-guide receipt awaiting a new buyer
 Baseline: 0960dfd
 
 ## Approved request
@@ -22,3 +22,10 @@ No test messages to existing customers. GButs does not allow self PERSONAL rooms
 - Standards review identified a valid long room ID could exceed the conservative frame budget and retry forever. Permanent preflight failures now block with their actual explanation; temporary connection failures still retry. Recovery of never-sent MISSING orders is preserved.
 - Actual production identifier sizes: room ID12 characters, seller ID6 digits, buyer token32 characters. The one-frame test now uses those exact lengths. Longer IDs are covered by explicit permanent-failure tests.
 - Focused tests: 61 passed. Targeted server typecheck/build passed before review correction; repeated release checks follow.
+
+## Final release evidence
+- Focused tests61 passed. Full release suite1,051 passed /153 existing failures; no new failures. Server typecheck/build passed. Final Spec and Standards reviews: no remaining blocking findings.
+- Deployed committed release /home/ubuntu/releases/aio-dashboard-dc98f28; service active, worker enabled, configured proxy retained.
+- Ping/session200, unauthenticated inventory403. Current real buyer identifiers give compact text397 characters / complete SEND979 bytes, within the single-frame budget.
+- Two existing orders are confirmed using prior guides and are not replayed. One joined during rollout before the new release was active. Current buyer chat count remains8 (one buyer message plus prior seven guide paragraphs).
+- lastSuccess fresh and lastError/orderError clear. No actual new single guide has yet been received by a genuinely new post-deployment buyer; tests establish one SEND and persistence behavior, not unpublished GButs backend limits.
