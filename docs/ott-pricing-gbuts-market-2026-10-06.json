@@ -1,0 +1,3738 @@
+{
+  "observedAt": "2026-10-06T09:58:50.715730+09:00",
+  "recentCreatedWindow": "2026-09-06 through 2026-10-06",
+  "method": "Public official subscription API, up to 5 pages x100 per category. API status filter is ignored. Full means memberCount == memberLimit > 0, not payment or payout confirmation. Original duration is end-start and may exceed policy cap for migrated records. Prices are current listing prices, not verified past transaction prices.",
+  "summary": [
+    {
+      "service": "YouTube",
+      "recentListings": 145,
+      "fullListings": 119,
+      "partialListings": 18,
+      "emptyListings": 8,
+      "fullMedianPrice": 200.0,
+      "fullPrices": {
+        "330.0": 1,
+        "190.0": 16,
+        "200.0": 45,
+        "220.0": 28,
+        "240.0": 18,
+        "210.0": 1,
+        "150.0": 3,
+        "180.0": 5,
+        "140.0": 2
+      },
+      "fullMedianOriginalDays": 365.0,
+      "fullNewestCreated": "2026-09-24 14:23:16",
+      "fullRenewalCount": 1,
+      "examples": [
+        {
+          "seq": 14842,
+          "price": 330.0,
+          "originalDurationDays": 60.0,
+          "memberCount": 6,
+          "memberLimit": 6,
+          "createdAt": "2026-09-24 14:23:16"
+        },
+        {
+          "seq": 14809,
+          "price": 190.0,
+          "originalDurationDays": 189.0,
+          "memberCount": 6,
+          "memberLimit": 6,
+          "createdAt": "2026-09-24 02:09:35"
+        },
+        {
+          "seq": 14793,
+          "price": 190.0,
+          "originalDurationDays": 189.0,
+          "memberCount": 6,
+          "memberLimit": 6,
+          "createdAt": "2026-09-24 00:09:01"
+        }
+      ]
+    },
+    {
+      "service": "Spotify",
+      "recentListings": 14,
+      "fullListings": 12,
+      "partialListings": 1,
+      "emptyListings": 1,
+      "fullMedianPrice": 150.0,
+      "fullPrices": {
+        "150.0": 6,
+        "110.0": 1,
+        "155.0": 2,
+        "220.0": 1,
+        "100.0": 1,
+        "140.0": 1
+      },
+      "fullMedianOriginalDays": 59.53395833333333,
+      "fullNewestCreated": "2026-10-04 04:42:03",
+      "fullRenewalCount": 10,
+      "examples": [
+        {
+          "seq": 14799,
+          "price": 150.0,
+          "originalDurationDays": 91.0,
+          "memberCount": 4,
+          "memberLimit": 4,
+          "createdAt": "2026-09-24 00:26:49"
+        },
+        {
+          "seq": 14525,
+          "price": 150.0,
+          "originalDurationDays": 91.0,
+          "memberCount": 2,
+          "memberLimit": 2,
+          "createdAt": "2026-09-20 11:04:02"
+        },
+        {
+          "seq": 14240,
+          "price": 150.0,
+          "originalDurationDays": 94.0,
+          "memberCount": 2,
+          "memberLimit": 2,
+          "createdAt": "2026-09-16 00:28:21"
+        }
+      ]
+    },
+    {
+      "service": "Netflix",
+      "recentListings": 177,
+      "fullListings": 111,
+      "partialListings": 54,
+      "emptyListings": 12,
+      "fullMedianPrice": 240.0,
+      "fullPrices": {
+        "200.0": 4,
+        "190.0": 2,
+        "230.0": 25,
+        "240.0": 38,
+        "235.0": 8,
+        "245.0": 5,
+        "250.0": 11,
+        "180.0": 1,
+        "290.0": 2,
+        "239.0": 4,
+        "280.0": 1,
+        "300.0": 3,
+        "260.0": 3,
+        "219.0": 2,
+        "170.0": 2
+      },
+      "fullMedianOriginalDays": 30.0,
+      "fullNewestCreated": "2026-09-28 09:19:45",
+      "fullRenewalCount": 6,
+      "examples": [
+        {
+          "seq": 15053,
+          "price": 200.0,
+          "originalDurationDays": 29.0,
+          "memberCount": 5,
+          "memberLimit": 5,
+          "createdAt": "2026-09-28 09:19:45"
+        },
+        {
+          "seq": 15027,
+          "price": 190.0,
+          "originalDurationDays": 29.0,
+          "memberCount": 4,
+          "memberLimit": 4,
+          "createdAt": "2026-09-27 23:02:57"
+        },
+        {
+          "seq": 15022,
+          "price": 230.0,
+          "originalDurationDays": 30.0,
+          "memberCount": 5,
+          "memberLimit": 5,
+          "createdAt": "2026-09-27 21:38:24"
+        }
+      ]
+    },
+    {
+      "service": "Disney+",
+      "recentListings": 246,
+      "fullListings": 217,
+      "partialListings": 21,
+      "emptyListings": 8,
+      "fullMedianPrice": 190.0,
+      "fullPrices": {
+        "225.0": 1,
+        "260.0": 4,
+        "190.0": 111,
+        "200.0": 12,
+        "179.0": 2,
+        "250.0": 1,
+        "185.0": 10,
+        "180.0": 33,
+        "265.0": 1,
+        "255.0": 2,
+        "170.0": 18,
+        "120.0": 11,
+        "130.0": 1,
+        "150.0": 1,
+        "189.0": 2,
+        "300.0": 1,
+        "210.0": 1,
+        "220.0": 1,
+        "140.0": 1,
+        "245.0": 1,
+        "195.0": 2
+      },
+      "fullMedianOriginalDays": 36.0,
+      "fullNewestCreated": "2026-09-28 05:02:05",
+      "fullRenewalCount": 2,
+      "examples": [
+        {
+          "seq": 15036,
+          "price": 225.0,
+          "originalDurationDays": 30.0,
+          "memberCount": 5,
+          "memberLimit": 5,
+          "createdAt": "2026-09-28 05:02:05"
+        },
+        {
+          "seq": 15030,
+          "price": 260.0,
+          "originalDurationDays": 14.0,
+          "memberCount": 5,
+          "memberLimit": 5,
+          "createdAt": "2026-09-27 23:39:25"
+        },
+        {
+          "seq": 14989,
+          "price": 190.0,
+          "originalDurationDays": 37.0,
+          "memberCount": 5,
+          "memberLimit": 5,
+          "createdAt": "2026-09-27 10:53:03"
+        }
+      ]
+    },
+    {
+      "service": "TVING",
+      "recentListings": 82,
+      "fullListings": 67,
+      "partialListings": 6,
+      "emptyListings": 9,
+      "fullMedianPrice": 270.0,
+      "fullPrices": {
+        "270.0": 38,
+        "136.0": 1,
+        "240.0": 1,
+        "264.0": 1,
+        "230.0": 3,
+        "300.0": 6,
+        "180.0": 2,
+        "260.0": 1,
+        "255.0": 1,
+        "265.0": 1,
+        "269.0": 1,
+        "167.0": 1,
+        "200.0": 4,
+        "250.0": 2,
+        "35.0": 1,
+        "280.0": 3
+      },
+      "fullMedianOriginalDays": 30.0,
+      "fullNewestCreated": "2026-10-05 16:56:35",
+      "fullRenewalCount": 3,
+      "examples": [
+        {
+          "seq": 15031,
+          "price": 270.0,
+          "originalDurationDays": 30.0,
+          "memberCount": 4,
+          "memberLimit": 4,
+          "createdAt": "2026-09-27 23:47:29"
+        },
+        {
+          "seq": 15007,
+          "price": 270.0,
+          "originalDurationDays": 28.0,
+          "memberCount": 4,
+          "memberLimit": 4,
+          "createdAt": "2026-09-27 19:08:06"
+        },
+        {
+          "seq": 14953,
+          "price": 136.0,
+          "originalDurationDays": 30.0,
+          "memberCount": 3,
+          "memberLimit": 3,
+          "createdAt": "2026-09-26 21:48:41"
+        }
+      ]
+    },
+    {
+      "service": "Wavve",
+      "recentListings": 80,
+      "fullListings": 75,
+      "partialListings": 4,
+      "emptyListings": 1,
+      "fullMedianPrice": 150.0,
+      "fullPrices": {
+        "140.0": 17,
+        "150.0": 46,
+        "139.0": 1,
+        "110.0": 2,
+        "120.0": 4,
+        "128.0": 1,
+        "138.0": 2,
+        "130.0": 1,
+        "135.0": 1
+      },
+      "fullMedianOriginalDays": 30.0,
+      "fullNewestCreated": "2026-09-26 09:09:23",
+      "fullRenewalCount": 27,
+      "examples": [
+        {
+          "seq": 14926,
+          "price": 140.0,
+          "originalDurationDays": 31.0,
+          "memberCount": 4,
+          "memberLimit": 4,
+          "createdAt": "2026-09-26 09:09:23"
+        },
+        {
+          "seq": 14917,
+          "price": 140.0,
+          "originalDurationDays": 31.0,
+          "memberCount": 4,
+          "memberLimit": 4,
+          "createdAt": "2026-09-26 04:36:01"
+        },
+        {
+          "seq": 14916,
+          "price": 140.0,
+          "originalDurationDays": 30.0,
+          "memberCount": 4,
+          "memberLimit": 4,
+          "createdAt": "2026-09-26 03:51:01"
+        }
+      ]
+    }
+  ],
+  "categories": [
+    {
+      "service": "YouTube",
+      "pages": [
+        {
+          "url": "https://api.gbuts.com/api/subscribe/share?page=1&categorySeqs=7&size=100",
+          "count": 100,
+          "pagination": {
+            "startNum": 0,
+            "endNum": 100,
+            "totalCount": 7213,
+            "currentPage": 1,
+            "totalPage": 73,
+            "displayPage": 5,
+            "beginPage": 1,
+            "endPage": 5,
+            "prevPage": 1,
+            "nextPage": 6
+          }
+        },
+        {
+          "url": "https://api.gbuts.com/api/subscribe/share?page=2&categorySeqs=7&size=100",
+          "count": 100,
+          "pagination": {
+            "startNum": 100,
+            "endNum": 100,
+            "totalCount": 7213,
+            "currentPage": 2,
+            "totalPage": 73,
+            "displayPage": 5,
+            "beginPage": 1,
+            "endPage": 5,
+            "prevPage": 1,
+            "nextPage": 6
+          }
+        },
+        {
+          "url": "https://api.gbuts.com/api/subscribe/share?page=3&categorySeqs=7&size=100",
+          "count": 100,
+          "pagination": {
+            "startNum": 200,
+            "endNum": 100,
+            "totalCount": 7213,
+            "currentPage": 3,
+            "totalPage": 73,
+            "displayPage": 5,
+            "beginPage": 1,
+            "endPage": 5,
+            "prevPage": 1,
+            "nextPage": 6
+          }
+        },
+        {
+          "url": "https://api.gbuts.com/api/subscribe/share?page=4&categorySeqs=7&size=100",
+          "count": 100,
+          "pagination": {
+            "startNum": 300,
+            "endNum": 100,
+            "totalCount": 7213,
+            "currentPage": 4,
+            "totalPage": 73,
+            "displayPage": 5,
+            "beginPage": 1,
+            "endPage": 5,
+            "prevPage": 1,
+            "nextPage": 6
+          }
+        },
+        {
+          "url": "https://api.gbuts.com/api/subscribe/share?page=5&categorySeqs=7&size=100",
+          "count": 100,
+          "pagination": {
+            "startNum": 400,
+            "endNum": 100,
+            "totalCount": 7213,
+            "currentPage": 5,
+            "totalPage": 73,
+            "displayPage": 5,
+            "beginPage": 1,
+            "endPage": 5,
+            "prevPage": 1,
+            "nextPage": 6
+          }
+        }
+      ],
+      "fetchedCount": 500,
+      "fullSellerStats": {
+        "uniqueSellers": 7,
+        "medianSellerDailyPrice": 200.0,
+        "sellers": [
+          {
+            "sellerAnonymous": "9b62699b1896",
+            "listingCount": 1,
+            "medianDailyPrice": 330.0,
+            "medianOriginalDurationDays": 60.0
+          },
+          {
+            "sellerAnonymous": "838cf7f2d53c",
+            "listingCount": 43,
+            "medianDailyPrice": 220.0,
+            "medianOriginalDurationDays": 197.0
+          },
+          {
+            "sellerAnonymous": "15f8f28f103f",
+            "listingCount": 11,
+            "medianDailyPrice": 200.0,
+            "medianOriginalDurationDays": 365.0
+          },
+          {
+            "sellerAnonymous": "9a18b900e519",
+            "listingCount": 42,
+            "medianDailyPrice": 200.0,
+            "medianOriginalDurationDays": 365.0
+          },
+          {
+            "sellerAnonymous": "b03e77c57a1f",
+            "listingCount": 8,
+            "medianDailyPrice": 180.0,
+            "medianOriginalDurationDays": 373.0
+          },
+          {
+            "sellerAnonymous": "8bc90b7f15b9",
+            "listingCount": 12,
+            "medianDailyPrice": 200.0,
+            "medianOriginalDurationDays": 376.5
+          },
+          {
+            "sellerAnonymous": "06a072760cfa",
+            "listingCount": 2,
+            "medianDailyPrice": 140.0,
+            "medianOriginalDurationDays": 371.0
+          }
+        ]
+      },
+      "occupiedSellerStats": {
+        "uniqueSellers": 9,
+        "medianSellerDailyPrice": 200.0,
+        "sellers": [
+          {
+            "sellerAnonymous": "b03e77c57a1f",
+            "listingCount": 12,
+            "medianDailyPrice": 185.0,
+            "medianOriginalDurationDays": 373.0
+          },
+          {
+            "sellerAnonymous": "9a18b900e519",
+            "listingCount": 44,
+            "medianDailyPrice": 200.0,
+            "medianOriginalDurationDays": 365.0
+          },
+          {
+            "sellerAnonymous": "a2bc6e340a38",
+            "listingCount": 8,
+            "medianDailyPrice": 330.0,
+            "medianOriginalDurationDays": 107.5
+          },
+          {
+            "sellerAnonymous": "8b19755191ae",
+            "listingCount": 1,
+            "medianDailyPrice": 210.0,
+            "medianOriginalDurationDays": 364.55525462962964
+          },
+          {
+            "sellerAnonymous": "9b62699b1896",
+            "listingCount": 3,
+            "medianDailyPrice": 330.0,
+            "medianOriginalDurationDays": 61.0
+          },
+          {
+            "sellerAnonymous": "838cf7f2d53c",
+            "listingCount": 43,
+            "medianDailyPrice": 220.0,
+            "medianOriginalDurationDays": 197.0
+          },
+          {
+            "sellerAnonymous": "15f8f28f103f",
+            "listingCount": 11,
+            "medianDailyPrice": 200.0,
+            "medianOriginalDurationDays": 365.0
+          },
+          {
+            "sellerAnonymous": "06a072760cfa",
+            "listingCount": 3,
+            "medianDailyPrice": 140.0,
+            "medianOriginalDurationDays": 370.0
+          },
+          {
+            "sellerAnonymous": "8bc90b7f15b9",
+            "listingCount": 12,
+            "medianDailyPrice": 200.0,
+            "medianOriginalDurationDays": 376.5
+          }
+        ]
+      },
+      "freshSince20260929": {
+        "listings": 13,
+        "occupied": 9,
+        "full": 0,
+        "occupiedSellerStats": {
+          "uniqueSellers": 4,
+          "medianSellerDailyPrice": 272.5,
+          "sellers": [
+            {
+              "sellerAnonymous": "b03e77c57a1f",
+              "listingCount": 4,
+              "medianDailyPrice": 230.0,
+              "medianOriginalDurationDays": 364.2113831018519
+            },
+            {
+              "sellerAnonymous": "9a18b900e519",
+              "listingCount": 2,
+              "medianDailyPrice": 315.0,
+              "medianOriginalDurationDays": 150.7402372685185
+            },
+            {
+              "sellerAnonymous": "a2bc6e340a38",
+              "listingCount": 2,
+              "medianDailyPrice": 330.0,
+              "medianOriginalDurationDays": 88.27757523148148
+            },
+            {
+              "sellerAnonymous": "8b19755191ae",
+              "listingCount": 1,
+              "medianDailyPrice": 210.0,
+              "medianOriginalDurationDays": 364.55525462962964
+            }
+          ]
+        },
+        "fullSellerStats": {
+          "uniqueSellers": 0,
+          "medianSellerDailyPrice": null,
+          "sellers": []
+        }
+      },
+      "selectedExamples": [
+        {
+          "seq": 15864,
+          "createdAt": "2026-10-06 07:04:19",
+          "subscriptionStartsAt": "2026-10-06 07:04:19",
+          "subscriptionEndsAt": "2027-10-06 00:00:00",
+          "price": 230.0,
+          "priceType": "DAY",
+          "memberCount": 0,
+          "memberLimit": 7,
+          "status": "ON_SALE",
+          "salesAmount": null,
+          "settlementAmount": null,
+          "countries": [
+            "KR"
+          ],
+          "subscriptionType": "INVITE",
+          "service": "YouTube",
+          "sellerAnonymous": "9a18b900e519",
+          "source": "https://gbuts.com/subscriptions/15864",
+          "renewalMentioned": true,
+          "tvUnavailableMentioned": false,
+          "originalDurationDays": 364.70533564814815
+        },
+        {
+          "seq": 15847,
+          "createdAt": "2026-10-06 00:02:13",
+          "subscriptionStartsAt": "2026-10-06 00:02:12",
+          "subscriptionEndsAt": "2027-10-06 00:00:00",
+          "price": 230.0,
+          "priceType": "DAY",
+          "memberCount": 0,
+          "memberLimit": 7,
+          "status": "ON_SALE",
+          "salesAmount": null,
+          "settlementAmount": null,
+          "countries": [
+            "KR"
+          ],
+          "subscriptionType": "INVITE",
+          "service": "YouTube",
+          "sellerAnonymous": "b03e77c57a1f",
+          "source": "https://gbuts.com/subscriptions/15847",
+          "renewalMentioned": false,
+          "tvUnavailableMentioned": false,
+          "originalDurationDays": 364.99847222222223
+        },
+        {
+          "seq": 15845,
+          "createdAt": "2026-10-06 00:01:46",
+          "subscriptionStartsAt": "2026-10-06 00:01:46",
+          "subscriptionEndsAt": "2027-10-06 00:00:00",
+          "price": 230.0,
+          "priceType": "DAY",
+          "memberCount": 0,
+          "memberLimit": 7,
+          "status": "ON_SALE",
+          "salesAmount": null,
+          "settlementAmount": null,
+          "countries": [
+            "KR"
+          ],
+          "subscriptionType": "INVITE",
+          "service": "YouTube",
+          "sellerAnonymous": "b03e77c57a1f",
+          "source": "https://gbuts.com/subscriptions/15845",
+          "renewalMentioned": false,
+          "tvUnavailableMentioned": false,
+          "originalDurationDays": 364.99877314814813
+        },
+        {
+          "seq": 15818,
+          "createdAt": "2026-10-05 18:56:26",
+          "subscriptionStartsAt": "2026-10-05 18:56:26",
+          "subscriptionEndsAt": "2027-10-05 00:00:00",
+          "price": 230.0,
+          "priceType": "DAY",
+          "memberCount": 2,
+          "memberLimit": 7,
+          "status": "ON_SALE",
+          "salesAmount": null,
+          "settlementAmount": null,
+          "countries": [
+            "KR"
+          ],
+          "subscriptionType": "INVITE",
+          "service": "YouTube",
+          "sellerAnonymous": "b03e77c57a1f",
+          "source": "https://gbuts.com/subscriptions/15818",
+          "renewalMentioned": false,
+          "tvUnavailableMentioned": false,
+          "originalDurationDays": 364.2108101851852
+        },
+        {
+          "seq": 15817,
+          "createdAt": "2026-10-05 18:55:52",
+          "subscriptionStartsAt": "2026-10-05 18:55:52",
+          "subscriptionEndsAt": "2027-10-05 00:00:00",
+          "price": 230.0,
+          "priceType": "DAY",
+          "memberCount": 1,
+          "memberLimit": 7,
+          "status": "ON_SALE",
+          "salesAmount": null,
+          "settlementAmount": null,
+          "countries": [
+            "KR"
+          ],
+          "subscriptionType": "INVITE",
+          "service": "YouTube",
+          "sellerAnonymous": "b03e77c57a1f",
+          "source": "https://gbuts.com/subscriptions/15817",
+          "renewalMentioned": false,
+          "tvUnavailableMentioned": false,
+          "originalDurationDays": 364.2112037037037
+        },
+        {
+          "seq": 14842,
+          "createdAt": "2026-09-24 14:23:16",
+          "subscriptionStartsAt": "2026-09-24 05:23:16",
+          "subscriptionEndsAt": "2026-11-23 05:23:16",
+          "price": 330.0,
+          "priceType": "DAY",
+          "memberCount": 6,
+          "memberLimit": 6,
+          "status": "ON_SALE",
+          "salesAmount": null,
+          "settlementAmount": null,
+          "countries": [
+            "KR"
+          ],
+          "subscriptionType": "SHARE",
+          "service": "YouTube",
+          "sellerAnonymous": "9b62699b1896",
+          "source": "https://gbuts.com/subscriptions/14842",
+          "renewalMentioned": true,
+          "tvUnavailableMentioned": false,
+          "originalDurationDays": 60.0
+        },
+        {
+          "seq": 14809,
+          "createdAt": "2026-09-24 02:09:35",
+          "subscriptionStartsAt": "2026-09-23 17:09:35",
+          "subscriptionEndsAt": "2027-03-31 17:09:35",
+          "price": 190.0,
+          "priceType": "DAY",
+          "memberCount": 6,
+          "memberLimit": 6,
+          "status": "ON_SALE",
+          "salesAmount": null,
+          "settlementAmount": null,
+          "countries": [
+            "KR"
+          ],
+          "subscriptionType": "SHARE",
+          "service": "YouTube",
+          "sellerAnonymous": "838cf7f2d53c",
+          "source": "https://gbuts.com/subscriptions/14809",
+          "renewalMentioned": false,
+          "tvUnavailableMentioned": false,
+          "originalDurationDays": 189.0
+        },
+        {
+          "seq": 14793,
+          "createdAt": "2026-09-24 00:09:01",
+          "subscriptionStartsAt": "2026-09-23 15:09:01",
+          "subscriptionEndsAt": "2027-03-31 15:09:01",
+          "price": 190.0,
+          "priceType": "DAY",
+          "memberCount": 6,
+          "memberLimit": 6,
+          "status": "ON_SALE",
+          "salesAmount": null,
+          "settlementAmount": null,
+          "countries": [
+            "KR"
+          ],
+          "subscriptionType": "SHARE",
+          "service": "YouTube",
+          "sellerAnonymous": "838cf7f2d53c",
+          "source": "https://gbuts.com/subscriptions/14793",
+          "renewalMentioned": false,
+          "tvUnavailableMentioned": false,
+          "originalDurationDays": 189.0
+        }
+      ]
+    },
+    {
+      "service": "Spotify",
+      "pages": [
+        {
+          "url": "https://api.gbuts.com/api/subscribe/share?page=1&categorySeqs=20&size=100",
+          "count": 100,
+          "pagination": {
+            "startNum": 0,
+            "endNum": 100,
+            "totalCount": 223,
+            "currentPage": 1,
+            "totalPage": 3,
+            "displayPage": 5,
+            "beginPage": 1,
+            "endPage": 3,
+            "prevPage": 1,
+            "nextPage": 3
+          }
+        },
+        {
+          "url": "https://api.gbuts.com/api/subscribe/share?page=2&categorySeqs=20&size=100",
+          "count": 100,
+          "pagination": {
+            "startNum": 100,
+            "endNum": 100,
+            "totalCount": 223,
+            "currentPage": 2,
+            "totalPage": 3,
+            "displayPage": 5,
+            "beginPage": 1,
+            "endPage": 3,
+            "prevPage": 1,
+            "nextPage": 3
+          }
+        },
+        {
+          "url": "https://api.gbuts.com/api/subscribe/share?page=3&categorySeqs=20&size=100",
+          "count": 23,
+          "pagination": {
+            "startNum": 200,
+            "endNum": 100,
+            "totalCount": 223,
+            "currentPage": 3,
+            "totalPage": 3,
+            "displayPage": 5,
+            "beginPage": 1,
+            "endPage": 3,
+            "prevPage": 1,
+            "nextPage": 3
+          }
+        }
+      ],
+      "fetchedCount": 223,
+      "fullSellerStats": {
+        "uniqueSellers": 5,
+        "medianSellerDailyPrice": 140.0,
+        "sellers": [
+          {
+            "sellerAnonymous": "0ea217c6c28b",
+            "listingCount": 8,
+            "medianDailyPrice": 150.0,
+            "medianOriginalDurationDays": 75.13187500000001
+          },
+          {
+            "sellerAnonymous": "3f69f9457163",
+            "listingCount": 1,
+            "medianDailyPrice": 110.0,
+            "medianOriginalDurationDays": 34.0
+          },
+          {
+            "sellerAnonymous": "e8e0d1695433",
+            "listingCount": 1,
+            "medianDailyPrice": 220.0,
+            "medianOriginalDurationDays": 34.0
+          },
+          {
+            "sellerAnonymous": "32aa9047346a",
+            "listingCount": 1,
+            "medianDailyPrice": 100.0,
+            "medianOriginalDurationDays": 59.80416666666667
+          },
+          {
+            "sellerAnonymous": "3a9744a9523d",
+            "listingCount": 1,
+            "medianDailyPrice": 140.0,
+            "medianOriginalDurationDays": 363.2655555555556
+          }
+        ]
+      },
+      "occupiedSellerStats": {
+        "uniqueSellers": 5,
+        "medianSellerDailyPrice": 140.0,
+        "sellers": [
+          {
+            "sellerAnonymous": "0ea217c6c28b",
+            "listingCount": 9,
+            "medianDailyPrice": 150.0,
+            "medianOriginalDurationDays": 91.0
+          },
+          {
+            "sellerAnonymous": "3f69f9457163",
+            "listingCount": 1,
+            "medianDailyPrice": 110.0,
+            "medianOriginalDurationDays": 34.0
+          },
+          {
+            "sellerAnonymous": "e8e0d1695433",
+            "listingCount": 1,
+            "medianDailyPrice": 220.0,
+            "medianOriginalDurationDays": 34.0
+          },
+          {
+            "sellerAnonymous": "32aa9047346a",
+            "listingCount": 1,
+            "medianDailyPrice": 100.0,
+            "medianOriginalDurationDays": 59.80416666666667
+          },
+          {
+            "sellerAnonymous": "3a9744a9523d",
+            "listingCount": 1,
+            "medianDailyPrice": 140.0,
+            "medianOriginalDurationDays": 363.2655555555556
+          }
+        ]
+      },
+      "freshSince20260929": {
+        "listings": 4,
+        "occupied": 3,
+        "full": 3,
+        "occupiedSellerStats": {
+          "uniqueSellers": 3,
+          "medianSellerDailyPrice": 140.0,
+          "sellers": [
+            {
+              "sellerAnonymous": "32aa9047346a",
+              "listingCount": 1,
+              "medianDailyPrice": 100.0,
+              "medianOriginalDurationDays": 59.80416666666667
+            },
+            {
+              "sellerAnonymous": "3a9744a9523d",
+              "listingCount": 1,
+              "medianDailyPrice": 140.0,
+              "medianOriginalDurationDays": 363.2655555555556
+            },
+            {
+              "sellerAnonymous": "0ea217c6c28b",
+              "listingCount": 1,
+              "medianDailyPrice": 150.0,
+              "medianOriginalDurationDays": 59.26375
+            }
+          ]
+        },
+        "fullSellerStats": {
+          "uniqueSellers": 3,
+          "medianSellerDailyPrice": 140.0,
+          "sellers": [
+            {
+              "sellerAnonymous": "32aa9047346a",
+              "listingCount": 1,
+              "medianDailyPrice": 100.0,
+              "medianOriginalDurationDays": 59.80416666666667
+            },
+            {
+              "sellerAnonymous": "3a9744a9523d",
+              "listingCount": 1,
+              "medianDailyPrice": 140.0,
+              "medianOriginalDurationDays": 363.2655555555556
+            },
+            {
+              "sellerAnonymous": "0ea217c6c28b",
+              "listingCount": 1,
+              "medianDailyPrice": 150.0,
+              "medianOriginalDurationDays": 59.26375
+            }
+          ]
+        }
+      },
+      "selectedExamples": [
+        {
+          "seq": 15691,
+          "createdAt": "2026-10-04 04:42:03",
+          "subscriptionStartsAt": "2026-10-04 04:42:00",
+          "subscriptionEndsAt": "2026-12-03 00:00:00",
+          "price": 100.0,
+          "priceType": "DAY",
+          "memberCount": 1,
+          "memberLimit": 1,
+          "status": "CLOSED",
+          "salesAmount": null,
+          "settlementAmount": null,
+          "countries": [
+            "KR",
+            "IN"
+          ],
+          "subscriptionType": "SHARE",
+          "service": "Spotify",
+          "sellerAnonymous": "32aa9047346a",
+          "source": "https://gbuts.com/subscriptions/15691",
+          "renewalMentioned": false,
+          "tvUnavailableMentioned": false,
+          "originalDurationDays": 59.80416666666667
+        },
+        {
+          "seq": 15557,
+          "createdAt": "2026-10-02 17:37:36",
+          "subscriptionStartsAt": "2026-10-02 17:37:36",
+          "subscriptionEndsAt": "2027-10-01 00:00:00",
+          "price": 140.0,
+          "priceType": "DAY",
+          "memberCount": 5,
+          "memberLimit": 5,
+          "status": "CLOSED",
+          "salesAmount": null,
+          "settlementAmount": null,
+          "countries": [
+            "KR"
+          ],
+          "subscriptionType": "INVITE",
+          "service": "Spotify",
+          "sellerAnonymous": "3a9744a9523d",
+          "source": "https://gbuts.com/subscriptions/15557",
+          "renewalMentioned": false,
+          "tvUnavailableMentioned": false,
+          "originalDurationDays": 363.2655555555556
+        },
+        {
+          "seq": 15327,
+          "createdAt": "2026-09-30 12:50:45",
+          "subscriptionStartsAt": "2026-10-03 17:40:12",
+          "subscriptionEndsAt": "2026-12-02 00:00:00",
+          "price": 150.0,
+          "priceType": "DAY",
+          "memberCount": 1,
+          "memberLimit": 1,
+          "status": "CLOSED",
+          "salesAmount": null,
+          "settlementAmount": null,
+          "countries": [
+            "KR"
+          ],
+          "subscriptionType": "INVITE",
+          "service": "Spotify",
+          "sellerAnonymous": "0ea217c6c28b",
+          "source": "https://gbuts.com/subscriptions/15327",
+          "renewalMentioned": true,
+          "tvUnavailableMentioned": false,
+          "originalDurationDays": 59.26375
+        },
+        {
+          "seq": 15286,
+          "createdAt": "2026-09-29 23:32:08",
+          "subscriptionStartsAt": "2026-10-01 14:49:57",
+          "subscriptionEndsAt": "2026-12-30 00:00:00",
+          "price": 150.0,
+          "priceType": "DAY",
+          "memberCount": 0,
+          "memberLimit": 2,
+          "status": "CLOSED",
+          "salesAmount": null,
+          "settlementAmount": null,
+          "countries": [
+            "KR"
+          ],
+          "subscriptionType": "INVITE",
+          "service": "Spotify",
+          "sellerAnonymous": "0ea217c6c28b",
+          "source": "https://gbuts.com/subscriptions/15286",
+          "renewalMentioned": true,
+          "tvUnavailableMentioned": false,
+          "originalDurationDays": 89.38197916666667
+        },
+        {
+          "seq": 14799,
+          "createdAt": "2026-09-24 00:26:49",
+          "subscriptionStartsAt": "2026-09-23 15:26:49",
+          "subscriptionEndsAt": "2026-12-23 15:26:49",
+          "price": 150.0,
+          "priceType": "DAY",
+          "memberCount": 4,
+          "memberLimit": 4,
+          "status": "ON_SALE",
+          "salesAmount": null,
+          "settlementAmount": null,
+          "countries": [
+            "KR"
+          ],
+          "subscriptionType": "SHARE",
+          "service": "Spotify",
+          "sellerAnonymous": "0ea217c6c28b",
+          "source": "https://gbuts.com/subscriptions/14799",
+          "renewalMentioned": true,
+          "tvUnavailableMentioned": false,
+          "originalDurationDays": 91.0
+        },
+        {
+          "seq": 14525,
+          "createdAt": "2026-09-20 11:04:02",
+          "subscriptionStartsAt": "2026-09-20 02:04:02",
+          "subscriptionEndsAt": "2026-12-20 02:04:02",
+          "price": 150.0,
+          "priceType": "DAY",
+          "memberCount": 2,
+          "memberLimit": 2,
+          "status": "ON_SALE",
+          "salesAmount": null,
+          "settlementAmount": null,
+          "countries": [
+            "KR"
+          ],
+          "subscriptionType": "SHARE",
+          "service": "Spotify",
+          "sellerAnonymous": "0ea217c6c28b",
+          "source": "https://gbuts.com/subscriptions/14525",
+          "renewalMentioned": true,
+          "tvUnavailableMentioned": false,
+          "originalDurationDays": 91.0
+        },
+        {
+          "seq": 14240,
+          "createdAt": "2026-09-16 00:28:21",
+          "subscriptionStartsAt": "2026-09-15 15:28:21",
+          "subscriptionEndsAt": "2026-12-18 15:28:21",
+          "price": 150.0,
+          "priceType": "DAY",
+          "memberCount": 2,
+          "memberLimit": 2,
+          "status": "ON_SALE",
+          "salesAmount": null,
+          "settlementAmount": null,
+          "countries": [
+            "KR"
+          ],
+          "subscriptionType": "SHARE",
+          "service": "Spotify",
+          "sellerAnonymous": "0ea217c6c28b",
+          "source": "https://gbuts.com/subscriptions/14240",
+          "renewalMentioned": true,
+          "tvUnavailableMentioned": false,
+          "originalDurationDays": 94.0
+        }
+      ]
+    },
+    {
+      "service": "Netflix",
+      "pages": [
+        {
+          "url": "https://api.gbuts.com/api/subscribe/share?page=1&categorySeqs=5&size=100",
+          "count": 100,
+          "pagination": {
+            "startNum": 0,
+            "endNum": 100,
+            "totalCount": 911,
+            "currentPage": 1,
+            "totalPage": 10,
+            "displayPage": 5,
+            "beginPage": 1,
+            "endPage": 5,
+            "prevPage": 1,
+            "nextPage": 6
+          }
+        },
+        {
+          "url": "https://api.gbuts.com/api/subscribe/share?page=2&categorySeqs=5&size=100",
+          "count": 100,
+          "pagination": {
+            "startNum": 100,
+            "endNum": 100,
+            "totalCount": 911,
+            "currentPage": 2,
+            "totalPage": 10,
+            "displayPage": 5,
+            "beginPage": 1,
+            "endPage": 5,
+            "prevPage": 1,
+            "nextPage": 6
+          }
+        },
+        {
+          "url": "https://api.gbuts.com/api/subscribe/share?page=3&categorySeqs=5&size=100",
+          "count": 100,
+          "pagination": {
+            "startNum": 200,
+            "endNum": 100,
+            "totalCount": 911,
+            "currentPage": 3,
+            "totalPage": 10,
+            "displayPage": 5,
+            "beginPage": 1,
+            "endPage": 5,
+            "prevPage": 1,
+            "nextPage": 6
+          }
+        },
+        {
+          "url": "https://api.gbuts.com/api/subscribe/share?page=4&categorySeqs=5&size=100",
+          "count": 100,
+          "pagination": {
+            "startNum": 300,
+            "endNum": 100,
+            "totalCount": 911,
+            "currentPage": 4,
+            "totalPage": 10,
+            "displayPage": 5,
+            "beginPage": 1,
+            "endPage": 5,
+            "prevPage": 1,
+            "nextPage": 6
+          }
+        },
+        {
+          "url": "https://api.gbuts.com/api/subscribe/share?page=5&categorySeqs=5&size=100",
+          "count": 100,
+          "pagination": {
+            "startNum": 400,
+            "endNum": 100,
+            "totalCount": 911,
+            "currentPage": 5,
+            "totalPage": 10,
+            "displayPage": 5,
+            "beginPage": 1,
+            "endPage": 5,
+            "prevPage": 1,
+            "nextPage": 6
+          }
+        }
+      ],
+      "fetchedCount": 500,
+      "fullSellerStats": {
+        "uniqueSellers": 26,
+        "medianSellerDailyPrice": 230.0,
+        "sellers": [
+          {
+            "sellerAnonymous": "85508df4632b",
+            "listingCount": 2,
+            "medianDailyPrice": 200.0,
+            "medianOriginalDurationDays": 33.5
+          },
+          {
+            "sellerAnonymous": "c7e92bac8729",
+            "listingCount": 1,
+            "medianDailyPrice": 190.0,
+            "medianOriginalDurationDays": 29.0
+          },
+          {
+            "sellerAnonymous": "6ff21f053668",
+            "listingCount": 15,
+            "medianDailyPrice": 230.0,
+            "medianOriginalDurationDays": 30.0
+          },
+          {
+            "sellerAnonymous": "77953d681afa",
+            "listingCount": 11,
+            "medianDailyPrice": 235.0,
+            "medianOriginalDurationDays": 29.0
+          },
+          {
+            "sellerAnonymous": "05e78411bb49",
+            "listingCount": 1,
+            "medianDailyPrice": 230.0,
+            "medianOriginalDurationDays": 14.0
+          },
+          {
+            "sellerAnonymous": "838cf7f2d53c",
+            "listingCount": 4,
+            "medianDailyPrice": 270.0,
+            "medianOriginalDurationDays": 189.0
+          },
+          {
+            "sellerAnonymous": "b88f6782d232",
+            "listingCount": 14,
+            "medianDailyPrice": 240.0,
+            "medianOriginalDurationDays": 29.5
+          },
+          {
+            "sellerAnonymous": "0ea217c6c28b",
+            "listingCount": 4,
+            "medianDailyPrice": 240.0,
+            "medianOriginalDurationDays": 29.0
+          },
+          {
+            "sellerAnonymous": "f6201cf242ac",
+            "listingCount": 1,
+            "medianDailyPrice": 190.0,
+            "medianOriginalDurationDays": 30.0
+          },
+          {
+            "sellerAnonymous": "e37b29a569f6",
+            "listingCount": 1,
+            "medianDailyPrice": 230.0,
+            "medianOriginalDurationDays": 29.0
+          },
+          {
+            "sellerAnonymous": "e8f0d1a89685",
+            "listingCount": 6,
+            "medianDailyPrice": 240.0,
+            "medianOriginalDurationDays": 31.5
+          },
+          {
+            "sellerAnonymous": "619b9764b0f5",
+            "listingCount": 20,
+            "medianDailyPrice": 247.5,
+            "medianOriginalDurationDays": 38.0
+          },
+          {
+            "sellerAnonymous": "bb6f8aa81c0e",
+            "listingCount": 1,
+            "medianDailyPrice": 180.0,
+            "medianOriginalDurationDays": 365.0
+          },
+          {
+            "sellerAnonymous": "ef2d127de37b",
+            "listingCount": 6,
+            "medianDailyPrice": 239.0,
+            "medianOriginalDurationDays": 27.0
+          },
+          {
+            "sellerAnonymous": "4b25a482ad4d",
+            "listingCount": 2,
+            "medianDailyPrice": 230.0,
+            "medianOriginalDurationDays": 30.5
+          },
+          {
+            "sellerAnonymous": "1a6327974a5a",
+            "listingCount": 9,
+            "medianDailyPrice": 240.0,
+            "medianOriginalDurationDays": 31.0
+          },
+          {
+            "sellerAnonymous": "3c2e35e1bb6f",
+            "listingCount": 1,
+            "medianDailyPrice": 240.0,
+            "medianOriginalDurationDays": 28.0
+          },
+          {
+            "sellerAnonymous": "be388ce60955",
+            "listingCount": 1,
+            "medianDailyPrice": 260.0,
+            "medianOriginalDurationDays": 76.0
+          },
+          {
+            "sellerAnonymous": "b03e77c57a1f",
+            "listingCount": 3,
+            "medianDailyPrice": 230.0,
+            "medianOriginalDurationDays": 98.0
+          },
+          {
+            "sellerAnonymous": "9c3cdd7c15b9",
+            "listingCount": 1,
+            "medianDailyPrice": 230.0,
+            "medianOriginalDurationDays": 28.0
+          },
+          {
+            "sellerAnonymous": "b4bc84e421ac",
+            "listingCount": 1,
+            "medianDailyPrice": 230.0,
+            "medianOriginalDurationDays": 32.0
+          },
+          {
+            "sellerAnonymous": "884e789e91d0",
+            "listingCount": 1,
+            "medianDailyPrice": 200.0,
+            "medianOriginalDurationDays": 367.0
+          },
+          {
+            "sellerAnonymous": "88dc917ca3d4",
+            "listingCount": 1,
+            "medianDailyPrice": 170.0,
+            "medianOriginalDurationDays": 112.0
+          },
+          {
+            "sellerAnonymous": "cd650458b1da",
+            "listingCount": 2,
+            "medianDailyPrice": 205.0,
+            "medianOriginalDurationDays": 31.5
+          },
+          {
+            "sellerAnonymous": "05603545c2fc",
+            "listingCount": 1,
+            "medianDailyPrice": 230.0,
+            "medianOriginalDurationDays": 29.0
+          },
+          {
+            "sellerAnonymous": "110947f7d880",
+            "listingCount": 1,
+            "medianDailyPrice": 200.0,
+            "medianOriginalDurationDays": 37.0
+          }
+        ]
+      },
+      "occupiedSellerStats": {
+        "uniqueSellers": 34,
+        "medianSellerDailyPrice": 230.0,
+        "sellers": [
+          {
+            "sellerAnonymous": "b03e77c57a1f",
+            "listingCount": 8,
+            "medianDailyPrice": 230.0,
+            "medianOriginalDurationDays": 98.0
+          },
+          {
+            "sellerAnonymous": "b88f6782d232",
+            "listingCount": 16,
+            "medianDailyPrice": 240.0,
+            "medianOriginalDurationDays": 29.5
+          },
+          {
+            "sellerAnonymous": "6ff21f053668",
+            "listingCount": 16,
+            "medianDailyPrice": 230.0,
+            "medianOriginalDurationDays": 30.0
+          },
+          {
+            "sellerAnonymous": "619b9764b0f5",
+            "listingCount": 25,
+            "medianDailyPrice": 245.0,
+            "medianOriginalDurationDays": 38.0
+          },
+          {
+            "sellerAnonymous": "97f790ff2d78",
+            "listingCount": 1,
+            "medianDailyPrice": 200.0,
+            "medianOriginalDurationDays": 89.95722222222223
+          },
+          {
+            "sellerAnonymous": "0ea217c6c28b",
+            "listingCount": 6,
+            "medianDailyPrice": 240.0,
+            "medianOriginalDurationDays": 29.0
+          },
+          {
+            "sellerAnonymous": "831c42557fe2",
+            "listingCount": 1,
+            "medianDailyPrice": 220.0,
+            "medianOriginalDurationDays": 149.79839120370372
+          },
+          {
+            "sellerAnonymous": "85508df4632b",
+            "listingCount": 2,
+            "medianDailyPrice": 200.0,
+            "medianOriginalDurationDays": 33.5
+          },
+          {
+            "sellerAnonymous": "c7e92bac8729",
+            "listingCount": 1,
+            "medianDailyPrice": 190.0,
+            "medianOriginalDurationDays": 29.0
+          },
+          {
+            "sellerAnonymous": "77953d681afa",
+            "listingCount": 11,
+            "medianDailyPrice": 235.0,
+            "medianOriginalDurationDays": 29.0
+          },
+          {
+            "sellerAnonymous": "05e78411bb49",
+            "listingCount": 1,
+            "medianDailyPrice": 230.0,
+            "medianOriginalDurationDays": 14.0
+          },
+          {
+            "sellerAnonymous": "838cf7f2d53c",
+            "listingCount": 35,
+            "medianDailyPrice": 250.0,
+            "medianOriginalDurationDays": 192.0
+          },
+          {
+            "sellerAnonymous": "f6201cf242ac",
+            "listingCount": 1,
+            "medianDailyPrice": 190.0,
+            "medianOriginalDurationDays": 30.0
+          },
+          {
+            "sellerAnonymous": "e37b29a569f6",
+            "listingCount": 1,
+            "medianDailyPrice": 230.0,
+            "medianOriginalDurationDays": 29.0
+          },
+          {
+            "sellerAnonymous": "e8f0d1a89685",
+            "listingCount": 6,
+            "medianDailyPrice": 240.0,
+            "medianOriginalDurationDays": 31.5
+          },
+          {
+            "sellerAnonymous": "bb6f8aa81c0e",
+            "listingCount": 1,
+            "medianDailyPrice": 180.0,
+            "medianOriginalDurationDays": 365.0
+          },
+          {
+            "sellerAnonymous": "c0f8abc3983a",
+            "listingCount": 1,
+            "medianDailyPrice": 260.0,
+            "medianOriginalDurationDays": 181.0
+          },
+          {
+            "sellerAnonymous": "ef2d127de37b",
+            "listingCount": 6,
+            "medianDailyPrice": 239.0,
+            "medianOriginalDurationDays": 27.0
+          },
+          {
+            "sellerAnonymous": "4b25a482ad4d",
+            "listingCount": 2,
+            "medianDailyPrice": 230.0,
+            "medianOriginalDurationDays": 30.5
+          },
+          {
+            "sellerAnonymous": "368569509f31",
+            "listingCount": 1,
+            "medianDailyPrice": 220.0,
+            "medianOriginalDurationDays": 180.0
+          },
+          {
+            "sellerAnonymous": "0432e8264a1b",
+            "listingCount": 1,
+            "medianDailyPrice": 330.0,
+            "medianOriginalDurationDays": 29.0
+          },
+          {
+            "sellerAnonymous": "1a6327974a5a",
+            "listingCount": 9,
+            "medianDailyPrice": 240.0,
+            "medianOriginalDurationDays": 31.0
+          },
+          {
+            "sellerAnonymous": "3c2e35e1bb6f",
+            "listingCount": 1,
+            "medianDailyPrice": 240.0,
+            "medianOriginalDurationDays": 28.0
+          },
+          {
+            "sellerAnonymous": "be388ce60955",
+            "listingCount": 1,
+            "medianDailyPrice": 260.0,
+            "medianOriginalDurationDays": 76.0
+          },
+          {
+            "sellerAnonymous": "9c3cdd7c15b9",
+            "listingCount": 1,
+            "medianDailyPrice": 230.0,
+            "medianOriginalDurationDays": 28.0
+          },
+          {
+            "sellerAnonymous": "b4bc84e421ac",
+            "listingCount": 1,
+            "medianDailyPrice": 230.0,
+            "medianOriginalDurationDays": 32.0
+          },
+          {
+            "sellerAnonymous": "884e789e91d0",
+            "listingCount": 1,
+            "medianDailyPrice": 200.0,
+            "medianOriginalDurationDays": 367.0
+          },
+          {
+            "sellerAnonymous": "88dc917ca3d4",
+            "listingCount": 1,
+            "medianDailyPrice": 170.0,
+            "medianOriginalDurationDays": 112.0
+          },
+          {
+            "sellerAnonymous": "b0c53c7fa2ad",
+            "listingCount": 1,
+            "medianDailyPrice": 200.0,
+            "medianOriginalDurationDays": 95.0
+          },
+          {
+            "sellerAnonymous": "cd650458b1da",
+            "listingCount": 2,
+            "medianDailyPrice": 205.0,
+            "medianOriginalDurationDays": 31.5
+          },
+          {
+            "sellerAnonymous": "05603545c2fc",
+            "listingCount": 1,
+            "medianDailyPrice": 230.0,
+            "medianOriginalDurationDays": 29.0
+          },
+          {
+            "sellerAnonymous": "110947f7d880",
+            "listingCount": 1,
+            "medianDailyPrice": 200.0,
+            "medianOriginalDurationDays": 37.0
+          },
+          {
+            "sellerAnonymous": "5e61b431f382",
+            "listingCount": 1,
+            "medianDailyPrice": 200.0,
+            "medianOriginalDurationDays": 115.0
+          },
+          {
+            "sellerAnonymous": "5295d68606a1",
+            "listingCount": 1,
+            "medianDailyPrice": 240.0,
+            "medianOriginalDurationDays": 107.0
+          }
+        ]
+      },
+      "freshSince20260929": {
+        "listings": 19,
+        "occupied": 11,
+        "full": 0,
+        "occupiedSellerStats": {
+          "uniqueSellers": 6,
+          "medianSellerDailyPrice": 233.75,
+          "sellers": [
+            {
+              "sellerAnonymous": "b88f6782d232",
+              "listingCount": 2,
+              "medianDailyPrice": 237.5,
+              "medianOriginalDurationDays": 59.52564236111111
+            },
+            {
+              "sellerAnonymous": "6ff21f053668",
+              "listingCount": 1,
+              "medianDailyPrice": 230.0,
+              "medianOriginalDurationDays": 29.532905092592593
+            },
+            {
+              "sellerAnonymous": "619b9764b0f5",
+              "listingCount": 5,
+              "medianDailyPrice": 240.0,
+              "medianOriginalDurationDays": 29.990266203703705
+            },
+            {
+              "sellerAnonymous": "97f790ff2d78",
+              "listingCount": 1,
+              "medianDailyPrice": 200.0,
+              "medianOriginalDurationDays": 89.95722222222223
+            },
+            {
+              "sellerAnonymous": "0ea217c6c28b",
+              "listingCount": 1,
+              "medianDailyPrice": 240.0,
+              "medianOriginalDurationDays": 27.379270833333333
+            },
+            {
+              "sellerAnonymous": "831c42557fe2",
+              "listingCount": 1,
+              "medianDailyPrice": 220.0,
+              "medianOriginalDurationDays": 149.79839120370372
+            }
+          ]
+        },
+        "fullSellerStats": {
+          "uniqueSellers": 0,
+          "medianSellerDailyPrice": null,
+          "sellers": []
+        }
+      },
+      "selectedExamples": [
+        {
+          "seq": 15858,
+          "createdAt": "2026-10-06 01:37:07",
+          "subscriptionStartsAt": "2026-10-06 01:37:07",
+          "subscriptionEndsAt": "2026-11-05 00:00:00",
+          "price": 235.0,
+          "priceType": "DAY",
+          "memberCount": 0,
+          "memberLimit": 5,
+          "status": "ON_SALE",
+          "salesAmount": null,
+          "settlementAmount": null,
+          "countries": [
+            "KR"
+          ],
+          "subscriptionType": "SHARE",
+          "service": "Netflix",
+          "sellerAnonymous": "77953d681afa",
+          "source": "https://gbuts.com/subscriptions/15858",
+          "renewalMentioned": false,
+          "tvUnavailableMentioned": false,
+          "originalDurationDays": 29.93255787037037
+        },
+        {
+          "seq": 15844,
+          "createdAt": "2026-10-05 23:36:45",
+          "subscriptionStartsAt": "2026-10-05 23:36:45",
+          "subscriptionEndsAt": "2026-11-02 00:00:00",
+          "price": 240.0,
+          "priceType": "DAY",
+          "memberCount": 1,
+          "memberLimit": 5,
+          "status": "ON_SALE",
+          "salesAmount": null,
+          "settlementAmount": null,
+          "countries": [
+            "KR"
+          ],
+          "subscriptionType": "SHARE",
+          "service": "Netflix",
+          "sellerAnonymous": "b88f6782d232",
+          "source": "https://gbuts.com/subscriptions/15844",
+          "renewalMentioned": false,
+          "tvUnavailableMentioned": false,
+          "originalDurationDays": 27.016145833333333
+        },
+        {
+          "seq": 15841,
+          "createdAt": "2026-10-05 23:09:24",
+          "subscriptionStartsAt": "2026-10-05 23:09:24",
+          "subscriptionEndsAt": "2027-01-06 00:00:00",
+          "price": 235.0,
+          "priceType": "DAY",
+          "memberCount": 2,
+          "memberLimit": 5,
+          "status": "ON_SALE",
+          "salesAmount": null,
+          "settlementAmount": null,
+          "countries": [
+            "KR"
+          ],
+          "subscriptionType": "SHARE",
+          "service": "Netflix",
+          "sellerAnonymous": "b88f6782d232",
+          "source": "https://gbuts.com/subscriptions/15841",
+          "renewalMentioned": false,
+          "tvUnavailableMentioned": false,
+          "originalDurationDays": 92.0351388888889
+        },
+        {
+          "seq": 15829,
+          "createdAt": "2026-10-05 20:46:12",
+          "subscriptionStartsAt": "2026-10-05 20:46:11",
+          "subscriptionEndsAt": "2027-01-03 00:00:00",
+          "price": 230.0,
+          "priceType": "DAY",
+          "memberCount": 0,
+          "memberLimit": 5,
+          "status": "ON_SALE",
+          "salesAmount": null,
+          "settlementAmount": null,
+          "countries": [
+            "KR"
+          ],
+          "subscriptionType": "SHARE",
+          "service": "Netflix",
+          "sellerAnonymous": "b03e77c57a1f",
+          "source": "https://gbuts.com/subscriptions/15829",
+          "renewalMentioned": false,
+          "tvUnavailableMentioned": false,
+          "originalDurationDays": 89.1345949074074
+        },
+        {
+          "seq": 15828,
+          "createdAt": "2026-10-05 20:42:22",
+          "subscriptionStartsAt": "2026-10-05 20:42:22",
+          "subscriptionEndsAt": "2027-01-03 00:00:00",
+          "price": 230.0,
+          "priceType": "DAY",
+          "memberCount": 0,
+          "memberLimit": 5,
+          "status": "ON_SALE",
+          "salesAmount": null,
+          "settlementAmount": null,
+          "countries": [
+            "KR"
+          ],
+          "subscriptionType": "SHARE",
+          "service": "Netflix",
+          "sellerAnonymous": "b03e77c57a1f",
+          "source": "https://gbuts.com/subscriptions/15828",
+          "renewalMentioned": false,
+          "tvUnavailableMentioned": false,
+          "originalDurationDays": 89.13724537037037
+        },
+        {
+          "seq": 15053,
+          "createdAt": "2026-09-28 09:19:45",
+          "subscriptionStartsAt": "2026-09-28 00:19:45",
+          "subscriptionEndsAt": "2026-10-27 00:19:45",
+          "price": 200.0,
+          "priceType": "DAY",
+          "memberCount": 5,
+          "memberLimit": 5,
+          "status": "ON_SALE",
+          "salesAmount": null,
+          "settlementAmount": null,
+          "countries": [
+            "KR"
+          ],
+          "subscriptionType": "SHARE",
+          "service": "Netflix",
+          "sellerAnonymous": "85508df4632b",
+          "source": "https://gbuts.com/subscriptions/15053",
+          "renewalMentioned": false,
+          "tvUnavailableMentioned": true,
+          "originalDurationDays": 29.0
+        },
+        {
+          "seq": 15027,
+          "createdAt": "2026-09-27 23:02:57",
+          "subscriptionStartsAt": "2026-09-27 14:02:57",
+          "subscriptionEndsAt": "2026-10-26 14:02:57",
+          "price": 190.0,
+          "priceType": "DAY",
+          "memberCount": 4,
+          "memberLimit": 4,
+          "status": "ON_SALE",
+          "salesAmount": null,
+          "settlementAmount": null,
+          "countries": [
+            "KR"
+          ],
+          "subscriptionType": "SHARE",
+          "service": "Netflix",
+          "sellerAnonymous": "c7e92bac8729",
+          "source": "https://gbuts.com/subscriptions/15027",
+          "renewalMentioned": false,
+          "tvUnavailableMentioned": true,
+          "originalDurationDays": 29.0
+        },
+        {
+          "seq": 15022,
+          "createdAt": "2026-09-27 21:38:24",
+          "subscriptionStartsAt": "2026-09-27 12:38:24",
+          "subscriptionEndsAt": "2026-10-27 12:38:24",
+          "price": 230.0,
+          "priceType": "DAY",
+          "memberCount": 5,
+          "memberLimit": 5,
+          "status": "ON_SALE",
+          "salesAmount": null,
+          "settlementAmount": null,
+          "countries": [
+            "KR"
+          ],
+          "subscriptionType": "SHARE",
+          "service": "Netflix",
+          "sellerAnonymous": "6ff21f053668",
+          "source": "https://gbuts.com/subscriptions/15022",
+          "renewalMentioned": false,
+          "tvUnavailableMentioned": false,
+          "originalDurationDays": 30.0
+        },
+        {
+          "seq": 14657,
+          "createdAt": "2026-09-22 20:27:12",
+          "subscriptionStartsAt": "2026-09-22 11:27:12",
+          "subscriptionEndsAt": "2026-12-21 11:27:12",
+          "price": 230.0,
+          "priceType": "DAY",
+          "memberCount": 4,
+          "memberLimit": 5,
+          "status": "ON_SALE",
+          "salesAmount": null,
+          "settlementAmount": null,
+          "countries": [
+            "KR"
+          ],
+          "subscriptionType": "SHARE",
+          "service": "Netflix",
+          "sellerAnonymous": "b03e77c57a1f",
+          "source": "https://gbuts.com/subscriptions/14657",
+          "renewalMentioned": false,
+          "tvUnavailableMentioned": false,
+          "originalDurationDays": 90.0
+        }
+      ]
+    },
+    {
+      "service": "Disney+",
+      "pages": [
+        {
+          "url": "https://api.gbuts.com/api/subscribe/share?page=1&categorySeqs=6&size=100",
+          "count": 100,
+          "pagination": {
+            "startNum": 0,
+            "endNum": 100,
+            "totalCount": 972,
+            "currentPage": 1,
+            "totalPage": 10,
+            "displayPage": 5,
+            "beginPage": 1,
+            "endPage": 5,
+            "prevPage": 1,
+            "nextPage": 6
+          }
+        },
+        {
+          "url": "https://api.gbuts.com/api/subscribe/share?page=2&categorySeqs=6&size=100",
+          "count": 100,
+          "pagination": {
+            "startNum": 100,
+            "endNum": 100,
+            "totalCount": 972,
+            "currentPage": 2,
+            "totalPage": 10,
+            "displayPage": 5,
+            "beginPage": 1,
+            "endPage": 5,
+            "prevPage": 1,
+            "nextPage": 6
+          }
+        },
+        {
+          "url": "https://api.gbuts.com/api/subscribe/share?page=3&categorySeqs=6&size=100",
+          "count": 100,
+          "pagination": {
+            "startNum": 200,
+            "endNum": 100,
+            "totalCount": 972,
+            "currentPage": 3,
+            "totalPage": 10,
+            "displayPage": 5,
+            "beginPage": 1,
+            "endPage": 5,
+            "prevPage": 1,
+            "nextPage": 6
+          }
+        },
+        {
+          "url": "https://api.gbuts.com/api/subscribe/share?page=4&categorySeqs=6&size=100",
+          "count": 100,
+          "pagination": {
+            "startNum": 300,
+            "endNum": 100,
+            "totalCount": 972,
+            "currentPage": 4,
+            "totalPage": 10,
+            "displayPage": 5,
+            "beginPage": 1,
+            "endPage": 5,
+            "prevPage": 1,
+            "nextPage": 6
+          }
+        },
+        {
+          "url": "https://api.gbuts.com/api/subscribe/share?page=5&categorySeqs=6&size=100",
+          "count": 100,
+          "pagination": {
+            "startNum": 400,
+            "endNum": 100,
+            "totalCount": 972,
+            "currentPage": 5,
+            "totalPage": 10,
+            "displayPage": 5,
+            "beginPage": 1,
+            "endPage": 5,
+            "prevPage": 1,
+            "nextPage": 6
+          }
+        }
+      ],
+      "fetchedCount": 500,
+      "fullSellerStats": {
+        "uniqueSellers": 30,
+        "medianSellerDailyPrice": 174.5,
+        "sellers": [
+          {
+            "sellerAnonymous": "e8e0d1695433",
+            "listingCount": 11,
+            "medianDailyPrice": 210.0,
+            "medianOriginalDurationDays": 30.0
+          },
+          {
+            "sellerAnonymous": "efb220b8b23e",
+            "listingCount": 11,
+            "medianDailyPrice": 190.0,
+            "medianOriginalDurationDays": 33.0
+          },
+          {
+            "sellerAnonymous": "1a6327974a5a",
+            "listingCount": 94,
+            "medianDailyPrice": 190.0,
+            "medianOriginalDurationDays": 36.0
+          },
+          {
+            "sellerAnonymous": "619b9764b0f5",
+            "listingCount": 27,
+            "medianDailyPrice": 190.0,
+            "medianOriginalDurationDays": 39.0
+          },
+          {
+            "sellerAnonymous": "0ea217c6c28b",
+            "listingCount": 33,
+            "medianDailyPrice": 185.0,
+            "medianOriginalDurationDays": 45.0
+          },
+          {
+            "sellerAnonymous": "eeae1b57230b",
+            "listingCount": 2,
+            "medianDailyPrice": 149.5,
+            "medianOriginalDurationDays": 224.5
+          },
+          {
+            "sellerAnonymous": "0edc160cf0b0",
+            "listingCount": 1,
+            "medianDailyPrice": 179.0,
+            "medianOriginalDurationDays": 29.0
+          },
+          {
+            "sellerAnonymous": "b88f6782d232",
+            "listingCount": 11,
+            "medianDailyPrice": 185.0,
+            "medianOriginalDurationDays": 31.0
+          },
+          {
+            "sellerAnonymous": "484c94977f7f",
+            "listingCount": 2,
+            "medianDailyPrice": 120.0,
+            "medianOriginalDurationDays": 365.0
+          },
+          {
+            "sellerAnonymous": "0255417b0980",
+            "listingCount": 1,
+            "medianDailyPrice": 130.0,
+            "medianOriginalDurationDays": 359.0
+          },
+          {
+            "sellerAnonymous": "0a60bdc2beb4",
+            "listingCount": 1,
+            "medianDailyPrice": 150.0,
+            "medianOriginalDurationDays": 100.0
+          },
+          {
+            "sellerAnonymous": "ef2d127de37b",
+            "listingCount": 1,
+            "medianDailyPrice": 189.0,
+            "medianOriginalDurationDays": 32.0
+          },
+          {
+            "sellerAnonymous": "544043183357",
+            "listingCount": 1,
+            "medianDailyPrice": 120.0,
+            "medianOriginalDurationDays": 365.0
+          },
+          {
+            "sellerAnonymous": "ec3f242431c7",
+            "listingCount": 1,
+            "medianDailyPrice": 300.0,
+            "medianOriginalDurationDays": 30.0
+          },
+          {
+            "sellerAnonymous": "d4131021535c",
+            "listingCount": 1,
+            "medianDailyPrice": 120.0,
+            "medianOriginalDurationDays": 364.0
+          },
+          {
+            "sellerAnonymous": "d8e74bea7225",
+            "listingCount": 1,
+            "medianDailyPrice": 120.0,
+            "medianOriginalDurationDays": 362.0
+          },
+          {
+            "sellerAnonymous": "77953d681afa",
+            "listingCount": 2,
+            "medianDailyPrice": 190.0,
+            "medianOriginalDurationDays": 29.0
+          },
+          {
+            "sellerAnonymous": "fef1d7bcfa6f",
+            "listingCount": 1,
+            "medianDailyPrice": 180.0,
+            "medianOriginalDurationDays": 34.0
+          },
+          {
+            "sellerAnonymous": "6ecd2c0f54c0",
+            "listingCount": 1,
+            "medianDailyPrice": 220.0,
+            "medianOriginalDurationDays": 21.0
+          },
+          {
+            "sellerAnonymous": "970349a3671c",
+            "listingCount": 1,
+            "medianDailyPrice": 140.0,
+            "medianOriginalDurationDays": 364.0
+          },
+          {
+            "sellerAnonymous": "bd064ddf1c2a",
+            "listingCount": 1,
+            "medianDailyPrice": 120.0,
+            "medianOriginalDurationDays": 364.0
+          },
+          {
+            "sellerAnonymous": "f8f5c83c46aa",
+            "listingCount": 1,
+            "medianDailyPrice": 120.0,
+            "medianOriginalDurationDays": 365.0
+          },
+          {
+            "sellerAnonymous": "e8f0d1a89685",
+            "listingCount": 4,
+            "medianDailyPrice": 190.0,
+            "medianOriginalDurationDays": 33.0
+          },
+          {
+            "sellerAnonymous": "60d57697b336",
+            "listingCount": 1,
+            "medianDailyPrice": 189.0,
+            "medianOriginalDurationDays": 30.0
+          },
+          {
+            "sellerAnonymous": "65ed210d18bd",
+            "listingCount": 1,
+            "medianDailyPrice": 120.0,
+            "medianOriginalDurationDays": 109.0
+          },
+          {
+            "sellerAnonymous": "71cba56f9d8c",
+            "listingCount": 1,
+            "medianDailyPrice": 120.0,
+            "medianOriginalDurationDays": 68.0
+          },
+          {
+            "sellerAnonymous": "d84ae50357af",
+            "listingCount": 1,
+            "medianDailyPrice": 170.0,
+            "medianOriginalDurationDays": 29.0
+          },
+          {
+            "sellerAnonymous": "cce73cebf993",
+            "listingCount": 1,
+            "medianDailyPrice": 200.0,
+            "medianOriginalDurationDays": 36.0
+          },
+          {
+            "sellerAnonymous": "990d2f7b7967",
+            "listingCount": 1,
+            "medianDailyPrice": 120.0,
+            "medianOriginalDurationDays": 373.0
+          },
+          {
+            "sellerAnonymous": "36f70408689f",
+            "listingCount": 1,
+            "medianDailyPrice": 170.0,
+            "medianOriginalDurationDays": 98.0
+          }
+        ]
+      },
+      "occupiedSellerStats": {
+        "uniqueSellers": 34,
+        "medianSellerDailyPrice": 170.0,
+        "sellers": [
+          {
+            "sellerAnonymous": "77953d681afa",
+            "listingCount": 3,
+            "medianDailyPrice": 190.0,
+            "medianOriginalDurationDays": 29.0
+          },
+          {
+            "sellerAnonymous": "619b9764b0f5",
+            "listingCount": 29,
+            "medianDailyPrice": 190.0,
+            "medianOriginalDurationDays": 39.0
+          },
+          {
+            "sellerAnonymous": "0edc160cf0b0",
+            "listingCount": 3,
+            "medianDailyPrice": 179.0,
+            "medianOriginalDurationDays": 29.351134259259258
+          },
+          {
+            "sellerAnonymous": "ccf2a8eb6f62",
+            "listingCount": 1,
+            "medianDailyPrice": 110.0,
+            "medianOriginalDurationDays": 179.68328703703705
+          },
+          {
+            "sellerAnonymous": "0d84c1cbce3e",
+            "listingCount": 1,
+            "medianDailyPrice": 180.0,
+            "medianOriginalDurationDays": 90.99096064814815
+          },
+          {
+            "sellerAnonymous": "1a6327974a5a",
+            "listingCount": 101,
+            "medianDailyPrice": 190.0,
+            "medianOriginalDurationDays": 36.0
+          },
+          {
+            "sellerAnonymous": "e8e0d1695433",
+            "listingCount": 13,
+            "medianDailyPrice": 225.0,
+            "medianOriginalDurationDays": 30.0
+          },
+          {
+            "sellerAnonymous": "0ea217c6c28b",
+            "listingCount": 35,
+            "medianDailyPrice": 185.0,
+            "medianOriginalDurationDays": 45.0
+          },
+          {
+            "sellerAnonymous": "efb220b8b23e",
+            "listingCount": 11,
+            "medianDailyPrice": 190.0,
+            "medianOriginalDurationDays": 33.0
+          },
+          {
+            "sellerAnonymous": "484c94977f7f",
+            "listingCount": 3,
+            "medianDailyPrice": 120.0,
+            "medianOriginalDurationDays": 365.0
+          },
+          {
+            "sellerAnonymous": "eeae1b57230b",
+            "listingCount": 2,
+            "medianDailyPrice": 149.5,
+            "medianOriginalDurationDays": 224.5
+          },
+          {
+            "sellerAnonymous": "b88f6782d232",
+            "listingCount": 11,
+            "medianDailyPrice": 185.0,
+            "medianOriginalDurationDays": 31.0
+          },
+          {
+            "sellerAnonymous": "0255417b0980",
+            "listingCount": 1,
+            "medianDailyPrice": 130.0,
+            "medianOriginalDurationDays": 359.0
+          },
+          {
+            "sellerAnonymous": "0a60bdc2beb4",
+            "listingCount": 1,
+            "medianDailyPrice": 150.0,
+            "medianOriginalDurationDays": 100.0
+          },
+          {
+            "sellerAnonymous": "ef2d127de37b",
+            "listingCount": 1,
+            "medianDailyPrice": 189.0,
+            "medianOriginalDurationDays": 32.0
+          },
+          {
+            "sellerAnonymous": "544043183357",
+            "listingCount": 1,
+            "medianDailyPrice": 120.0,
+            "medianOriginalDurationDays": 365.0
+          },
+          {
+            "sellerAnonymous": "ec3f242431c7",
+            "listingCount": 1,
+            "medianDailyPrice": 300.0,
+            "medianOriginalDurationDays": 30.0
+          },
+          {
+            "sellerAnonymous": "d4131021535c",
+            "listingCount": 1,
+            "medianDailyPrice": 120.0,
+            "medianOriginalDurationDays": 364.0
+          },
+          {
+            "sellerAnonymous": "d8e74bea7225",
+            "listingCount": 1,
+            "medianDailyPrice": 120.0,
+            "medianOriginalDurationDays": 362.0
+          },
+          {
+            "sellerAnonymous": "fef1d7bcfa6f",
+            "listingCount": 1,
+            "medianDailyPrice": 180.0,
+            "medianOriginalDurationDays": 34.0
+          },
+          {
+            "sellerAnonymous": "6ecd2c0f54c0",
+            "listingCount": 1,
+            "medianDailyPrice": 220.0,
+            "medianOriginalDurationDays": 21.0
+          },
+          {
+            "sellerAnonymous": "970349a3671c",
+            "listingCount": 1,
+            "medianDailyPrice": 140.0,
+            "medianOriginalDurationDays": 364.0
+          },
+          {
+            "sellerAnonymous": "bd064ddf1c2a",
+            "listingCount": 1,
+            "medianDailyPrice": 120.0,
+            "medianOriginalDurationDays": 364.0
+          },
+          {
+            "sellerAnonymous": "f8f5c83c46aa",
+            "listingCount": 1,
+            "medianDailyPrice": 120.0,
+            "medianOriginalDurationDays": 365.0
+          },
+          {
+            "sellerAnonymous": "f11d57da811c",
+            "listingCount": 1,
+            "medianDailyPrice": 165.0,
+            "medianOriginalDurationDays": 106.0
+          },
+          {
+            "sellerAnonymous": "e8f0d1a89685",
+            "listingCount": 4,
+            "medianDailyPrice": 190.0,
+            "medianOriginalDurationDays": 33.0
+          },
+          {
+            "sellerAnonymous": "60d57697b336",
+            "listingCount": 1,
+            "medianDailyPrice": 189.0,
+            "medianOriginalDurationDays": 30.0
+          },
+          {
+            "sellerAnonymous": "6808303a3f35",
+            "listingCount": 1,
+            "medianDailyPrice": 130.0,
+            "medianOriginalDurationDays": 362.0
+          },
+          {
+            "sellerAnonymous": "65ed210d18bd",
+            "listingCount": 1,
+            "medianDailyPrice": 120.0,
+            "medianOriginalDurationDays": 109.0
+          },
+          {
+            "sellerAnonymous": "71cba56f9d8c",
+            "listingCount": 1,
+            "medianDailyPrice": 120.0,
+            "medianOriginalDurationDays": 68.0
+          },
+          {
+            "sellerAnonymous": "d84ae50357af",
+            "listingCount": 1,
+            "medianDailyPrice": 170.0,
+            "medianOriginalDurationDays": 29.0
+          },
+          {
+            "sellerAnonymous": "cce73cebf993",
+            "listingCount": 1,
+            "medianDailyPrice": 200.0,
+            "medianOriginalDurationDays": 36.0
+          },
+          {
+            "sellerAnonymous": "990d2f7b7967",
+            "listingCount": 1,
+            "medianDailyPrice": 120.0,
+            "medianOriginalDurationDays": 373.0
+          },
+          {
+            "sellerAnonymous": "36f70408689f",
+            "listingCount": 1,
+            "medianDailyPrice": 170.0,
+            "medianOriginalDurationDays": 98.0
+          }
+        ]
+      },
+      "freshSince20260929": {
+        "listings": 14,
+        "occupied": 9,
+        "full": 0,
+        "occupiedSellerStats": {
+          "uniqueSellers": 6,
+          "medianSellerDailyPrice": 185.0,
+          "sellers": [
+            {
+              "sellerAnonymous": "77953d681afa",
+              "listingCount": 1,
+              "medianDailyPrice": 200.0,
+              "medianOriginalDurationDays": 29.930104166666666
+            },
+            {
+              "sellerAnonymous": "619b9764b0f5",
+              "listingCount": 2,
+              "medianDailyPrice": 210.0,
+              "medianOriginalDurationDays": 97.63772569444444
+            },
+            {
+              "sellerAnonymous": "0edc160cf0b0",
+              "listingCount": 2,
+              "medianDailyPrice": 124.5,
+              "medianOriginalDurationDays": 29.45456597222222
+            },
+            {
+              "sellerAnonymous": "ccf2a8eb6f62",
+              "listingCount": 1,
+              "medianDailyPrice": 110.0,
+              "medianOriginalDurationDays": 179.68328703703705
+            },
+            {
+              "sellerAnonymous": "0d84c1cbce3e",
+              "listingCount": 1,
+              "medianDailyPrice": 180.0,
+              "medianOriginalDurationDays": 90.99096064814815
+            },
+            {
+              "sellerAnonymous": "1a6327974a5a",
+              "listingCount": 2,
+              "medianDailyPrice": 190.0,
+              "medianOriginalDurationDays": 37.55771990740741
+            }
+          ]
+        },
+        "fullSellerStats": {
+          "uniqueSellers": 0,
+          "medianSellerDailyPrice": null,
+          "sellers": []
+        }
+      },
+      "selectedExamples": [
+        {
+          "seq": 15860,
+          "createdAt": "2026-10-06 01:40:39",
+          "subscriptionStartsAt": "2026-10-06 01:40:39",
+          "subscriptionEndsAt": "2026-11-05 00:00:00",
+          "price": 200.0,
+          "priceType": "DAY",
+          "memberCount": 1,
+          "memberLimit": 5,
+          "status": "ON_SALE",
+          "salesAmount": null,
+          "settlementAmount": null,
+          "countries": [
+            "KR"
+          ],
+          "subscriptionType": "SHARE",
+          "service": "Disney+",
+          "sellerAnonymous": "77953d681afa",
+          "source": "https://gbuts.com/subscriptions/15860",
+          "renewalMentioned": false,
+          "tvUnavailableMentioned": false,
+          "originalDurationDays": 29.930104166666666
+        },
+        {
+          "seq": 15859,
+          "createdAt": "2026-10-06 01:38:07",
+          "subscriptionStartsAt": "2026-10-06 00:38:08",
+          "subscriptionEndsAt": "2026-11-10 00:00:00",
+          "price": 200.0,
+          "priceType": "DAY",
+          "memberCount": 0,
+          "memberLimit": 5,
+          "status": "ON_SALE",
+          "salesAmount": null,
+          "settlementAmount": null,
+          "countries": [
+            "KR"
+          ],
+          "subscriptionType": "SHARE",
+          "service": "Disney+",
+          "sellerAnonymous": "0ea217c6c28b",
+          "source": "https://gbuts.com/subscriptions/15859",
+          "renewalMentioned": false,
+          "tvUnavailableMentioned": false,
+          "originalDurationDays": 34.97351851851852
+        },
+        {
+          "seq": 15856,
+          "createdAt": "2026-10-06 00:40:11",
+          "subscriptionStartsAt": "2026-10-05 23:40:12",
+          "subscriptionEndsAt": "2026-11-04 00:00:00",
+          "price": 210.0,
+          "priceType": "DAY",
+          "memberCount": 0,
+          "memberLimit": 5,
+          "status": "ON_SALE",
+          "salesAmount": null,
+          "settlementAmount": null,
+          "countries": [
+            "KR"
+          ],
+          "subscriptionType": "SHARE",
+          "service": "Disney+",
+          "sellerAnonymous": "0ea217c6c28b",
+          "source": "https://gbuts.com/subscriptions/15856",
+          "renewalMentioned": false,
+          "tvUnavailableMentioned": false,
+          "originalDurationDays": 29.01375
+        },
+        {
+          "seq": 15848,
+          "createdAt": "2026-10-06 00:13:05",
+          "subscriptionStartsAt": "2026-10-06 00:13:04",
+          "subscriptionEndsAt": "2026-10-22 00:00:00",
+          "price": 250.0,
+          "priceType": "DAY",
+          "memberCount": 0,
+          "memberLimit": 5,
+          "status": "ON_SALE",
+          "salesAmount": null,
+          "settlementAmount": null,
+          "countries": [
+            "KR"
+          ],
+          "subscriptionType": "SHARE",
+          "service": "Disney+",
+          "sellerAnonymous": "619b9764b0f5",
+          "source": "https://gbuts.com/subscriptions/15848",
+          "renewalMentioned": false,
+          "tvUnavailableMentioned": false,
+          "originalDurationDays": 15.990925925925925
+        },
+        {
+          "seq": 15838,
+          "createdAt": "2026-10-05 21:38:15",
+          "subscriptionStartsAt": "2026-10-05 21:38:13",
+          "subscriptionEndsAt": "2026-11-06 00:00:00",
+          "price": 210.0,
+          "priceType": "DAY",
+          "memberCount": 0,
+          "memberLimit": 5,
+          "status": "ON_SALE",
+          "salesAmount": null,
+          "settlementAmount": null,
+          "countries": [
+            "KR"
+          ],
+          "subscriptionType": "SHARE",
+          "service": "Disney+",
+          "sellerAnonymous": "619b9764b0f5",
+          "source": "https://gbuts.com/subscriptions/15838",
+          "renewalMentioned": false,
+          "tvUnavailableMentioned": false,
+          "originalDurationDays": 31.098460648148148
+        },
+        {
+          "seq": 15036,
+          "createdAt": "2026-09-28 05:02:05",
+          "subscriptionStartsAt": "2026-09-27 20:02:05",
+          "subscriptionEndsAt": "2026-10-27 20:02:05",
+          "price": 225.0,
+          "priceType": "DAY",
+          "memberCount": 5,
+          "memberLimit": 5,
+          "status": "ON_SALE",
+          "salesAmount": null,
+          "settlementAmount": null,
+          "countries": [
+            "KR"
+          ],
+          "subscriptionType": "SHARE",
+          "service": "Disney+",
+          "sellerAnonymous": "e8e0d1695433",
+          "source": "https://gbuts.com/subscriptions/15036",
+          "renewalMentioned": false,
+          "tvUnavailableMentioned": false,
+          "originalDurationDays": 30.0
+        },
+        {
+          "seq": 15030,
+          "createdAt": "2026-09-27 23:39:25",
+          "subscriptionStartsAt": "2026-09-27 14:39:25",
+          "subscriptionEndsAt": "2026-10-11 14:39:25",
+          "price": 260.0,
+          "priceType": "DAY",
+          "memberCount": 5,
+          "memberLimit": 5,
+          "status": "ON_SALE",
+          "salesAmount": null,
+          "settlementAmount": null,
+          "countries": [
+            "KR"
+          ],
+          "subscriptionType": "SHARE",
+          "service": "Disney+",
+          "sellerAnonymous": "efb220b8b23e",
+          "source": "https://gbuts.com/subscriptions/15030",
+          "renewalMentioned": false,
+          "tvUnavailableMentioned": false,
+          "originalDurationDays": 14.0
+        },
+        {
+          "seq": 14989,
+          "createdAt": "2026-09-27 10:53:03",
+          "subscriptionStartsAt": "2026-09-27 01:53:03",
+          "subscriptionEndsAt": "2026-11-03 01:53:03",
+          "price": 190.0,
+          "priceType": "DAY",
+          "memberCount": 5,
+          "memberLimit": 5,
+          "status": "ON_SALE",
+          "salesAmount": null,
+          "settlementAmount": null,
+          "countries": [
+            "KR"
+          ],
+          "subscriptionType": "SHARE",
+          "service": "Disney+",
+          "sellerAnonymous": "1a6327974a5a",
+          "source": "https://gbuts.com/subscriptions/14989",
+          "renewalMentioned": false,
+          "tvUnavailableMentioned": false,
+          "originalDurationDays": 37.0
+        },
+        {
+          "seq": 15811,
+          "createdAt": "2026-10-05 17:06:22",
+          "subscriptionStartsAt": "2026-10-05 17:06:22",
+          "subscriptionEndsAt": "2026-10-21 00:00:00",
+          "price": 250.0,
+          "priceType": "DAY",
+          "memberCount": 3,
+          "memberLimit": 5,
+          "status": "ON_SALE",
+          "salesAmount": null,
+          "settlementAmount": null,
+          "countries": [
+            "KR"
+          ],
+          "subscriptionType": "SHARE",
+          "service": "Disney+",
+          "sellerAnonymous": "619b9764b0f5",
+          "source": "https://gbuts.com/subscriptions/15811",
+          "renewalMentioned": false,
+          "tvUnavailableMentioned": false,
+          "originalDurationDays": 15.287245370370371
+        }
+      ]
+    },
+    {
+      "service": "TVING",
+      "pages": [
+        {
+          "url": "https://api.gbuts.com/api/subscribe/share?page=1&categorySeqs=8&size=100",
+          "count": 100,
+          "pagination": {
+            "startNum": 0,
+            "endNum": 100,
+            "totalCount": 335,
+            "currentPage": 1,
+            "totalPage": 4,
+            "displayPage": 5,
+            "beginPage": 1,
+            "endPage": 4,
+            "prevPage": 1,
+            "nextPage": 4
+          }
+        },
+        {
+          "url": "https://api.gbuts.com/api/subscribe/share?page=2&categorySeqs=8&size=100",
+          "count": 100,
+          "pagination": {
+            "startNum": 100,
+            "endNum": 100,
+            "totalCount": 335,
+            "currentPage": 2,
+            "totalPage": 4,
+            "displayPage": 5,
+            "beginPage": 1,
+            "endPage": 4,
+            "prevPage": 1,
+            "nextPage": 4
+          }
+        },
+        {
+          "url": "https://api.gbuts.com/api/subscribe/share?page=3&categorySeqs=8&size=100",
+          "count": 100,
+          "pagination": {
+            "startNum": 200,
+            "endNum": 100,
+            "totalCount": 335,
+            "currentPage": 3,
+            "totalPage": 4,
+            "displayPage": 5,
+            "beginPage": 1,
+            "endPage": 4,
+            "prevPage": 1,
+            "nextPage": 4
+          }
+        },
+        {
+          "url": "https://api.gbuts.com/api/subscribe/share?page=4&categorySeqs=8&size=100",
+          "count": 35,
+          "pagination": {
+            "startNum": 300,
+            "endNum": 100,
+            "totalCount": 335,
+            "currentPage": 4,
+            "totalPage": 4,
+            "displayPage": 5,
+            "beginPage": 1,
+            "endPage": 4,
+            "prevPage": 1,
+            "nextPage": 4
+          }
+        }
+      ],
+      "fetchedCount": 335,
+      "fullSellerStats": {
+        "uniqueSellers": 26,
+        "medianSellerDailyPrice": 252.5,
+        "sellers": [
+          {
+            "sellerAnonymous": "b03e77c57a1f",
+            "listingCount": 7,
+            "medianDailyPrice": 270.0,
+            "medianOriginalDurationDays": 30.0
+          },
+          {
+            "sellerAnonymous": "9c3cdd7c15b9",
+            "listingCount": 4,
+            "medianDailyPrice": 270.0,
+            "medianOriginalDurationDays": 28.24351273148148
+          },
+          {
+            "sellerAnonymous": "686a33e39712",
+            "listingCount": 1,
+            "medianDailyPrice": 136.0,
+            "medianOriginalDurationDays": 30.0
+          },
+          {
+            "sellerAnonymous": "619b9764b0f5",
+            "listingCount": 15,
+            "medianDailyPrice": 270.0,
+            "medianOriginalDurationDays": 31.0
+          },
+          {
+            "sellerAnonymous": "fe56cf8bcfb2",
+            "listingCount": 1,
+            "medianDailyPrice": 240.0,
+            "medianOriginalDurationDays": 30.0
+          },
+          {
+            "sellerAnonymous": "0edc160cf0b0",
+            "listingCount": 2,
+            "medianDailyPrice": 264.5,
+            "medianOriginalDurationDays": 29.5
+          },
+          {
+            "sellerAnonymous": "8a4fc08d938a",
+            "listingCount": 17,
+            "medianDailyPrice": 270.0,
+            "medianOriginalDurationDays": 29.0
+          },
+          {
+            "sellerAnonymous": "965e535eca44",
+            "listingCount": 1,
+            "medianDailyPrice": 230.0,
+            "medianOriginalDurationDays": 30.0
+          },
+          {
+            "sellerAnonymous": "c7e92bac8729",
+            "listingCount": 1,
+            "medianDailyPrice": 180.0,
+            "medianOriginalDurationDays": 30.0
+          },
+          {
+            "sellerAnonymous": "368569509f31",
+            "listingCount": 1,
+            "medianDailyPrice": 260.0,
+            "medianOriginalDurationDays": 30.0
+          },
+          {
+            "sellerAnonymous": "02355c148e00",
+            "listingCount": 1,
+            "medianDailyPrice": 255.0,
+            "medianOriginalDurationDays": 30.0
+          },
+          {
+            "sellerAnonymous": "fa98c5be97e9",
+            "listingCount": 1,
+            "medianDailyPrice": 270.0,
+            "medianOriginalDurationDays": 29.0
+          },
+          {
+            "sellerAnonymous": "60d57697b336",
+            "listingCount": 1,
+            "medianDailyPrice": 269.0,
+            "medianOriginalDurationDays": 30.0
+          },
+          {
+            "sellerAnonymous": "d360dd3a89a8",
+            "listingCount": 1,
+            "medianDailyPrice": 167.0,
+            "medianOriginalDurationDays": 371.0
+          },
+          {
+            "sellerAnonymous": "08951d3e71ad",
+            "listingCount": 1,
+            "medianDailyPrice": 200.0,
+            "medianOriginalDurationDays": 98.0
+          },
+          {
+            "sellerAnonymous": "05603545c2fc",
+            "listingCount": 1,
+            "medianDailyPrice": 200.0,
+            "medianOriginalDurationDays": 31.0
+          },
+          {
+            "sellerAnonymous": "be9f8314b637",
+            "listingCount": 1,
+            "medianDailyPrice": 300.0,
+            "medianOriginalDurationDays": 60.0
+          },
+          {
+            "sellerAnonymous": "a9822e0f56e9",
+            "listingCount": 2,
+            "medianDailyPrice": 132.5,
+            "medianOriginalDurationDays": 26.890023148148146
+          },
+          {
+            "sellerAnonymous": "b4bc84e421ac",
+            "listingCount": 1,
+            "medianDailyPrice": 250.0,
+            "medianOriginalDurationDays": 30.002060185185186
+          },
+          {
+            "sellerAnonymous": "07aff97bab67",
+            "listingCount": 1,
+            "medianDailyPrice": 200.0,
+            "medianOriginalDurationDays": 180.53693287037038
+          },
+          {
+            "sellerAnonymous": "f508192df268",
+            "listingCount": 1,
+            "medianDailyPrice": 200.0,
+            "medianOriginalDurationDays": 29.569409722222222
+          },
+          {
+            "sellerAnonymous": "f2a0c3018511",
+            "listingCount": 1,
+            "medianDailyPrice": 270.0,
+            "medianOriginalDurationDays": 29.82548611111111
+          },
+          {
+            "sellerAnonymous": "b2b99bf67a59",
+            "listingCount": 1,
+            "medianDailyPrice": 180.0,
+            "medianOriginalDurationDays": 104.09466435185185
+          },
+          {
+            "sellerAnonymous": "04fd1b4d67e6",
+            "listingCount": 1,
+            "medianDailyPrice": 280.0,
+            "medianOriginalDurationDays": 29.327372685185185
+          },
+          {
+            "sellerAnonymous": "cfcbe9e03cbf",
+            "listingCount": 1,
+            "medianDailyPrice": 250.0,
+            "medianOriginalDurationDays": 363.0
+          },
+          {
+            "sellerAnonymous": "48f49dd91a90",
+            "listingCount": 1,
+            "medianDailyPrice": 270.0,
+            "medianOriginalDurationDays": 29.0
+          }
+        ]
+      },
+      "occupiedSellerStats": {
+        "uniqueSellers": 27,
+        "medianSellerDailyPrice": 255.0,
+        "sellers": [
+          {
+            "sellerAnonymous": "619b9764b0f5",
+            "listingCount": 18,
+            "medianDailyPrice": 270.0,
+            "medianOriginalDurationDays": 31.0
+          },
+          {
+            "sellerAnonymous": "b03e77c57a1f",
+            "listingCount": 9,
+            "medianDailyPrice": 270.0,
+            "medianOriginalDurationDays": 30.0
+          },
+          {
+            "sellerAnonymous": "9700ef0ed7e1",
+            "listingCount": 1,
+            "medianDailyPrice": 280.0,
+            "medianOriginalDurationDays": 27.547743055555557
+          },
+          {
+            "sellerAnonymous": "9c3cdd7c15b9",
+            "listingCount": 4,
+            "medianDailyPrice": 270.0,
+            "medianOriginalDurationDays": 28.24351273148148
+          },
+          {
+            "sellerAnonymous": "686a33e39712",
+            "listingCount": 1,
+            "medianDailyPrice": 136.0,
+            "medianOriginalDurationDays": 30.0
+          },
+          {
+            "sellerAnonymous": "fe56cf8bcfb2",
+            "listingCount": 1,
+            "medianDailyPrice": 240.0,
+            "medianOriginalDurationDays": 30.0
+          },
+          {
+            "sellerAnonymous": "0edc160cf0b0",
+            "listingCount": 2,
+            "medianDailyPrice": 264.5,
+            "medianOriginalDurationDays": 29.5
+          },
+          {
+            "sellerAnonymous": "8a4fc08d938a",
+            "listingCount": 17,
+            "medianDailyPrice": 270.0,
+            "medianOriginalDurationDays": 29.0
+          },
+          {
+            "sellerAnonymous": "965e535eca44",
+            "listingCount": 1,
+            "medianDailyPrice": 230.0,
+            "medianOriginalDurationDays": 30.0
+          },
+          {
+            "sellerAnonymous": "c7e92bac8729",
+            "listingCount": 1,
+            "medianDailyPrice": 180.0,
+            "medianOriginalDurationDays": 30.0
+          },
+          {
+            "sellerAnonymous": "368569509f31",
+            "listingCount": 1,
+            "medianDailyPrice": 260.0,
+            "medianOriginalDurationDays": 30.0
+          },
+          {
+            "sellerAnonymous": "02355c148e00",
+            "listingCount": 1,
+            "medianDailyPrice": 255.0,
+            "medianOriginalDurationDays": 30.0
+          },
+          {
+            "sellerAnonymous": "fa98c5be97e9",
+            "listingCount": 1,
+            "medianDailyPrice": 270.0,
+            "medianOriginalDurationDays": 29.0
+          },
+          {
+            "sellerAnonymous": "60d57697b336",
+            "listingCount": 1,
+            "medianDailyPrice": 269.0,
+            "medianOriginalDurationDays": 30.0
+          },
+          {
+            "sellerAnonymous": "d360dd3a89a8",
+            "listingCount": 1,
+            "medianDailyPrice": 167.0,
+            "medianOriginalDurationDays": 371.0
+          },
+          {
+            "sellerAnonymous": "08951d3e71ad",
+            "listingCount": 1,
+            "medianDailyPrice": 200.0,
+            "medianOriginalDurationDays": 98.0
+          },
+          {
+            "sellerAnonymous": "05603545c2fc",
+            "listingCount": 1,
+            "medianDailyPrice": 200.0,
+            "medianOriginalDurationDays": 31.0
+          },
+          {
+            "sellerAnonymous": "be9f8314b637",
+            "listingCount": 1,
+            "medianDailyPrice": 300.0,
+            "medianOriginalDurationDays": 60.0
+          },
+          {
+            "sellerAnonymous": "a9822e0f56e9",
+            "listingCount": 2,
+            "medianDailyPrice": 132.5,
+            "medianOriginalDurationDays": 26.890023148148146
+          },
+          {
+            "sellerAnonymous": "b4bc84e421ac",
+            "listingCount": 1,
+            "medianDailyPrice": 250.0,
+            "medianOriginalDurationDays": 30.002060185185186
+          },
+          {
+            "sellerAnonymous": "07aff97bab67",
+            "listingCount": 1,
+            "medianDailyPrice": 200.0,
+            "medianOriginalDurationDays": 180.53693287037038
+          },
+          {
+            "sellerAnonymous": "f508192df268",
+            "listingCount": 1,
+            "medianDailyPrice": 200.0,
+            "medianOriginalDurationDays": 29.569409722222222
+          },
+          {
+            "sellerAnonymous": "f2a0c3018511",
+            "listingCount": 1,
+            "medianDailyPrice": 270.0,
+            "medianOriginalDurationDays": 29.82548611111111
+          },
+          {
+            "sellerAnonymous": "b2b99bf67a59",
+            "listingCount": 1,
+            "medianDailyPrice": 180.0,
+            "medianOriginalDurationDays": 104.09466435185185
+          },
+          {
+            "sellerAnonymous": "04fd1b4d67e6",
+            "listingCount": 1,
+            "medianDailyPrice": 280.0,
+            "medianOriginalDurationDays": 29.327372685185185
+          },
+          {
+            "sellerAnonymous": "cfcbe9e03cbf",
+            "listingCount": 1,
+            "medianDailyPrice": 250.0,
+            "medianOriginalDurationDays": 363.0
+          },
+          {
+            "sellerAnonymous": "48f49dd91a90",
+            "listingCount": 1,
+            "medianDailyPrice": 270.0,
+            "medianOriginalDurationDays": 29.0
+          }
+        ]
+      },
+      "freshSince20260929": {
+        "listings": 27,
+        "occupied": 19,
+        "full": 13,
+        "occupiedSellerStats": {
+          "uniqueSellers": 12,
+          "medianSellerDailyPrice": 270.0,
+          "sellers": [
+            {
+              "sellerAnonymous": "619b9764b0f5",
+              "listingCount": 5,
+              "medianDailyPrice": 280.0,
+              "medianOriginalDurationDays": 31.361631944444444
+            },
+            {
+              "sellerAnonymous": "b03e77c57a1f",
+              "listingCount": 2,
+              "medianDailyPrice": 300.0,
+              "medianOriginalDurationDays": 29.19240162037037
+            },
+            {
+              "sellerAnonymous": "9700ef0ed7e1",
+              "listingCount": 1,
+              "medianDailyPrice": 280.0,
+              "medianOriginalDurationDays": 27.547743055555557
+            },
+            {
+              "sellerAnonymous": "a9822e0f56e9",
+              "listingCount": 2,
+              "medianDailyPrice": 132.5,
+              "medianOriginalDurationDays": 26.890023148148146
+            },
+            {
+              "sellerAnonymous": "b4bc84e421ac",
+              "listingCount": 1,
+              "medianDailyPrice": 250.0,
+              "medianOriginalDurationDays": 30.002060185185186
+            },
+            {
+              "sellerAnonymous": "9c3cdd7c15b9",
+              "listingCount": 2,
+              "medianDailyPrice": 270.0,
+              "medianOriginalDurationDays": 28.763541666666665
+            },
+            {
+              "sellerAnonymous": "07aff97bab67",
+              "listingCount": 1,
+              "medianDailyPrice": 200.0,
+              "medianOriginalDurationDays": 180.53693287037038
+            },
+            {
+              "sellerAnonymous": "f508192df268",
+              "listingCount": 1,
+              "medianDailyPrice": 200.0,
+              "medianOriginalDurationDays": 29.569409722222222
+            },
+            {
+              "sellerAnonymous": "f2a0c3018511",
+              "listingCount": 1,
+              "medianDailyPrice": 270.0,
+              "medianOriginalDurationDays": 29.82548611111111
+            },
+            {
+              "sellerAnonymous": "b2b99bf67a59",
+              "listingCount": 1,
+              "medianDailyPrice": 180.0,
+              "medianOriginalDurationDays": 104.09466435185185
+            },
+            {
+              "sellerAnonymous": "8a4fc08d938a",
+              "listingCount": 1,
+              "medianDailyPrice": 270.0,
+              "medianOriginalDurationDays": 26.144780092592594
+            },
+            {
+              "sellerAnonymous": "04fd1b4d67e6",
+              "listingCount": 1,
+              "medianDailyPrice": 280.0,
+              "medianOriginalDurationDays": 29.327372685185185
+            }
+          ]
+        },
+        "fullSellerStats": {
+          "uniqueSellers": 10,
+          "medianSellerDailyPrice": 260.0,
+          "sellers": [
+            {
+              "sellerAnonymous": "a9822e0f56e9",
+              "listingCount": 2,
+              "medianDailyPrice": 132.5,
+              "medianOriginalDurationDays": 26.890023148148146
+            },
+            {
+              "sellerAnonymous": "b4bc84e421ac",
+              "listingCount": 1,
+              "medianDailyPrice": 250.0,
+              "medianOriginalDurationDays": 30.002060185185186
+            },
+            {
+              "sellerAnonymous": "9c3cdd7c15b9",
+              "listingCount": 2,
+              "medianDailyPrice": 270.0,
+              "medianOriginalDurationDays": 28.763541666666665
+            },
+            {
+              "sellerAnonymous": "07aff97bab67",
+              "listingCount": 1,
+              "medianDailyPrice": 200.0,
+              "medianOriginalDurationDays": 180.53693287037038
+            },
+            {
+              "sellerAnonymous": "f508192df268",
+              "listingCount": 1,
+              "medianDailyPrice": 200.0,
+              "medianOriginalDurationDays": 29.569409722222222
+            },
+            {
+              "sellerAnonymous": "f2a0c3018511",
+              "listingCount": 1,
+              "medianDailyPrice": 270.0,
+              "medianOriginalDurationDays": 29.82548611111111
+            },
+            {
+              "sellerAnonymous": "619b9764b0f5",
+              "listingCount": 2,
+              "medianDailyPrice": 275.0,
+              "medianOriginalDurationDays": 31.473275462962963
+            },
+            {
+              "sellerAnonymous": "b2b99bf67a59",
+              "listingCount": 1,
+              "medianDailyPrice": 180.0,
+              "medianOriginalDurationDays": 104.09466435185185
+            },
+            {
+              "sellerAnonymous": "8a4fc08d938a",
+              "listingCount": 1,
+              "medianDailyPrice": 270.0,
+              "medianOriginalDurationDays": 26.144780092592594
+            },
+            {
+              "sellerAnonymous": "04fd1b4d67e6",
+              "listingCount": 1,
+              "medianDailyPrice": 280.0,
+              "medianOriginalDurationDays": 29.327372685185185
+            }
+          ]
+        }
+      },
+      "selectedExamples": [
+        {
+          "seq": 15855,
+          "createdAt": "2026-10-06 00:38:06",
+          "subscriptionStartsAt": "2026-10-06 00:38:05",
+          "subscriptionEndsAt": "2026-11-07 00:00:00",
+          "price": 280.0,
+          "priceType": "DAY",
+          "memberCount": 0,
+          "memberLimit": 4,
+          "status": "ON_SALE",
+          "salesAmount": null,
+          "settlementAmount": null,
+          "countries": [
+            "KR"
+          ],
+          "subscriptionType": "SHARE",
+          "service": "TVING",
+          "sellerAnonymous": "619b9764b0f5",
+          "source": "https://gbuts.com/subscriptions/15855",
+          "renewalMentioned": false,
+          "tvUnavailableMentioned": false,
+          "originalDurationDays": 31.973553240740742
+        },
+        {
+          "seq": 15827,
+          "createdAt": "2026-10-05 20:36:34",
+          "subscriptionStartsAt": "2026-10-05 20:36:34",
+          "subscriptionEndsAt": "2026-11-04 00:00:00",
+          "price": 300.0,
+          "priceType": "DAY",
+          "memberCount": 0,
+          "memberLimit": 4,
+          "status": "ON_SALE",
+          "salesAmount": null,
+          "settlementAmount": null,
+          "countries": [
+            "KR"
+          ],
+          "subscriptionType": "SHARE",
+          "service": "TVING",
+          "sellerAnonymous": "b03e77c57a1f",
+          "source": "https://gbuts.com/subscriptions/15827",
+          "renewalMentioned": false,
+          "tvUnavailableMentioned": false,
+          "originalDurationDays": 29.141273148148148
+        },
+        {
+          "seq": 15810,
+          "createdAt": "2026-10-05 16:56:35",
+          "subscriptionStartsAt": "2026-10-05 16:56:35",
+          "subscriptionEndsAt": "2026-10-31 00:00:00",
+          "price": 230.0,
+          "priceType": "DAY",
+          "memberCount": 3,
+          "memberLimit": 3,
+          "status": "CLOSED",
+          "salesAmount": null,
+          "settlementAmount": null,
+          "countries": [
+            "KR"
+          ],
+          "subscriptionType": "SHARE",
+          "service": "TVING",
+          "sellerAnonymous": "a9822e0f56e9",
+          "source": "https://gbuts.com/subscriptions/15810",
+          "renewalMentioned": false,
+          "tvUnavailableMentioned": false,
+          "originalDurationDays": 25.29403935185185
+        },
+        {
+          "seq": 15778,
+          "createdAt": "2026-10-05 10:05:27",
+          "subscriptionStartsAt": "2026-10-05 10:05:25",
+          "subscriptionEndsAt": "2026-11-06 00:00:00",
+          "price": 280.0,
+          "priceType": "DAY",
+          "memberCount": 3,
+          "memberLimit": 4,
+          "status": "ON_SALE",
+          "salesAmount": null,
+          "settlementAmount": null,
+          "countries": [
+            "KR"
+          ],
+          "subscriptionType": "SHARE",
+          "service": "TVING",
+          "sellerAnonymous": "619b9764b0f5",
+          "source": "https://gbuts.com/subscriptions/15778",
+          "renewalMentioned": false,
+          "tvUnavailableMentioned": false,
+          "originalDurationDays": 31.57957175925926
+        },
+        {
+          "seq": 15765,
+          "createdAt": "2026-10-04 22:48:37",
+          "subscriptionStartsAt": "2026-10-04 22:48:36",
+          "subscriptionEndsAt": "2026-11-03 00:00:00",
+          "price": 300.0,
+          "priceType": "DAY",
+          "memberCount": 2,
+          "memberLimit": 4,
+          "status": "ON_SALE",
+          "salesAmount": null,
+          "settlementAmount": null,
+          "countries": [
+            "KR"
+          ],
+          "subscriptionType": "SHARE",
+          "service": "TVING",
+          "sellerAnonymous": "b03e77c57a1f",
+          "source": "https://gbuts.com/subscriptions/15765",
+          "renewalMentioned": false,
+          "tvUnavailableMentioned": false,
+          "originalDurationDays": 29.049583333333334
+        },
+        {
+          "seq": 15031,
+          "createdAt": "2026-09-27 23:47:29",
+          "subscriptionStartsAt": "2026-09-27 14:47:29",
+          "subscriptionEndsAt": "2026-10-27 14:47:29",
+          "price": 270.0,
+          "priceType": "DAY",
+          "memberCount": 4,
+          "memberLimit": 4,
+          "status": "ON_SALE",
+          "salesAmount": null,
+          "settlementAmount": null,
+          "countries": [
+            "KR"
+          ],
+          "subscriptionType": "SHARE",
+          "service": "TVING",
+          "sellerAnonymous": "b03e77c57a1f",
+          "source": "https://gbuts.com/subscriptions/15031",
+          "renewalMentioned": false,
+          "tvUnavailableMentioned": false,
+          "originalDurationDays": 30.0
+        },
+        {
+          "seq": 15007,
+          "createdAt": "2026-09-27 19:08:06",
+          "subscriptionStartsAt": "2026-09-27 10:08:06",
+          "subscriptionEndsAt": "2026-10-25 10:08:06",
+          "price": 270.0,
+          "priceType": "DAY",
+          "memberCount": 4,
+          "memberLimit": 4,
+          "status": "ON_SALE",
+          "salesAmount": null,
+          "settlementAmount": null,
+          "countries": [
+            "KR"
+          ],
+          "subscriptionType": "SHARE",
+          "service": "TVING",
+          "sellerAnonymous": "9c3cdd7c15b9",
+          "source": "https://gbuts.com/subscriptions/15007",
+          "renewalMentioned": false,
+          "tvUnavailableMentioned": false,
+          "originalDurationDays": 28.0
+        },
+        {
+          "seq": 14953,
+          "createdAt": "2026-09-26 21:48:41",
+          "subscriptionStartsAt": "2026-09-26 12:48:41",
+          "subscriptionEndsAt": "2026-10-26 12:48:41",
+          "price": 136.0,
+          "priceType": "DAY",
+          "memberCount": 3,
+          "memberLimit": 3,
+          "status": "ON_SALE",
+          "salesAmount": null,
+          "settlementAmount": null,
+          "countries": [
+            "KR"
+          ],
+          "subscriptionType": "SHARE",
+          "service": "TVING",
+          "sellerAnonymous": "686a33e39712",
+          "source": "https://gbuts.com/subscriptions/14953",
+          "renewalMentioned": false,
+          "tvUnavailableMentioned": false,
+          "originalDurationDays": 30.0
+        }
+      ]
+    },
+    {
+      "service": "Wavve",
+      "pages": [
+        {
+          "url": "https://api.gbuts.com/api/subscribe/share?page=1&categorySeqs=10&size=100",
+          "count": 100,
+          "pagination": {
+            "startNum": 0,
+            "endNum": 100,
+            "totalCount": 1156,
+            "currentPage": 1,
+            "totalPage": 12,
+            "displayPage": 5,
+            "beginPage": 1,
+            "endPage": 5,
+            "prevPage": 1,
+            "nextPage": 6
+          }
+        },
+        {
+          "url": "https://api.gbuts.com/api/subscribe/share?page=2&categorySeqs=10&size=100",
+          "count": 100,
+          "pagination": {
+            "startNum": 100,
+            "endNum": 100,
+            "totalCount": 1156,
+            "currentPage": 2,
+            "totalPage": 12,
+            "displayPage": 5,
+            "beginPage": 1,
+            "endPage": 5,
+            "prevPage": 1,
+            "nextPage": 6
+          }
+        },
+        {
+          "url": "https://api.gbuts.com/api/subscribe/share?page=3&categorySeqs=10&size=100",
+          "count": 100,
+          "pagination": {
+            "startNum": 200,
+            "endNum": 100,
+            "totalCount": 1156,
+            "currentPage": 3,
+            "totalPage": 12,
+            "displayPage": 5,
+            "beginPage": 1,
+            "endPage": 5,
+            "prevPage": 1,
+            "nextPage": 6
+          }
+        },
+        {
+          "url": "https://api.gbuts.com/api/subscribe/share?page=4&categorySeqs=10&size=100",
+          "count": 100,
+          "pagination": {
+            "startNum": 300,
+            "endNum": 100,
+            "totalCount": 1156,
+            "currentPage": 4,
+            "totalPage": 12,
+            "displayPage": 5,
+            "beginPage": 1,
+            "endPage": 5,
+            "prevPage": 1,
+            "nextPage": 6
+          }
+        },
+        {
+          "url": "https://api.gbuts.com/api/subscribe/share?page=5&categorySeqs=10&size=100",
+          "count": 100,
+          "pagination": {
+            "startNum": 400,
+            "endNum": 100,
+            "totalCount": 1156,
+            "currentPage": 5,
+            "totalPage": 12,
+            "displayPage": 5,
+            "beginPage": 1,
+            "endPage": 5,
+            "prevPage": 1,
+            "nextPage": 6
+          }
+        }
+      ],
+      "fetchedCount": 500,
+      "fullSellerStats": {
+        "uniqueSellers": 15,
+        "medianSellerDailyPrice": 137.5,
+        "sellers": [
+          {
+            "sellerAnonymous": "619b9764b0f5",
+            "listingCount": 11,
+            "medianDailyPrice": 140.0,
+            "medianOriginalDurationDays": 31.0
+          },
+          {
+            "sellerAnonymous": "0ea217c6c28b",
+            "listingCount": 17,
+            "medianDailyPrice": 150.0,
+            "medianOriginalDurationDays": 34.0
+          },
+          {
+            "sellerAnonymous": "62fd447cdd5a",
+            "listingCount": 4,
+            "medianDailyPrice": 137.5,
+            "medianOriginalDurationDays": 63.0
+          },
+          {
+            "sellerAnonymous": "e8e0d1695433",
+            "listingCount": 1,
+            "medianDailyPrice": 140.0,
+            "medianOriginalDurationDays": 31.0
+          },
+          {
+            "sellerAnonymous": "1a6327974a5a",
+            "listingCount": 29,
+            "medianDailyPrice": 150.0,
+            "medianOriginalDurationDays": 30.0
+          },
+          {
+            "sellerAnonymous": "64e94628986b",
+            "listingCount": 1,
+            "medianDailyPrice": 150.0,
+            "medianOriginalDurationDays": 14.0
+          },
+          {
+            "sellerAnonymous": "368569509f31",
+            "listingCount": 4,
+            "medianDailyPrice": 138.5,
+            "medianOriginalDurationDays": 30.0
+          },
+          {
+            "sellerAnonymous": "452e3b72ee3e",
+            "listingCount": 1,
+            "medianDailyPrice": 110.0,
+            "medianOriginalDurationDays": 30.0
+          },
+          {
+            "sellerAnonymous": "0edc160cf0b0",
+            "listingCount": 1,
+            "medianDailyPrice": 128.0,
+            "medianOriginalDurationDays": 30.0
+          },
+          {
+            "sellerAnonymous": "91f80f3e9861",
+            "listingCount": 1,
+            "medianDailyPrice": 120.0,
+            "medianOriginalDurationDays": 191.0
+          },
+          {
+            "sellerAnonymous": "2cf49a566ddc",
+            "listingCount": 1,
+            "medianDailyPrice": 110.0,
+            "medianOriginalDurationDays": 32.0
+          },
+          {
+            "sellerAnonymous": "0b05c27614bf",
+            "listingCount": 1,
+            "medianDailyPrice": 130.0,
+            "medianOriginalDurationDays": 369.0
+          },
+          {
+            "sellerAnonymous": "12a16b560016",
+            "listingCount": 1,
+            "medianDailyPrice": 140.0,
+            "medianOriginalDurationDays": 29.0
+          },
+          {
+            "sellerAnonymous": "e2bf50d1565b",
+            "listingCount": 1,
+            "medianDailyPrice": 120.0,
+            "medianOriginalDurationDays": 191.0
+          },
+          {
+            "sellerAnonymous": "d1c57951d814",
+            "listingCount": 1,
+            "medianDailyPrice": 120.0,
+            "medianOriginalDurationDays": 30.0
+          }
+        ]
+      },
+      "occupiedSellerStats": {
+        "uniqueSellers": 17,
+        "medianSellerDailyPrice": 130.0,
+        "sellers": [
+          {
+            "sellerAnonymous": "619b9764b0f5",
+            "listingCount": 12,
+            "medianDailyPrice": 140.0,
+            "medianOriginalDurationDays": 31.0
+          },
+          {
+            "sellerAnonymous": "62fd447cdd5a",
+            "listingCount": 5,
+            "medianDailyPrice": 135.0,
+            "medianOriginalDurationDays": 89.36991898148148
+          },
+          {
+            "sellerAnonymous": "6341345f664b",
+            "listingCount": 1,
+            "medianDailyPrice": 120.0,
+            "medianOriginalDurationDays": 365.0
+          },
+          {
+            "sellerAnonymous": "0ea217c6c28b",
+            "listingCount": 17,
+            "medianDailyPrice": 150.0,
+            "medianOriginalDurationDays": 34.0
+          },
+          {
+            "sellerAnonymous": "e8e0d1695433",
+            "listingCount": 1,
+            "medianDailyPrice": 140.0,
+            "medianOriginalDurationDays": 31.0
+          },
+          {
+            "sellerAnonymous": "1a6327974a5a",
+            "listingCount": 29,
+            "medianDailyPrice": 150.0,
+            "medianOriginalDurationDays": 30.0
+          },
+          {
+            "sellerAnonymous": "64e94628986b",
+            "listingCount": 1,
+            "medianDailyPrice": 150.0,
+            "medianOriginalDurationDays": 14.0
+          },
+          {
+            "sellerAnonymous": "368569509f31",
+            "listingCount": 4,
+            "medianDailyPrice": 138.5,
+            "medianOriginalDurationDays": 30.0
+          },
+          {
+            "sellerAnonymous": "452e3b72ee3e",
+            "listingCount": 1,
+            "medianDailyPrice": 110.0,
+            "medianOriginalDurationDays": 30.0
+          },
+          {
+            "sellerAnonymous": "0edc160cf0b0",
+            "listingCount": 1,
+            "medianDailyPrice": 128.0,
+            "medianOriginalDurationDays": 30.0
+          },
+          {
+            "sellerAnonymous": "91f80f3e9861",
+            "listingCount": 1,
+            "medianDailyPrice": 120.0,
+            "medianOriginalDurationDays": 191.0
+          },
+          {
+            "sellerAnonymous": "2cf49a566ddc",
+            "listingCount": 1,
+            "medianDailyPrice": 110.0,
+            "medianOriginalDurationDays": 32.0
+          },
+          {
+            "sellerAnonymous": "638dd6dc4da9",
+            "listingCount": 1,
+            "medianDailyPrice": 120.0,
+            "medianOriginalDurationDays": 99.0
+          },
+          {
+            "sellerAnonymous": "0b05c27614bf",
+            "listingCount": 1,
+            "medianDailyPrice": 130.0,
+            "medianOriginalDurationDays": 369.0
+          },
+          {
+            "sellerAnonymous": "12a16b560016",
+            "listingCount": 1,
+            "medianDailyPrice": 140.0,
+            "medianOriginalDurationDays": 29.0
+          },
+          {
+            "sellerAnonymous": "e2bf50d1565b",
+            "listingCount": 1,
+            "medianDailyPrice": 120.0,
+            "medianOriginalDurationDays": 191.0
+          },
+          {
+            "sellerAnonymous": "d1c57951d814",
+            "listingCount": 1,
+            "medianDailyPrice": 120.0,
+            "medianOriginalDurationDays": 30.0
+          }
+        ]
+      },
+      "freshSince20260929": {
+        "listings": 3,
+        "occupied": 2,
+        "full": 0,
+        "occupiedSellerStats": {
+          "uniqueSellers": 2,
+          "medianSellerDailyPrice": 142.5,
+          "sellers": [
+            {
+              "sellerAnonymous": "619b9764b0f5",
+              "listingCount": 1,
+              "medianDailyPrice": 150.0,
+              "medianOriginalDurationDays": 31.97486111111111
+            },
+            {
+              "sellerAnonymous": "62fd447cdd5a",
+              "listingCount": 1,
+              "medianDailyPrice": 135.0,
+              "medianOriginalDurationDays": 89.36991898148148
+            }
+          ]
+        },
+        "fullSellerStats": {
+          "uniqueSellers": 0,
+          "medianSellerDailyPrice": null,
+          "sellers": []
+        }
+      },
+      "selectedExamples": [
+        {
+          "seq": 15854,
+          "createdAt": "2026-10-06 00:36:13",
+          "subscriptionStartsAt": "2026-10-06 00:36:12",
+          "subscriptionEndsAt": "2026-11-07 00:00:00",
+          "price": 150.0,
+          "priceType": "DAY",
+          "memberCount": 1,
+          "memberLimit": 4,
+          "status": "ON_SALE",
+          "salesAmount": null,
+          "settlementAmount": null,
+          "countries": [
+            "KR"
+          ],
+          "subscriptionType": "SHARE",
+          "service": "Wavve",
+          "sellerAnonymous": "619b9764b0f5",
+          "source": "https://gbuts.com/subscriptions/15854",
+          "renewalMentioned": false,
+          "tvUnavailableMentioned": false,
+          "originalDurationDays": 31.97486111111111
+        },
+        {
+          "seq": 15821,
+          "createdAt": "2026-10-05 19:29:26",
+          "subscriptionStartsAt": "2026-10-05 19:29:26",
+          "subscriptionEndsAt": "2027-07-30 00:00:00",
+          "price": 120.0,
+          "priceType": "DAY",
+          "memberCount": 0,
+          "memberLimit": 4,
+          "status": "ON_SALE",
+          "salesAmount": null,
+          "settlementAmount": null,
+          "countries": [
+            "KR"
+          ],
+          "subscriptionType": "SHARE",
+          "service": "Wavve",
+          "sellerAnonymous": "62fd447cdd5a",
+          "source": "https://gbuts.com/subscriptions/15821",
+          "renewalMentioned": false,
+          "tvUnavailableMentioned": false,
+          "originalDurationDays": 297.18789351851854
+        },
+        {
+          "seq": 15799,
+          "createdAt": "2026-10-05 15:07:19",
+          "subscriptionStartsAt": "2026-10-05 15:07:19",
+          "subscriptionEndsAt": "2027-01-03 00:00:00",
+          "price": 135.0,
+          "priceType": "DAY",
+          "memberCount": 2,
+          "memberLimit": 4,
+          "status": "ON_SALE",
+          "salesAmount": null,
+          "settlementAmount": null,
+          "countries": [
+            "KR"
+          ],
+          "subscriptionType": "SHARE",
+          "service": "Wavve",
+          "sellerAnonymous": "62fd447cdd5a",
+          "source": "https://gbuts.com/subscriptions/15799",
+          "renewalMentioned": false,
+          "tvUnavailableMentioned": false,
+          "originalDurationDays": 89.36991898148148
+        },
+        {
+          "seq": 14926,
+          "createdAt": "2026-09-26 09:09:23",
+          "subscriptionStartsAt": "2026-09-26 00:09:23",
+          "subscriptionEndsAt": "2026-10-27 00:09:23",
+          "price": 140.0,
+          "priceType": "DAY",
+          "memberCount": 4,
+          "memberLimit": 4,
+          "status": "ON_SALE",
+          "salesAmount": null,
+          "settlementAmount": null,
+          "countries": [
+            "KR"
+          ],
+          "subscriptionType": "SHARE",
+          "service": "Wavve",
+          "sellerAnonymous": "619b9764b0f5",
+          "source": "https://gbuts.com/subscriptions/14926",
+          "renewalMentioned": false,
+          "tvUnavailableMentioned": false,
+          "originalDurationDays": 31.0
+        },
+        {
+          "seq": 14917,
+          "createdAt": "2026-09-26 04:36:01",
+          "subscriptionStartsAt": "2026-09-25 19:36:01",
+          "subscriptionEndsAt": "2026-10-26 19:36:01",
+          "price": 140.0,
+          "priceType": "DAY",
+          "memberCount": 4,
+          "memberLimit": 4,
+          "status": "ON_SALE",
+          "salesAmount": null,
+          "settlementAmount": null,
+          "countries": [
+            "KR"
+          ],
+          "subscriptionType": "SHARE",
+          "service": "Wavve",
+          "sellerAnonymous": "0ea217c6c28b",
+          "source": "https://gbuts.com/subscriptions/14917",
+          "renewalMentioned": true,
+          "tvUnavailableMentioned": false,
+          "originalDurationDays": 31.0
+        },
+        {
+          "seq": 14916,
+          "createdAt": "2026-09-26 03:51:01",
+          "subscriptionStartsAt": "2026-09-25 18:51:01",
+          "subscriptionEndsAt": "2026-10-25 18:51:01",
+          "price": 140.0,
+          "priceType": "DAY",
+          "memberCount": 4,
+          "memberLimit": 4,
+          "status": "ON_SALE",
+          "salesAmount": null,
+          "settlementAmount": null,
+          "countries": [
+            "KR"
+          ],
+          "subscriptionType": "SHARE",
+          "service": "Wavve",
+          "sellerAnonymous": "62fd447cdd5a",
+          "source": "https://gbuts.com/subscriptions/14916",
+          "renewalMentioned": false,
+          "tvUnavailableMentioned": false,
+          "originalDurationDays": 30.0
+        }
+      ]
+    }
+  ],
+  "archiveNote": "Full sanitized collection kept temporarily at /tmp/ott-pricing-gbuts-market-2026-10-06-full.json. This repo file retains aggregate seller stats, query metadata and selected examples only."
+}

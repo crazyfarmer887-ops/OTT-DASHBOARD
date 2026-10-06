@@ -1,0 +1,563 @@
+{
+  "asOfUTC": "2026-10-06T00:57:09.339252+00:00",
+  "periodBasis": "GrayTag deal contract start date >=2026-09-06. Excludes OnSale, deleted and pre-use cancellation; includes actual use, delivery and post-use termination. Public Occupied is participation status, not payout proof.",
+  "graytagOwn": {
+    "넷플릭스": {
+      "confirmed30": 10,
+      "confirmed7": 0,
+      "dailyMedian": 165.0,
+      "daysMedian": 54.5,
+      "rates30": {
+        "156.0": 1,
+        "165.0": 2,
+        "208.0": 1,
+        "160.0": 1,
+        "204.0": 1,
+        "162.0": 1,
+        "185.0": 1,
+        "161.0": 1,
+        "187.0": 1
+      },
+      "terms30": {
+        "29": 1,
+        "28": 1,
+        "54": 2,
+        "55": 2,
+        "66": 1,
+        "65": 1,
+        "24": 1,
+        "64": 1
+      },
+      "currentUsingOrDelivery": 16,
+      "activeDaily": 2878.93,
+      "onsale": 1,
+      "latestConfirmedStart": "2026-09-20",
+      "shortened30": 3
+    },
+    "디즈니플러스": {
+      "confirmed30": 4,
+      "confirmed7": 0,
+      "dailyMedian": 145.0,
+      "daysMedian": 40.5,
+      "rates30": {
+        "180.0": 1,
+        "110.0": 1,
+        "107.0": 1,
+        "280.0": 1
+      },
+      "terms30": {
+        "11": 1,
+        "40": 1,
+        "41": 1,
+        "51": 1
+      },
+      "currentUsingOrDelivery": 33,
+      "activeDaily": 5368.72,
+      "onsale": 0,
+      "latestConfirmedStart": "2026-09-19",
+      "shortened30": 0
+    },
+    "애플원": {
+      "confirmed30": 0,
+      "confirmed7": 0,
+      "dailyMedian": null,
+      "daysMedian": null,
+      "rates30": {},
+      "terms30": {},
+      "currentUsingOrDelivery": 1,
+      "activeDaily": 4.15,
+      "onsale": 0,
+      "latestConfirmedStart": "2026-05-04",
+      "shortened30": 0
+    },
+    "왓챠플레이": {
+      "confirmed30": 0,
+      "confirmed7": 0,
+      "dailyMedian": null,
+      "daysMedian": null,
+      "rates30": {},
+      "terms30": {},
+      "currentUsingOrDelivery": 0,
+      "activeDaily": 0,
+      "onsale": 0,
+      "latestConfirmedStart": "2026-04-02",
+      "shortened30": 0
+    },
+    "웨이브": {
+      "confirmed30": 5,
+      "confirmed7": 0,
+      "dailyMedian": 121.0,
+      "daysMedian": 29,
+      "rates30": {
+        "121.0": 2,
+        "117.0": 1,
+        "128.0": 1,
+        "116.0": 1
+      },
+      "terms30": {
+        "16": 1,
+        "23": 1,
+        "34": 1,
+        "29": 1,
+        "30": 1
+      },
+      "currentUsingOrDelivery": 13,
+      "activeDaily": 1481.55,
+      "onsale": 0,
+      "latestConfirmedStart": "2026-09-20",
+      "shortened30": 1
+    },
+    "유튜브": {
+      "confirmed30": 81,
+      "confirmed7": 31,
+      "dailyMedian": 150.0,
+      "daysMedian": 364,
+      "rates30": {
+        "134.0": 1,
+        "150.0": 70,
+        "119.0": 1,
+        "130.0": 7,
+        "120.0": 2
+      },
+      "terms30": {
+        "30": 1,
+        "366": 2,
+        "361": 1,
+        "363": 14,
+        "362": 2,
+        "364": 47,
+        "365": 9,
+        "394": 1,
+        "393": 4
+      },
+      "currentUsingOrDelivery": 74,
+      "activeDaily": 9803.17,
+      "onsale": 0,
+      "latestConfirmedStart": "2026-10-05",
+      "shortened30": 15
+    },
+    "티빙": {
+      "confirmed30": 7,
+      "confirmed7": 0,
+      "dailyMedian": 178.0,
+      "daysMedian": 41,
+      "rates30": {
+        "169.0": 1,
+        "160.0": 1,
+        "150.0": 1,
+        "230.0": 2,
+        "199.0": 1,
+        "178.0": 1
+      },
+      "terms30": {
+        "38": 1,
+        "34": 1,
+        "40": 1,
+        "41": 2,
+        "59": 1,
+        "90": 1
+      },
+      "currentUsingOrDelivery": 20,
+      "activeDaily": 3654.06,
+      "onsale": 0,
+      "latestConfirmedStart": "2026-09-19",
+      "shortened30": 2
+    }
+  },
+  "gbutsOwn": {
+    "listingSeq": 15557,
+    "createdAt": "2026-10-02 17:37:36",
+    "dailyPrice": 140.0,
+    "memberCount": 5,
+    "capacity": 5,
+    "orderStatuses": [
+      "APPLY"
+    ],
+    "refundStatuses": [
+      "None"
+    ],
+    "contractDays": [
+      361,
+      363,
+      363,
+      363,
+      364
+    ],
+    "firstPurchase": "2026-10-02 19:54:20",
+    "lastPurchase": "2026-10-05 19:32:21",
+    "accruedUsedPrice": 1960,
+    "settlementAmount": 1764,
+    "note": "salesAmount does not equal sum of member contract estimates; not used as total sales. All periods are existing account end date, not equal-duration purchases."
+  },
+  "graytagPublicLatestOccupied": {
+    "넷플릭스": {
+      "received": 21,
+      "selected": 13,
+      "source": "https://graytag.co.kr/ws/product/findProducts?productAvailable=AfterReservation&sorting=DealRegisteredTime&productCategory=%EB%84%B7%ED%94%8C%EB%A6%AD%EC%8A%A4&page=1&rows=100",
+      "medianDailyPrice": 187.0,
+      "medianDays": 31,
+      "sellerAdjusted": {
+        "source": "https://graytag.co.kr/ws/product/findProducts?productAvailable=AfterReservation&sorting=DealRegisteredTime&productCategory=%EB%84%B7%ED%94%8C%EB%A6%AD%EC%8A%A4&page=1&rows=100",
+        "n": 13,
+        "sellers": 10,
+        "sellerMedianPrice": 187.0,
+        "largestSellerShare": 2,
+        "priceMedian": 187.0
+      },
+      "examples": [
+        {
+          "pricePerDay": "166 원",
+          "purePrice": 5000,
+          "price": "5,000 원",
+          "remainderDays": 29,
+          "rentalDays": "30 일",
+          "endDate": "26. 11. 04",
+          "dealEndDate": null,
+          "netflixSeatCount": 5,
+          "productCountryString": "국내계정",
+          "productStatus": "Occupied",
+          "pricePerMonth": "5,172 원"
+        },
+        {
+          "pricePerDay": "177 원",
+          "purePrice": 5500,
+          "price": "5,500 원",
+          "remainderDays": 29,
+          "rentalDays": "31 일",
+          "endDate": "26. 11. 04",
+          "dealEndDate": null,
+          "netflixSeatCount": 5,
+          "productCountryString": "국내계정",
+          "productStatus": "Occupied",
+          "pricePerMonth": "5,690 원"
+        },
+        {
+          "pricePerDay": "177 원",
+          "purePrice": 5500,
+          "price": "5,500 원",
+          "remainderDays": 29,
+          "rentalDays": "31 일",
+          "endDate": "26. 11. 04",
+          "dealEndDate": null,
+          "netflixSeatCount": 5,
+          "productCountryString": "국내계정",
+          "productStatus": "Occupied",
+          "pricePerMonth": "5,690 원"
+        }
+      ]
+    },
+    "디즈니플러스": {
+      "received": 100,
+      "selected": 20,
+      "source": "https://graytag.co.kr/ws/product/findProducts?productAvailable=AfterReservation&sorting=DealRegisteredTime&productCategory=%EB%94%94%EC%A6%88%EB%8B%88%ED%94%8C%EB%9F%AC%EC%8A%A4&page=1&rows=100",
+      "medianDailyPrice": 131.0,
+      "medianDays": 30.5,
+      "sellerAdjusted": {
+        "source": "https://graytag.co.kr/ws/product/findProducts?productAvailable=AfterReservation&sorting=DealRegisteredTime&productCategory=%EB%94%94%EC%A6%88%EB%8B%88%ED%94%8C%EB%9F%AC%EC%8A%A4&page=1&rows=100",
+        "n": 20,
+        "sellers": 2,
+        "sellerMedianPrice": 142.0,
+        "largestSellerShare": 19,
+        "priceMedian": 131.0
+      },
+      "examples": [
+        {
+          "pricePerDay": "129 원",
+          "purePrice": 4000,
+          "price": "4,000 원",
+          "remainderDays": 29,
+          "rentalDays": "31 일",
+          "endDate": "26. 11. 04",
+          "dealEndDate": null,
+          "netflixSeatCount": 0,
+          "productCountryString": null,
+          "productStatus": "Occupied",
+          "pricePerMonth": "4,138 원"
+        },
+        {
+          "pricePerDay": "129 원",
+          "purePrice": 4000,
+          "price": "4,000 원",
+          "remainderDays": 29,
+          "rentalDays": "31 일",
+          "endDate": "26. 11. 04",
+          "dealEndDate": null,
+          "netflixSeatCount": 0,
+          "productCountryString": null,
+          "productStatus": "Occupied",
+          "pricePerMonth": "4,138 원"
+        },
+        {
+          "pricePerDay": "129 원",
+          "purePrice": 4000,
+          "price": "4,000 원",
+          "remainderDays": 29,
+          "rentalDays": "31 일",
+          "endDate": "26. 11. 04",
+          "dealEndDate": null,
+          "netflixSeatCount": 0,
+          "productCountryString": null,
+          "productStatus": "Occupied",
+          "pricePerMonth": "4,138 원"
+        }
+      ]
+    },
+    "티빙": {
+      "received": 100,
+      "selected": 20,
+      "source": "https://graytag.co.kr/ws/product/findProducts?productAvailable=AfterReservation&sorting=DealRegisteredTime&productCategory=%ED%8B%B0%EB%B9%99&page=1&rows=100",
+      "medianDailyPrice": 166.0,
+      "medianDays": 29.0,
+      "sellerAdjusted": {
+        "source": "https://graytag.co.kr/ws/product/findProducts?productAvailable=AfterReservation&sorting=DealRegisteredTime&productCategory=%ED%8B%B0%EB%B9%99&page=1&rows=100",
+        "n": 20,
+        "sellers": 6,
+        "sellerMedianPrice": 154.0,
+        "largestSellerShare": 11,
+        "priceMedian": 166.0
+      },
+      "examples": [
+        {
+          "pricePerDay": "156 원",
+          "purePrice": 5000,
+          "price": "5,000 원",
+          "remainderDays": 30,
+          "rentalDays": "32 일",
+          "endDate": "26. 11. 05",
+          "dealEndDate": null,
+          "netflixSeatCount": 0,
+          "productCountryString": null,
+          "productStatus": "Occupied",
+          "pricePerMonth": "5,000 원"
+        },
+        {
+          "pricePerDay": "107 원",
+          "purePrice": 3000,
+          "price": "3,000 원",
+          "remainderDays": 27,
+          "rentalDays": "28 일",
+          "endDate": "26. 11. 02",
+          "dealEndDate": null,
+          "netflixSeatCount": 0,
+          "productCountryString": null,
+          "productStatus": "Occupied",
+          "pricePerMonth": "3,333 원"
+        },
+        {
+          "pricePerDay": "172 원",
+          "purePrice": 5000,
+          "price": "5,000 원",
+          "remainderDays": 28,
+          "rentalDays": "29 일",
+          "endDate": "26. 11. 03",
+          "dealEndDate": null,
+          "netflixSeatCount": 0,
+          "productCountryString": null,
+          "productStatus": "Occupied",
+          "pricePerMonth": "5,357 원"
+        }
+      ]
+    },
+    "웨이브": {
+      "received": 100,
+      "selected": 20,
+      "source": "https://graytag.co.kr/ws/product/findProducts?productAvailable=AfterReservation&sorting=DealRegisteredTime&productCategory=%EC%9B%A8%EC%9D%B4%EB%B8%8C&page=1&rows=100",
+      "medianDailyPrice": 135.5,
+      "medianDays": 29.0,
+      "sellerAdjusted": {
+        "source": "https://graytag.co.kr/ws/product/findProducts?productAvailable=AfterReservation&sorting=DealRegisteredTime&productCategory=%EC%9B%A8%EC%9D%B4%EB%B8%8C&page=1&rows=100",
+        "n": 20,
+        "sellers": 6,
+        "sellerMedianPrice": 127.5,
+        "largestSellerShare": 5,
+        "priceMedian": 135.5
+      },
+      "examples": [
+        {
+          "pricePerDay": "171 원",
+          "purePrice": 2400,
+          "price": "2,400 원",
+          "remainderDays": 13,
+          "rentalDays": "14 일",
+          "endDate": "26. 10. 19",
+          "dealEndDate": null,
+          "netflixSeatCount": 0,
+          "productCountryString": null,
+          "productStatus": "Occupied",
+          "pricePerMonth": "5,538 원"
+        },
+        {
+          "pricePerDay": "133 원",
+          "purePrice": 3600,
+          "price": "3,600 원",
+          "remainderDays": 24,
+          "rentalDays": "27 일",
+          "endDate": "26. 10. 30",
+          "dealEndDate": null,
+          "netflixSeatCount": 0,
+          "productCountryString": null,
+          "productStatus": "Occupied",
+          "pricePerMonth": "4,500 원"
+        },
+        {
+          "pricePerDay": "187 원",
+          "purePrice": 3000,
+          "price": "3,000 원",
+          "remainderDays": 13,
+          "rentalDays": "16 일",
+          "endDate": "26. 10. 19",
+          "dealEndDate": null,
+          "netflixSeatCount": 0,
+          "productCountryString": null,
+          "productStatus": "Occupied",
+          "pricePerMonth": "6,923 원"
+        }
+      ]
+    },
+    "유튜브": {
+      "received": 100,
+      "selected": 20,
+      "source": "https://graytag.co.kr/ws/product/findProducts?productAvailable=AfterReservation&sorting=DealRegisteredTime&productCategory=%EC%9C%A0%ED%8A%9C%EB%B8%8C&page=1&rows=100",
+      "medianDailyPrice": 177.0,
+      "medianDays": 367.0,
+      "sellerAdjusted": {
+        "source": "https://graytag.co.kr/ws/product/findProducts?productAvailable=AfterReservation&sorting=DealRegisteredTime&productCategory=%EC%9C%A0%ED%8A%9C%EB%B8%8C&page=1&rows=100",
+        "n": 20,
+        "sellers": 3,
+        "sellerMedianPrice": 177.0,
+        "largestSellerShare": 18,
+        "priceMedian": 177.0
+      },
+      "examples": [
+        {
+          "pricePerDay": "177 원",
+          "purePrice": 65000,
+          "price": "65,000 원",
+          "remainderDays": 366,
+          "rentalDays": "367 일",
+          "endDate": "27. 10. 07",
+          "dealEndDate": null,
+          "netflixSeatCount": 0,
+          "productCountryString": null,
+          "productStatus": "Occupied",
+          "pricePerMonth": "5,328 원"
+        },
+        {
+          "pricePerDay": "177 원",
+          "purePrice": 65000,
+          "price": "65,000 원",
+          "remainderDays": 366,
+          "rentalDays": "367 일",
+          "endDate": "27. 10. 07",
+          "dealEndDate": null,
+          "netflixSeatCount": 0,
+          "productCountryString": null,
+          "productStatus": "Occupied",
+          "pricePerMonth": "5,328 원"
+        },
+        {
+          "pricePerDay": "177 원",
+          "purePrice": 65000,
+          "price": "65,000 원",
+          "remainderDays": 365,
+          "rentalDays": "366 일",
+          "endDate": "27. 10. 06",
+          "dealEndDate": null,
+          "netflixSeatCount": 0,
+          "productCountryString": null,
+          "productStatus": "Occupied",
+          "pricePerMonth": "5,342 원"
+        }
+      ]
+    },
+    "왓챠플레이": {
+      "received": 17,
+      "selected": 7,
+      "source": "https://graytag.co.kr/ws/product/findProducts?productAvailable=AfterReservation&sorting=DealRegisteredTime&productCategory=%EC%99%93%EC%B1%A0%ED%94%8C%EB%A0%88%EC%9D%B4&page=1&rows=100",
+      "medianDailyPrice": 127.0,
+      "medianDays": 29,
+      "sellerAdjusted": {
+        "source": "https://graytag.co.kr/ws/product/findProducts?productAvailable=AfterReservation&sorting=DealRegisteredTime&productCategory=%EC%99%93%EC%B1%A0%ED%94%8C%EB%A0%88%EC%9D%B4&page=1&rows=100",
+        "n": 7,
+        "sellers": 4,
+        "sellerMedianPrice": 122.5,
+        "largestSellerShare": 3,
+        "priceMedian": 127.0
+      },
+      "examples": [
+        {
+          "pricePerDay": "169 원",
+          "purePrice": 3900,
+          "price": "3,900 원",
+          "remainderDays": 22,
+          "rentalDays": "23 일",
+          "endDate": "26. 10. 28",
+          "dealEndDate": null,
+          "netflixSeatCount": 0,
+          "productCountryString": null,
+          "productStatus": "Occupied",
+          "pricePerMonth": "5,318 원"
+        },
+        {
+          "pricePerDay": "127 원",
+          "purePrice": 3700,
+          "price": "3,700 원",
+          "remainderDays": 21,
+          "rentalDays": "29 일",
+          "endDate": "26. 10. 27",
+          "dealEndDate": null,
+          "netflixSeatCount": 0,
+          "productCountryString": null,
+          "productStatus": "Occupied",
+          "pricePerMonth": "5,286 원"
+        },
+        {
+          "pricePerDay": "161 원",
+          "purePrice": 4200,
+          "price": "4,200 원",
+          "remainderDays": 13,
+          "rentalDays": "26 일",
+          "endDate": "26. 10. 19",
+          "dealEndDate": null,
+          "netflixSeatCount": 0,
+          "productCountryString": null,
+          "productStatus": "Occupied",
+          "pricePerMonth": "9,692 원"
+        }
+      ]
+    },
+    "AppleOne": {
+      "received": 0,
+      "selected": 0,
+      "source": "https://graytag.co.kr/ws/product/findProducts?productAvailable=AfterReservation&sorting=DealRegisteredTime&productCategory=AppleOne&page=1&rows=100",
+      "medianDailyPrice": null,
+      "medianDays": null,
+      "sellerAdjusted": null,
+      "examples": []
+    }
+  },
+  "configuredDefaultRates": {
+    "넷플릭스": 100,
+    "디즈니플러스": 111,
+    "웨이브": 100,
+    "티빙": 100,
+    "왓챠플레이": 100,
+    "유튜브": 100,
+    "라프텔": 100,
+    "쿠팡플레이": 100,
+    "AppleOne": 100,
+    "프라임비디오": 100
+  },
+  "costAssumptions": {
+    "monthlyKRW": {
+      "넷플릭스": 17000,
+      "디즈니플러스": 14000,
+      "티빙": 10000,
+      "웨이브": 10000,
+      "티빙+웨이브": 19500
+    },
+    "source": "src/web/lib/dashboard-stats.ts and src/web/pages/profit.tsx at65cc05e",
+    "actualBillVerified": false
+  },
+  "inventoryVerification": "Full current account inventory API timed out; no current account/empty-seat count claimed."
+}
