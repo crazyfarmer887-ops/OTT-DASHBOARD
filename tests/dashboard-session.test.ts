@@ -71,6 +71,13 @@ describe('dashboard password session', () => {
     expect(isDashboardHtmlPath('/youtube-invites')).toBe(true);
     expect(isDashboardHtmlPath('/renewals')).toBe(true);
     expect(isDashboardHtmlPath('/everyview')).toBe(true);
+    for (const path of ['/gbuts', '/gbuts-sales', '/gbuts-orders', '/spotify-invites']) {
+      expect(isDashboardHtmlPath(path)).toBe(true);
+      expect(isDashboardHtmlPath('/dashboard' + path)).toBe(true);
+      expect(isDashboardHtmlPath(path + '/')).toBe(true);
+      expect(isDashboardHtmlPath(path + '///')).toBe(true);
+      expect(isDashboardHtmlPath('/dashboard' + path + '/')).toBe(true);
+    }
     expect(isDashboardHtmlPath('/dashboard/access/test-token')).toBe(false);
     expect(isDashboardHtmlPath('/access/test-token')).toBe(false);
     expect(isDashboardHtmlPath('/dashboard/assets/index-abc123.js')).toBe(false);

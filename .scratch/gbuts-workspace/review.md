@@ -13,3 +13,5 @@ One P2 query-navigation bug: service filter changes could retain the prior accou
 Summary: Standards 0 blocking findings, 1 optional smell; Spec 1 finding resolved, 0 outstanding.
 
 Production verification follow-up: narrow-screen control overlap fixed and closed drawer marked inert. Inventory browsing now reuses the existing verified snapshot with stale status/time; publication/fulfillment retain fresh reads. Separate regression proves fresh-read failure sends no publication. Follow-up spec review found no new issue. Final targeted tests: 10 files, 59 passed; build and changed UI type checks passed.
+
+Canonical HTML routes now share the existing password gate after Nginx prefix stripping, including trailing slashes. Session regression tests cover all GButs/Spotify paths and preserve public buyer access.

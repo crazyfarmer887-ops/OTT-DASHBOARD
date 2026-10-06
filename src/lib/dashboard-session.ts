@@ -111,7 +111,8 @@ export function isDashboardHtmlPath(pathname: string): boolean {
   // Nginx proxies /dashboard/ with a trailing-slash proxy_pass, which strips
   // the prefix before the request reaches this server. Keep these canonical
   // SPA routes protected without capturing unrelated root services/assets.
-  return new Set(['/', '/write', '/manage', '/youtube-invites', '/renewals', '/everyview']).has(pathname);
+  const canonicalPath = pathname.replace(/\/+$/, '') || '/';
+  return new Set(['/', '/write', '/manage', '/youtube-invites', '/renewals', '/everyview', '/gbuts', '/gbuts-sales', '/gbuts-orders', '/spotify-invites']).has(canonicalPath);
 }
 
 export function dashboardSessionCookie(token: string, maxAgeSeconds = Math.floor(DASHBOARD_SESSION_TTL_MS / 1000), secure = false): string {
