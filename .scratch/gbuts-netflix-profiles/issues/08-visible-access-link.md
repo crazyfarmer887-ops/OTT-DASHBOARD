@@ -8,3 +8,7 @@ Existing confirmed orders are not bulk replayed. Correct only the screenshot's i
 
 ## Regression seam
 Broker transport test asserts three independent payloads, middle payload exactly labelled URL, all<=500 UTF8bytes, incomplete history not accepted. Default scheduler test asserts3 SENDs then no repeats on later polling. Existing pinned legacy/recovery reconciliation remains.
+
+## Verified release
+Focused62tests passed; full1,053pass /153existing failures. Server typecheck/build passed; Spec0findings, Standards0blocking findings. e2a8b7b pushed, archived and deployed; service ready and configured proxy retained. Production ping200/unauthorized403, worker enabled, all5 existing orders confirmed without order errors.
+Current 조라 buyer was validated against paid member42604/user199359, unchanged profile5/private URL, room participants and live listing. Corrected3messages actually saved with75/89/282byte payloads. Exact seller history verified; no blanket replay of other confirmed orders. Existing GButs page updated live and visibly showed three independent bubbles, with `접근 링크:` alone in the middle. Full-page screenshot captured as proof. No dummy messages or localhost permission workaround.
