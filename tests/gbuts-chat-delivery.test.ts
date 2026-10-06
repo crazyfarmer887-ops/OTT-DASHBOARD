@@ -1,11 +1,11 @@
 import { afterEach, expect, test, vi } from 'vitest';
-import { buildGbutsNetflixDeliveryText } from '../src/lib/gbuts-ott-templates';
-import { sendGbutsText } from '../src/scheduler/gbuts-spotify-messages';
+import { buildGbutsNetflixDeliveryText, buildGbutsNetflixLegacyDeliveryText } from '../src/lib/gbuts-ott-templates';
+import { sendGbutsText, sendGbutsSingleText } from '../src/scheduler/gbuts-spotify-messages';
 import { GbutsChatDeliveryError, gbutsChatContainsText, splitGbutsChatText } from '../src/lib/gbuts-chat-delivery';
 
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
-const guide = buildGbutsNetflixDeliveryText('https://email-verify.one/dashboard/access/test-buyer', 1);
-function broker({ echo = true, failConnect = false } = {}) {
+const guide = buildGbutsNetflixLegacyDeliveryText('https://email-verify.one/dashboard/access/test-buyer', 1);
+function broker({ echo = true, failConnect = false, frameBudget = false } = {}) {
   const accepted: string[] = [];
   class Socket {
     onopen?: () => void; onmessage?: (event: { data: string }) => void; onerror?: () => void; onclose?: () => void;
@@ -15,7 +15,7 @@ function broker({ echo = true, failConnect = false } = {}) {
       if (!frame.startsWith('SEND\n')) return;
       const payload = JSON.parse(frame.split('\n\n')[1].replace(/\0$/, ''));
       // Reproduces the observed silent rejection of long multibyte messages.
-      if (Buffer.byteLength(payload.payload) > 500) return;
+      if (frameBudget ? Buffer.byteLength(frame) > 1000 : Buffer.byteLength(payload.payload) > 500) return;
       accepted.push(payload.payload);
       if (echo) queueMicrotask(() => this.onmessage?.({ data: `MESSAGE\ndestination:/sub/chat/room/test-room\n\n${JSON.stringify({ id: accepted.length, accountSeq: 99, type: 'TEXT', payload: payload.payload })}\0` }));
     }
@@ -56,4 +56,18 @@ test('splits a long paragraph without corrupting emoji, words or the account URL
   expect(chunks.every(x => Buffer.byteLength(x) <= 500 && !/[\uD800-\uDBFF]$/.test(x))).toBe(true);
   expect(chunks.join(' ').replace(/\s+/g, ' ').trim()).toBe(text.replace(/\s+/g, ' ').trim());
   expect(chunks.at(-1)).toContain('https://example.com/private-token');
+});
+
+test('sends the approved compact guide and actual-length buyer URL in exactly one frame', async () => {
+  const text = buildGbutsNetflixDeliveryText('https://email-verify.one/dashboard/access/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx', 5);
+  const accepted = broker({ frameBudget: true });
+  await sendGbutsSingleText('test-room', 99, text);
+  expect(text.length).toBeLessThanOrEqual(400);
+  expect(accepted).toEqual([text]);
+  expect(text).toContain('「5번」'); expect(text).not.toContain('[구매자 전용 링크]');
+});
+test('single-message delivery rejects an oversized guide before opening a socket', async () => {
+  const accepted = broker({ frameBudget: true });
+  await expect(sendGbutsSingleText('test-room', 99, guide)).rejects.toMatchObject({ submitted: false });
+  expect(accepted).toEqual([]);
 });

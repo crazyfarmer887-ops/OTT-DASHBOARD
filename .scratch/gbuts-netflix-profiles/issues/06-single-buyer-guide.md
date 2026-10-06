@@ -1,0 +1,19 @@
+# One private guide for future Netflix buyers
+
+Status: implementing
+Baseline: 0960dfd
+
+## Approved request
+Use the user's shortened Netflix guide, replacing the placeholder with each actual buyer access URL and their assigned profile 1–5. Automatically send it in one 1:1 message after detecting a new purchase. Do not resend to existing buyers, including the current buyer.
+
+## Implementation / acceptance
+- New Netflix orders use exactly the approved compact text: credentials/consent and household verification guidance, profile number, no profile/PIN/account changes or multiple simultaneous devices. Legal warning and troubleshooting remain on the access page/listing and are omitted from this chat as approved.
+- One STOMP SEND for the entire text, including real link and profile. Never silently split this guide.
+- Preserve 500-character web input cap. Bound the complete serialized frame to 1,000 UTF-8 bytes, below the rejected historical 1,163/1,340-byte frames. Real URL and normal room/seller IDs produce about 980 bytes. This is a conservative frame budget, not a verified published backend limit.
+- Await exact saved-message ID / seller echo and confirm full history, retain definite pre-SEND retry and uncertain-send duplicate protection.
+- Keep 5-second coalesced detection and verified inventory/profile allocation.
+- Persist the attempted message so template updates cannot change reconciliation. Legacy attempted orders without this field reconcile the original full guide; confirmed orders are not replayed.
+- Verify default scheduler → real transport seam emits one SEND and repeated polls do not send again.
+
+## Live scope
+No test messages to existing customers. GButs does not allow self PERSONAL rooms or empty GROUP rooms; live receipt of the new single guide can only be verified when a genuinely new buyer arrives or a separate authorized test recipient is supplied. Deployment smoke checks must report this limitation accurately.

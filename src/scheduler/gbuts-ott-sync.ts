@@ -7,8 +7,8 @@ import { loadSafeModeConfig } from '../api/safe-mode';
 import { generateUniqueProfileNicknames, stableRandomFromSeed } from '../lib/profile-nickname';
 import { buildPartyAccessDeliveryTemplate } from '../lib/party-access-template';
 import { releaseCompletedNetflixProfiles, allocateNetflixProfilesForSync } from '../lib/gbuts-netflix-profiles';
-import { buildGbutsNetflixDeliveryText } from '../lib/gbuts-ott-templates';
-import { sendGbutsText } from './gbuts-spotify-messages';
+import { buildGbutsNetflixDeliveryText, buildGbutsNetflixLegacyDeliveryText } from '../lib/gbuts-ott-templates';
+import { sendGbutsText, sendGbutsSingleText } from './gbuts-spotify-messages';
 
 export interface GbutsOttRuntimeDependencies {
   management(options?: { forceRefresh: boolean }): Promise<GbutsOttManagement>;
@@ -19,7 +19,7 @@ export interface GbutsOttRuntimeDependencies {
   writeStore?(store: GbutsOttStore): void;
 }
 export async function syncGbutsOtt(deps: GbutsOttRuntimeDependencies,
-  client: ReturnType<typeof createGbutsOttSellerClient>, sendText = sendGbutsText): Promise<{ orders: number; attempted: number; confirmed: number }> {
+  client: ReturnType<typeof createGbutsOttSellerClient>, sendText?: typeof sendGbutsText): Promise<{ orders: number; attempted: number; confirmed: number }> {
   const read = deps.readStore || readGbutsOttStore; const write = deps.writeStore || writeGbutsOttStore;
   const store = read(); const now = new Date().toISOString();
   const listings = Object.values(store.listings).filter(x => x.state === 'registered' || x.state === 'closed');
@@ -46,8 +46,9 @@ export async function syncGbutsOtt(deps: GbutsOttRuntimeDependencies,
   }
   const eligible = Object.values(store.orders).filter(order => deliverableOttOrder(order) && order.verifiedAt === now);
   const sellerSeq = eligible.length ? await client.sellerAccountSeq() : 0;
-  const deliveryText = (order: GbutsOttOrder) => store.listings[order.listingId].serviceType === '넷플릭스'
-    ? buildGbutsNetflixDeliveryText(order.accessUrl!, order.profileNumber!) : buildPartyAccessDeliveryTemplate(order.accessUrl!);
+  const deliveryText = (order: GbutsOttOrder) => order.deliveryMessage || (store.listings[order.listingId].serviceType === '넷플릭스'
+    ? (order.attemptedAt || order.delivery === 'attempted' ? buildGbutsNetflixLegacyDeliveryText : buildGbutsNetflixDeliveryText)(order.accessUrl!, order.profileNumber!)
+    : buildPartyAccessDeliveryTemplate(order.accessUrl!));
   // Confirmation discloses nothing new: use the persisted link and profile lease,
   // after checking the paid buyer above. A GrayTag outage cannot hide a saved chat.
   for (const order of eligible) {
@@ -106,9 +107,10 @@ export async function syncGbutsOtt(deps: GbutsOttRuntimeDependencies,
     if (order.attemptedAt || order.delivery === 'attempted' || order.delivery === 'confirmed') continue;
     // Persist before SEND. Submitted but uncertain messages are reconciled only;
     // a typed failure before any SEND clears the attempt for the next poll.
+    order.deliveryMessage = text;
     order.delivery = 'attempted'; order.attemptedAt = new Date().toISOString(); delete order.error; write(store); attempted++;
     try {
-      await sendText(roomId, sellerSeq, text);
+      await (sendText || (listing.serviceType === '넷플릭스' ? sendGbutsSingleText : sendGbutsText))(roomId, sellerSeq, text);
       if (contains((await client.getChat(roomId)).messages)) { order.delivery = 'confirmed'; write(store); confirmed++; }
     } catch (error) {
       if (error instanceof GbutsChatDeliveryError && !error.submitted) {

@@ -169,6 +169,21 @@ export async function sendGbutsText(roomId: string, accountSeq: number, text: st
   let parts: string[];
   try { parts = splitGbutsChatText(text); }
   catch { throw new GbutsChatDeliveryError('GButs chat message exceeds transmission limits', false); }
+  return sendGbutsChatParts(roomId, accountSeq, parts);
+}
+
+/** A compact OTT guide is one message; never silently turn it into several. */
+export async function sendGbutsSingleText(roomId: string, accountSeq: number, text: string): Promise<void> {
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(roomId) || !Number.isSafeInteger(accountSeq) || accountSeq <= 0
+    || !text.trim() || text.trim().length > 500 || Buffer.byteLength(gbutsTextSendFrame(roomId, accountSeq, text.trim())) > 1000)
+    throw new GbutsChatDeliveryError('GButs single chat message exceeds transmission limits', false);
+  return sendGbutsChatParts(roomId, accountSeq, [text.trim()]);
+}
+function gbutsTextSendFrame(roomId: string, accountSeq: number, text: string): string {
+  const payload = JSON.stringify({ accountSeq, payload: text, roomId, type: 'TEXT' });
+  return `SEND\ndestination:/pub/chat/text\ncontent-length:${Buffer.byteLength(payload)}\n\n${payload}\0`;
+}
+async function sendGbutsChatParts(roomId: string, accountSeq: number, parts: string[]): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     let socket: WebSocket;
     try { socket = new WebSocket('wss://socket.gbuts.com/ws/websocket'); }
@@ -183,9 +198,8 @@ export async function sendGbutsText(roomId: string, accountSeq: number, text: st
     };
     const sendNext = () => {
       if (index === parts.length) { finish(); return; }
-      const payload = JSON.stringify({ accountSeq, payload: parts[index], roomId, type: 'TEXT' });
       submitted = true;
-      try { socket.send(`SEND\ndestination:/pub/chat/text\ncontent-length:${Buffer.byteLength(payload)}\n\n${payload}\0`); }
+      try { socket.send(gbutsTextSendFrame(roomId, accountSeq, parts[index])); }
       catch { finish('GButs chat socket send failed'); }
     };
     socket.onopen = () => {

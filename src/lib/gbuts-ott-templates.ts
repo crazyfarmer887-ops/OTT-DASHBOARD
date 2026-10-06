@@ -23,7 +23,7 @@ ${GBUTS_ACCOUNT_CHANGE_WARNING}`;
 export function makeGbutsOttDescription(serviceType: string): string {
   return serviceType === '넷플릭스' ? GBUTS_NETFLIX_DESCRIPTION : makeDefaultProductDescription(serviceType);
 }
-export function buildGbutsNetflixDeliveryText(accessUrl: string, number: number): string {
+export function buildGbutsNetflixLegacyDeliveryText(accessUrl: string, number: number): string {
   if (!Number.isInteger(number) || number < 1 || number > 5) throw new Error('배정된 프로필 번호가 올바르지 않습니다.');
   return `구매 감사합니다! 😊
 
@@ -47,4 +47,22 @@ ${GBUTS_ACCOUNT_CHANGE_WARNING}
 
 로그인이 안 되면 먼저 위 링크를 새로고침하여 최신 계정 정보를 확인해 주세요.
 해결되지 않으면 이 채팅방으로 문의해 주세요!`;
+}
+
+/** Approved compact guide for one GButs private-chat message. */
+export function buildGbutsNetflixDeliveryText(accessUrl: string, number: number): string {
+  if (!Number.isInteger(number) || number < 1 || number > 5) throw new Error('배정된 프로필 번호가 올바르지 않습니다.');
+  return `구매 감사합니다! 😊
+✅ 구매자님은 넷플릭스 「${number}번」 프로필을 사용해 주세요.
+이미 만들어진 프로필이므로 새로 생성하지 않으셔도 됩니다.
+🔗 계정 정보 확인 주소
+${accessUrl}
+위 주소에서 필수 이용 동의 후 아이디·비밀번호·이메일 PIN을 확인해 주세요.
+가구 인증 / 로그인 코드 확인 방법도 해당 페이지에서 안내드립니다.
+⚠️ 꼭 지켜주세요!
+• 배정된 ${number}번 프로필만 사용해 주세요.
+• 프로필 이름과 PIN을 변경하지 마세요.
+• 프로필을 새로 만들거나 삭제하지 마세요.
+• 계정 이메일·비밀번호·결제 설정을 변경하지 마세요.
+• 한 사람이 여러 기기에서 동시에 시청하지 마세요.`;
 }

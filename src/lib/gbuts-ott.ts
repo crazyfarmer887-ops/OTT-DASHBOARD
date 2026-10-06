@@ -15,6 +15,7 @@ export interface GbutsOttOrder {
   profileName?: string; accessUrl?: string; roomId?: string;
   delivery: 'ready' | 'attempted' | 'confirmed' | 'blocked'; verifiedAt: string; error?: string;
   attemptedAt?: string;
+  deliveryMessage?: string;
   purchasedAt?: string;
   profileNumber?: number;
   profileReleasedAt?: string;

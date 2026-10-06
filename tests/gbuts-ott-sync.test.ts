@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { buildGbutsNetflixLegacyDeliveryText } from '../src/lib/gbuts-ott-templates';
 import { emptyGbutsOttStore } from '../src/lib/gbuts-ott';
 import { GbutsChatDeliveryError, splitGbutsChatText } from '../src/lib/gbuts-chat-delivery';
 import { syncGbutsOtt } from '../src/scheduler/gbuts-ott-sync';
@@ -62,6 +63,38 @@ describe('GButs OTT order delivery', () => {
     await syncGbutsOtt(f.deps, f.client as any, f.send);
     expect(f.store.orders['100:1'].delivery).toBe('attempted'); expect(f.send).toHaveBeenCalledTimes(1);
     expect(f.store.orders['100:1'].error).toContain('확인');
+  });
+  it('reconciles legacy attempted guides after the new compact template is enabled', async () => {
+    const f = fixture(); const url = 'https://email-verify.one/dashboard/access/legacy';
+    f.deps.writeStore({ ...f.store, orders: { '100:1': fixtureOrder({ delivery: 'attempted', attemptedAt: '2026-10-05T05:00:00Z',
+      profileNumber: 4, profileName: '4', accessUrl: url, roomId: 'room-10' }) } });
+    f.messages = splitGbutsChatText(buildGbutsNetflixLegacyDeliveryText(url, 4)).map(message => ({ senderSeq: 99, messageType: 'TEXT', message }));
+    f.deps.management = vi.fn(async () => { throw new Error('403'); });
+    await syncGbutsOtt(f.deps, f.client as any, f.send);
+    expect(f.store.orders['100:1'].delivery).toBe('confirmed'); expect(f.send).not.toHaveBeenCalled();
+  });
+  it('uses the real default single-message transport for a newly paid Netflix buyer', async () => {
+    const f = fixture(); const frames: string[] = [];
+    class Socket {
+      onopen?: () => void; onmessage?: (event: { data: string }) => void; onerror?: () => void; onclose?: () => void;
+      constructor() { queueMicrotask(() => this.onopen?.()); }
+      send(frame: string) {
+        if (frame.startsWith('CONNECT\n')) queueMicrotask(() => this.onmessage?.({ data: 'CONNECTED\n\n\0' }));
+        if (!frame.startsWith('SEND\n')) return;
+        frames.push(frame); const payload = JSON.parse(frame.split('\n\n')[1].replace(/\0$/, ''));
+        f.messages = [{ senderSeq: payload.accountSeq, messageType: 'TEXT', message: payload.payload }];
+        queueMicrotask(() => this.onmessage?.({ data: `MESSAGE\ndestination:/sub/chat/room/room-10\n\n${JSON.stringify({ id: 1, ...payload })}\0` }));
+      }
+      close() {}
+    }
+    vi.stubGlobal('WebSocket', Socket);
+    try {
+      await syncGbutsOtt(f.deps, f.client as any);
+      await syncGbutsOtt(f.deps, f.client as any);
+      expect(frames).toHaveLength(1); expect(Buffer.byteLength(frames[0])).toBeLessThanOrEqual(1000);
+      expect(f.store.orders['100:1'].delivery).toBe('confirmed');
+      expect(f.store.orders['100:1'].deliveryMessage).toContain('token-100:1');
+    } finally { vi.unstubAllGlobals(); }
   });
   it('keeps distinct orders separate even when buyer names are identical', async () => {
     const f = fixture(); f.members = [...f.members, { ...f.members[0], seq: 2, userSeq: 20 }];
