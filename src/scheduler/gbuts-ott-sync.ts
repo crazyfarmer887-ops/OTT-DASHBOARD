@@ -5,6 +5,8 @@ import { loadGbutsSession } from '../lib/gbuts-session';
 import { loadSafeModeConfig } from '../api/safe-mode';
 import { generateUniqueProfileNicknames, stableRandomFromSeed } from '../lib/profile-nickname';
 import { buildPartyAccessDeliveryTemplate } from '../lib/party-access-template';
+import { allocateNetflixProfiles } from '../lib/gbuts-netflix-profiles';
+import { buildGbutsNetflixDeliveryText } from '../lib/gbuts-ott-templates';
 import { sendGbutsText } from './gbuts-spotify-messages';
 
 export interface GbutsOttRuntimeDependencies {
@@ -39,6 +41,8 @@ export async function syncGbutsOtt(deps: GbutsOttRuntimeDependencies,
   if (!listings.length) return { orders: 0, attempted, confirmed };
   const management = await deps.management();
   const manualMembers = deps.manualMembers();
+  allocateNetflixProfiles(store, management, manualMembers);
+  write(store);
   const inventory = sharedOttAccounts(management, manualMembers, store);
   const sellerSeq = await client.sellerAccountSeq();
   for (const order of Object.values(store.orders)) {
@@ -55,13 +59,13 @@ export async function syncGbutsOtt(deps: GbutsOttRuntimeDependencies,
         && x.status === 'active').map(x => x.profileName || x.memberName || x.name || ''),
       ...Object.values(store.orders).filter(x => x.key !== order.key && activeOttOrder(x)
         && store.listings[x.listingId]?.accountEmail === listing.accountEmail).map(x => x.profileName || '')];
-    order.profileName ||= generateUniqueProfileNicknames(1, '', stableRandomFromSeed(order.key), excluded)[0];
+    if (listing.serviceType !== '넷플릭스') order.profileName ||= generateUniqueProfileNicknames(1, '', stableRandomFromSeed(order.key), excluded)[0];
     order.accessUrl = await deps.access(order, listing, order.profileName!);
     write(store);
     const roomId = await client.openPrivateRoom(order.postSeq, order.userSeq);
     if (order.roomId && order.roomId !== roomId) throw new Error('벗츠 구매자 채팅방이 변경되었습니다.');
     order.roomId = roomId;
-    const text = buildPartyAccessDeliveryTemplate(order.accessUrl);
+    const text = listing.serviceType === '넷플릭스' ? buildGbutsNetflixDeliveryText(order.accessUrl, order.profileNumber!) : buildPartyAccessDeliveryTemplate(order.accessUrl);
     const contains = (messages: any[]) => messages.some(x => x.senderSeq === sellerSeq && x.messageType === 'TEXT' && x.message.trim() === text.trim());
     if (contains((await client.getChat(roomId)).messages)) {
       if (order.delivery !== 'confirmed') confirmed++;

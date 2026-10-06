@@ -1,3 +1,5 @@
+import { availableNetflixProfiles } from '../lib/gbuts-netflix-profiles';
+import { makeGbutsOttDescription } from '../lib/gbuts-ott-templates';
 import { Hono } from 'hono';
 import { createHash, randomUUID } from 'node:crypto';
 import { GBUTS_OTT_CATEGORIES, koreaToday, ottKey, ottDate, sharedOttAccounts, updateGbutsOttOrders, type GbutsOttListing, type GbutsOttStore } from '../lib/gbuts-ott';
@@ -71,7 +73,7 @@ export function registerGbutsOttRoutes(app: Hono, deps: GbutsOttRuntimeDependenc
         const serviceType = String(body.serviceType || ''); const accountEmail = String(body.accountEmail || '').trim();
         const endDate = String(body.endDate || ''); const capacity = Number(body.capacity); const dailyPrice = Number(body.dailyPrice);
         const id = String(body.requestId || ''); const title = String(body.title || `${serviceType} 프리미엄 · 계정 자동 안내`).trim();
-        const description = String(body.description || '구매 후 1:1 채팅으로 계정 확인 링크를 안내드립니다. 본인에게 배정된 프로필만 이용해주세요.').trim();
+        const description = String(body.description || makeGbutsOttDescription(serviceType)).trim();
         if (!GBUTS_OTT_CATEGORIES[serviceType] || !accountEmail || !/^[A-Za-z0-9_-]{8,100}$/.test(id)
           || !Number.isSafeInteger(capacity) || capacity < 1 || !Number.isSafeInteger(dailyPrice) || dailyPrice < 1 || dailyPrice > 100000
           || !/^\d{4}-\d{2}-\d{2}$/.test(endDate) || !Number.isFinite(Date.parse(endDate)) || new Date(endDate).toISOString().slice(0, 10) !== endDate
@@ -87,6 +89,8 @@ export function registerGbutsOttRoutes(app: Hono, deps: GbutsOttRuntimeDependenc
         const account = sharedOttAccounts(management, deps.manualMembers(), store).find(x => x.key === ottKey(serviceType, accountEmail));
         if (!account || account.available < capacity || account.endDate < endDate || account.overbooked)
           return c.json({ ok: false, error: '현재 남은 자리 또는 계정 이용 기간을 초과했습니다. 새로고침 후 확인해주세요.' }, 409);
+        if (serviceType === '넷플릭스' && availableNetflixProfiles(store, management, deps.manualMembers(), accountEmail).length < capacity)
+          throw new Error('확인된 빈 프로필 번호가 모집 인원보다 적습니다. 기존 번호 배정을 확인해주세요.');
         const rawAccount = management.services.flatMap(x => x.accounts).find(x => ottKey(x.serviceType, x.email) === account.key)!;
         // Resolve the exact delivery account before publishing a sellable listing.
         await deps.access({ key: `preview:${id}`, listingId: id, postSeq: 0, memberSeq: 0, userSeq: 0,

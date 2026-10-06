@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useSearch } from 'wouter';
 import { RefreshCw, ExternalLink, ShoppingBag } from 'lucide-react';
-import { makeDefaultProductDescription, makeDefaultProductTitle } from '../../lib/write-default-template';
+import { makeDefaultProductTitle } from '../../lib/write-default-template';
+
+import { makeGbutsOttDescription } from '../../lib/gbuts-ott-templates';
 
 type Account = { key: string; serviceType: string; accountEmail: string; total: number; graytag: number; manual: number; gbuts: number; claims: number; available: number; overbooked: boolean; endDate: string; suggestedDailyPrice: number | null };
 type Listing = { id: string; postSeq?: number; serviceType: string; accountEmail: string; capacity: number; dailyPrice: number; endDate: string; state: string; error?: string };
-type Order = { key: string; name: string; listingId: string; profileName?: string; endDate: string; delivery: string; status: string; cancelStatus: string | null; accessUrl?: string; error?: string };
+type Order = { key: string; name: string; listingId: string; profileName?: string; profileNumber?: number; profileReleasedAt?: string; endDate: string; delivery: string; status: string; cancelStatus: string | null; accessUrl?: string; error?: string };
 type Data = { enabled: boolean; accounts: Account[]; listings: Listing[]; orders: Order[]; unlinked: { seq: number }[]; lastSuccess: string | null; lastError: string | null; inventory?: { status: string; updatedAt: string } | null };
 const styles = { card: { background: '#fff', border: '1px solid #EDE9FE', borderRadius: 16, padding: 16, marginBottom: 14 },
   input: { display: 'block', width: '100%', padding: 10, border: '1px solid #DDD6FE', borderRadius: 9, marginTop: 5, boxSizing: 'border-box' as const, fontFamily: 'inherit' },
@@ -39,7 +41,7 @@ export default function GbutsSalesPage({ view = 'sales' }: { view?: 'sales' | 'o
   const choose = useCallback((value: string) => {
     setKey(value); const selected = data?.accounts.find(x => x.key === value);
     setEndDate(selected?.endDate || ''); setPrice(selected?.suggestedDailyPrice?.toString() || ''); setCount('1');
-    setTitle(selected ? makeDefaultProductTitle(selected.serviceType) : ''); setDescription(selected ? makeDefaultProductDescription(selected.serviceType) : '');
+    setTitle(selected ? makeDefaultProductTitle(selected.serviceType) : ''); setDescription(selected ? makeGbutsOttDescription(selected.serviceType) : '');
     requestId.current = crypto.randomUUID(); setMessage('');
   }, [data?.accounts]);
   useEffect(() => {
@@ -92,6 +94,7 @@ export default function GbutsSalesPage({ view = 'sales' }: { view?: 'sales' | 'o
       <label>계정<select style={styles.input} aria-label="판매 계정" value={key} onChange={e => choose(e.target.value)}><option value="">계정을 선택해주세요</option>
         {data?.accounts.filter(x => x.available > 0 && (!requestedService || x.serviceType === requestedService)).map(x => <option key={x.key} value={x.key}>{x.serviceType} · {x.accountEmail} · 남은 {x.available}자리</option>)}</select></label>
       {data && !data.accounts.some(x => x.available > 0 && (!requestedService || x.serviceType === requestedService)) && <p style={{ color: '#B45309', fontSize: 13 }}>현재 판매 가능한 자리가 없습니다. 기존 계정의 결제·이용 기간과 공동 재고를 확인해 주세요.</p>}
+      {account?.serviceType === '넷플릭스' && <p style={{ fontSize:12, lineHeight:1.6 }}>넷플릭스 프로필 이름을 1, 2, 3, 4, 5로 미리 만들어주세요. 구매자에게 빈 프로필 번호를 순서대로 안내하며, 환불 완료·이용 종료된 번호는 재사용합니다.</p>}
       {account && <p style={{ fontSize: 12 }}>전체 {account.total}자리 · 그레이태그 {account.graytag} · 수동 {account.manual} · 벗츠 {account.gbuts} · 등록 확인 중 {account.claims} · 남은 {account.available}자리</p>}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginTop: 15 }}>
         <label>이용 종료일<input aria-label="이용 종료일" type="date" style={styles.input} max={account?.endDate} value={endDate} onChange={e => { setEndDate(e.target.value); requestId.current = crypto.randomUUID(); }} /></label>
@@ -110,7 +113,7 @@ export default function GbutsSalesPage({ view = 'sales' }: { view?: 'sales' | 'o
         {x.state === 'registered' && <button disabled={busy} style={{ ...styles.button, marginLeft: 12, background: '#64748B' }} onClick={() => close(x)}>모집 종료</button>}
         {['submitting', 'uncertain'].includes(x.state) && <button disabled={busy} style={{ ...styles.button, marginLeft: 12, background: '#64748B' }} onClick={() => reconcile(x)}>판매글 확인 다시</button>}
         {x.error && <p style={{ color: '#B91C1C' }}>{x.error}</p>}
-        {data.orders.filter(o => o.listingId === x.id).map(o => <p key={o.key} style={{ fontSize: 12 }}>{o.name} · {o.profileName || '프로필 배정 대기'} · {o.cancelStatus === 'REFUNDED' ? '환불' : labels[o.delivery]} · {o.endDate}까지 {o.error && `· ${o.error}`}</p>)}
+        {data.orders.filter(o => o.listingId === x.id).map(o => <p key={o.key} style={{ fontSize: 12 }}>{o.name} · {o.profileNumber ? `${o.profileNumber}번 프로필${o.profileReleasedAt ? ' (자리 반환)' : ''}` : o.profileName || '프로필 배정 대기'} · {o.cancelStatus === 'REFUNDED' ? '환불' : labels[o.delivery]} · {o.endDate}까지 {o.error && `· ${o.error}`}</p>)}
       </div>)}
     </section>
   </main>;

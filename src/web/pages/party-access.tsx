@@ -3,6 +3,9 @@ import { AlertTriangle, CheckCircle2, Copy, ExternalLink, KeyRound, Loader2, Loc
 import { getProfileAvatarTheme } from "../../lib/profile-avatar-theme";
 import { safeEmailVerifyUrl } from "../lib/email-verify-url";
 
+import GbutsNetflixEmailPanel from '../components/gbuts-netflix-email-panel';
+import { GBUTS_ACCOUNT_CHANGE_WARNING } from '../../lib/gbuts-ott-templates';
+
 type AccessPayload = {
   ok: boolean;
   reason?: string;
@@ -22,6 +25,7 @@ type AccessPayload = {
     isCurrentMember: boolean;
   }>;
   period?: { startDateTime: string | null; endDateTime: string | null };
+  presentation?: 'gbuts-netflix-numbered';
   consentRequired?: boolean;
   sensitiveRedacted?: boolean;
   credentials?: { id: string; password: string; pin: string; updatedAt: string };
@@ -49,6 +53,7 @@ function credentialRows(payload: AccessPayload): Array<{ label: string; value: s
   return [
     { label: 'ID', value: c?.id || '' },
     { label: 'PW', value: c?.password || '' },
+    ...(payload.presentation === 'gbuts-netflix-numbered' ? [{ label: '이메일 PIN', value: c?.pin || '' }] : []),
   ];
 }
 
@@ -146,6 +151,7 @@ export default function PartyAccessPage() {
     );
   }
 
+  const numberedNetflix = payload.presentation === 'gbuts-netflix-numbered';
   const profileName = payload.profileName || payload.memberName || '(미확인)';
   const partyProfiles = payload.partyProfiles || [];
   const isAdminAccess = payload.adminAccess === true;
@@ -164,7 +170,7 @@ export default function PartyAccessPage() {
     } catch {}
   };
   const emailAccessUrl = safeEmailVerifyUrl(payload.emailAccessUrl);
-  const showEmailAccess = Boolean(emailAccessUrl) && !isWavveService(payload.serviceType);
+  const showEmailAccess = !numberedNetflix && Boolean(emailAccessUrl) && !isWavveService(payload.serviceType);
   const displayProfiles = partyProfiles.length > 0 ? partyProfiles : [{
     profileName,
     memberName: payload.memberName || '파티원',
@@ -204,13 +210,13 @@ export default function PartyAccessPage() {
 
   const consentCards = [
     {
-      no: '01', tone:'#FEE2E2', border:'#FCA5A5', title:'계정 정보 수정 금지', image:'/dashboard/access-notice-assets/complaint-case.jpg', imageLabel:'고소장 실제사례 이미지', text:'비밀번호·이메일·프로필 잠금·결제 설정은 바꾸지 마세요.', required:AGREEMENT_1, key:'a1' as const,
+      no: '01', tone:'#FEE2E2', border:'#FCA5A5', title:'계정 정보 수정 금지', image:'/dashboard/access-notice-assets/complaint-case.jpg', imageLabel:'고소장 실제사례 이미지', text:numberedNetflix ? `계정 이메일·비밀번호·PIN·결제 설정은 바꾸지 마세요. ${GBUTS_ACCOUNT_CHANGE_WARNING}` : '비밀번호·이메일·프로필 잠금·결제 설정은 바꾸지 마세요.', required:AGREEMENT_1, key:'a1' as const,
     },
     {
       no: '02', tone:'#EEF2FF', border:'#C7D2FE', title:'최신 정보 먼저 확인', image:'/dashboard/access-notice-assets/disney-profiles.jpg', imageLabel:'프로필 수정 화면 예시', text:'로그인이 안 되면 먼저 이 페이지를 새로고침해 확인하세요.', required:AGREEMENT_2, key:'a2' as const,
     },
     {
-      no: '03', tone:'#ECFDF5', border:'#A7F3D0', title:'1인 1프로필 사용', text:'배정된 프로필 1개만 쓰고, 현황에 없는 프로필만 삭제하세요.', required:AGREEMENT_3, key:'a3' as const,
+      no: '03', tone:'#ECFDF5', border:'#A7F3D0', title:'1인 1프로필 사용', text:numberedNetflix ? '1:1 채팅에서 안내받은 번호의 프로필만 사용하세요. 프로필 이름·PIN 변경, 생성·삭제는 금지합니다.' : '배정된 프로필 1개만 쓰고, 현황에 없는 프로필만 삭제하세요.', required:AGREEMENT_3, key:'a3' as const,
     },
   ];
   const currentConsentCard = consentCards[consentStep] || consentCards[0];
@@ -241,7 +247,7 @@ export default function PartyAccessPage() {
                 <span style={{ width:34, height:34, borderRadius:12, background:'#fff', color:'#1E1B4B', display:'grid', placeItems:'center', fontSize:13, fontWeight:1000 }}>{currentConsentCard.no}</span>
                 <div style={{ fontSize:16, color:'#1E1B4B', fontWeight:1000 }}>{currentConsentCard.title}</div>
               </div>
-              {'image' in currentConsentCard && currentConsentCard.image && (
+              {!numberedNetflix && 'image' in currentConsentCard && currentConsentCard.image && (
                 <div style={{ margin:'8px 0 10px', background:'#fff', border:'1px solid rgba(17,24,39,.12)', borderRadius:16, padding:10 }}>
                   <div style={{ fontSize:11, color:'#6B7280', fontWeight:1000, marginBottom:7 }}>{currentConsentCard.imageLabel}</div>
                   <img src={currentConsentCard.image} alt={currentConsentCard.imageLabel} draggable={false} style={{ width:'100%', maxHeight:260, objectFit:'contain', borderRadius:12, display:'block', userSelect:'none', WebkitUserSelect:'none', pointerEvents:'none' }} />
@@ -267,7 +273,7 @@ export default function PartyAccessPage() {
           <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:12 }}>
             <div style={{ width:42, height:42, borderRadius:14, background:'#F5F3FF', display:'grid', placeItems:'center' }}><ShieldCheck size={22} color="#7C3AED" /></div>
             <div>
-              <div style={{ fontSize:18, fontWeight:900, color:'#1E1B4B' }}>{showEmailAccess ? '최신 ID · PW · PIN' : '최신 ID · PW'}</div>
+              <div style={{ fontSize:18, fontWeight:900, color:'#1E1B4B' }}>{numberedNetflix ? '아이디 · 비밀번호 · 이메일 PIN' : showEmailAccess ? '최신 ID · PW · PIN' : '최신 ID · PW'}</div>
               <div style={{ fontSize:12, color:'#9CA3AF', fontWeight:800 }}>이용기간 중에만 계정 정보를 확인할 수 있어요</div>
             </div>
           </div>
@@ -282,7 +288,7 @@ export default function PartyAccessPage() {
             <div style={{ fontSize:11, color:'#9CA3AF', marginTop:4 }}>{fmtDate(payload.period?.startDateTime)} ~ {fmtDate(payload.period?.endDateTime)}</div>
           </div>
 
-          <section aria-label="파티원 프로필" style={{ background:'linear-gradient(145deg,#111827,#312E81)', borderRadius:22, padding:'20px 14px 18px', marginBottom:14, color:'#fff', textAlign:'center', overflow:'hidden' }}>
+          {!numberedNetflix && <section aria-label="파티원 프로필" style={{ background:'linear-gradient(145deg,#111827,#312E81)', borderRadius:22, padding:'20px 14px 18px', marginBottom:14, color:'#fff', textAlign:'center', overflow:'hidden' }}>
             <div style={{ fontSize:22, fontWeight:1000, letterSpacing:'-0.04em' }}>누가 시청할까요?</div>
             <div style={{ fontSize:11, color:'#C4B5FD', fontWeight:800, marginTop:4 }}>보라색 테두리가 구매자님에게 배정된 프로필이에요</div>
             <div className="profile-avatar-grid" style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(82px,1fr))', gap:'18px 10px', marginTop:20, alignItems:'start' }}>
@@ -300,7 +306,7 @@ export default function PartyAccessPage() {
             <div style={{ marginTop:16, background:'rgba(255,255,255,.1)', border:'1px solid rgba(255,255,255,.15)', borderRadius:12, padding:'9px 10px', color:'#E0E7FF', fontSize:10, lineHeight:1.5, fontWeight:800 }}>
               프로필이 꽉 찼다면 위 현황에 없는 프로필을 삭제한 뒤, 배정된 이름으로 새로 만들어 사용해주세요.
             </div>
-          </section>
+          </section>}
 
           <div style={{ display:'grid', gap:10, marginBottom:10 }}>
             {credentialRows(payload).map((row) => (
@@ -314,6 +320,8 @@ export default function PartyAccessPage() {
             ))}
           </div>
 
+          {numberedNetflix && <GbutsNetflixEmailPanel url={emailAccessUrl} pin={payload.credentials?.pin} />}
+          {numberedNetflix && <p style={{ fontSize:12, color:"#991B1B", lineHeight:1.6 }}>프로필 이름·PIN 변경, 프로필 생성·삭제 및 계정 정보 변경은 금지합니다. {GBUTS_ACCOUNT_CHANGE_WARNING}</p>}
           {showEmailAccess && <button type="button" onClick={() => { setPinCopyStatus('idle'); setEmailDialogOpen(true); }} style={{ width:'100%', border:'none', borderRadius:16, padding:'14px 16px', background:'linear-gradient(135deg,#7C3AED,#4F46E5)', color:'#fff', fontSize:14, fontWeight:1000, display:'flex', alignItems:'center', justifyContent:'center', gap:8, cursor:'pointer', marginBottom:10, boxShadow:'0 10px 24px rgba(124,58,237,.24)' }}><Mail size={17} /> 이메일 확인하러 가기</button>}
 
           {isAdminAccess && (

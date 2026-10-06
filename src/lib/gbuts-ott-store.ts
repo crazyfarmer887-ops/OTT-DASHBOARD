@@ -18,7 +18,9 @@ export function readGbutsOttStore(path = process.env.GBUTS_OTT_STORE_PATH || DEF
     if (order?.key !== key || !data.listings[order.listingId] || !Number.isSafeInteger(order.memberSeq)
       || order.memberSeq < 1 || !Number.isSafeInteger(order.userSeq) || order.userSeq < 1
       || key !== `${order.postSeq}:${order.memberSeq}` || order.postSeq !== data.listings[order.listingId].postSeq
-      || !['ready', 'attempted', 'confirmed', 'blocked'].includes(order.delivery) || typeof order.endDate !== 'string') throw new Error('벗츠 구매자 기록이 올바르지 않습니다.');
+      || !['ready', 'attempted', 'confirmed', 'blocked'].includes(order.delivery) || typeof order.endDate !== 'string'
+      || (order.profileNumber !== undefined && (data.listings[order.listingId].serviceType !== '넷플릭스' || !Number.isInteger(order.profileNumber) || order.profileNumber < 1 || order.profileNumber > 5 || order.profileName !== String(order.profileNumber)))
+      || (order.profileReleasedAt !== undefined && (order.profileNumber === undefined || !Number.isFinite(Date.parse(order.profileReleasedAt)) || !['refunded', 'expired'].includes(order.profileReleaseReason)))) throw new Error('벗츠 구매자 기록이 올바르지 않습니다.');
   for (const [id, claim] of Object.entries(data.graytagClaims) as Array<[string, any]>)
     if (claim?.id !== id || !GBUTS_OTT_CATEGORIES[claim.serviceType] || typeof claim.accountEmail !== 'string' || !claim.accountEmail.trim()
       || !['pending', 'registered', 'uncertain'].includes(claim.state)) throw new Error('그레이태그 자리 확보 기록이 올바르지 않습니다.');

@@ -868,6 +868,7 @@ export type PartyAccessPublicPayload = {
   partyProfiles?: PartyAccessProfileStatus[];
   period?: { startDateTime: string | null; endDateTime: string | null };
   credentials?: PartyAccessCredentials;
+  presentation?: 'gbuts-netflix-numbered';
   consentRequired?: boolean;
   sensitiveRedacted?: boolean;
   audit: { memberId: string; allowed: boolean; reason: string; viewedAt: string };
@@ -880,6 +881,7 @@ export function redactPartyAccessPayloadForConsent(payload: PartyAccessPublicPay
     consentRequired: payload.ok ? true : undefined,
     sensitiveRedacted: true,
     serviceType: payload.serviceType,
+    presentation: payload.presentation,
     memberName: payload.memberName,
     period: payload.period,
     audit: payload.audit,
@@ -899,13 +901,15 @@ export function buildPartyAccessPublicPayload(
   }
   const allowed = isPartyAccessAllowed(record, now);
   const credentialRecord = enrichPartyAccessRecordWithKnownCredentials(record, store, checklistStore, generatedStore);
+  const numberedNetflix = record.member.kind === 'gbuts' && record.serviceType === '넷플릭스' && /^[1-5]$/.test(record.profileName);
   const base = {
+    presentation: numberedNetflix ? 'gbuts-netflix-numbered' as const : undefined,
     serviceType: record.serviceType,
     accountEmail: usablePartyAccessCredential(credentialRecord.accountEmail),
     memberName: record.member.memberName,
-    profileName: record.profileName || record.member.memberName,
+    profileName: numberedNetflix ? undefined : record.profileName || record.member.memberName,
     emailAccessUrl: resolvePartyAccessEmailAccessUrl(credentialRecord, checklistStore, generatedStore),
-    partyProfiles: buildPartyAccessProfileStatuses(record, store, now, profileAssignments),
+    partyProfiles: numberedNetflix ? [] : buildPartyAccessProfileStatuses(record, store, now, profileAssignments),
     period: { startDateTime: record.member.startDateTime || null, endDateTime: record.member.endDateTime || null },
     audit: { memberId: record.member.memberId, allowed: allowed.allowed, reason: allowed.reason, viewedAt: now },
   };

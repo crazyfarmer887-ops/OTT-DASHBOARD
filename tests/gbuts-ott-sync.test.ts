@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { generateUniqueProfileNicknames, stableRandomFromSeed } from '../src/lib/profile-nickname';
 import { emptyGbutsOttStore } from '../src/lib/gbuts-ott';
 import { syncGbutsOtt } from '../src/scheduler/gbuts-ott-sync';
 import { fixtureListing, fixtureManagement, fixtureOrder } from './fixtures/gbuts-ott';
@@ -19,6 +18,10 @@ describe('GButs OTT order delivery', () => {
     const f = fixture(); const result = await syncGbutsOtt(f.deps, f.client as any, f.send); await syncGbutsOtt(f.deps, f.client as any, f.send);
     expect(result).toMatchObject({ attempted: 1, confirmed: 1 }); expect(f.send).toHaveBeenCalledTimes(1);
     expect(f.send.mock.calls[0]).toEqual(['room-10', 99, expect.stringContaining('token-100:1')]); expect(f.store.orders['100:1'].delivery).toBe('confirmed');
+    expect(f.store.orders['100:1'].profileNumber).toBe(4);
+    expect(f.send.mock.calls[0][2]).toContain('4번');
+    expect(f.send.mock.calls[0][2]).toContain('프로필 이름');
+    expect(f.send.mock.calls[0][2]).not.toContain('private-password');
   });
   it('keeps unknown SEND outcomes attempted and never sends again', async () => {
     const f = fixture(); f.send.mockImplementation(async () => { throw new Error('socket disconnected'); });
@@ -32,7 +35,7 @@ describe('GButs OTT order delivery', () => {
     expect(f.store.orders['100:1'].profileName).not.toBe(f.store.orders['100:2'].profileName);
   });
   it('avoids the existing manual member profile when assigning a new buyer', async () => {
-    const f = fixture(); const manualProfile = generateUniqueProfileNicknames(1, '', stableRandomFromSeed('100:1'), [])[0];
+    const f = fixture(); const manualProfile = '4';
     f.deps.writeStore({ ...f.store, listings: { 'request-1': fixtureListing({ capacity: 1 }) } });
     f.client.getPost.mockResolvedValue({ seq: 100, category1: { seq: 5 }, memberLimit: 1, memberCount: 1, status: 'ON_SALE', subscriptionEndsAt: '2026-12-01 23:59:59' });
     f.deps.manualMembers = () => [{ serviceType: '넷플릭스', accountEmail: 'account@example.com', status: 'active', endDate: '2026-12-01', profileName: manualProfile }];
@@ -48,7 +51,7 @@ describe('GButs OTT order delivery', () => {
     const f = fixture(); f.deps.management = async () => { throw new Error('403'); };
     await expect(syncGbutsOtt(f.deps, f.client as any, f.send)).rejects.toThrow('403'); expect(f.send).not.toHaveBeenCalled();
     f.deps.management = async () => { const m = fixtureManagement(); m.onSaleByKeepAcct['account@example.com'].push({ ...m.onSaleByKeepAcct['account@example.com'][0], productUsid: 'extra' }); return m; };
-    await syncGbutsOtt(f.deps, f.client as any, f.send); expect(f.send).not.toHaveBeenCalled();
+    await expect(syncGbutsOtt(f.deps, f.client as any, f.send)).rejects.toThrow(); expect(f.send).not.toHaveBeenCalled();
   });
   it('does not expose a link if a paid member ID changes owner or listing settings change', async () => {
     const f = fixture(); f.deps.writeStore({ ...f.store, orders: { '100:1': fixtureOrder({ userSeq: 11 }) } });

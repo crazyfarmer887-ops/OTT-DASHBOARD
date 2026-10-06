@@ -26,6 +26,23 @@ import { getProfileAvatarTheme } from '../src/lib/profile-avatar-theme';
 import { mergePartyMaintenanceChecklistState } from '../src/lib/party-maintenance-checklist';
 
 describe('party member account access links', () => {
+  test('only trusted numbered GButs Netflix members receive the compact view and consent still hides all secrets', () => {
+    const record = createPartyAccessLinkRecord({
+      token: 'numbered-netflix-test', now: '2026-05-03T00:00:00.000Z', serviceType: '넷플릭스', accountEmail: 'n@example.com',
+      fallbackPassword: 'pw', fallbackPin: '123456', profileName: '3', emailAccessUrl: 'https://email-verify.one/email/mail/777',
+      member: { kind: 'gbuts', memberId: '100:1', memberName: '구매자', status: 'active', verifiedAt: '2026-05-03T12:00:00.000Z', endDateTime: '2026-05-20' },
+    });
+    const full = buildPartyAccessPublicPayload(record, {}, {}, '2026-05-03T12:00:00.000Z');
+    expect(full).toMatchObject({ ok: true, presentation: 'gbuts-netflix-numbered', partyProfiles: [], credentials: { id: 'n@example.com', password: 'pw', pin: '123456' } });
+    expect(full.profileName).toBeUndefined();
+    const redacted = redactPartyAccessPayloadForConsent(full);
+    expect(redacted.presentation).toBe('gbuts-netflix-numbered');
+    expect(redacted.credentials).toBeUndefined(); expect(redacted.emailAccessUrl).toBeUndefined();
+    const graytag = buildPartyAccessPublicPayload({ ...record, member: { ...record.member, kind: 'graytag', status: 'Using' } }, {}, {}, '2026-05-03T12:00:00.000Z');
+    expect(graytag.presentation).toBeUndefined(); expect(graytag.profileName).toBe('3');
+    const legacy = buildPartyAccessPublicPayload({ ...record, profileName: '감귤' }, {}, {}, '2026-05-03T12:00:00.000Z');
+    expect(legacy.presentation).toBeUndefined(); expect(legacy.profileName).toBe('감귤');
+  });
   test('identifies only tokenless management synthetic records', () => {
     const real = createPartyAccessLinkRecord({
       token: 'real-management-lookalike-token',

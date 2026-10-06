@@ -15,6 +15,10 @@ export interface GbutsOttOrder {
   profileName?: string; accessUrl?: string; roomId?: string;
   delivery: 'ready' | 'attempted' | 'confirmed' | 'blocked'; verifiedAt: string; error?: string;
   attemptedAt?: string;
+  purchasedAt?: string;
+  profileNumber?: number;
+  profileReleasedAt?: string;
+  profileReleaseReason?: 'refunded' | 'expired';
 }
 export interface GraytagOttClaim {
   id: string; serviceType: string; accountEmail: string; productUsid?: string;
@@ -52,6 +56,10 @@ export function activeOttOrder(order: Pick<GbutsOttOrder, 'status' | 'cancelStat
 export function deliverableOttOrder(order: Pick<GbutsOttOrder, 'status' | 'cancelStatus' | 'endDate'>, now = new Date()): boolean {
   return activeOttOrder(order, now) && (order.cancelStatus === null || order.cancelStatus === 'REFUND_REJECTED');
 }
+export function holdsNetflixProfile(order: GbutsOttOrder, listing: GbutsOttListing, now = new Date()): boolean {
+  return listing.serviceType === '넷플릭스' && order.profileNumber !== undefined && !order.profileReleasedAt
+    && order.cancelStatus !== 'REFUNDED' && !!order.endDate && order.endDate >= koreaToday(now);
+}
 export function updateGbutsOttOrders(store: GbutsOttStore, listing: GbutsOttListing,
   members: Array<{ seq: number; userSeq: number; nickname: string; status: string; cancelStatus: string | null; createdAt: string; subscriptionEndsAt: string }>, now: string): void {
   const seen = new Set<string>();
@@ -64,7 +72,8 @@ export function updateGbutsOttOrders(store: GbutsOttStore, listing: GbutsOttList
     if (!endDate || !startDate || endDate > listing.endDate || endDate < startDate) throw new Error('벗츠 주문 이용 기간이 판매글과 다릅니다.');
     store.orders[key] = { ...prev, key, listingId: listing.id, postSeq: listing.postSeq!,
       memberSeq: member.seq, userSeq: member.userSeq, name: member.nickname, status: member.status,
-      cancelStatus: member.cancelStatus, startDate, endDate, delivery: prev?.delivery || 'ready', verifiedAt: now };
+      cancelStatus: member.cancelStatus, startDate, endDate, purchasedAt: prev?.purchasedAt || member.createdAt,
+      delivery: prev?.delivery || 'ready', verifiedAt: now };
   }
   for (const order of Object.values(store.orders).filter(x => x.listingId === listing.id && !seen.has(x.key))) {
     order.status = 'MISSING'; if (order.delivery === 'ready') order.delivery = 'blocked'; order.verifiedAt = now; order.error = '판매자 주문 목록에서 확인되지 않습니다.';
@@ -82,7 +91,8 @@ export function accountGbutsInventory(store: GbutsOttStore, serviceType: string,
   const key = ottKey(serviceType, email);
   const listings = Object.values(store.listings).filter(x => ottKey(x.serviceType, x.accountEmail) === key);
   const ids = new Set(listings.map(x => x.id));
-  const members = Object.values(store.orders).filter(x => ids.has(x.listingId) && activeOttOrder(x, now));
+  const members = Object.values(store.orders).filter(x => ids.has(x.listingId)
+    && (activeOttOrder(x, now) || holdsNetflixProfile(x, store.listings[x.listingId], now)));
   const currentUsers = members.length;
   let reserved = 0;
   for (const listing of listings) {
