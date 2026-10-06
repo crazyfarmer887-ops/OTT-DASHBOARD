@@ -1,3 +1,4 @@
+import { isGraytagAccessNoticeCredential } from './graytag-fill';
 import { calculateAccountVacancy, getPartyMax } from '../web/lib/account-slots';
 
 export const GBUTS_OTT_CATEGORIES: Record<string, number> = { 넷플릭스: 5, 디즈니플러스: 6, 티빙: 8, 웨이브: 10 };
@@ -117,7 +118,9 @@ export function sharedOttAccounts(management: GbutsOttManagement, manualMembers:
       const days = (Date.parse(end) - Date.parse(start)) / 86400000;
       return days > 0 && Number(x.purePrice) > 0 ? [Math.ceil(Number(x.purePrice) / days)] : [];
     });
-    const eligible = !account.archivedAccount && endDate > koreaToday(now)
+    const accountId = String(account.email || '').trim();
+    const hasAccountId = !!accountId && accountId.replace(/\s+/g, '') !== '(직접전달)' && !isGraytagAccessNoticeCredential(accountId);
+    const eligible = hasAccountId && !account.archivedAccount && endDate > koreaToday(now)
       && (vacancy.currentUsers + manualCount > 0 || account.generatedAccount?.paymentStatus === 'paid');
     return { key: ottKey(account.serviceType, account.email), serviceType: account.serviceType, accountEmail: account.email,
       total, graytag: vacancy.currentUsers + vacancy.recruiting, manual: manualCount,

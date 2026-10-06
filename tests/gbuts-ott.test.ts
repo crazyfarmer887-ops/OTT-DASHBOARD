@@ -8,6 +8,10 @@ import { fixtureListing, fixtureManagement, fixtureOrder } from './fixtures/gbut
 
 beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(now); }); afterEach(() => vi.useRealTimers());
 describe('shared OTT capacity', () => {
+  it.each(['(직접전달)', '아래 메세지를 확인해주세요', ''])('does not offer account placeholders as sellable inventory: %s', email => {
+    const management = fixtureManagement(); management.services[0].accounts[0].email = email;
+    expect(sharedOttAccounts(management, [], emptyGbutsOttStore())[0]).toMatchObject({ eligible: false, available: 0 });
+  });
   it('reserves unsold GButs places together with GrayTag listings', () => {
     const store = emptyGbutsOttStore(); store.listings['request-1'] = fixtureListing();
     expect(sharedOttAccounts(fixtureManagement(), [], store)[0]).toMatchObject({ total: 5, graytag: 3, gbuts: 2, available: 0 });
