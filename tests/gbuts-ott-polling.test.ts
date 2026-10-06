@@ -15,9 +15,9 @@ test('coalesces slow polls and resumes once work finishes instead of piling queu
   const slow = new Promise<void>(resolve => { finish = resolve; });
   const deps = { management: vi.fn(), manualMembers: () => [], access: vi.fn(), refreshAccess: vi.fn().mockImplementationOnce(() => slow).mockResolvedValue(undefined) };
   const stop = startGbutsOttSync(deps)!;
-  await vi.advanceTimersByTimeAsync(15_000); expect(deps.refreshAccess).toHaveBeenCalledOnce();
+  await vi.advanceTimersByTimeAsync(1_000); expect(deps.refreshAccess).toHaveBeenCalledOnce();
   await vi.advanceTimersByTimeAsync(90_000); expect(deps.refreshAccess).toHaveBeenCalledOnce();
   finish(); await vi.advanceTimersByTimeAsync(0);
-  await vi.advanceTimersByTimeAsync(30_000); expect(deps.refreshAccess).toHaveBeenCalledTimes(2);
+  await vi.advanceTimersByTimeAsync(5_000); expect(deps.refreshAccess).toHaveBeenCalledTimes(2);
   stop(); await vi.advanceTimersByTimeAsync(90_000); expect(deps.refreshAccess).toHaveBeenCalledTimes(2);
 });

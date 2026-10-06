@@ -1,3 +1,4 @@
+import { GbutsChatDeliveryError, gbutsChatContainsText, splitGbutsChatText } from '../lib/gbuts-chat-delivery';
 import { explicitYouTubeBuyerEmails } from '../lib/youtube-buyer-email';
 import { existsSync, readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
@@ -124,8 +125,7 @@ export async function syncGbutsSpotifyMessages(deps: GbutsSpotifyMessageDependen
       const textHash = createHash('sha256').update(item.text).digest('hex');
       if (existing && (existing.roomId !== roomId || (existing.textHash || (existing.text
         ? createHash('sha256').update(existing.text).digest('hex') : '')) !== textHash)) continue;
-      if (chat.messages.some((message) => message.senderSeq === sellerSeq && message.messageType === 'TEXT'
-        && message.message.trim() === item.text)) {
+      if (gbutsChatContainsText(chat.messages, sellerSeq, item.text)) {
         if (!existing || existing.state !== 'confirmed') {
           journal.records[key] = { state: 'confirmed', textHash, roomId,
             updatedAt: deps.now?.() ?? new Date().toISOString() };
@@ -152,38 +152,66 @@ export async function syncGbutsSpotifyMessages(deps: GbutsSpotifyMessageDependen
       if (item.suffix === 'guide') guidesAttempted += 1;
       else if (item.suffix === 'request-received') acknowledgementsAttempted += 1;
       else invitedRepliesAttempted += 1;
-      try { await deps.sendText(roomId, sellerSeq, item.text); } catch { /* Delivery outcome unknown. */ }
+      try { await deps.sendText(roomId, sellerSeq, item.text); } catch (error) {
+        if (error instanceof GbutsChatDeliveryError && !error.submitted) {
+          delete journal.records[key]; deps.writeJournal(journal);
+        } // Submitted but uncertain sends are reconciled only.
+      }
     }
   }
   return { guidesAttempted, acknowledgementsAttempted, invitedRepliesAttempted, confirmed };
 }
 
-/** GButs' web client sends the same text payload to the STOMP destination below. */
+/** Subscribe like the web client and await a saved-message echo for every part. */
 export async function sendGbutsText(roomId: string, accountSeq: number, text: string): Promise<void> {
   if (!/^[A-Za-z0-9_-]{1,128}$/.test(roomId) || !Number.isSafeInteger(accountSeq) || accountSeq <= 0
-    || !text.trim() || text.length > 2000) throw new Error('GButs chat message invalid');
-  const payload = JSON.stringify({ accountSeq, payload: text.trim(), roomId, type: 'TEXT' });
+    || !text.trim() || text.length > 2000) throw new GbutsChatDeliveryError('GButs chat message invalid', false);
+  let parts: string[];
+  try { parts = splitGbutsChatText(text); }
+  catch { throw new GbutsChatDeliveryError('GButs chat message exceeds transmission limits', false); }
   await new Promise<void>((resolve, reject) => {
-    const socket = new WebSocket('wss://socket.gbuts.com/ws/websocket');
-    let settled = false;
-    const timer = setTimeout(() => finish(new Error('GButs chat connection timed out')), 12_000);
-    const finish = (error?: Error) => {
+    let socket: WebSocket;
+    try { socket = new WebSocket('wss://socket.gbuts.com/ws/websocket'); }
+    catch { reject(new GbutsChatDeliveryError('GButs chat connection unavailable', false)); return; }
+    let settled = false; let submitted = false; let connected = false; let index = 0;
+    const timer = setTimeout(() => finish('GButs chat saved-message confirmation timed out'), 12_000);
+    const finish = (error?: string) => {
       if (settled) return;
-      settled = true;
-      clearTimeout(timer);
+      settled = true; clearTimeout(timer);
       try { socket.close(); } catch {}
-      if (error) reject(error); else resolve();
+      if (error) reject(new GbutsChatDeliveryError(error, submitted)); else resolve();
     };
-    socket.onopen = () => socket.send('CONNECT\naccept-version:1.2\nheart-beat:0,0\n\n\0');
-    socket.onerror = () => finish(new Error('GButs chat socket error'));
-    socket.onclose = () => { if (!settled) finish(new Error('GButs chat socket closed')); };
+    const sendNext = () => {
+      if (index === parts.length) { finish(); return; }
+      const payload = JSON.stringify({ accountSeq, payload: parts[index], roomId, type: 'TEXT' });
+      submitted = true;
+      try { socket.send(`SEND\ndestination:/pub/chat/text\ncontent-length:${Buffer.byteLength(payload)}\n\n${payload}\0`); }
+      catch { finish('GButs chat socket send failed'); }
+    };
+    socket.onopen = () => {
+      try { socket.send('CONNECT\naccept-version:1.2\nheart-beat:0,0\n\n\0'); }
+      catch { finish('GButs chat connection failed'); }
+    };
+    socket.onerror = () => finish('GButs chat socket error');
+    socket.onclose = () => { if (!settled) finish('GButs chat socket closed'); };
     socket.onmessage = (event) => {
-      const frame = String(event.data);
-      if (frame.startsWith('ERROR')) { finish(new Error('GButs chat rejected message')); return; }
-      if (!frame.startsWith('CONNECTED')) return;
-      socket.send(`SEND\ndestination:/pub/chat/text\ncontent-type:application/json\ncontent-length:${Buffer.byteLength(payload)}\n\n${payload}\0`);
-      // The site does not request a broker receipt. Re-read chat history on the next poll to confirm.
-      setTimeout(() => finish(), 300);
+      for (const raw of String(event.data).split('\0')) {
+        if (settled) return;
+        const frame = raw.replace(/^\s+/, '');
+        if (frame.startsWith('ERROR')) { finish('GButs chat rejected message'); return; }
+        if (frame.startsWith('CONNECTED') && !connected) {
+          connected = true;
+          try { socket.send(`SUBSCRIBE\nid:delivery\ndestination:/sub/chat/room/${roomId}\nack:auto\n\n\0`); }
+          catch { finish('GButs chat subscription failed'); return; }
+          sendNext();
+        } else if (frame.startsWith('MESSAGE\n') && frame.includes(`destination:/sub/chat/room/${roomId}\n`)) {
+          try {
+            const message = JSON.parse(frame.slice(frame.indexOf('\n\n') + 2));
+            if (Number(message.id) > 0 && Number(message.accountSeq) === accountSeq
+              && message.type === 'TEXT' && message.payload === parts[index]) { index++; sendNext(); }
+          } catch { /* Unrelated or malformed events cannot confirm delivery. */ }
+        }
+      }
     };
   });
 }

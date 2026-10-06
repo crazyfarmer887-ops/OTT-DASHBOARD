@@ -1,11 +1,12 @@
-import { GBUTS_OTT_CATEGORIES, activeOttOrder, deliverableOttOrder, ottDate, ottKey, sharedOttAccounts, updateGbutsOttOrders, type GbutsOttListing, type GbutsOttManagement, type GbutsOttOrder, type GbutsOttStore } from '../lib/gbuts-ott';
+import { GbutsChatDeliveryError, gbutsChatContainsText } from '../lib/gbuts-chat-delivery';
+import { hasGbutsOttProfileLease, GBUTS_OTT_CATEGORIES, activeOttOrder, deliverableOttOrder, ottDate, ottKey, sharedOttAccounts, updateGbutsOttOrders, type GbutsOttListing, type GbutsOttManagement, type GbutsOttOrder, type GbutsOttStore } from '../lib/gbuts-ott';
 import { createGbutsOttSellerClient } from '../lib/gbuts-ott-client';
 import { readGbutsOttStore, withGbutsOttInventory, writeGbutsOttStore } from '../lib/gbuts-ott-store';
 import { loadGbutsSession } from '../lib/gbuts-session';
 import { loadSafeModeConfig } from '../api/safe-mode';
 import { generateUniqueProfileNicknames, stableRandomFromSeed } from '../lib/profile-nickname';
 import { buildPartyAccessDeliveryTemplate } from '../lib/party-access-template';
-import { allocateNetflixProfilesForSync } from '../lib/gbuts-netflix-profiles';
+import { releaseCompletedNetflixProfiles, allocateNetflixProfilesForSync } from '../lib/gbuts-netflix-profiles';
 import { buildGbutsNetflixDeliveryText } from '../lib/gbuts-ott-templates';
 import { sendGbutsText } from './gbuts-spotify-messages';
 
@@ -36,19 +37,45 @@ export async function syncGbutsOtt(deps: GbutsOttRuntimeDependencies,
     listing.state = post.status === 'ON_SALE' ? 'registered' : 'closed';
     updateGbutsOttOrders(store, listing, members, now);
   }
+  releaseCompletedNetflixProfiles(store);
   write(store);
   await deps.refreshAccess(Object.values(store.orders));
   if (!listings.length || !Object.keys(store.orders).length) {
     store.lastSuccess = new Date().toISOString(); store.lastError = null; write(store);
     return { orders: 0, attempted, confirmed };
   }
+  const eligible = Object.values(store.orders).filter(order => deliverableOttOrder(order) && order.verifiedAt === now);
+  const sellerSeq = eligible.length ? await client.sellerAccountSeq() : 0;
+  const deliveryText = (order: GbutsOttOrder) => store.listings[order.listingId].serviceType === '넷플릭스'
+    ? buildGbutsNetflixDeliveryText(order.accessUrl!, order.profileNumber!) : buildPartyAccessDeliveryTemplate(order.accessUrl!);
+  // Confirmation discloses nothing new: use the persisted link and profile lease,
+  // after checking the paid buyer above. A GrayTag outage cannot hide a saved chat.
+  for (const order of eligible) {
+    if (!order.attemptedAt && order.delivery !== 'attempted') continue;
+    if (order.delivery === 'confirmed') continue;
+    const listing = store.listings[order.listingId];
+    if (!order.accessUrl || !order.profileName || !hasGbutsOttProfileLease(store, order)
+      || (listing.serviceType === '넷플릭스' && order.profileNumber === undefined)) continue;
+    const roomId = await client.openPrivateRoom(order.postSeq, order.userSeq);
+    if (order.roomId && order.roomId !== roomId) throw new Error('벗츠 구매자 채팅방이 변경되었습니다.');
+    order.roomId = roomId;
+    if (gbutsChatContainsText((await client.getChat(roomId)).messages, sellerSeq, deliveryText(order))) {
+      order.delivery = 'confirmed'; delete order.error; confirmed++;
+    } else order.error = '채팅 발송 결과 확인 중 — 안내문이 모두 저장되지 않았습니다.';
+    write(store);
+  }
+  const pendingOrders = eligible.filter(order => !order.attemptedAt && order.delivery !== 'attempted' && order.delivery !== 'confirmed');
+  if (!pendingOrders.length) {
+    store.lastSuccess = new Date().toISOString(); store.lastError = null; write(store);
+    return { orders: Object.values(store.orders).filter(x => activeOttOrder(x)).length, attempted, confirmed };
+  }
   const management = await deps.management();
   const manualMembers = deps.manualMembers();
   const profileErrors = allocateNetflixProfilesForSync(store, management, manualMembers);
   write(store);
   const inventory = sharedOttAccounts(management, manualMembers, store);
-  const sellerSeq = await client.sellerAccountSeq();
-  for (const order of Object.values(store.orders)) {
+  for (const pending of pendingOrders) {
+    const order = store.orders[pending.key];
     if (!deliverableOttOrder(order) || order.verifiedAt !== now) continue;
     const listing = store.listings[order.listingId];
     const profileError = profileErrors.get(ottKey(listing.serviceType, listing.accountEmail));
@@ -70,8 +97,8 @@ export async function syncGbutsOtt(deps: GbutsOttRuntimeDependencies,
     const roomId = await client.openPrivateRoom(order.postSeq, order.userSeq);
     if (order.roomId && order.roomId !== roomId) throw new Error('벗츠 구매자 채팅방이 변경되었습니다.');
     order.roomId = roomId;
-    const text = listing.serviceType === '넷플릭스' ? buildGbutsNetflixDeliveryText(order.accessUrl, order.profileNumber!) : buildPartyAccessDeliveryTemplate(order.accessUrl);
-    const contains = (messages: any[]) => messages.some(x => x.senderSeq === sellerSeq && x.messageType === 'TEXT' && x.message.trim() === text.trim());
+    const text = deliveryText(order);
+    const contains = (messages: any[]) => gbutsChatContainsText(messages, sellerSeq, text);
     if (contains((await client.getChat(roomId)).messages)) {
       if (order.delivery !== 'confirmed') confirmed++;
       order.delivery = 'confirmed'; delete order.error; write(store); continue;
@@ -83,7 +110,12 @@ export async function syncGbutsOtt(deps: GbutsOttRuntimeDependencies,
     try {
       await sendText(roomId, sellerSeq, text);
       if (contains((await client.getChat(roomId)).messages)) { order.delivery = 'confirmed'; write(store); confirmed++; }
-    } catch { order.error = '채팅 발송 결과 확인 중'; write(store); }
+    } catch (error) {
+      if (error instanceof GbutsChatDeliveryError && !error.submitted) {
+        order.delivery = 'ready'; delete order.attemptedAt; order.error = '채팅 연결 실패 — 다음 확인 때 자동 재시도합니다.';
+      } else order.error = '채팅 발송 결과 확인 중';
+      write(store);
+    }
   }
   store.lastSuccess = new Date().toISOString(); store.lastError = null; write(store);
   return { orders: Object.values(store.orders).filter(x => activeOttOrder(x)).length, attempted, confirmed };
@@ -109,6 +141,6 @@ export function startGbutsOttSync(deps: GbutsOttRuntimeDependencies): (() => voi
       .finally(() => { pending = false; });
   };
   let interval: ReturnType<typeof setInterval> | undefined;
-  const initial = setTimeout(() => { run(); interval = setInterval(run, 30_000); }, 15_000);
+  const initial = setTimeout(() => { run(); interval = setInterval(run, 5_000); }, 1_000);
   return () => { clearTimeout(initial); if (interval) clearInterval(interval); };
 }

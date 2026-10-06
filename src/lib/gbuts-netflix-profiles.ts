@@ -44,13 +44,17 @@ function purchaseTime(order: GbutsOttOrder): number {
   if (!Number.isFinite(timestamp)) throw new Error('구매 순서를 확인하지 못해 프로필 배정을 보류합니다.');
   return timestamp;
 }
-export function allocateNetflixProfiles(store: GbutsOttStore, management: GbutsOttManagement, manualMembers: any[], now = new Date()): void {
-  const orders = Object.values(store.orders).filter(order => store.listings[order.listingId].serviceType === '넷플릭스');
-  for (const order of orders) {
-    if (order.profileNumber !== undefined && !order.profileReleasedAt && (order.cancelStatus === 'REFUNDED' || order.endDate < koreaToday(now))) {
+/** Refund/expiry release needs only the freshly verified GButs order state. */
+export function releaseCompletedNetflixProfiles(store: GbutsOttStore, now = new Date()): void {
+  for (const order of Object.values(store.orders)) {
+    if (store.listings[order.listingId]?.serviceType === '넷플릭스' && order.profileNumber !== undefined && !order.profileReleasedAt && (order.cancelStatus === 'REFUNDED' || order.endDate < koreaToday(now))) {
       order.profileReleasedAt = now.toISOString(); order.profileReleaseReason = order.cancelStatus === 'REFUNDED' ? 'refunded' : 'expired';
     }
   }
+}
+export function allocateNetflixProfiles(store: GbutsOttStore, management: GbutsOttManagement, manualMembers: any[], now = new Date()): void {
+  const orders = Object.values(store.orders).filter(order => store.listings[order.listingId].serviceType === '넷플릭스');
+  releaseCompletedNetflixProfiles(store, now);
   const eligible = orders.filter(order => deliverableOttOrder(order, now)).sort((a, b) => purchaseTime(a) - purchaseTime(b) || a.postSeq - b.postSeq || a.memberSeq - b.memberSeq);
   for (const order of eligible) {
     if (order.profileReleasedAt) throw new Error('이미 반환된 프로필의 주문이 다시 활성화되어 확인이 필요합니다.');

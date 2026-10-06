@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { emptyGbutsOttStore } from '../src/lib/gbuts-ott';
+import { GbutsChatDeliveryError, splitGbutsChatText } from '../src/lib/gbuts-chat-delivery';
 import { syncGbutsOtt } from '../src/scheduler/gbuts-ott-sync';
 import { fixtureListing, fixtureManagement, fixtureOrder } from './fixtures/gbuts-ott';
 beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-05T06:00:00Z')); }); afterEach(() => vi.useRealTimers());
@@ -33,6 +34,34 @@ describe('GButs OTT order delivery', () => {
     const f = fixture(); f.send.mockImplementation(async () => { throw new Error('socket disconnected'); });
     await syncGbutsOtt(f.deps, f.client as any, f.send); await syncGbutsOtt(f.deps, f.client as any, f.send);
     expect(f.send).toHaveBeenCalledTimes(1); expect(f.store.orders['100:1'].delivery).toBe('attempted');
+  });
+  it('confirms an existing split delivery even while fresh GrayTag inventory is unavailable', async () => {
+    const f = fixture(); f.send.mockImplementation(async () => { throw new Error('uncertain'); });
+    await syncGbutsOtt(f.deps, f.client as any, f.send);
+    const text = f.send.mock.calls[0][2];
+    f.messages = splitGbutsChatText(text).map(message => ({ senderSeq: 99, messageType: 'TEXT', message }));
+    f.deps.management = vi.fn(async () => { throw new Error('403'); });
+    await expect(syncGbutsOtt(f.deps, f.client as any, f.send)).resolves.toMatchObject({ confirmed: 1 });
+    expect(f.store.orders['100:1'].delivery).toBe('confirmed');
+    expect(f.deps.management).not.toHaveBeenCalled(); expect(f.send).toHaveBeenCalledTimes(1);
+  });
+  it('retries a definite pre-SEND connection failure, while uncertain sends remain protected', async () => {
+    const f = fixture(); const send = f.send.getMockImplementation()!;
+    f.send.mockImplementationOnce(async () => { throw new GbutsChatDeliveryError('connection refused', false); }).mockImplementation(send);
+    await syncGbutsOtt(f.deps, f.client as any, f.send);
+    expect(f.store.orders['100:1'].attemptedAt).toBeUndefined();
+    await syncGbutsOtt(f.deps, f.client as any, f.send);
+    expect(f.send).toHaveBeenCalledTimes(2); expect(f.store.orders['100:1'].delivery).toBe('confirmed');
+  });
+  it('does not confirm incomplete chunks or buyer copies during a GrayTag outage', async () => {
+    const f = fixture(); f.send.mockImplementation(async () => { throw new Error('uncertain'); });
+    await syncGbutsOtt(f.deps, f.client as any, f.send);
+    const parts = splitGbutsChatText(f.send.mock.calls[0][2]);
+    f.messages = parts.map((message, i) => ({ senderSeq: i === 0 ? 10 : 99, messageType: 'TEXT', message }));
+    f.deps.management = vi.fn(async () => { throw new Error('403'); });
+    await syncGbutsOtt(f.deps, f.client as any, f.send);
+    expect(f.store.orders['100:1'].delivery).toBe('attempted'); expect(f.send).toHaveBeenCalledTimes(1);
+    expect(f.store.orders['100:1'].error).toContain('확인');
   });
   it('keeps distinct orders separate even when buyer names are identical', async () => {
     const f = fixture(); f.members = [...f.members, { ...f.members[0], seq: 2, userSeq: 20 }];
