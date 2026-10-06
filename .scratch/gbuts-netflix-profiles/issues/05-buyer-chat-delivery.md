@@ -1,6 +1,6 @@
 # Buyer guide delivery reliability
 
-Status: verified locally; production deployment pending
+Status: deployed and verified (ffb6c41)
 Baseline: 742e76e
 
 ## Approved request
@@ -31,3 +31,10 @@ New sender and synchronization regression tests reproduce silent oversized rejec
 - Build passed. App type diagnostics: unchanged 54 lines.
 - Buyer chat history contains every approved paragraph; no further buyer sends after the user requested isolated short-guide testing.
 - Short proposal with a same-length test URL: 398 UTF-16 characters / 842 UTF-8 bytes. Real single-message receipt is unverified. GButs rejects self PERSONAL rooms and empty GROUP rooms, so awaiting a designated test recipient. No shortened guide has been sent to the buyer.
+
+## Production verification
+- Active release: /home/ubuntu/releases/aio-dashboard-ffb6c41; configured proxy retained.
+- Ping / seller session: 200; unauthenticated inventory: 403.
+- Current buyer: profile 1, delivery confirmed; every approved paragraph present in seller chat history. Chat count stays 8 (one buyer + seven guide paragraphs), no replay after deployment.
+- Worker enabled; lastSuccess fresh, lastError / order error cleared.
+- Targeted server typecheck passed. Short-guide live single-message test remains pending a designated recipient; no real buyer was used for that test.
