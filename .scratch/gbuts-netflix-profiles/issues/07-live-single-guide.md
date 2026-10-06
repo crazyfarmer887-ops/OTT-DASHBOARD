@@ -14,3 +14,10 @@ Buyer42568 was detected and attempted88 seconds after purchase on2026-10-06, but
 
 ## Scope
 No new test messages to customers; no profile reassignment, no stale/unverified inventory reuse, no production source edits.
+
+## Release checks
+- Focused suites:100 passed. Full suite:1,053 passed /153 existing failures (same failure count). Relevant server typecheck/build passed; app check retains54 preexisting diagnostic lines, none in changed files.
+- Two-axis code review against a3011f7: Spec0 findings; Standards0 blocking findings (optional naming clarity only).
+- Committed ba993ba pushed and deployed via Git archive; service active, worker enabled and configured proxy retained.
+- Production smoke: ping/session200, unauthorized403. All3 current buyers confirmed with no order error. Recovered buyer retains profile3, exact saved guide and3 total chat messages; no duplicate was sent.
+- Future formatted guide:215 characters /392 UTF-8 bytes, five paragraphs, one526-byte SEND. Formatting is tested locally; no new duplicate customer message was used as a live formatting test.
