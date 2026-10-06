@@ -7,7 +7,7 @@ import {
   type AdminAuthFailureDetail,
 } from "../lib/admin-auth";
 
-export default function AdminTokenControl() {
+export default function AdminTokenControl({ dockBottom = false }: { dockBottom?: boolean }) {
   const [token, setToken] = useState("");
   const [hasToken, setHasToken] = useState(false);
   const [message, setMessage] = useState("잠김 · 관리자 보호 기능 사용 시 토큰을 저장하세요.");
@@ -49,10 +49,10 @@ export default function AdminTokenControl() {
     <div
       style={{
         position: "fixed",
-        top: 8,
+        ...(dockBottom ? { bottom: 16 } : { top: 8 }),
         right: 8,
         zIndex: 1000,
-        maxWidth: 360,
+        maxWidth: "min(360px, calc(100vw - 16px))",
         fontSize: 12,
         fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
       }}

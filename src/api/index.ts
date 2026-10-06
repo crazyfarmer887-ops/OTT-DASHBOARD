@@ -6654,12 +6654,12 @@ async function releaseGraytagOttClaims(productUsids: string[]): Promise<void> {
   });
 }
 
-async function readGraytagOttManagement() {
+async function readGraytagOttManagement(options = { forceRefresh: true }) {
   const adminToken = configuredAdminToken();
   if (!adminToken) throw new Error('관리자 인증 연결을 확인해주세요.');
   const response = await app.request('/my/management', { method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-admin-token': adminToken, 'x-graytag-account': 'primary' },
-    body: JSON.stringify({ forceRefresh: true, gbutsInventory: false }) });
+    body: JSON.stringify({ forceRefresh: options.forceRefresh, gbutsInventory: false }) });
   const payload = await response.json() as any;
   if (!response.ok || !Array.isArray(payload.services)) throw new Error(payload.error || '그레이태그 공동 재고를 확인하지 못했습니다.');
   return payload;

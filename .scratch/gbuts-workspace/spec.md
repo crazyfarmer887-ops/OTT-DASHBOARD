@@ -26,7 +26,7 @@ Add 벗츠 전용 to the selector. Selecting it opens a GButs home, persists acr
 - Render only supported operations in GButs mode; redirect unsupported dashboard routes before loading their page.
 - Leave authentication, provider credentials, shared inventory and scheduled fulfillment unchanged.
 - Load the home from live GButs listing metadata and order records without waiting for GrayTag inventory. Clearly distinguish displayed participants and listing recruitment capacity from paid buyers, settlement and shared inventory.
-- Read order records separately from the inventory query; listing creation still performs the established fresh shared-inventory verification.
+- Read order records separately from the inventory query; listing creation still performs the established fresh shared-inventory verification. Browsing may reuse the verified display snapshot while refreshing in the background, with an explicit stale-snapshot notice; publication and fulfillment keep mandatory fresh reads.
 - Service cards preselect and filter available accounts for the chosen OTT service.
 
 ## Testing Decisions

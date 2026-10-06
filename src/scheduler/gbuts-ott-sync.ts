@@ -8,7 +8,7 @@ import { buildPartyAccessDeliveryTemplate } from '../lib/party-access-template';
 import { sendGbutsText } from './gbuts-spotify-messages';
 
 export interface GbutsOttRuntimeDependencies {
-  management(): Promise<GbutsOttManagement>;
+  management(options?: { forceRefresh: boolean }): Promise<GbutsOttManagement>;
   manualMembers(): any[];
   access(order: GbutsOttOrder, listing: GbutsOttListing, profileName: string): Promise<string>;
   refreshAccess(orders: GbutsOttOrder[]): Promise<void>;

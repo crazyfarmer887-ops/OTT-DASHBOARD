@@ -1,0 +1,15 @@
+# GButs workspace release review
+
+Fixed point: cf4fd4c. Main change: 639f082. Query-navigation fix: 65848c0.
+
+## Standards
+
+No documented rule breaches or blocking correctness/security findings. New GButs GET routes inherit administrator authentication; overview excludes credentials; explicit GrayTag account headers and public buyer access remain intact. Optional repeated service registry in backend/frontend is consistent for the fixed five-service scope and deferred.
+
+## Spec
+
+One P2 query-navigation bug: service filter changes could retain the prior account/form. Fixed with Wouter query subscription, service-change reset, and account/filter validation. A React UI test verifies switching and clearing the filter without reloading inventory. Follow-up spec review confirmed resolution.
+
+Summary: Standards 0 blocking findings, 1 optional smell; Spec 1 finding resolved, 0 outstanding.
+
+Production verification follow-up: narrow-screen control overlap fixed and closed drawer marked inert. Inventory browsing now reuses the existing verified snapshot with stale status/time; publication/fulfillment retain fresh reads. Separate regression proves fresh-read failure sends no publication. Follow-up spec review found no new issue. Final targeted tests: 10 files, 59 passed; build and changed UI type checks passed.

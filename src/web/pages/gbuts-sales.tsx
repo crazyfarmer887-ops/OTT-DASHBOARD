@@ -6,13 +6,14 @@ import { makeDefaultProductDescription, makeDefaultProductTitle } from '../../li
 type Account = { key: string; serviceType: string; accountEmail: string; total: number; graytag: number; manual: number; gbuts: number; claims: number; available: number; overbooked: boolean; endDate: string; suggestedDailyPrice: number | null };
 type Listing = { id: string; postSeq?: number; serviceType: string; accountEmail: string; capacity: number; dailyPrice: number; endDate: string; state: string; error?: string };
 type Order = { key: string; name: string; listingId: string; profileName?: string; endDate: string; delivery: string; status: string; cancelStatus: string | null; accessUrl?: string; error?: string };
-type Data = { enabled: boolean; accounts: Account[]; listings: Listing[]; orders: Order[]; unlinked: { seq: number }[]; lastSuccess: string | null; lastError: string | null };
+type Data = { enabled: boolean; accounts: Account[]; listings: Listing[]; orders: Order[]; unlinked: { seq: number }[]; lastSuccess: string | null; lastError: string | null; inventory?: { status: string; updatedAt: string } | null };
 const styles = { card: { background: '#fff', border: '1px solid #EDE9FE', borderRadius: 16, padding: 16, marginBottom: 14 },
   input: { display: 'block', width: '100%', padding: 10, border: '1px solid #DDD6FE', borderRadius: 9, marginTop: 5, boxSizing: 'border-box' as const, fontFamily: 'inherit' },
   button: { border: 0, borderRadius: 10, padding: '11px 14px', background: '#7C3AED', color: '#fff', fontWeight: 800, cursor: 'pointer' } };
 const labels: Record<string, string> = { submitting: '등록 확인 중', registered: '판매 연결됨', uncertain: '등록 결과 확인 필요', failed: '등록 실패', closed: '모집 종료', ready: '자동 전달 대기', attempted: '발송 확인 중', confirmed: '전달 완료', blocked: '전달 보류' };
 export default function GbutsSalesPage({ view = 'sales' }: { view?: 'sales' | 'orders' }) {
   const [, navigate] = useLocation(); const [data, setData] = useState<Data | null>(null);
+  const [loadError, setLoadError] = useState('');
   const [loading, setLoading] = useState(false); const [busy, setBusy] = useState(false); const [message, setMessage] = useState('');
   const [key, setKey] = useState(''); const [endDate, setEndDate] = useState(''); const [price, setPrice] = useState(''); const [count, setCount] = useState('1');
   const [title, setTitle] = useState(''); const [description, setDescription] = useState(''); const requestId = useRef(crypto.randomUUID());
@@ -24,8 +25,8 @@ export default function GbutsSalesPage({ view = 'sales' }: { view?: 'sales' | 'o
     if (loadInFlight.current) return;
     loadInFlight.current = true; setLoading(true);
     try { const res = await fetch(view === 'orders' ? '/api/gbuts/ott/orders' : '/api/gbuts/ott', { cache: 'no-store' }); const payload = await res.json().catch(() => { throw new Error('공동 재고 조회가 지연되고 있습니다. 잠시 후 새로고침해 주세요.'); });
-      if (!res.ok || !payload.ok) throw new Error(payload.error || '판매 연결 조회 실패'); setData(payload);
-    } catch (e) { setMessage(e instanceof Error ? e.message : '판매 연결 조회 실패'); } finally { loadInFlight.current = false; setLoading(false); }
+      if (!res.ok || !payload.ok) throw new Error(payload.error || '판매 연결 조회 실패'); setData(payload); setLoadError('');
+    } catch (e) { setLoadError(e instanceof Error ? e.message : '판매 연결 조회 실패'); } finally { loadInFlight.current = false; setLoading(false); }
   }, [view]);
   useEffect(() => {
     void load();
@@ -74,12 +75,14 @@ export default function GbutsSalesPage({ view = 'sales' }: { view?: 'sales' | 'o
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}><h1 style={{ fontSize: 23 }}><ShoppingBag size={22} /> {view === 'orders' ? '벗츠 주문·전달 관리' : '벗츠 OTT 판매글 작성'}</h1>
       <button style={styles.button} disabled={loading || busy} onClick={load}><RefreshCw size={15} /> {loading ? '확인 중' : '새로고침'}</button></div>
     <p style={{ fontSize: 13, lineHeight: 1.6 }}>넷플릭스·디즈니+·티빙·웨이브의 계정과 남은 자리를 그레이태그와 함께 관리합니다. 벗츠에서 판매할 자리를 정하면 결제한 구매자의 1:1 채팅으로 전용 계정 확인 링크가 전달됩니다.</p>
+    {loadError && <p role="alert" style={{ ...styles.card, color: '#B91C1C' }}>{loadError}</p>}
     {message && <p role="status" style={{ ...styles.card, color: '#6D28D9' }}>{message}</p>}
     {data?.lastError && <p style={{ ...styles.card, color: '#B91C1C' }}>{data.lastError}</p>}
     <div style={styles.card}><strong>{data ? (data.enabled ? '자동 전달 실행 중 · 약 30초 간격' : '자동 전달 중지 상태') : '판매 연결 확인 중'}</strong>
       <p style={{ fontSize: 12 }}>최근 확인: {data?.lastSuccess ? new Date(data.lastSuccess).toLocaleString('ko-KR') : '연결된 판매글의 주문을 기다리고 있습니다.'}</p>
       <button style={styles.button} onClick={() => navigate('/spotify-invites')}>벗츠 판매자 연결 관리</button></div>
     {!!data?.unlinked.length && <p style={{ ...styles.card, color: '#B91C1C' }}>계정 연결이 없는 기존 벗츠 판매글 {data.unlinked.map(x => x.seq).join(', ')}의 재고 확인이 필요합니다.</p>}
+    {view === 'sales' && data?.inventory?.status === 'stale' && <p style={{ fontSize: 12, color: '#B45309' }}>최근 확인한 재고를 표시하며 최신 내역을 조회하고 있습니다. 판매 등록 직전에 남은 자리를 다시 확인합니다. ({new Date(data.inventory.updatedAt).toLocaleString('ko-KR')})</p>}
     {view === 'sales' && loading && !data && <p role="status">공동 재고와 계정 이용 기간을 확인하고 있습니다.</p>}
     {view === 'sales' && <section style={styles.card}><h2 style={{ fontSize: 17 }}>벗츠에서 판매할 자리{requestedService && ` · ${requestedService}`}</h2>
       <label>계정<select style={styles.input} aria-label="판매 계정" value={key} onChange={e => choose(e.target.value)}><option value="">계정을 선택해주세요</option>

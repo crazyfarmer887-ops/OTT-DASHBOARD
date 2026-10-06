@@ -52,6 +52,19 @@ describe('shared inventory publication', () => {
     expect(f.deps.management).not.toHaveBeenCalled();
     expect(f.transport.mock.calls.some(([, options]) => options?.method === 'POST')).toBe(false);
   });
+  it('uses display snapshots for browsing but requires fresh inventory for publication', async () => {
+    const f = fixture();
+    f.deps.management.mockResolvedValue({ ...fixtureManagement(), cache: { status: 'stale', updatedAt: '2026-10-05T05:00:00Z' } } as any);
+    const response = await f.app.request('/gbuts/ott');
+    expect(response.status).toBe(200);
+    expect((await response.json()).inventory.status).toBe('stale');
+    expect(f.deps.management).toHaveBeenLastCalledWith({ forceRefresh: false });
+    f.deps.management.mockRejectedValueOnce(new Error('fresh inventory unavailable'));
+    expect((await f.publish()).status).toBe(503);
+    expect(f.deps.management).toHaveBeenLastCalledWith();
+    expect(f.posts).toHaveLength(0);
+    expect(f.transport.mock.calls.some(([, options]) => options?.method === 'POST')).toBe(false);
+  });
   it('serializes concurrent registration against the last place and writes externally once', async () => {
     const f = fixture(); const replies = await Promise.all([f.publish({ capacity: 2 }), f.publish({ requestId: 'request-456', capacity: 1 })]);
     expect(replies.map(x => x.status)).toEqual([200, 409]); expect(f.posts).toHaveLength(1);

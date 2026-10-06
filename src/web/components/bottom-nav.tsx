@@ -64,7 +64,7 @@ export default function BottomNav() {
         padding: '10px 14px',
         paddingTop: 'calc(env(safe-area-inset-top, 0px) + 10px)',
       }}>
-        <button onClick={() => setOpen(!open)} style={{
+        <button aria-label={open ? "메뉴 닫기" : "메뉴 열기"} onClick={() => setOpen(!open)} style={{
           background: open ? '#F3F0FF' : 'none', border: 'none', cursor: 'pointer',
           padding: 6, display: 'flex', alignItems: 'center', justifyContent: 'center',
           borderRadius: 8, transition: 'background 0.15s',
@@ -75,12 +75,12 @@ export default function BottomNav() {
           }
         </button>
         {currentTab && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0, flex: 1 }}>
             <currentTab.Icon size={16} color="#A78BFA" strokeWidth={2.5} />
-            <span style={{ fontSize: 15, fontWeight: 700, color: '#1E1B4B' }}>{currentTab.label}</span>
+            <span style={{ fontSize: 15, fontWeight: 700, color: '#1E1B4B', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{currentTab.label}</span>
           </div>
         )}
-        <label style={{ marginLeft:'auto', minWidth:0, display:'flex', alignItems:'center', gap:5, padding:'4px 6px 4px 8px', borderRadius:10, background:workspace === 'youtube-invite-sales' ? '#FEE2E2' : '#F3F0FF', color:workspace === 'youtube-invite-sales' ? '#B91C1C' : '#6D28D9', fontSize:9, fontWeight:900 }}>
+        <label style={{ marginLeft:'auto', minWidth:0, display:'flex', alignItems:'center', gap:5, padding:'4px 6px 4px 8px', borderRadius:10, background:workspace === 'youtube-invite-sales' ? '#FEE2E2' : '#F3F0FF', color:workspace === 'youtube-invite-sales' ? '#B91C1C' : '#6D28D9', fontSize:9, fontWeight:900, flexShrink:0 }}>
           <span style={{ whiteSpace:'nowrap' }}>사용 계정</span>
           <select
             aria-label="대시보드 사용 계정"
@@ -93,7 +93,7 @@ export default function BottomNav() {
               if (workspace === 'gbuts' || next === 'gbuts') window.location.assign(`/dashboard${dashboardWorkspaceHome(next)}`);
               else window.location.reload();
             }}
-            style={{ minWidth:0, maxWidth:165, border:0, borderRadius:7, padding:'5px 7px', background:'#fff', color:'#111827', fontFamily:'inherit', fontSize:10, fontWeight:900 }}
+            style={{ minWidth:0, maxWidth:140, border:0, borderRadius:7, padding:'5px 7px', background:'#fff', color:'#111827', fontFamily:'inherit', fontSize:10, fontWeight:900 }}
           >
             <option value="primary">기본 GrayTag 계정</option>
             <option value="youtube-invite-sales">유튜브 판매 전용</option>
@@ -116,7 +116,7 @@ export default function BottomNav() {
       />
 
       {/* 드로어 */}
-      <div style={{
+      <div inert={!open} style={{
         position: 'fixed', top: 0, left: 0,
         width: 270, maxWidth: '75vw',
         height: '100dvh',
@@ -136,7 +136,7 @@ export default function BottomNav() {
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         }}>
           <div style={{ fontSize: 18, fontWeight: 800, color: '#1E1B4B', letterSpacing: -0.5 }}>메뉴</div>
-          <button onClick={() => setOpen(false)} style={{
+          <button aria-label="메뉴 닫기" onClick={() => setOpen(false)} style={{
             background: '#F3F0FF', border: 'none', cursor: 'pointer',
             padding: 5, borderRadius: 8, display: 'flex', alignItems: 'center',
           }}>

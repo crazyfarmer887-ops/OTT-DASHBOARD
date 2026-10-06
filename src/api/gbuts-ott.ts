@@ -54,13 +54,13 @@ export function registerGbutsOttRoutes(app: Hono, deps: GbutsOttRuntimeDependenc
   });
   app.get('/gbuts/ott', async c => {
     try {
-      const store = readGbutsOttStore(); const [management, posts] = await Promise.all([deps.management(), gbutsOttClient().listPosts()]);
+      const store = readGbutsOttStore(); const [management, posts] = await Promise.all([deps.management({ forceRefresh: false }), gbutsOttClient().listPosts()]);
       const bound = new Set(Object.values(store.listings).map(x => x.postSeq));
       const unlinked = posts.filter(x => Object.values(GBUTS_OTT_CATEGORIES).includes(x.category1.seq) && !bound.has(x.seq) && ottDate(x.subscriptionEndsAt) >= koreaToday());
       return c.json({ ok: true, enabled: process.env.GBUTS_OTT_SYNC_ENABLED === 'true',
         accounts: sharedOttAccounts(management, deps.manualMembers(), store),
         listings: Object.values(store.listings), orders: Object.values(store.orders), unlinked: unlinked.map(x => ({ seq: x.seq })),
-        lastSuccess: store.lastSuccess, lastError: store.lastError });
+        lastSuccess: store.lastSuccess, lastError: store.lastError, inventory: management.cache || null });
     } catch (e) { return c.json({ ok: false, error: e instanceof Error ? e.message : '벗츠 연결 확인 실패' }, 503); }
   });
   app.post('/gbuts/ott/listings', async c => {

@@ -87,7 +87,7 @@ function App() {
           </Switch>}
         </Suspense>
       </div>
-      {!isChat && <AdminTokenControl />}
+      {!isChat && <AdminTokenControl dockBottom={!isAccess} />}
       {!isChat && !isAccess && <BottomNav />}
       {!isAccess && workspace !== 'gbuts' && <RealtimeChatNotifier />}
       {import.meta.env.DEV && <AgentFeedback />}
