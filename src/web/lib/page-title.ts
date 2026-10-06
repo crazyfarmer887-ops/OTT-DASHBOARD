@@ -19,6 +19,7 @@ export function dashboardPageTitleForPath(pathname: string): string {
   const normalizedPath = normalizePathname(pathname);
   if (normalizedPath.startsWith('/spotify-invites')) return 'Spotify 초대 | 대시보드';
   if (normalizedPath.startsWith('/gbuts-sales')) return '벗츠 OTT 판매글 작성 | 대시보드';
+  if (normalizedPath === '/gbuts-accounts') return '벗츠 계정 관리 | 대시보드';
   if (normalizedPath === '/gbuts') return '벗츠 판매 관리 | 대시보드';
   if (normalizedPath === '/gbuts-orders') return '벗츠 주문·전달 관리 | 대시보드';
   const match = ROUTE_TITLES.find((route) => route.pattern.test(normalizedPath));

@@ -17,8 +17,11 @@ export default function GbutsSalesPage({ view = 'sales' }: { view?: 'sales' | 'o
   const [loading, setLoading] = useState(false); const [busy, setBusy] = useState(false); const [message, setMessage] = useState('');
   const [key, setKey] = useState(''); const [endDate, setEndDate] = useState(''); const [price, setPrice] = useState(''); const [count, setCount] = useState('1');
   const [title, setTitle] = useState(''); const [description, setDescription] = useState(''); const requestId = useRef(crypto.randomUUID());
-  const requestedService = new URLSearchParams(useSearch()).get('service') || '';
-  const previousService = useRef(requestedService);
+  const query = new URLSearchParams(useSearch());
+  const requestedService = query.get('service') || '';
+  const requestedAccount = query.get('account') || '';
+  const selectionRequest = `${requestedService}:${requestedAccount}`;
+  const previousService = useRef(selectionRequest);
   const account = data?.accounts.find(x => x.key === key && (!requestedService || x.serviceType === requestedService));
   const loadInFlight = useRef(false);
   const load = useCallback(async () => {
@@ -40,13 +43,13 @@ export default function GbutsSalesPage({ view = 'sales' }: { view?: 'sales' | 'o
     requestId.current = crypto.randomUUID(); setMessage('');
   }, [data?.accounts]);
   useEffect(() => {
-    const serviceChanged = previousService.current !== requestedService;
-    previousService.current = requestedService;
+    const serviceChanged = previousService.current !== selectionRequest;
+    previousService.current = selectionRequest;
     if (serviceChanged || (!key && data && requestedService)) {
-      const selected = requestedService ? data?.accounts.find(item => item.serviceType === requestedService && item.available > 0) : undefined;
+      const selected = requestedService ? data?.accounts.find(item => item.serviceType === requestedService && item.available > 0 && (!requestedAccount || item.accountEmail.toLowerCase() === requestedAccount.toLowerCase())) : undefined;
       choose(selected?.key || '');
     }
-  }, [data, key, requestedService, choose]);
+  }, [data, key, requestedService, requestedAccount, selectionRequest, choose]);
   const publish = async () => {
     if (!account || busy) return; setBusy(true); setMessage('');
     try {
@@ -85,6 +88,7 @@ export default function GbutsSalesPage({ view = 'sales' }: { view?: 'sales' | 'o
     {view === 'sales' && data?.inventory?.status === 'stale' && <p style={{ fontSize: 12, color: '#B45309' }}>최근 확인한 재고를 표시하며 최신 내역을 조회하고 있습니다. 판매 등록 직전에 남은 자리를 다시 확인합니다. ({new Date(data.inventory.updatedAt).toLocaleString('ko-KR')})</p>}
     {view === 'sales' && loading && !data && <p role="status">공동 재고와 계정 이용 기간을 확인하고 있습니다.</p>}
     {view === 'sales' && <section style={styles.card}><h2 style={{ fontSize: 17 }}>벗츠에서 판매할 자리{requestedService && ` · ${requestedService}`}</h2>
+      <button style={styles.button} onClick={() => navigate(`/gbuts-accounts${requestedService ? `?service=${encodeURIComponent(requestedService)}` : ""}`)}>계정 추가·관리</button>
       <label>계정<select style={styles.input} aria-label="판매 계정" value={key} onChange={e => choose(e.target.value)}><option value="">계정을 선택해주세요</option>
         {data?.accounts.filter(x => x.available > 0 && (!requestedService || x.serviceType === requestedService)).map(x => <option key={x.key} value={x.key}>{x.serviceType} · {x.accountEmail} · 남은 {x.available}자리</option>)}</select></label>
       {data && !data.accounts.some(x => x.available > 0 && (!requestedService || x.serviceType === requestedService)) && <p style={{ color: '#B45309', fontSize: 13 }}>현재 판매 가능한 자리가 없습니다. 기존 계정의 결제·이용 기간과 공동 재고를 확인해 주세요.</p>}

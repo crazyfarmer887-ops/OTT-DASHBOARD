@@ -54,7 +54,7 @@ describe('dashboard workspace selection', () => {
       expect(dashboardWorkspaceRedirect('gbuts', path)).toBe('/gbuts');
       expect(dashboardWorkspaceRedirect('primary', path)).toBeNull();
     }
-    for (const path of ['/gbuts', '/gbuts-sales', '/gbuts-orders', '/spotify-invites', '/access/buyer-token', '/dashboard/access/buyer-token']) {
+    for (const path of ['/gbuts', '/gbuts-sales', '/gbuts-accounts', '/gbuts-orders', '/spotify-invites', '/access/buyer-token', '/dashboard/access/buyer-token']) {
       expect(dashboardWorkspaceRedirect('gbuts', path)).toBeNull();
     }
   });

@@ -34,7 +34,7 @@ export function setGraytagAccountId(accountId: GraytagAccountId): void {
 export function dashboardWorkspaceRedirect(workspace: DashboardWorkspace, path: string): string | null {
   if (workspace !== 'gbuts') return null;
   if (path.startsWith('/access/') || path.startsWith('/dashboard/access/')) return null;
-  return ['/gbuts', '/gbuts-sales', '/gbuts-orders', '/spotify-invites'].includes(path) ? null : '/gbuts';
+  return ['/gbuts', '/gbuts-sales', '/gbuts-accounts', '/gbuts-orders', '/spotify-invites'].includes(path) ? null : '/gbuts';
 }
 
 export function dashboardWorkspaceHome(workspace: DashboardWorkspace): string {

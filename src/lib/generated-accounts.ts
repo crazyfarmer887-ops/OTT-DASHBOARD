@@ -1,4 +1,7 @@
 import { resolveDoublePassBundleNo, tvingLoginIdForDoublePassBundleNo, WAVVE_SERVICE } from './tving-wavve-bundle';
+import { isGraytagAccessNoticeCredential } from './graytag-fill';
+
+export const REGISTERABLE_OTT_SERVICES = ['넷플릭스', '디즈니플러스', '티빙', '웨이브', '티빙+웨이브'];
 
 export type GeneratedAccountPaymentStatus = 'pending' | 'paid';
 
@@ -18,6 +21,8 @@ export interface GeneratedAccount {
   paymentStatus: GeneratedAccountPaymentStatus;
   paidAt: string | null;
   source: 'account-generator';
+  registrationKind?: 'manual';
+  expiryDate?: string | null;
 }
 
 export interface SimpleLoginAliasRef {
@@ -221,7 +226,30 @@ export function normalizeGeneratedAccountPatch(input: Partial<GeneratedAccount>)
     patch.paymentStatus = input.paymentStatus;
     patch.paidAt = input.paymentStatus === 'paid' ? (input.paidAt || new Date().toISOString()) : null;
   }
+  if (input.expiryDate !== undefined) patch.expiryDate = validateAccountExpiry(input.expiryDate);
   return patch;
+}
+
+export function validateAccountExpiry(value: unknown): string | null {
+  if (value === null || value === '') return null;
+  const date = String(value || '');
+  const timestamp = Date.parse(date);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(timestamp) || new Date(timestamp).toISOString().slice(0, 10) !== date)
+    throw new Error('이용 종료일을 올바른 날짜로 입력해주세요.');
+  return date;
+}
+
+export function manualRegisteredAccount(input: Partial<GeneratedAccount>, id: string): GeneratedAccount {
+  const serviceType = String(input.serviceType || '').trim();
+  const email = normalizeGeneratedAccountEmail(String(input.email || ''));
+  const password = String(input.password || '');
+  if (!REGISTERABLE_OTT_SERVICES.includes(serviceType)) throw new Error('지원하는 OTT 서비스를 선택해주세요.');
+  if (!email || email.length > 254 || /\s/.test(email) || email === '(직접전달)' || isGraytagAccessNoticeCredential(email))
+    throw new Error('실제 로그인 ID를 입력해주세요.');
+  if (!password.trim() || password.length > 300 || isGraytagAccessNoticeCredential(password)) throw new Error('실제 비밀번호를 입력해주세요.');
+  const now = new Date().toISOString();
+  const account = buildGeneratedAccount({ serviceType, alias: { id: '', email }, password, pin: '', memo: '', now });
+  return { ...account, id, registrationKind: 'manual', ...normalizeGeneratedAccountPatch(input) };
 }
 
 export function buildGeneratedAccount(input: {
@@ -267,7 +295,7 @@ export function generatedAccountToManagementAccount(account: GeneratedAccount, o
     totalSlots: getGeneratedAccountPartyMax(serviceType),
     totalIncome: 0,
     totalRealizedIncome: 0,
-    expiryDate: null,
+    expiryDate: account.expiryDate || null,
     keepPasswd: account.password,
     generatedAccount: {
       id: account.id,
@@ -306,6 +334,10 @@ function generatedManagementRows(account: GeneratedAccount) {
   ];
 }
 
+export function registeredAccountSalesTargets(account: GeneratedAccount): Array<{ serviceType: string; email: string }> {
+  return generatedManagementRows(account).map(({ serviceType, email }) => ({ serviceType, email }));
+}
+
 export function mergeGeneratedAccountsIntoManagement<T extends {
   services: Array<{ serviceType: string; accounts: any[]; totalUsingMembers: number; totalActiveMembers: number; totalIncome: number; totalRealized: number }>;
   summary: { totalAccounts: number; [key: string]: unknown };
@@ -315,6 +347,11 @@ export function mergeGeneratedAccountsIntoManagement<T extends {
     services: management.services.map(service => ({ ...service, accounts: [...service.accounts] })),
     summary: { ...management.summary },
   };
+  // A cached pending bundle becomes two service rows after payment.
+  for (const service of next.services) service.accounts = service.accounts.filter(row => {
+    const latest = store[String(row.generatedAccount?.id || '')];
+    return !(latest && isPaidDoublePassGeneratedAccount(latest) && row.serviceType === DOUBLE_PASS_SERVICE && !(row.members || []).length);
+  });
   const existing = new Set<string>();
   for (const service of next.services) {
     for (const account of service.accounts) {
@@ -322,14 +359,18 @@ export function mergeGeneratedAccountsIntoManagement<T extends {
     }
   }
 
-  let added = 0;
   const generated = Object.values(store).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   for (const account of generated) {
     const rows = generatedManagementRows(account);
-    let accountAdded = 0;
     for (const row of rows) {
       const key = generatedAccountKey(row.serviceType, row.email);
-      if (existing.has(key)) continue;
+      if (existing.has(key)) {
+        const service = next.services.find(s => s.serviceType === row.serviceType);
+        if (service) service.accounts = service.accounts.map(current => generatedAccountKey(current.serviceType || service.serviceType, current.email) === key
+          ? { ...current, generatedAccount: row.generatedAccount,
+            ...(account.expiryDate !== undefined ? { expiryDate: account.expiryDate } : {}) } : current);
+        continue;
+      }
       let service = next.services.find(s => s.serviceType === row.serviceType);
       if (!service) {
         service = { serviceType: row.serviceType, accounts: [], totalUsingMembers: 0, totalActiveMembers: 0, totalIncome: 0, totalRealized: 0 };
@@ -337,12 +378,10 @@ export function mergeGeneratedAccountsIntoManagement<T extends {
       }
       service.accounts.unshift(row);
       existing.add(key);
-      accountAdded += 1;
     }
-    added += accountAdded;
   }
 
-  next.summary.totalAccounts = Number(next.summary.totalAccounts || 0) + added;
+  next.summary.totalAccounts = next.services.reduce((total, service) => total + service.accounts.length, 0);
   return next;
 }
 

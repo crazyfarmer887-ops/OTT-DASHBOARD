@@ -30,3 +30,16 @@ test('query navigation replaces the selected account and all listing defaults wi
   expect(host.querySelector<HTMLInputElement>('[aria-label="하루 요금"]')!.value).toBe('');
   expect(fetch).toHaveBeenCalledTimes(1);
 });
+
+test('account management handoff selects the exact newly registered account rather than the first account of its service', async () => {
+  const accounts = ['older', 'new'].map(name => ({ key: `넷플릭스:${name}@example.com`, serviceType: '넷플릭스',
+    accountEmail: `${name}@example.com`, available: 2, endDate: '2099-10-01', suggestedDailyPrice: 150 }));
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true, enabled: true, accounts, listings: [], orders: [], unlinked: [] }) }));
+  const host = document.createElement('div'); document.body.append(host); const root = createRoot(host);
+  dispose = () => { root.unmount(); host.remove(); };
+  window.history.replaceState(null, '', '/gbuts-sales?service=' + encodeURIComponent('넷플릭스') + '&account=new%40example.com');
+  await act(async () => root.render(<Router><GbutsSalesPage /></Router>));
+  expect(host.querySelector<HTMLSelectElement>('[aria-label="판매 계정"]')!.value).toBe('넷플릭스:new@example.com');
+  await act(async () => { window.history.pushState(null, '', '/gbuts-sales?service=' + encodeURIComponent('넷플릭스') + '&account=older%40example.com'); });
+  expect(host.querySelector<HTMLSelectElement>('[aria-label="판매 계정"]')!.value).toBe('넷플릭스:older@example.com');
+});

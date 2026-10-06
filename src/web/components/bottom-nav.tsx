@@ -33,6 +33,7 @@ export default function BottomNav() {
   const visibleGroups = workspace === 'gbuts'
     ? [{ label: '벗츠 운영', items: [
       { path: '/gbuts', label: '벗츠 홈', Icon: Home },
+      { path: '/gbuts-accounts', label: '계정 관리', Icon: LayoutGrid },
       { path: '/gbuts-sales', label: 'OTT 판매글 작성', Icon: PenLine },
       { path: '/gbuts-orders', label: '주문·전달 관리', Icon: LayoutGrid },
       { path: '/spotify-invites', label: 'Spotify 초대', Icon: Music2 },

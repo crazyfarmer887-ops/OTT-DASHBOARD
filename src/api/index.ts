@@ -76,6 +76,7 @@ import {
 import { loadGbutsSession, parseGbutsToken, saveGbutsSession } from '../lib/gbuts-session';
 import { dedupeGraytagManagementDeals, verifiedGraytagManagementDeals } from '../lib/graytag-management-snapshot';
 import { gbutsOttClient, registerGbutsOttRoutes, reserveGraytagOttPlace, settleGraytagOttPlace } from './gbuts-ott';
+import { registerManualAccountRoutes } from './manual-account-registration';
 import { deliverableOttOrder, isGbutsOttBuyerMatch, mergeGbutsOttManagement, ottKey, ottDate } from '../lib/gbuts-ott';
 import { readGbutsOttStore, withGbutsOttInventory, writeGbutsOttStore } from '../lib/gbuts-ott-store';
 import type { GbutsOttRuntimeDependencies } from '../scheduler/gbuts-ott-sync';
@@ -1788,6 +1789,7 @@ app.delete('/management-payment-cards', handleDeleteManagementPaymentCard);
 app.delete('/api/management-payment-cards', handleDeleteManagementPaymentCard);
 
 // ─── 계정 생성기: SimpleLogin alias + 비밀번호 + PIN + 결제 체크 ─────
+registerManualAccountRoutes(app, { read: readGeneratedAccountStore, write: writeGeneratedAccountStore });
 app.get('/generated-accounts', (c) => {
   const store = readGeneratedAccountStore();
   return c.json({ accounts: Object.values(store).sort((a, b) => b.createdAt.localeCompare(a.createdAt)) });
@@ -1839,7 +1841,9 @@ app.patch('/generated-accounts/:id', async (c) => {
   const store = readGeneratedAccountStore();
   const account = store[id];
   if (!account) return c.json({ error: '생성 계정을 찾지 못했어요' }, 404);
-  const patch = normalizeGeneratedAccountPatch(body);
+  let patch;
+  try { patch = normalizeGeneratedAccountPatch(body); }
+  catch (error) { return c.json({ error: error instanceof Error ? error.message : '계정 정보 확인 필요' }, 400); }
   store[id] = { ...account, ...patch };
   writeGeneratedAccountStore(store);
   return c.json({ ok: true, account: store[id] });
@@ -1851,9 +1855,11 @@ app.delete('/generated-accounts/:id', async (c) => {
   const result = deleteGeneratedAccountFromStore(store, id);
   if (!result.deleted) return c.json({ error: '생성 계정을 찾지 못했어요' }, 404);
   try {
-    const key = simpleLoginApiKey();
-    if (!key) throw new Error('SIMPLELOGIN_API_KEY가 AIO 또는 이메일 대시보드 환경에 없어요.');
-    await deleteSimpleLoginAlias(result.deleted.emailId, key);
+    if (result.deleted.registrationKind !== 'manual') {
+      const key = simpleLoginApiKey();
+      if (!key) throw new Error('SIMPLELOGIN_API_KEY가 AIO 또는 이메일 대시보드 환경에 없어요.');
+      await deleteSimpleLoginAlias(result.deleted.emailId, key);
+    }
     writeGeneratedAccountStore(result.store);
     return c.json({ ok: true, deleted: { id: result.deleted.id, email: result.deleted.email, emailId: result.deleted.emailId } });
   } catch (e: any) {
@@ -2452,8 +2458,10 @@ app.post('/my/management', async (c) => {
       const cached = await managementCache.get(managementCacheKey(accountId) + (body.gbutsInventory === false ? ':verified-inventory' : ''), loadManagementFresh, {
         forceRefresh: shouldForceManagementRefresh(body, c.req.query('refresh'), c.req.header('cache-control')),
       });
+      const latest = managementScope.useLocalAccountRecords
+        ? applyManagementHiddenAccounts(mergeGeneratedAccountsIntoManagement(cached.data, readGeneratedAccountStore())) : cached.data;
       const response = c.json({
-        ...(body.gbutsInventory === false || !managementScope.useLocalAccountRecords ? cached.data : mergeGbutsOttManagement(cached.data, readGbutsOttStore())),
+        ...(body.gbutsInventory === false || !managementScope.useLocalAccountRecords ? latest : mergeGbutsOttManagement(latest, readGbutsOttStore())),
         cache: {
           status: cached.cacheStatus,
           updatedAt: new Date(cached.updatedAt).toISOString(),

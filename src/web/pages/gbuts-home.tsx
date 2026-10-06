@@ -33,9 +33,10 @@ export default function GbutsHomePage() {
     {error && <p role="alert" style={{ ...card, color: '#B91C1C' }}>{error}</p>}
     {data?.lastError && <p role="alert" style={{ ...card, color: '#B91C1C' }}>자동 전달 확인 필요: {data.lastError}</p>}
     <section style={{ ...card, marginBottom: 18 }}>
-      <strong>판매 시작 → 주문 확인 → 자동 전달</strong>
+      <strong>계정 추가 → 판매 시작 → 자동 전달</strong>
       <p style={{ fontSize: 13, lineHeight: 1.6 }}>넷플릭스·디즈니·티빙·웨이브는 기존 계정과 재고를 함께 사용합니다. 스포티파이는 Notion의 Registered / Invited 체크로 초대·계정 전달을 처리합니다.</p>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+        <button style={button} onClick={() => navigate('/gbuts-accounts')}>계정 추가·관리</button>
         <button style={button} onClick={() => navigate('/gbuts-sales')}>OTT 판매글 작성</button>
         <button style={{ ...button, background: '#F3F0FF', color: '#6D28D9' }} onClick={() => navigate('/gbuts-orders')}>주문·전달 관리</button>
       </div>

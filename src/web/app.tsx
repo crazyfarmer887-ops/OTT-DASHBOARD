@@ -24,6 +24,7 @@ const RenewalsPage = lazy(() => import("./pages/renewals"));
 const YouTubeInvitesPage = lazy(() => import("./pages/youtube-invites"));
 const SpotifyInvitesPage = lazy(() => import("./pages/spotify-invites"));
 const GbutsSalesPage = lazy(() => import("./pages/gbuts-sales"));
+const GbutsAccountsPage = lazy(() => import("./pages/gbuts-accounts"));
 const GbutsHomePage = lazy(() => import('./pages/gbuts-home'));
 const EveryviewPage = lazy(() => import("./pages/everyview"));
 
@@ -47,6 +48,7 @@ const YouTubeInvitesWrapped = () => <ErrorBoundary><YouTubeInvitesPage /></Error
 const SpotifyInvitesWrapped = () => <ErrorBoundary><SpotifyInvitesPage /></ErrorBoundary>;
 const GbutsSalesWrapped = () => <ErrorBoundary><GbutsSalesPage /></ErrorBoundary>;
 const GbutsOrdersWrapped = () => <ErrorBoundary><GbutsSalesPage view="orders" /></ErrorBoundary>;
+const GbutsAccountsWrapped = () => <ErrorBoundary><GbutsAccountsPage /></ErrorBoundary>;
 const GbutsHomeWrapped = () => <ErrorBoundary><GbutsHomePage /></ErrorBoundary>;
 const EveryviewWrapped = () => <ErrorBoundary><EveryviewPage /></ErrorBoundary>;
 
@@ -72,6 +74,7 @@ function App() {
             <Route path="/renewals" component={RenewalsWrapped} />
             <Route path="/youtube-invites" component={YouTubeInvitesWrapped} />
             <Route path="/spotify-invites" component={SpotifyInvitesWrapped} />
+            <Route path="/gbuts-accounts" component={GbutsAccountsWrapped} />
             <Route path="/gbuts-sales" component={GbutsSalesWrapped} />
             <Route path="/gbuts" component={GbutsHomeWrapped} />
             <Route path="/gbuts-orders" component={GbutsOrdersWrapped} />
