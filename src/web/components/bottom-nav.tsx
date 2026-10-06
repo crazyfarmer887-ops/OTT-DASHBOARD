@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useLocation } from "wouter";
 import { Home, BarChart2, PenLine, LayoutGrid, User, Calculator, MessageCircle, Settings2, Info, Menu, X, RefreshCw, Youtube, Users, Music2 } from "lucide-react";
-import { getGraytagAccountId, setGraytagAccountId, type GraytagAccountId } from "../lib/admin-auth";
+import { dashboardWorkspaceHome, getDashboardWorkspace, setDashboardWorkspace, type DashboardWorkspace } from "../lib/dashboard-workspace";
 
 const navGroups = [
   { label: "홈", items: [{ path: "/", label: "홈", Icon: Home }] },
@@ -26,12 +26,19 @@ const navGroups = [
   { label: "설정", items: [{ path: "/my", label: "내계정", Icon: User }] },
 ];
 
-const tabs = navGroups.flatMap(group => group.items);
-
 export default function BottomNav() {
   const [location, navigate] = useLocation();
   const [open, setOpen] = useState(false);
-  const [graytagAccount, setGraytagAccount] = useState<GraytagAccountId>(() => getGraytagAccountId());
+  const [workspace, setWorkspace] = useState<DashboardWorkspace>(() => getDashboardWorkspace());
+  const visibleGroups = workspace === 'gbuts'
+    ? [{ label: '벗츠 운영', items: [
+      { path: '/gbuts', label: '벗츠 홈', Icon: Home },
+      { path: '/gbuts-sales', label: 'OTT 판매글 작성', Icon: PenLine },
+      { path: '/gbuts-orders', label: '주문·전달 관리', Icon: LayoutGrid },
+      { path: '/spotify-invites', label: 'Spotify 초대', Icon: Music2 },
+    ] }]
+    : navGroups;
+  const tabs = visibleGroups.flatMap(group => group.items);
   const backdropRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -42,7 +49,7 @@ export default function BottomNav() {
 
   useEffect(() => { setOpen(false); }, [location]);
 
-  const isActive = (path: string) => location === path || (path !== "/" && location.startsWith(path));
+  const isActive = (path: string) => location === path || (path !== "/" && location.startsWith(`${path}/`));
   const currentTab = tabs.find(t => isActive(t.path));
 
   return (
@@ -51,8 +58,8 @@ export default function BottomNav() {
       <div style={{
         position: 'fixed', top: 0, left: '50%', transform: 'translateX(-50%)',
         width: '100%', maxWidth: 640, zIndex: 200,
-        background: graytagAccount === 'youtube-invite-sales' ? 'rgba(255,247,247,0.96)' : 'rgba(255,255,255,0.92)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)',
-        borderBottom: graytagAccount === 'youtube-invite-sales' ? '1px solid #FCA5A5' : '1px solid #EDE9FE',
+        background: workspace === 'youtube-invite-sales' ? 'rgba(255,247,247,0.96)' : 'rgba(255,255,255,0.92)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)',
+        borderBottom: workspace === 'youtube-invite-sales' ? '1px solid #FCA5A5' : '1px solid #EDE9FE',
         display: 'flex', alignItems: 'center', gap: 10,
         padding: '10px 14px',
         paddingTop: 'calc(env(safe-area-inset-top, 0px) + 10px)',
@@ -73,21 +80,24 @@ export default function BottomNav() {
             <span style={{ fontSize: 15, fontWeight: 700, color: '#1E1B4B' }}>{currentTab.label}</span>
           </div>
         )}
-        <label style={{ marginLeft:'auto', minWidth:0, display:'flex', alignItems:'center', gap:5, padding:'4px 6px 4px 8px', borderRadius:10, background:graytagAccount === 'youtube-invite-sales' ? '#FEE2E2' : '#F3F0FF', color:graytagAccount === 'youtube-invite-sales' ? '#B91C1C' : '#6D28D9', fontSize:9, fontWeight:900 }}>
+        <label style={{ marginLeft:'auto', minWidth:0, display:'flex', alignItems:'center', gap:5, padding:'4px 6px 4px 8px', borderRadius:10, background:workspace === 'youtube-invite-sales' ? '#FEE2E2' : '#F3F0FF', color:workspace === 'youtube-invite-sales' ? '#B91C1C' : '#6D28D9', fontSize:9, fontWeight:900 }}>
           <span style={{ whiteSpace:'nowrap' }}>사용 계정</span>
           <select
-            aria-label="전체 대시보드에서 사용할 GrayTag 계정"
-            value={graytagAccount}
+            aria-label="대시보드 사용 계정"
+            value={workspace}
             onChange={(event) => {
-              const next = event.target.value === 'youtube-invite-sales' ? 'youtube-invite-sales' : 'primary';
-              setGraytagAccount(next);
-              setGraytagAccountId(next);
-              window.location.reload();
+              const value = event.target.value;
+              const next: DashboardWorkspace = value === 'gbuts' || value === 'youtube-invite-sales' ? value : 'primary';
+              setWorkspace(next);
+              setDashboardWorkspace(next);
+              if (workspace === 'gbuts' || next === 'gbuts') window.location.assign(`/dashboard${dashboardWorkspaceHome(next)}`);
+              else window.location.reload();
             }}
             style={{ minWidth:0, maxWidth:165, border:0, borderRadius:7, padding:'5px 7px', background:'#fff', color:'#111827', fontFamily:'inherit', fontSize:10, fontWeight:900 }}
           >
             <option value="primary">기본 GrayTag 계정</option>
             <option value="youtube-invite-sales">유튜브 판매 전용</option>
+            <option value="gbuts">벗츠 전용</option>
           </select>
         </label>
       </div>
@@ -136,7 +146,7 @@ export default function BottomNav() {
 
         {/* 메뉴 목록 */}
         <div style={{ padding: '8px 10px', flex: 1 }}>
-          {navGroups.map(group => (
+          {visibleGroups.map(group => (
             <div key={group.label} style={{ marginBottom: 10 }}>
               <div style={{ fontSize: 11, fontWeight: 900, color: '#A78BFA', padding: '8px 10px 5px', letterSpacing: '0.04em' }}>{group.label}</div>
               {group.items.map(({ path, label, Icon }) => {

@@ -40,6 +40,18 @@ function fixture() {
   return { app, deps, transport, posts, body, publish, set members(value: any[]) { members = value; }, set creationResponse(value: any) { creationResponse = value; } };
 }
 describe('shared inventory publication', () => {
+  it('loads the GButs service overview and orders without waiting for GrayTag inventory', async () => {
+    const f = fixture();
+    f.posts.push({ seq: 15557, category1: { seq: 20 }, memberLimit: 5, memberCount: 5, status: 'CLOSED', subscriptionEndsAt: '2027-10-01', price: 140, priceType: 'DAY' });
+    f.deps.management.mockRejectedValue(new Error('GrayTag inventory unavailable'));
+    const response = await f.app.request('/gbuts/sales/overview');
+    expect(response.status).toBe(200);
+    const result = await response.json();
+    expect(result.services.find((s: any) => s.serviceType === '스포티파이')).toMatchObject({ members: 5, recruiting: 0, invitationFlow: true });
+    expect((await f.app.request('/gbuts/ott/orders')).status).toBe(200);
+    expect(f.deps.management).not.toHaveBeenCalled();
+    expect(f.transport.mock.calls.some(([, options]) => options?.method === 'POST')).toBe(false);
+  });
   it('serializes concurrent registration against the last place and writes externally once', async () => {
     const f = fixture(); const replies = await Promise.all([f.publish({ capacity: 2 }), f.publish({ requestId: 'request-456', capacity: 1 })]);
     expect(replies.map(x => x.status)).toEqual([200, 409]); expect(f.posts).toHaveLength(1);

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { __resetAdminAuthFetchPatchForTests, installAdminAuthFetchPatch, setAdminToken, setGraytagAccountId } from '../src/web/lib/admin-auth';
+import { setDashboardWorkspace } from '../src/web/lib/dashboard-workspace';
 
 function setupBrowser() {
   const store = new Map<string, string>();
@@ -64,6 +65,17 @@ describe('admin auth fetch patch', () => {
 
     const [, init] = fetchMock.mock.calls[0];
     expect(new Headers(init.headers).get('x-admin-token')).toBe('safe-token');
+  });
+
+  test('uses primary shared inventory in GButs mode after a YouTube selection', async () => {
+    const fetchMock = setupBrowser();
+    setGraytagAccountId('youtube-invite-sales');
+    setDashboardWorkspace('gbuts');
+    installAdminAuthFetchPatch();
+    await window.fetch('/api/gbuts/ott');
+    expect(new Headers(fetchMock.mock.calls[0][1]?.headers).get('x-graytag-account')).toBe('primary');
+    await window.fetch('/api/gbuts/ott', { headers: { 'x-graytag-account': 'youtube-invite-sales' } });
+    expect(new Headers(fetchMock.mock.calls[1][1]?.headers).get('x-graytag-account')).toBe('youtube-invite-sales');
   });
 
   test('adds admin token to YouTube invitation GET requests', async () => {

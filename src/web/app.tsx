@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect } from "react";
-import { Route, Switch, useLocation } from "wouter";
+import { Redirect, Route, Switch, useLocation } from "wouter";
+import { dashboardWorkspaceRedirect, getDashboardWorkspace } from './lib/dashboard-workspace';
 import { Provider } from "./components/provider";
 import { dashboardPageTitleForPath } from "./lib/page-title";
 import { ErrorBoundary } from "./components/error-boundary";
@@ -23,6 +24,7 @@ const RenewalsPage = lazy(() => import("./pages/renewals"));
 const YouTubeInvitesPage = lazy(() => import("./pages/youtube-invites"));
 const SpotifyInvitesPage = lazy(() => import("./pages/spotify-invites"));
 const GbutsSalesPage = lazy(() => import("./pages/gbuts-sales"));
+const GbutsHomePage = lazy(() => import('./pages/gbuts-home'));
 const EveryviewPage = lazy(() => import("./pages/everyview"));
 
 const RouteFallback = () => (
@@ -44,12 +46,16 @@ const RenewalsWrapped = () => <ErrorBoundary><RenewalsPage /></ErrorBoundary>;
 const YouTubeInvitesWrapped = () => <ErrorBoundary><YouTubeInvitesPage /></ErrorBoundary>;
 const SpotifyInvitesWrapped = () => <ErrorBoundary><SpotifyInvitesPage /></ErrorBoundary>;
 const GbutsSalesWrapped = () => <ErrorBoundary><GbutsSalesPage /></ErrorBoundary>;
+const GbutsOrdersWrapped = () => <ErrorBoundary><GbutsSalesPage view="orders" /></ErrorBoundary>;
+const GbutsHomeWrapped = () => <ErrorBoundary><GbutsHomePage /></ErrorBoundary>;
 const EveryviewWrapped = () => <ErrorBoundary><EveryviewPage /></ErrorBoundary>;
 
 function App() {
   const [location] = useLocation();
   const isChat = location === "/chat";
   const isAccess = location.startsWith("/access/") || location.startsWith("/dashboard/access/");
+  const workspace = getDashboardWorkspace();
+  const workspaceRedirect = dashboardWorkspaceRedirect(workspace, location);
 
   useEffect(() => {
     document.title = dashboardPageTitleForPath(location);
@@ -59,7 +65,7 @@ function App() {
     <Provider>
       <div style={{ paddingTop: (isChat || isAccess) ? 0 : 52 }}>
         <Suspense fallback={<RouteFallback />}>
-          <Switch>
+          {workspaceRedirect ? <Redirect to={workspaceRedirect} /> : <Switch>
             <Route path="/"              component={HomeWrapped} />
             <Route path="/price/:category?" component={PriceWrapped} />
             <Route path="/manage"        component={ManageWrapped} />
@@ -67,6 +73,8 @@ function App() {
             <Route path="/youtube-invites" component={YouTubeInvitesWrapped} />
             <Route path="/spotify-invites" component={SpotifyInvitesWrapped} />
             <Route path="/gbuts-sales" component={GbutsSalesWrapped} />
+            <Route path="/gbuts" component={GbutsHomeWrapped} />
+            <Route path="/gbuts-orders" component={GbutsOrdersWrapped} />
             <Route path="/everyview" component={EveryviewWrapped} />
             <Route path="/profit"        component={ProfitWrapped} />
             <Route path="/write"         component={WriteWrapped} />
@@ -76,12 +84,12 @@ function App() {
             <Route path="/access/:token"  component={AccessWrapped} />
             <Route path="/dashboard/access/:token" component={AccessWrapped} />
             <Route path="/my"            component={MyWrapped} />
-          </Switch>
+          </Switch>}
         </Suspense>
       </div>
       {!isChat && <AdminTokenControl />}
       {!isChat && !isAccess && <BottomNav />}
-      {!isAccess && <RealtimeChatNotifier />}
+      {!isAccess && workspace !== 'gbuts' && <RealtimeChatNotifier />}
       {import.meta.env.DEV && <AgentFeedback />}
     </Provider>
   );

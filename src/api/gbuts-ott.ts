@@ -5,6 +5,7 @@ import { createGbutsOttSellerClient, type GbutsOttPost } from '../lib/gbuts-ott-
 import { loadGbutsSession } from '../lib/gbuts-session';
 import { readGbutsOttStore, withGbutsOttInventory, writeGbutsOttStore } from '../lib/gbuts-ott-store';
 import type { GbutsOttRuntimeDependencies } from '../scheduler/gbuts-ott-sync';
+import { buildGbutsSalesOverview } from '../lib/gbuts-sales-overview';
 export function gbutsOttClient() {
   const token = loadGbutsSession()?.token || process.env.GBUTS_API_TOKEN?.trim();
   if (!token) throw new Error('벗츠 판매자 계정을 먼저 연결해주세요.');
@@ -37,6 +38,20 @@ async function reconcileListing(listing: GbutsOttListing, client: ReturnType<typ
   listing.verifiedAt = new Date().toISOString(); delete listing.error;
 }
 export function registerGbutsOttRoutes(app: Hono, deps: GbutsOttRuntimeDependencies): void {
+  app.get('/gbuts/sales/overview', async c => {
+    try {
+      const store = readGbutsOttStore();
+      const posts = await gbutsOttClient().listPosts();
+      return c.json({ ok: true, ...buildGbutsSalesOverview(posts, store), enabled: process.env.GBUTS_OTT_SYNC_ENABLED === 'true' });
+    } catch (e) { return c.json({ ok: false, error: e instanceof Error ? e.message : '벗츠 판매 현황 조회 실패' }, 503); }
+  });
+  app.get('/gbuts/ott/orders', c => {
+    try {
+      const store = readGbutsOttStore();
+      return c.json({ ok: true, enabled: process.env.GBUTS_OTT_SYNC_ENABLED === 'true', accounts: [], unlinked: [],
+        listings: Object.values(store.listings), orders: Object.values(store.orders), lastSuccess: store.lastSuccess, lastError: store.lastError });
+    } catch (e) { return c.json({ ok: false, error: e instanceof Error ? e.message : '벗츠 주문 기록 조회 실패' }, 503); }
+  });
   app.get('/gbuts/ott', async c => {
     try {
       const store = readGbutsOttStore(); const [management, posts] = await Promise.all([deps.management(), gbutsOttClient().listPosts()]);

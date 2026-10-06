@@ -11,7 +11,7 @@ const styles = { card: { background: '#fff', border: '1px solid #EDE9FE', border
   input: { display: 'block', width: '100%', padding: 10, border: '1px solid #DDD6FE', borderRadius: 9, marginTop: 5, boxSizing: 'border-box' as const, fontFamily: 'inherit' },
   button: { border: 0, borderRadius: 10, padding: '11px 14px', background: '#7C3AED', color: '#fff', fontWeight: 800, cursor: 'pointer' } };
 const labels: Record<string, string> = { submitting: '등록 확인 중', registered: '판매 연결됨', uncertain: '등록 결과 확인 필요', failed: '등록 실패', closed: '모집 종료', ready: '자동 전달 대기', attempted: '발송 확인 중', confirmed: '전달 완료', blocked: '전달 보류' };
-export default function GbutsSalesPage() {
+export default function GbutsSalesPage({ view = 'sales' }: { view?: 'sales' | 'orders' }) {
   const [, navigate] = useLocation(); const [data, setData] = useState<Data | null>(null);
   const [loading, setLoading] = useState(false); const [busy, setBusy] = useState(false); const [message, setMessage] = useState('');
   const [key, setKey] = useState(''); const [endDate, setEndDate] = useState(''); const [price, setPrice] = useState(''); const [count, setCount] = useState('1');
@@ -19,10 +19,10 @@ export default function GbutsSalesPage() {
   const account = data?.accounts.find(x => x.key === key);
   const load = useCallback(async () => {
     setLoading(true);
-    try { const res = await fetch('/api/gbuts/ott', { cache: 'no-store' }); const payload = await res.json();
+    try { const res = await fetch(view === 'orders' ? '/api/gbuts/ott/orders' : '/api/gbuts/ott', { cache: 'no-store' }); const payload = await res.json();
       if (!res.ok || !payload.ok) throw new Error(payload.error || '판매 연결 조회 실패'); setData(payload);
     } catch (e) { setMessage(e instanceof Error ? e.message : '판매 연결 조회 실패'); } finally { setLoading(false); }
-  }, []);
+  }, [view]);
   useEffect(() => {
     void load();
     const timer = setInterval(() => { if (document.visibilityState === 'visible') void load(); }, 30_000);
@@ -34,6 +34,13 @@ export default function GbutsSalesPage() {
     setTitle(selected ? makeDefaultProductTitle(selected.serviceType) : ''); setDescription(selected ? makeDefaultProductDescription(selected.serviceType) : '');
     requestId.current = crypto.randomUUID(); setMessage('');
   };
+  const requestedService = new URLSearchParams(window.location.search).get('service') || '';
+  useEffect(() => {
+    if (!key && data && requestedService) {
+      const selected = data.accounts.find(item => item.serviceType === requestedService && item.available > 0);
+      if (selected) choose(selected.key);
+    }
+  }, [data, key, requestedService]);
   const publish = async () => {
     if (!account || busy) return; setBusy(true); setMessage('');
     try {
@@ -59,7 +66,7 @@ export default function GbutsSalesPage() {
     } catch (e) { setMessage(e instanceof Error ? e.message : '판매글 확인 실패'); } finally { setBusy(false); }
   };
   return <main style={{ maxWidth: 950, margin: 'auto', padding: 20, color: '#1E1B4B' }}>
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}><h1 style={{ fontSize: 23 }}><ShoppingBag size={22} /> 벗츠 판매 연결</h1>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}><h1 style={{ fontSize: 23 }}><ShoppingBag size={22} /> {view === 'orders' ? '벗츠 주문·전달 관리' : '벗츠 OTT 판매글 작성'}</h1>
       <button style={styles.button} disabled={loading || busy} onClick={load}><RefreshCw size={15} /> {loading ? '확인 중' : '새로고침'}</button></div>
     <p style={{ fontSize: 13, lineHeight: 1.6 }}>넷플릭스·디즈니+·티빙·웨이브의 계정과 남은 자리를 그레이태그와 함께 관리합니다. 벗츠에서 판매할 자리를 정하면 결제한 구매자의 1:1 채팅으로 전용 계정 확인 링크가 전달됩니다.</p>
     {message && <p role="status" style={{ ...styles.card, color: '#6D28D9' }}>{message}</p>}
@@ -68,9 +75,10 @@ export default function GbutsSalesPage() {
       <p style={{ fontSize: 12 }}>최근 확인: {data?.lastSuccess ? new Date(data.lastSuccess).toLocaleString('ko-KR') : '연결된 판매글의 주문을 기다리고 있습니다.'}</p>
       <button style={styles.button} onClick={() => navigate('/spotify-invites')}>벗츠 판매자 연결 관리</button></div>
     {!!data?.unlinked.length && <p style={{ ...styles.card, color: '#B91C1C' }}>계정 연결이 없는 기존 벗츠 판매글 {data.unlinked.map(x => x.seq).join(', ')}의 재고 확인이 필요합니다.</p>}
-    <section style={styles.card}><h2 style={{ fontSize: 17 }}>벗츠에서 판매할 자리</h2>
+    {view === 'sales' && <section style={styles.card}><h2 style={{ fontSize: 17 }}>벗츠에서 판매할 자리{requestedService && ` · ${requestedService}`}</h2>
       <label>계정<select style={styles.input} aria-label="판매 계정" value={key} onChange={e => choose(e.target.value)}><option value="">계정을 선택해주세요</option>
-        {data?.accounts.filter(x => x.available > 0).map(x => <option key={x.key} value={x.key}>{x.serviceType} · {x.accountEmail} · 남은 {x.available}자리</option>)}</select></label>
+        {data?.accounts.filter(x => x.available > 0 && (!requestedService || x.serviceType === requestedService)).map(x => <option key={x.key} value={x.key}>{x.serviceType} · {x.accountEmail} · 남은 {x.available}자리</option>)}</select></label>
+      {data && !data.accounts.some(x => x.available > 0 && (!requestedService || x.serviceType === requestedService)) && <p style={{ color: '#B45309', fontSize: 13 }}>현재 판매 가능한 자리가 없습니다. 기존 계정의 결제·이용 기간과 공동 재고를 확인해 주세요.</p>}
       {account && <p style={{ fontSize: 12 }}>전체 {account.total}자리 · 그레이태그 {account.graytag} · 수동 {account.manual} · 벗츠 {account.gbuts} · 등록 확인 중 {account.claims} · 남은 {account.available}자리</p>}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginTop: 15 }}>
         <label>이용 종료일<input aria-label="이용 종료일" type="date" style={styles.input} max={account?.endDate} value={endDate} onChange={e => { setEndDate(e.target.value); requestId.current = crypto.randomUUID(); }} /></label>
@@ -81,7 +89,7 @@ export default function GbutsSalesPage() {
       <label style={{ display: 'block', marginTop: 15 }}>이용 안내<textarea style={{ ...styles.input, minHeight: 120 }} value={description} onChange={e => { setDescription(e.target.value); requestId.current = crypto.randomUUID(); }} /></label>
       <p style={{ fontSize: 12 }}>등록 시 벗츠 판매글이 공개되며, 모집 인원만큼 공동 재고에서 자리가 확보됩니다. 요금·기간의 기본값은 기존 그레이태그 정보로 채워집니다.</p>
       <button style={styles.button} disabled={busy || !data?.enabled || !account || account.available < Number(count) || Number(count) < 1 || Number(price) < 1 || !endDate || !!data?.unlinked.length} onClick={publish}>{busy ? '처리 중' : '벗츠 판매글 등록'}</button>
-    </section>
+    </section>}
     <section style={styles.card}><h2 style={{ fontSize: 17 }}>연결된 판매글</h2>{!data?.listings.length && <p>아직 연결된 판매글이 없습니다.</p>}
       {data?.listings.map(x => <div key={x.id} style={{ borderTop: '1px solid #EDE9FE', padding: '13px 0' }}><strong>{x.serviceType} · {labels[x.state] || x.state}</strong>
         <p style={{ fontSize: 12 }}>{x.accountEmail} · {x.capacity}명 · {x.dailyPrice}원/일 · {x.endDate}까지</p>
