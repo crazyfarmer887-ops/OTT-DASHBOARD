@@ -51,7 +51,8 @@ describe('GButs OTT order delivery', () => {
     const f = fixture(); f.deps.management = async () => { throw new Error('403'); };
     await expect(syncGbutsOtt(f.deps, f.client as any, f.send)).rejects.toThrow('403'); expect(f.send).not.toHaveBeenCalled();
     f.deps.management = async () => { const m = fixtureManagement(); m.onSaleByKeepAcct['account@example.com'].push({ ...m.onSaleByKeepAcct['account@example.com'][0], productUsid: 'extra' }); return m; };
-    await expect(syncGbutsOtt(f.deps, f.client as any, f.send)).rejects.toThrow(); expect(f.send).not.toHaveBeenCalled();
+    await syncGbutsOtt(f.deps, f.client as any, f.send); expect(f.send).not.toHaveBeenCalled();
+    expect(f.store.orders['100:1'].error).toContain('중복 배정');
   });
   it('does not expose a link if a paid member ID changes owner or listing settings change', async () => {
     const f = fixture(); f.deps.writeStore({ ...f.store, orders: { '100:1': fixtureOrder({ userSeq: 11 }) } });

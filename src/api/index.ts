@@ -78,7 +78,7 @@ import { dedupeGraytagManagementDeals, verifiedGraytagManagementDeals } from '..
 import { gbutsOttClient, registerGbutsOttRoutes, reserveGraytagOttPlace, settleGraytagOttPlace } from './gbuts-ott';
 import { registerManualAccountRoutes } from './manual-account-registration';
 import { assertUnclaimedGbutsNetflixProfile, availableNetflixProfiles } from '../lib/gbuts-netflix-profiles';
-import { deliverableOttOrder, hasGbutsOttProfileLease, isGbutsOttBuyerMatch, mergeGbutsOttManagement, sharedOttAccounts, ottKey, ottDate } from '../lib/gbuts-ott';
+import { deliverableOttOrder, hasGbutsOttProfileLease, isGbutsOttBuyerMatch, mergeGbutsOttManagement, manualOttMembersWithProfiles, sharedOttAccounts, ottKey, ottDate } from '../lib/gbuts-ott';
 import { readGbutsOttStore, withGbutsOttInventory, writeGbutsOttStore } from '../lib/gbuts-ott-store';
 import type { GbutsOttRuntimeDependencies } from '../scheduler/gbuts-ott-sync';
 import { createGbutsSpotifySellerClient, GBUTS_SPOTIFY_POST_SEQ } from '../scheduler/gbuts-spotify-sync';
@@ -5696,8 +5696,7 @@ async function validateManualNetflixChange(member: ManualMember, members: Manual
   if (member.serviceType !== '넷플릭스' || member.status !== 'active' || member.endDate < ottDate(new Date().toISOString())) return;
   const inventory = readGbutsOttStore();
   if (!Object.values(inventory.listings).some(listing => ottKey(listing.serviceType, listing.accountEmail) === ottKey(member.serviceType, member.accountEmail))) return;
-  const current = gbutsOttRuntimeDependencies.manualMembers();
-  const enriched = members.map(item => ({ ...item, profileName: current.find(existing => existing.id === item.id)?.profileName || item.memberName }));
+  const enriched = manualOttMembersWithProfiles(members, Object.values(loadPartyAccessLinkStore()));
   const profile = enriched.find(item => item.id === member.id)!.profileName;
   assertUnclaimedGbutsNetflixProfile(inventory, member.serviceType, member.accountEmail, profile);
   const management = await readGraytagOttManagement({ forceRefresh: true });
@@ -6694,15 +6693,7 @@ async function readGraytagOttManagement(options = { forceRefresh: true }) {
 
 export const gbutsOttRuntimeDependencies: GbutsOttRuntimeDependencies = {
   management: readGraytagOttManagement,
-  manualMembers: () => {
-    const records = Object.values(loadPartyAccessLinkStore());
-    return loadManualMembers().map(member => {
-      const access = records.filter(x => x.member.kind === 'manual' && x.member.memberId === member.id
-        && ottKey(x.serviceType, x.accountEmail) === ottKey(member.serviceType, member.accountEmail))
-        .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
-      return { ...member, profileName: access?.profileName || member.memberName };
-    });
-  },
+  manualMembers: () => manualOttMembersWithProfiles(loadManualMembers(), Object.values(loadPartyAccessLinkStore())),
   async access(order, listing, profileName) {
     const store = loadPartyAccessLinkStore();
     const existing = Object.values(store).filter(x => x.member.kind === 'gbuts' && x.member.memberId === order.key)

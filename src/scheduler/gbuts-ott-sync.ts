@@ -1,11 +1,11 @@
-import { GBUTS_OTT_CATEGORIES, activeOttOrder, deliverableOttOrder, ottDate, sharedOttAccounts, updateGbutsOttOrders, type GbutsOttListing, type GbutsOttManagement, type GbutsOttOrder, type GbutsOttStore } from '../lib/gbuts-ott';
+import { GBUTS_OTT_CATEGORIES, activeOttOrder, deliverableOttOrder, ottDate, ottKey, sharedOttAccounts, updateGbutsOttOrders, type GbutsOttListing, type GbutsOttManagement, type GbutsOttOrder, type GbutsOttStore } from '../lib/gbuts-ott';
 import { createGbutsOttSellerClient } from '../lib/gbuts-ott-client';
 import { readGbutsOttStore, withGbutsOttInventory, writeGbutsOttStore } from '../lib/gbuts-ott-store';
 import { loadGbutsSession } from '../lib/gbuts-session';
 import { loadSafeModeConfig } from '../api/safe-mode';
 import { generateUniqueProfileNicknames, stableRandomFromSeed } from '../lib/profile-nickname';
 import { buildPartyAccessDeliveryTemplate } from '../lib/party-access-template';
-import { allocateNetflixProfiles } from '../lib/gbuts-netflix-profiles';
+import { allocateNetflixProfilesForSync } from '../lib/gbuts-netflix-profiles';
 import { buildGbutsNetflixDeliveryText } from '../lib/gbuts-ott-templates';
 import { sendGbutsText } from './gbuts-spotify-messages';
 
@@ -41,13 +41,15 @@ export async function syncGbutsOtt(deps: GbutsOttRuntimeDependencies,
   if (!listings.length) return { orders: 0, attempted, confirmed };
   const management = await deps.management();
   const manualMembers = deps.manualMembers();
-  allocateNetflixProfiles(store, management, manualMembers);
+  const profileErrors = allocateNetflixProfilesForSync(store, management, manualMembers);
   write(store);
   const inventory = sharedOttAccounts(management, manualMembers, store);
   const sellerSeq = await client.sellerAccountSeq();
   for (const order of Object.values(store.orders)) {
     if (!deliverableOttOrder(order) || order.verifiedAt !== now) continue;
     const listing = store.listings[order.listingId];
+    const profileError = profileErrors.get(ottKey(listing.serviceType, listing.accountEmail));
+    if (profileError) { order.error = profileError; write(store); continue; }
     const account = inventory.find(x => x.serviceType === listing.serviceType && x.accountEmail.toLowerCase() === listing.accountEmail.toLowerCase());
     if (!account || account.overbooked || order.endDate > account.endDate) {
       order.error = '계정의 자리 또는 이용 기간을 확인해야 합니다.'; write(store); continue;

@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest';
-import { allocateNetflixProfiles, assertUnclaimedGbutsNetflixProfile, availableNetflixProfiles } from '../src/lib/gbuts-netflix-profiles';
-import { accountGbutsInventory, emptyGbutsOttStore, hasGbutsOttProfileLease, isGbutsOttBuyerMatch } from '../src/lib/gbuts-ott';
+import { allocateNetflixProfiles, allocateNetflixProfilesForSync, assertUnclaimedGbutsNetflixProfile, availableNetflixProfiles } from '../src/lib/gbuts-netflix-profiles';
+import { accountGbutsInventory, emptyGbutsOttStore, hasGbutsOttProfileLease, isGbutsOttBuyerMatch, manualOttMembersWithProfiles } from '../src/lib/gbuts-ott';
 import { fixtureListing, fixtureOrder } from './fixtures/gbuts-ott';
 const now = new Date('2026-10-06T08:00:00Z');
 const management = () => ({ services: [{ serviceType: '넷플릭스', accounts: [{ serviceType: '넷플릭스', email: 'account@example.com', members: [], totalSlots: 5 }] }], onSaleByKeepAcct: {} });
@@ -100,4 +100,26 @@ test('missing recruiting identities do not silently deduplicate different occupi
   const m: any = management();
   m.onSaleByKeepAcct['account@example.com'] = [1, 2].map(number => ({ profileName: String(number), productType: '넷플릭스', endDateTime: '20261231T2359' }));
   expect(availableNetflixProfiles(store, m, [], 'account@example.com', now)).toEqual([3, 4, 5]);
+});
+test('manual edits and account moves validate the proposed profile rather than stale enrichment', () => {
+  const store = fixture(); allocateNetflixProfiles(store, management(), [], now);
+  const member = { id: 'm1', serviceType: '넷플릭스', accountEmail: 'account@example.com', memberName: '1' };
+  expect(manualOttMembersWithProfiles([member], [])[0].profileName).toBe('1');
+  const oldAccess = { serviceType: '넷플릭스', accountEmail: 'old@example.com', profileName: '2', createdAt: now.toISOString(), member: { kind: 'manual', memberId: 'm1' } };
+  const proposed = manualOttMembersWithProfiles([member], [oldAccess])[0];
+  expect(proposed.profileName).toBe('1');
+  expect(() => assertUnclaimedGbutsNetflixProfile(store, proposed.serviceType, proposed.accountEmail, proposed.profileName, now)).toThrow('벗츠 구매자');
+});
+test('an ambiguous Netflix account is isolated from a second account and does not change other OTT orders', () => {
+  const store = fixture(); store.orders['100:1'].profileName = 'old-name';
+  store.listings.second = fixtureListing({ id: 'second', postSeq: 200, accountEmail: 'second@example.com' });
+  store.orders['200:1'] = fixtureOrder({ key: '200:1', postSeq: 200, listingId: 'second' });
+  store.listings.disney = fixtureListing({ id: 'disney', postSeq: 300, serviceType: '디즈니플러스', accountEmail: 'disney@example.com' });
+  store.orders['300:1'] = fixtureOrder({ key: '300:1', postSeq: 300, listingId: 'disney' });
+  const m = management(); m.services[0].accounts.push({ ...m.services[0].accounts[0], email: 'second@example.com' });
+  const before = structuredClone(store.orders['300:1']);
+  const errors = allocateNetflixProfilesForSync(store, m, [], now);
+  expect(errors.size).toBe(1); expect(errors.has('넷플릭스:account@example.com')).toBe(true);
+  expect(store.orders['200:1'].profileNumber).toBe(1); expect(store.orders['300:1']).toEqual(before);
+  expect(store.orders['100:2'].profileNumber).toBeUndefined();
 });

@@ -89,6 +89,14 @@ export function hasGbutsOttProfileLease(store: GbutsOttStore, order: GbutsOttOrd
     && ottKey(store.listings[other.listingId].serviceType, store.listings[other.listingId].accountEmail) === ottKey(listing.serviceType, listing.accountEmail)
     && holdsNetflixProfile(other, store.listings[other.listingId], now));
 }
+export function manualOttMembersWithProfiles(members: any[], accessRecords: Array<{ member: { kind: string; memberId: string }; serviceType: string; accountEmail: string; createdAt: string; profileName: string }>): any[] {
+  return members.map(member => {
+    const access = accessRecords.filter(record => record.member.kind === 'manual' && record.member.memberId === member.id
+      && ottKey(record.serviceType, record.accountEmail) === ottKey(member.serviceType, member.accountEmail))
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+    return { ...member, profileName: access?.profileName || member.memberName };
+  });
+}
 export function isGbutsOttBuyerMatch(store: GbutsOttStore, record: { serviceType: string; accountEmail: string; profileName?: string; member: { memberId: string } },
   member: { seq: number; userSeq: number; subscriptionEndsAt: string } | undefined): boolean {
   const order = store.orders[record.member.memberId]; const listing = order && store.listings[order.listingId];

@@ -75,3 +75,22 @@ export function assertUnclaimedGbutsNetflixProfile(store: GbutsOttStore, service
   if (number === null) throw new Error('벗츠와 함께 사용하는 넷플릭스 계정은 1~5번 프로필 번호를 지정해주세요.');
   if (held.some(order => order.profileNumber === number)) throw new Error(`${number}번 프로필은 벗츠 구매자가 이용 중입니다.`);
 }
+
+export function allocateNetflixProfilesForSync(store: GbutsOttStore, management: GbutsOttManagement, manualMembers: any[], now = new Date()): Map<string, string> {
+  const errors = new Map<string, string>();
+  const accounts = new Set(Object.values(store.orders).map(order => store.listings[order.listingId])
+    .filter(listing => listing.serviceType === '넷플릭스').map(listing => ottKey(listing.serviceType, listing.accountEmail)));
+  for (const account of accounts) {
+    const candidate = structuredClone(store);
+    candidate.orders = Object.fromEntries(Object.entries(candidate.orders).filter(([, order]) => {
+      const listing = candidate.listings[order.listingId]; return ottKey(listing.serviceType, listing.accountEmail) === account;
+    }));
+    try {
+      allocateNetflixProfiles(candidate, management, manualMembers, now);
+      Object.assign(store.orders, candidate.orders);
+    } catch (error) {
+      errors.set(account, error instanceof Error ? error.message : '프로필 번호 확인이 필요합니다.');
+    }
+  }
+  return errors;
+}
