@@ -23,6 +23,7 @@ export interface GeneratedAccount {
   source: 'account-generator';
   registrationKind?: 'manual';
   expiryDate?: string | null;
+  tvingLoginId?: string;
 }
 
 export interface SimpleLoginAliasRef {
@@ -249,7 +250,10 @@ export function manualRegisteredAccount(input: Partial<GeneratedAccount>, id: st
   if (!password.trim() || password.length > 300 || isGraytagAccessNoticeCredential(password)) throw new Error('실제 비밀번호를 입력해주세요.');
   const now = new Date().toISOString();
   const account = buildGeneratedAccount({ serviceType, alias: { id: '', email }, password, pin: '', memo: '', now });
-  return { ...account, id, registrationKind: 'manual', ...normalizeGeneratedAccountPatch(input) };
+  const tvingLoginId = normalizeGeneratedAccountEmail(String(input.tvingLoginId || ''));
+  if (serviceType === DOUBLE_PASS_SERVICE && (!email.includes('@') || !tvingLoginId || tvingLoginId.length > 254 || /\s/.test(tvingLoginId) || isGraytagAccessNoticeCredential(tvingLoginId) || tvingLoginId === '(직접전달)'))
+    throw new Error('묶음 계정의 웨이브 이메일과 실제 티빙 로그인 ID를 모두 입력해주세요.');
+  return { ...account, id, registrationKind: 'manual', ...(serviceType === DOUBLE_PASS_SERVICE ? { tvingLoginId } : {}), ...normalizeGeneratedAccountPatch(input) };
 }
 
 export function buildGeneratedAccount(input: {
@@ -327,7 +331,7 @@ function tvingLoginIdFromWavveEmail(email: string): string {
 function generatedManagementRows(account: GeneratedAccount) {
   if (!isPaidDoublePassGeneratedAccount(account)) return [generatedAccountToManagementAccount(account)];
   const wavveEmail = account.email;
-  const tvingLoginId = tvingLoginIdFromWavveEmail(account.email);
+  const tvingLoginId = account.tvingLoginId || tvingLoginIdFromWavveEmail(account.email);
   return [
     generatedAccountToManagementAccount(account, { serviceType: DOUBLE_PASS_TVING_SERVICE, email: tvingLoginId, linkedServiceType: DOUBLE_PASS_TVING_SERVICE, tvingLoginId, wavveEmail }),
     generatedAccountToManagementAccount(account, { serviceType: DOUBLE_PASS_WAVVE_SERVICE, email: wavveEmail, linkedServiceType: DOUBLE_PASS_WAVVE_SERVICE, tvingLoginId, wavveEmail }),
@@ -336,6 +340,11 @@ function generatedManagementRows(account: GeneratedAccount) {
 
 export function registeredAccountSalesTargets(account: GeneratedAccount): Array<{ serviceType: string; email: string }> {
   return generatedManagementRows(account).map(({ serviceType, email }) => ({ serviceType, email }));
+}
+
+export function registeredAccountIdentityKeys(account: GeneratedAccount): string[] {
+  // A pending bundle will use the same two logins after payment.
+  return registeredAccountSalesTargets({ ...account, paymentStatus: 'paid' }).map(row => generatedAccountKey(row.serviceType, row.email));
 }
 
 export function mergeGeneratedAccountsIntoManagement<T extends {
@@ -361,7 +370,11 @@ export function mergeGeneratedAccountsIntoManagement<T extends {
 
   const generated = Object.values(store).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   for (const account of generated) {
-    const rows = generatedManagementRows(account);
+    const hasCanonicalBundle = account.serviceType === DOUBLE_PASS_SERVICE && next.services.some(service => service.accounts.some(row =>
+      row.generatedAccount?.id === account.id && (row.serviceType === DOUBLE_PASS_TVING_SERVICE || row.serviceType === DOUBLE_PASS_WAVVE_SERVICE)));
+    const rows = hasCanonicalBundle && account.paymentStatus === 'pending'
+      ? generatedManagementRows({ ...account, paymentStatus: 'paid' }).map(row => ({ ...row, generatedAccount: { ...row.generatedAccount, paymentStatus: 'pending', paidAt: null } }))
+      : generatedManagementRows(account);
     for (const row of rows) {
       const key = generatedAccountKey(row.serviceType, row.email);
       if (existing.has(key)) {

@@ -59,6 +59,7 @@ export default function GbutsAccountsPage() {
   const [service, setService] = useState(REGISTERABLE_OTT_SERVICES.includes(requestedService || '') ? requestedService! : '넷플릭스');
   const [mode, setMode] = useState<'register' | 'generate'>('register');
   const [email, setEmail] = useState(''); const [password, setPassword] = useState(''); const [prefix, setPrefix] = useState('');
+  const [tvingLoginId, setTvingLoginId] = useState('');
   const [expiry, setExpiry] = useState(''); const [paid, setPaid] = useState(false);
   const [accounts, setAccounts] = useState<GeneratedAccount[]>([]); const [expanded, setExpanded] = useState('');
   const [busy, setBusy] = useState(false); const [loading, setLoading] = useState(false);
@@ -78,8 +79,8 @@ export default function GbutsAccountsPage() {
     event.preventDefault(); if (busy) return; setBusy(true); setMessage('');
     try {
       const account = await requestAccount(mode === 'register' ? '/api/generated-accounts/register' : '/api/generated-accounts/create', 'POST',
-        mode === 'register' ? { serviceType: service, email, password, expiryDate: expiry || null, paymentStatus: paid ? 'paid' : 'pending' } : { serviceType: service, aliasPrefix: prefix });
-      saved(account); setExpanded(account.id); setEmail(''); setPassword(''); setPrefix(''); setExpiry(''); setPaid(false);
+        mode === 'register' ? { serviceType: service, email, password, tvingLoginId, expiryDate: expiry || null, paymentStatus: paid ? 'paid' : 'pending' } : { serviceType: service, aliasPrefix: prefix });
+      saved(account); setExpanded(account.id); setEmail(''); setPassword(''); setTvingLoginId(''); setPrefix(''); setExpiry(''); setPaid(false);
       setMessage(mode === 'register' ? '계정을 추가했습니다. 아래 목록에서 확인하세요.' : '이메일·비밀번호·PIN을 생성했습니다. 이 정보로 OTT 가입·결제를 진행하세요.');
     } catch (error) { setMessage(error instanceof Error ? error.message : '계정 추가 실패'); }
     finally { setBusy(false); }
@@ -96,11 +97,12 @@ export default function GbutsAccountsPage() {
           <button type="button" aria-pressed={mode === 'generate'} style={{ ...styles.button, background: mode === 'generate' ? '#7C3AED' : '#64748B' }} onClick={() => setMode('generate')}>새 이메일·비밀번호 생성</button>
         </div>
         {mode === 'register' ? <>
-          <label>로그인 ID / 이메일<input autoComplete="off" style={styles.input} required value={email} onChange={e => setEmail(e.target.value)} placeholder="OTT 로그인에 쓰는 ID" /></label>
+          <label>{service === '티빙+웨이브' ? '웨이브 이메일' : '로그인 ID / 이메일'}<input autoComplete="off" style={styles.input} required value={email} onChange={e => setEmail(e.target.value)} placeholder="OTT 로그인에 쓰는 ID" /></label>
+          {service === '티빙+웨이브' && <label>티빙 로그인 ID<input style={styles.input} required value={tvingLoginId} onChange={e => setTvingLoginId(e.target.value)} placeholder="실제 티빙 로그인 ID" /></label>}
           <label>비밀번호<input autoComplete="new-password" type="password" style={styles.input} required value={password} onChange={e => setPassword(e.target.value)} /></label>
           <label>계정 이용 종료일 (나중에 입력 가능)<input style={styles.input} type="date" value={expiry} onChange={e => setExpiry(e.target.value)} /></label>
           <label style={{ display: 'block', marginBottom: 16 }}><input type="checkbox" checked={paid} onChange={e => setPaid(e.target.checked)} /> OTT 서비스의 실제 결제를 완료했습니다</label>
-          {service === '티빙+웨이브' && <p style={{ fontSize: 12 }}>묶음 계정은 웨이브 이메일로 등록하세요. 티빙 ID가 이메일 앞부분과 다르면 티빙·웨이브를 각각 등록하세요.</p>}
+          {service === '티빙+웨이브' && <p style={{ fontSize: 12 }}>웨이브 이메일과 티빙 로그인 ID를 각각 입력하세요. 두 서비스의 비밀번호가 다르면 각각 등록하세요.</p>}
         </> : <>
           <label>이메일 앞부분 (선택)<input style={styles.input} value={prefix} onChange={e => setPrefix(e.target.value)} placeholder={copy.prefixPlaceholder} /></label>
           <p style={{ fontSize: 12, lineHeight: 1.6 }}>{copy.prefixHelp}</p>

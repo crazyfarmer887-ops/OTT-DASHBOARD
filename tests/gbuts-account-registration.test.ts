@@ -60,3 +60,27 @@ test('paid bundle expiry reaches both canonical service rows even when browsing 
   expect(sharedOttAccounts(updated, [], emptyGbutsOttStore()).map(account => account.available)).toEqual([4, 4]);
   expect(registeredAccountSalesTargets(paid).find(account => account.serviceType === '티빙')?.email).toBe('gtwavve4');
 });
+
+test('unchecking bundle payment on a cached account immediately stops further sales while keeping existing occupants', async () => {
+  const { buildGeneratedAccount } = await import('../src/lib/generated-accounts');
+  const account = { ...buildGeneratedAccount({ serviceType: '티빙+웨이브', alias: { id: 8, email: 'gtwavve8.example@aleeas.com' }, password: 'secret!', pin: '', memo: '' }), paymentStatus: 'paid' as const, expiryDate: '2099-12-01' };
+  const cached = mergeGeneratedAccountsIntoManagement({ services: [], summary: { totalAccounts: 0 }, onSaleByKeepAcct: {} }, { [account.id]: account });
+  cached.services[0].accounts[0].members = [{ dealStatus: 'Using', endDateTime: '2099-12-01', productUsid: 'existing' }];
+  const updated = mergeGeneratedAccountsIntoManagement(cached, { [account.id]: { ...account, paymentStatus: 'pending', expiryDate: null } });
+  const inventory = sharedOttAccounts(updated, [], emptyGbutsOttStore());
+  expect(inventory.every(row => row.available === 0)).toBe(true);
+  expect(inventory[0].occupied).toBe(1);
+  expect(updated.summary.totalAccounts).toBe(2);
+});
+
+test('manual bundle uses the supplied TVING login and rejects a second registration of either linked account', async () => {
+  let store: GeneratedAccountStore = {};
+  const app = new Hono(); registerManualAccountRoutes(app, { read: () => store, write: next => { store = next; } });
+  const register = (body: object) => app.request('/generated-accounts/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const response = await register({ serviceType: '티빙+웨이브', email: 'alice2026@example.com', tvingLoginId: 'alice_tving', password: 'secret!', paymentStatus: 'paid', expiryDate: '2099-12-01' });
+  expect(response.status).toBe(200);
+  const { registeredAccountSalesTargets } = await import('../src/lib/generated-accounts');
+  expect(registeredAccountSalesTargets((await response.json()).account)).toContainEqual({ serviceType: '티빙', email: 'alice_tving' });
+  expect((await register({ serviceType: '웨이브', email: 'alice2026@example.com', password: 'different' })).status).toBe(409);
+  expect((await register({ serviceType: '티빙', email: 'alice_tving', password: 'different' })).status).toBe(409);
+});

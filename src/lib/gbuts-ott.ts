@@ -121,7 +121,7 @@ export function sharedOttAccounts(management: GbutsOttManagement, manualMembers:
     const accountId = String(account.email || '').trim();
     const hasAccountId = !!accountId && accountId.replace(/\s+/g, '') !== '(직접전달)' && !isGraytagAccessNoticeCredential(accountId);
     const eligible = hasAccountId && !account.archivedAccount && endDate > koreaToday(now)
-      && (vacancy.currentUsers + manualCount > 0 || account.generatedAccount?.paymentStatus === 'paid');
+      && (account.generatedAccount ? account.generatedAccount.paymentStatus === 'paid' : vacancy.currentUsers + manualCount > 0);
     return { key: ottKey(account.serviceType, account.email), serviceType: account.serviceType, accountEmail: account.email,
       total, graytag: vacancy.currentUsers + vacancy.recruiting, manual: manualCount,
       gbuts: gbuts.currentUsers + gbuts.recruiting, claims, occupied, available: eligible ? Math.max(0, total - occupied) : 0,
