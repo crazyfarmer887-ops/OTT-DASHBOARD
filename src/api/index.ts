@@ -74,7 +74,7 @@ import {
   type GraytagAuthCookies,
 } from '../lib/graytag-sales-session';
 import { loadGbutsSession, parseGbutsToken, saveGbutsSession } from '../lib/gbuts-session';
-import { dedupeGraytagManagementDeals, verifiedGraytagManagementDeals } from '../lib/graytag-management-snapshot';
+import { dedupeGraytagManagementDeals, readVerifiedGraytagManagementSnapshot } from '../lib/graytag-management-snapshot';
 import { gbutsOttClient, registerGbutsOttRoutes, reserveGraytagOttPlace, settleGraytagOttPlace } from './gbuts-ott';
 import { registerManualAccountRoutes } from './manual-account-registration';
 import { assertUnclaimedGbutsNetflixProfile, availableNetflixProfiles } from '../lib/gbuts-netflix-profiles';
@@ -1903,9 +1903,6 @@ app.post('/my/management', async (c) => {
           break;
         }
         const r = await safeJson(resp);
-        if (body.gbutsInventory === false) {
-          verifiedGraytagManagementDeals(r.data, resp.ok, r.ok);
-        }
         const deals: any[] = extractLenderDeals(r.data);
         collected.push(...deals);
         if (deals.length < 500) break;
@@ -1914,12 +1911,21 @@ app.post('/my/management', async (c) => {
       return collected;
     };
 
-    const [afterOpenDeals, afterFinishedDeals, beforeOpenDeals, beforeFinishedDeals] = await Promise.all([
-      fetchPagedDeals('after', false, 'https://graytag.co.kr/lender/deal/listAfterUsing'),
-      fetchPagedDeals('after', true, 'https://graytag.co.kr/lender/deal/listAfterUsing'),
-      fetchPagedDeals('before', false, 'https://graytag.co.kr/lender/deal/list'),
-      fetchPagedDeals('before', true, 'https://graytag.co.kr/lender/deal/list'),
-    ]);
+    const { afterOpenDeals, afterFinishedDeals, beforeOpenDeals, beforeFinishedDeals } = body.gbutsInventory === false
+      ? await readVerifiedGraytagManagementSnapshot((kind, finished, page) => rateLimitedFetch(
+        buildFinishedDealsUrl(kind, page, 500, finished),
+        { headers: authedHeaders(kind === 'after' ? 'https://graytag.co.kr/lender/deal/listAfterUsing' : 'https://graytag.co.kr/lender/deal/list'),
+          redirect: 'manual', signal: AbortSignal.timeout(15_000) },
+      ))
+      : await (async () => {
+        const [afterOpenDeals, afterFinishedDeals, beforeOpenDeals, beforeFinishedDeals] = await Promise.all([
+          fetchPagedDeals('after', false, 'https://graytag.co.kr/lender/deal/listAfterUsing'),
+          fetchPagedDeals('after', true, 'https://graytag.co.kr/lender/deal/listAfterUsing'),
+          fetchPagedDeals('before', false, 'https://graytag.co.kr/lender/deal/list'),
+          fetchPagedDeals('before', true, 'https://graytag.co.kr/lender/deal/list'),
+        ]);
+        return { afterOpenDeals, afterFinishedDeals, beforeOpenDeals, beforeFinishedDeals };
+      })();
 
     const afterDeals = [...afterOpenDeals, ...afterFinishedDeals];
     const beforeDeals = [...beforeOpenDeals, ...beforeFinishedDeals];

@@ -35,7 +35,7 @@ export async function curlFetch(
       ? options.headers.map(([key, value]) => [String(key), String(value)])
       : Object.entries(options.headers || {}).map(([key, value]) => [key, String(value)]);
   const args = [
-    '-s', '-S',
+    '-s', '-S', '-D', '-',
     '-x', proxyUrl,
     '-X', method,
     '--max-time', '15',
@@ -61,6 +61,20 @@ export async function curlFetch(
   }
   const statusMatch = stdout.match(/__STATUS__(\d+)$/);
   const status = statusMatch ? Number.parseInt(statusMatch[1], 10) : 0;
-  const body = stdout.replace(/\n?__STATUS__\d+$/, '');
-  return new Response([204, 205, 304].includes(status) ? null : body, { status, headers: { 'Content-Type': 'application/json' } });
+  let body = stdout.replace(/\n?__STATUS__\d+$/, '');
+  let headers = new Headers({ 'Content-Type': 'application/json' });
+  // curl may emit the proxy CONNECT block before the actual response headers.
+  while (/^HTTP\/\S+ \d{3}[^\r\n]*\r?\n/.test(body)) {
+    const separator = body.match(/\r?\n\r?\n/);
+    if (!separator || separator.index === undefined) break;
+    const block = body.slice(0, separator.index);
+    headers = new Headers();
+    for (const line of block.split(/\r?\n/).slice(1)) {
+      const colon = line.indexOf(':'); if (colon < 1) continue;
+      const name = line.slice(0, colon).toLowerCase();
+      if (['content-type', 'retry-after', 'location'].includes(name)) headers.set(name, line.slice(colon + 1).trim());
+    }
+    body = body.slice(separator.index + separator[0].length);
+  }
+  return new Response([204, 205, 304].includes(status) ? null : body, { status, headers });
 }

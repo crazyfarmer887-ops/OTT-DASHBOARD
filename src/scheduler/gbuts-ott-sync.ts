@@ -38,7 +38,10 @@ export async function syncGbutsOtt(deps: GbutsOttRuntimeDependencies,
   }
   write(store);
   await deps.refreshAccess(Object.values(store.orders));
-  if (!listings.length) return { orders: 0, attempted, confirmed };
+  if (!listings.length || !Object.keys(store.orders).length) {
+    store.lastSuccess = new Date().toISOString(); store.lastError = null; write(store);
+    return { orders: 0, attempted, confirmed };
+  }
   const management = await deps.management();
   const manualMembers = deps.manualMembers();
   const profileErrors = allocateNetflixProfilesForSync(store, management, manualMembers);
@@ -85,19 +88,27 @@ export async function syncGbutsOtt(deps: GbutsOttRuntimeDependencies,
   store.lastSuccess = new Date().toISOString(); store.lastError = null; write(store);
   return { orders: Object.values(store.orders).filter(x => activeOttOrder(x)).length, attempted, confirmed };
 }
-export function startGbutsOttSync(deps: GbutsOttRuntimeDependencies): void {
+export function startGbutsOttSync(deps: GbutsOttRuntimeDependencies): (() => void) | undefined {
   if (process.env.GBUTS_OTT_SYNC_ENABLED !== 'true') return;
-  const run = () => withGbutsOttInventory(async () => {
-    if (loadSafeModeConfig().enabled) return;
-    const token = loadGbutsSession()?.token || process.env.GBUTS_API_TOKEN?.trim();
-    if (!token) return;
-    try {
-      const result = await syncGbutsOtt(deps, createGbutsOttSellerClient(token));
-      if (result.attempted || result.confirmed) console.log('[GbutsOttSync]', result);
-    } catch (e) {
-      const store = readGbutsOttStore(); store.lastError = e instanceof Error ? e.message : '벗츠 주문 확인 실패'; writeGbutsOttStore(store);
-      console.error('[GbutsOttSync]', store.lastError);
-    }
-  }).catch(e => console.error('[GbutsOttSync] inventory unavailable', e instanceof Error ? e.message : 'unknown'));
-  setTimeout(() => { void run(); setInterval(() => { void run(); }, 30_000); }, 15_000);
+  let pending = false;
+  const run = () => {
+    if (pending) return;
+    pending = true;
+    void withGbutsOttInventory(async () => {
+      if (loadSafeModeConfig().enabled) return;
+      const token = loadGbutsSession()?.token || process.env.GBUTS_API_TOKEN?.trim();
+      if (!token) return;
+      try {
+        const result = await syncGbutsOtt(deps, createGbutsOttSellerClient(token));
+        if (result.attempted || result.confirmed) console.log('[GbutsOttSync]', result);
+      } catch (e) {
+        const store = readGbutsOttStore(); store.lastError = e instanceof Error ? e.message : '벗츠 주문 확인 실패'; writeGbutsOttStore(store);
+        console.error('[GbutsOttSync]', store.lastError);
+      }
+    }).catch(e => console.error('[GbutsOttSync] inventory unavailable', e instanceof Error ? e.message : 'unknown'))
+      .finally(() => { pending = false; });
+  };
+  let interval: ReturnType<typeof setInterval> | undefined;
+  const initial = setTimeout(() => { run(); interval = setInterval(run, 30_000); }, 15_000);
+  return () => { clearTimeout(initial); if (interval) clearInterval(interval); };
 }

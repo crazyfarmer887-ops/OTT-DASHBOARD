@@ -14,6 +14,12 @@ function fixture() {
   return { client, deps, send, get store() { return store; }, set members(value: typeof members) { members = value; }, get members() { return members; }, set messages(value: any[]) { messages = value; } };
 }
 describe('GButs OTT order delivery', () => {
+  it('checks an empty seller roster without loading unrelated GrayTag inventory', async () => {
+    const f = fixture(); f.members = []; f.client.getPost.mockResolvedValue({ seq: 100, category1: { seq: 5 }, memberLimit: 2, memberCount: 0, status: 'CLOSED', subscriptionEndsAt: '2026-12-01 23:59:59' });
+    f.deps.management = vi.fn(async () => { throw new Error('unnecessary inventory read'); });
+    await expect(syncGbutsOtt(f.deps, f.client as any, f.send)).resolves.toMatchObject({ orders: 0, attempted: 0 });
+    expect(f.deps.management).not.toHaveBeenCalled(); expect(f.store.lastError).toBeNull(); expect(f.store.lastSuccess).toBeTruthy();
+  });
   it('sends a separate private access link and confirms it without duplicate polling replies', async () => {
     const f = fixture(); const result = await syncGbutsOtt(f.deps, f.client as any, f.send); await syncGbutsOtt(f.deps, f.client as any, f.send);
     expect(result).toMatchObject({ attempted: 1, confirmed: 1 }); expect(f.send).toHaveBeenCalledTimes(1);

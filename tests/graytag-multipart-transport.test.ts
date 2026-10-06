@@ -49,3 +49,11 @@ describe('Graytag multipart JSON transport', () => {
     expect(exec).not.toHaveBeenCalled();
   });
 });
+
+test('proxy reads preserve actual Retry-After and content type, stripping CONNECT headers from the body', async () => {
+  const exec = vi.fn(async () => ({ stdout: 'HTTP/1.1 200 Connection established\r\n\r\nHTTP/2 429\r\ncontent-type: text/html\r\nretry-after: 5\r\n\r\nToo many requests\n__STATUS__429' }));
+  const response = await curlFetch('https://graytag.example/inventory', {}, 'http://proxy.example:8080', exec);
+  expect(response.headers.get('retry-after')).toBe('5');
+  expect(response.headers.get('content-type')).toBe('text/html');
+  expect(await response.text()).toBe('Too many requests');
+});
