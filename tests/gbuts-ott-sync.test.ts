@@ -89,8 +89,8 @@ ${url}
     expect(f.store.orders['100:1'].deliveryMessage).toBe(recovered);
     expect(f.send).not.toHaveBeenCalled(); expect(f.deps.management).not.toHaveBeenCalled();
   });
-  it('uses the real default single-message transport for a newly paid Netflix buyer', async () => {
-    const f = fixture(); const frames: string[] = [];
+  it('uses the real default structured-message transport for a newly paid Netflix buyer', async () => {
+    const f = fixture(); const frames: string[] = []; const saved: any[] = [];
     class Socket {
       onopen?: () => void; onmessage?: (event: { data: string }) => void; onerror?: () => void; onclose?: () => void;
       constructor() { queueMicrotask(() => this.onopen?.()); }
@@ -98,7 +98,7 @@ ${url}
         if (frame.startsWith('CONNECT\n')) queueMicrotask(() => this.onmessage?.({ data: 'CONNECTED\n\n\0' }));
         if (!frame.startsWith('SEND\n')) return;
         frames.push(frame); const payload = JSON.parse(frame.split('\n\n')[1].replace(/\0$/, ''));
-        f.messages = [{ senderSeq: payload.accountSeq, messageType: 'TEXT', message: payload.payload }];
+        saved.push({ senderSeq: payload.accountSeq, messageType: 'TEXT', message: payload.payload }); f.messages = [...saved];
         queueMicrotask(() => this.onmessage?.({ data: `MESSAGE\ndestination:/sub/chat/room/room-10\n\n${JSON.stringify({ id: 1, ...payload })}\0` }));
       }
       close() {}
@@ -107,7 +107,8 @@ ${url}
     try {
       await syncGbutsOtt(f.deps, f.client as any);
       await syncGbutsOtt(f.deps, f.client as any);
-      expect(frames).toHaveLength(1); expect(Buffer.byteLength(frames[0])).toBeLessThanOrEqual(1000);
+      expect(frames).toHaveLength(3); expect(frames.every(frame => Buffer.byteLength(frame) <= 1000)).toBe(true);
+      expect(saved[1].message).toBe('접근 링크: https://email-verify.one/dashboard/access/token-100:1');
       expect(f.store.orders['100:1'].delivery).toBe('confirmed');
       expect(f.store.orders['100:1'].deliveryMessage).toContain('token-100:1');
     } finally { vi.unstubAllGlobals(); }

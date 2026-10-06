@@ -60,10 +60,14 @@ function netflixDeliveryParagraphs(accessUrl: string, number: number): string[] 
     '여러 기기 동시 시청 금지.',
   ];
 }
+/** GButs collapses line breaks inside a bubble: three paragraphs are sent as three bubbles. */
 export function buildGbutsNetflixDeliveryText(accessUrl: string, number: number): string {
-  // GButs renders text with white-space:normal, which collapses ordinary LF.
-  // CSS forced line separators preserve paragraph boundaries in plain text.
-  return netflixDeliveryParagraphs(accessUrl, number).join('\u2028\u2028');
+  if (!Number.isInteger(number) || number < 1 || number > 5) throw new Error('배정된 프로필 번호가 올바르지 않습니다.');
+  return [
+    `구매 감사합니다! 넷플릭스 ${number}번 프로필을 이용해 주세요.`,
+    `접근 링크: ${accessUrl}`,
+    '위 링크에서 이용 동의 후 ID·비밀번호·이메일 PIN, 가구 인증·로그인 코드를 확인하세요. 이용수칙: 프로필 생성·삭제/이름·PIN 변경 금지. 계정 이메일·비밀번호·결제 설정 변경 금지. 여러 기기 동시 시청 금지.',
+  ].join('\n\n');
 }
 /** History-only compatibility for the already delivered operational recovery. */
 export function buildGbutsNetflixUnformattedDeliveryText(accessUrl: string, number: number): string {

@@ -58,13 +58,20 @@ test('splits a long paragraph without corrupting emoji, words or the account URL
   expect(chunks.at(-1)).toContain('https://example.com/private-token');
 });
 
-test('sends the approved compact guide and actual-length buyer URL in exactly one frame', async () => {
-  const text = buildGbutsNetflixDeliveryText('https://email-verify.one/dashboard/access/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx', 5);
+test('sends profile, labelled access link and rules as three separate visible messages', async () => {
+  const url = 'https://email-verify.one/dashboard/access/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx';
+  const text = buildGbutsNetflixDeliveryText(url, 5);
   const accepted = broker();
-  await sendGbutsSingleText('xxxxxxxxxxxx', 123456, text);
-  expect(text.length).toBeLessThanOrEqual(400);
-  expect(accepted).toEqual([text]);
-  expect(text).toContain('5번'); expect(text).toContain('\u2028\u2028https://'); expect(Buffer.byteLength(text)).toBeLessThanOrEqual(500); expect(text).not.toContain('[구매자 전용 링크]');
+  await sendGbutsText('xxxxxxxxxxxx', 123456, text);
+  expect(accepted).toHaveLength(3);
+  expect(accepted[0]).toContain('5번');
+  expect(accepted[1]).toBe(`접근 링크: ${url}`);
+  expect(accepted[2]).toContain('이용수칙:');
+  expect(accepted[2]).toContain('이름·PIN 변경');
+  expect(accepted.every(part => Buffer.byteLength(part) <= 500)).toBe(true);
+  expect(accepted.every(part => !part.includes('\u2028'))).toBe(true);
+  expect(gbutsChatContainsText(accepted.map(message => ({ senderSeq: 123456, messageType: 'TEXT', message })), 123456, text)).toBe(true);
+  expect(gbutsChatContainsText(accepted.slice(0, 2).map(message => ({ senderSeq: 123456, messageType: 'TEXT', message })), 123456, text)).toBe(false);
 });
 test('single-message delivery rejects an oversized guide before opening a socket', async () => {
   const accepted = broker({ frameBudget: true });

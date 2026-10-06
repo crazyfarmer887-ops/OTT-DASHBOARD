@@ -8,7 +8,7 @@ import { generateUniqueProfileNicknames, stableRandomFromSeed } from '../lib/pro
 import { buildPartyAccessDeliveryTemplate } from '../lib/party-access-template';
 import { releaseCompletedNetflixProfiles, allocateNetflixProfilesForSync } from '../lib/gbuts-netflix-profiles';
 import { buildGbutsNetflixDeliveryText, buildGbutsNetflixLegacyDeliveryText, buildGbutsNetflixUnformattedDeliveryText } from '../lib/gbuts-ott-templates';
-import { sendGbutsText, sendGbutsSingleText } from './gbuts-spotify-messages';
+import { sendGbutsText } from './gbuts-spotify-messages';
 
 export interface GbutsOttRuntimeDependencies {
   management(options?: { forceRefresh: boolean }): Promise<GbutsOttManagement>;
@@ -117,7 +117,7 @@ export async function syncGbutsOtt(deps: GbutsOttRuntimeDependencies,
     order.deliveryMessage = text;
     order.delivery = 'attempted'; order.attemptedAt = new Date().toISOString(); delete order.error; write(store); attempted++;
     try {
-      await (sendText || (listing.serviceType === '넷플릭스' ? sendGbutsSingleText : sendGbutsText))(roomId, sellerSeq, text);
+      await (sendText || sendGbutsText)(roomId, sellerSeq, text);
       if (contains((await client.getChat(roomId)).messages)) { order.delivery = 'confirmed'; write(store); confirmed++; }
     } catch (error) {
       if (error instanceof GbutsChatDeliveryError && !error.submitted) {
