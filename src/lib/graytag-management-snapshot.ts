@@ -23,7 +23,7 @@ export async function readVerifiedGraytagManagementSnapshot(readPage: InventoryP
         let response: Response | undefined;
         try { response = await readPage(kind, finished, page); } catch { /* A GET connection failure may be retried. */ }
         if (response?.status === 401 || (response && response.status >= 300 && response.status < 400))
-          throw new Error('그레이태그 로그인이 만료됐습니다. 판매자 연결을 확인해주세요.');
+          throw new Error(`그레이태그 로그인 확인이 필요합니다 (${response.status}). 판매자 연결을 확인해주세요.`);
         if (response?.ok) {
           const payload = await response.json().catch(() => null);
           rows = verifiedGraytagManagementDeals(payload, true, payload !== null);
@@ -32,13 +32,14 @@ export async function readVerifiedGraytagManagementSnapshot(readPage: InventoryP
         if (response && ![403, 408, 429, 500, 502, 503, 504].includes(response.status))
           throw new Error(`그레이태그 재고 조회 실패 (${response.status}). 판매자 연결을 확인해주세요.`);
         if (attempt === 2) throw new Error(response
-          ? `그레이태그 재고 조회 실패 (${response.status}). 잠시 후 다시 시도해주세요. 판매글은 등록되지 않았습니다.`
+          ? `그레이태그 재고 조회 실패 (${response.status}). 재고 확인을 보류했습니다. 잠시 후 다시 시도해주세요.`
           : '그레이태그 연결이 지연되고 있습니다. 잠시 후 다시 시도해주세요.');
         const retryAfter = response?.headers.get('retry-after');
         const seconds = retryAfter ? Number(retryAfter) : NaN;
         const requestedDelay = retryAfter ? (Number.isFinite(seconds) ? seconds * 1000 : Date.parse(retryAfter) - Date.now()) : 0;
-        if (requestedDelay > 60_000) throw new Error('그레이태그 조회 제한이 지속되고 있습니다. 잠시 후 다시 시도해주세요.');
+        if (requestedDelay > 60_000) throw new Error(`그레이태그 조회 제한이 지속되고 있습니다 (${response?.status}). 잠시 후 다시 시도해주세요.`);
         const delay = Math.max((attempt + 1) * 1500, Number.isFinite(requestedDelay) ? requestedDelay : 0);
+        await response?.body?.cancel().catch(() => {});
         await new Promise(resolve => setTimeout(resolve, delay));
       }
       collected.push(...rows!);
