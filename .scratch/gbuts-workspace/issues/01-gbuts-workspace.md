@@ -4,14 +4,14 @@
 
 **Blocked by:** None (can start immediately).
 
-**Status:** verifying-production
+**Status:** complete
 
 - [x] Existing preference migration and persisted GButs selection work.
 - [x] GButs operations use primary shared inventory instead of the YouTube provider scope.
 - [x] GButs mode exposes home/sales/orders/Spotify menus and avoids GrayTag page/notifier loading.
 - [x] Existing account choices and public buyer access remain usable.
 - [x] Live service overview and order records load independently of GrayTag inventory; service cards filter listing accounts.
-- [ ] Relevant verification, review, commit and production deployment complete.
+- [x] Relevant verification, review, commit and production deployment complete.
 
 ## Verification before release
 
@@ -24,3 +24,12 @@
 - Production overview and orders: authenticated HTTP 200 (0.15s / <0.01s); unauthenticated HTTP 403. Current provider data: Spotify 1 listing, 5 members; new OTT services have no GButs listings yet.
 - Production shared inventory: authenticated HTTP 200, 58 account records, 26 available seats; full fresh provider lookup took 49 seconds.
 - Browser verified GButs selector, reload persistence, home overview and orders. Narrow-screen administrator badge was covering the selector, corrected locally before final verification.
+
+## Final production verification
+
+- Deployed committed release `07a098b`; service active. Repository branch pushed to origin.
+- Latest production overview HTTP 200 in 0.09s; order journal HTTP 200 immediately. HTML routes and trailing slash variants require dashboard login; unauthenticated API requests require administrator authentication.
+- Final fresh inventory HTTP 200: 58 records, 26 sellable places, zero sellable `(직접전달)` placeholders. Cold read took 71.5s after transient upstream rejections; subsequent browsing uses the verified snapshot while refreshing in the background.
+- Browser confirmed all three account choices, GButs reload persistence, five service cards, order view, Spotify invitation view, and Netflix filtered listing form. Actual form showed three genuine Netflix choices, prefilled price/period, and enabled registration. No listings or customer messages were created by verification.
+- Latest affected capacity/API/fulfillment/UI/session regression run: 5 files / 49 tests passed. Earlier workspace/cache regression run: 10 files / 59 passed. Builds and whitespace checks passed; full-suite baseline failures documented above.
+- Remaining operational characteristic: cold provider inventory reads may take 1–2 minutes or fail temporarily during upstream denial; cached browsing is labeled when stale, and registration/fulfillment continue to require fresh verification.

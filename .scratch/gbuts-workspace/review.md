@@ -17,3 +17,5 @@ Production verification follow-up: narrow-screen control overlap fixed and close
 Canonical HTML routes now share the existing password gate after Nginx prefix stripping, including trailing slashes. Session regression tests cover all GButs/Spotify paths and preserve public buyer access.
 
 Live sales-form check found generic `(직접전달)` account placeholders in the existing management data. These now have zero sellable inventory, alongside empty/notice credentials, so service cards preselect real account identifiers. Shared-capacity regression covers all three cases.
+
+Final production release: 07a098b. Standards follow-up findings (HTML trailing slash guard and placeholder eligibility) resolved and reviewer confirmed no blockers. Browser verified genuine filtered accounts and completed both existing-account transitions; home and order APIs healthy. See ticket for operational cold-read latency and baseline test failures.
