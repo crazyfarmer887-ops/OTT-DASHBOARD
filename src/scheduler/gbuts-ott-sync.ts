@@ -104,8 +104,8 @@ export async function syncGbutsOtt(deps: GbutsOttRuntimeDependencies,
       order.delivery = 'confirmed'; delete order.error; write(store); continue;
     }
     if (order.attemptedAt || order.delivery === 'attempted' || order.delivery === 'confirmed') continue;
-    // Persist before SEND. A connection failure is an unknown outcome; only history
-    // reconciliation can confirm it, and the next poll must not send it again.
+    // Persist before SEND. Submitted but uncertain messages are reconciled only;
+    // a typed failure before any SEND clears the attempt for the next poll.
     order.delivery = 'attempted'; order.attemptedAt = new Date().toISOString(); delete order.error; write(store); attempted++;
     try {
       await sendText(roomId, sellerSeq, text);

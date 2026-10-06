@@ -1,6 +1,6 @@
 # Buyer guide delivery reliability
 
-Status: implementing
+Status: verified locally; production deployment pending
 Baseline: 742e76e
 
 ## Approved request
@@ -24,3 +24,10 @@ Send the approved Netflix guide, with the current buyer's actual access URL, to 
 
 ## Verification
 New sender and synchronization regression tests reproduce silent oversized rejection, false success, incomplete history and pre-SEND retry. Production chat must show the URL and profile 1 guide.
+
+## Review / release checks
+- Spec review: 0 findings. Standards review: 0 blocking findings; clarified pre-SEND retry comment.
+- Focused suite: 54 passed. Full suite: 1,044 passed / 153 pre-existing failures, no new failures.
+- Build passed. App type diagnostics: unchanged 54 lines.
+- Buyer chat history contains every approved paragraph; no further buyer sends after the user requested isolated short-guide testing.
+- Short proposal with a same-length test URL: 398 UTF-16 characters / 842 UTF-8 bytes. Real single-message receipt is unverified. GButs rejects self PERSONAL rooms and empty GROUP rooms, so awaiting a designated test recipient. No shortened guide has been sent to the buyer.
