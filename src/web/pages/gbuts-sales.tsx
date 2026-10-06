@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useLocation } from 'wouter';
+import { useLocation, useSearch } from 'wouter';
 import { RefreshCw, ExternalLink, ShoppingBag } from 'lucide-react';
 import { makeDefaultProductDescription, makeDefaultProductTitle } from '../../lib/write-default-template';
 
@@ -16,31 +16,36 @@ export default function GbutsSalesPage({ view = 'sales' }: { view?: 'sales' | 'o
   const [loading, setLoading] = useState(false); const [busy, setBusy] = useState(false); const [message, setMessage] = useState('');
   const [key, setKey] = useState(''); const [endDate, setEndDate] = useState(''); const [price, setPrice] = useState(''); const [count, setCount] = useState('1');
   const [title, setTitle] = useState(''); const [description, setDescription] = useState(''); const requestId = useRef(crypto.randomUUID());
-  const account = data?.accounts.find(x => x.key === key);
+  const requestedService = new URLSearchParams(useSearch()).get('service') || '';
+  const previousService = useRef(requestedService);
+  const account = data?.accounts.find(x => x.key === key && (!requestedService || x.serviceType === requestedService));
+  const loadInFlight = useRef(false);
   const load = useCallback(async () => {
-    setLoading(true);
-    try { const res = await fetch(view === 'orders' ? '/api/gbuts/ott/orders' : '/api/gbuts/ott', { cache: 'no-store' }); const payload = await res.json();
+    if (loadInFlight.current) return;
+    loadInFlight.current = true; setLoading(true);
+    try { const res = await fetch(view === 'orders' ? '/api/gbuts/ott/orders' : '/api/gbuts/ott', { cache: 'no-store' }); const payload = await res.json().catch(() => { throw new Error('공동 재고 조회가 지연되고 있습니다. 잠시 후 새로고침해 주세요.'); });
       if (!res.ok || !payload.ok) throw new Error(payload.error || '판매 연결 조회 실패'); setData(payload);
-    } catch (e) { setMessage(e instanceof Error ? e.message : '판매 연결 조회 실패'); } finally { setLoading(false); }
+    } catch (e) { setMessage(e instanceof Error ? e.message : '판매 연결 조회 실패'); } finally { loadInFlight.current = false; setLoading(false); }
   }, [view]);
   useEffect(() => {
     void load();
     const timer = setInterval(() => { if (document.visibilityState === 'visible') void load(); }, 30_000);
     return () => clearInterval(timer);
   }, [load]);
-  const choose = (value: string) => {
+  const choose = useCallback((value: string) => {
     setKey(value); const selected = data?.accounts.find(x => x.key === value);
     setEndDate(selected?.endDate || ''); setPrice(selected?.suggestedDailyPrice?.toString() || ''); setCount('1');
     setTitle(selected ? makeDefaultProductTitle(selected.serviceType) : ''); setDescription(selected ? makeDefaultProductDescription(selected.serviceType) : '');
     requestId.current = crypto.randomUUID(); setMessage('');
-  };
-  const requestedService = new URLSearchParams(window.location.search).get('service') || '';
+  }, [data?.accounts]);
   useEffect(() => {
-    if (!key && data && requestedService) {
-      const selected = data.accounts.find(item => item.serviceType === requestedService && item.available > 0);
-      if (selected) choose(selected.key);
+    const serviceChanged = previousService.current !== requestedService;
+    previousService.current = requestedService;
+    if (serviceChanged || (!key && data && requestedService)) {
+      const selected = requestedService ? data?.accounts.find(item => item.serviceType === requestedService && item.available > 0) : undefined;
+      choose(selected?.key || '');
     }
-  }, [data, key, requestedService]);
+  }, [data, key, requestedService, choose]);
   const publish = async () => {
     if (!account || busy) return; setBusy(true); setMessage('');
     try {
@@ -71,10 +76,11 @@ export default function GbutsSalesPage({ view = 'sales' }: { view?: 'sales' | 'o
     <p style={{ fontSize: 13, lineHeight: 1.6 }}>넷플릭스·디즈니+·티빙·웨이브의 계정과 남은 자리를 그레이태그와 함께 관리합니다. 벗츠에서 판매할 자리를 정하면 결제한 구매자의 1:1 채팅으로 전용 계정 확인 링크가 전달됩니다.</p>
     {message && <p role="status" style={{ ...styles.card, color: '#6D28D9' }}>{message}</p>}
     {data?.lastError && <p style={{ ...styles.card, color: '#B91C1C' }}>{data.lastError}</p>}
-    <div style={styles.card}><strong>{data?.enabled ? '자동 전달 실행 중 · 약 30초 간격' : '판매 연결 확인 중'}</strong>
+    <div style={styles.card}><strong>{data ? (data.enabled ? '자동 전달 실행 중 · 약 30초 간격' : '자동 전달 중지 상태') : '판매 연결 확인 중'}</strong>
       <p style={{ fontSize: 12 }}>최근 확인: {data?.lastSuccess ? new Date(data.lastSuccess).toLocaleString('ko-KR') : '연결된 판매글의 주문을 기다리고 있습니다.'}</p>
       <button style={styles.button} onClick={() => navigate('/spotify-invites')}>벗츠 판매자 연결 관리</button></div>
     {!!data?.unlinked.length && <p style={{ ...styles.card, color: '#B91C1C' }}>계정 연결이 없는 기존 벗츠 판매글 {data.unlinked.map(x => x.seq).join(', ')}의 재고 확인이 필요합니다.</p>}
+    {view === 'sales' && loading && !data && <p role="status">공동 재고와 계정 이용 기간을 확인하고 있습니다.</p>}
     {view === 'sales' && <section style={styles.card}><h2 style={{ fontSize: 17 }}>벗츠에서 판매할 자리{requestedService && ` · ${requestedService}`}</h2>
       <label>계정<select style={styles.input} aria-label="판매 계정" value={key} onChange={e => choose(e.target.value)}><option value="">계정을 선택해주세요</option>
         {data?.accounts.filter(x => x.available > 0 && (!requestedService || x.serviceType === requestedService)).map(x => <option key={x.key} value={x.key}>{x.serviceType} · {x.accountEmail} · 남은 {x.available}자리</option>)}</select></label>
