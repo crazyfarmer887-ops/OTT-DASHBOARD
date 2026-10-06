@@ -2,11 +2,13 @@
 
 **What to build:** Existing consent plus ID/PW/emailPIN and integrated mail confirmation without profile grid or create/delete instructions; build/review/deploy.
 **Blocked by:**01.
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Trusted provenance selectscompactview including redactedpayload.
-- [ ] ID/PW/emailPIN only in basic information area.
-- [ ] Mail readsinsidepage retaining PIN gate and strictallowedorigin.
-- [ ] Legalwarning/name/PIN changes prohibited.
-- [ ] GrayTag/otherOTT unchanged.
-- [ ] Tests/review/commit/push/deploy/runtime smoke complete.
+- [x] Trusted provenance selectscompactview including redactedpayload.
+- [x] ID/PW/emailPIN only in basic information area.
+- [x] Mail readsinsidepage retaining PIN gate and strictallowedorigin.
+- [x] Legalwarning/name/PIN changes prohibited.
+- [x] GrayTag/otherOTT unchanged.
+- [x] Tests/review/commit/push/deploy/runtime smoke complete.
+
+Verified in release 0ac5924 on 2026-10-06; 101 relevant tests pass. No real test listings or buyer chats were created.
