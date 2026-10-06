@@ -7,7 +7,7 @@ import { loadSafeModeConfig } from '../api/safe-mode';
 import { generateUniqueProfileNicknames, stableRandomFromSeed } from '../lib/profile-nickname';
 import { buildPartyAccessDeliveryTemplate } from '../lib/party-access-template';
 import { releaseCompletedNetflixProfiles, allocateNetflixProfilesForSync } from '../lib/gbuts-netflix-profiles';
-import { buildGbutsNetflixDeliveryText, buildGbutsNetflixLegacyDeliveryText } from '../lib/gbuts-ott-templates';
+import { buildGbutsNetflixDeliveryText, buildGbutsNetflixLegacyDeliveryText, buildGbutsNetflixUnformattedDeliveryText } from '../lib/gbuts-ott-templates';
 import { sendGbutsText, sendGbutsSingleText } from './gbuts-spotify-messages';
 
 export interface GbutsOttRuntimeDependencies {
@@ -60,8 +60,15 @@ export async function syncGbutsOtt(deps: GbutsOttRuntimeDependencies,
     const roomId = await client.openPrivateRoom(order.postSeq, order.userSeq);
     if (order.roomId && order.roomId !== roomId) throw new Error('벗츠 구매자 채팅방이 변경되었습니다.');
     order.roomId = roomId;
-    if (gbutsChatContainsText((await client.getChat(roomId)).messages, sellerSeq, deliveryText(order))) {
-      order.delivery = 'confirmed'; delete order.error; confirmed++;
+    const messages = (await client.getChat(roomId)).messages;
+    const candidates = [deliveryText(order)];
+    if (listing.serviceType === '넷플릭스') candidates.push(
+      buildGbutsNetflixDeliveryText(order.accessUrl, order.profileNumber!),
+      buildGbutsNetflixUnformattedDeliveryText(order.accessUrl, order.profileNumber!),
+    );
+    const savedText = candidates.find(text => gbutsChatContainsText(messages, sellerSeq, text));
+    if (savedText) {
+      order.deliveryMessage = savedText; order.delivery = 'confirmed'; delete order.error; confirmed++;
     } else order.error = '채팅 발송 결과 확인 중 — 안내문이 모두 저장되지 않았습니다.';
     write(store);
   }

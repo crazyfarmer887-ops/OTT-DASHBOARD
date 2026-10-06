@@ -54,3 +54,8 @@ export async function readVerifiedGraytagManagementSnapshot(readPage: InventoryP
   const beforeFinishedDeals = await read('before', true);
   return { afterOpenDeals, afterFinishedDeals, beforeOpenDeals, beforeFinishedDeals };
 }
+
+/** YouTube invitation chats cannot supply shared OTT credentials. Unknown services stay included. */
+export function graytagCredentialHydrationDeals<T extends { productTypeString?: string }>(rows: T[], inventoryOnly: boolean): T[] {
+  return inventoryOnly ? rows.filter(deal => deal.productTypeString !== '유튜브') : rows;
+}

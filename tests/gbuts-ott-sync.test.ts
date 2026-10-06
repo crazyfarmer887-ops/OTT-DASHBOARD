@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { buildGbutsNetflixLegacyDeliveryText } from '../src/lib/gbuts-ott-templates';
+import { buildGbutsNetflixDeliveryText, buildGbutsNetflixLegacyDeliveryText } from '../src/lib/gbuts-ott-templates';
 import { emptyGbutsOttStore } from '../src/lib/gbuts-ott';
 import { GbutsChatDeliveryError, splitGbutsChatText } from '../src/lib/gbuts-chat-delivery';
 import { syncGbutsOtt } from '../src/scheduler/gbuts-ott-sync';
@@ -28,7 +28,7 @@ describe('GButs OTT order delivery', () => {
     expect(f.send.mock.calls[0]).toEqual(['room-10', 99, expect.stringContaining('token-100:1')]); expect(f.store.orders['100:1'].delivery).toBe('confirmed');
     expect(f.store.orders['100:1'].profileNumber).toBe(4);
     expect(f.send.mock.calls[0][2]).toContain('4번');
-    expect(f.send.mock.calls[0][2]).toContain('프로필 이름');
+    expect(f.send.mock.calls[0][2]).toContain('이름·PIN 변경');
     expect(f.send.mock.calls[0][2]).not.toContain('private-password');
   });
   it('keeps unknown SEND outcomes attempted and never sends again', async () => {
@@ -72,6 +72,22 @@ describe('GButs OTT order delivery', () => {
     f.deps.management = vi.fn(async () => { throw new Error('403'); });
     await syncGbutsOtt(f.deps, f.client as any, f.send);
     expect(f.store.orders['100:1'].delivery).toBe('confirmed'); expect(f.send).not.toHaveBeenCalled();
+  });
+  it('confirms an operationally recovered short guide without re-sending the failed pinned guide', async () => {
+    const f = fixture(); const url = 'https://email-verify.one/dashboard/access/recovered';
+    f.deps.writeStore({ ...f.store, orders: { '100:1': fixtureOrder({ delivery: 'attempted', attemptedAt: '2026-10-05T05:00:00Z',
+      deliveryMessage: 'previous failed guide', profileNumber: 4, profileName: '4', accessUrl: url, roomId: 'room-10' }) } });
+    const recovered = `구매 감사합니다! 넷플릭스 4번 프로필을 이용해 주세요.
+${url}
+동의 후 ID·비밀번호·이메일 PIN, 가구 인증·로그인 코드를 확인하세요.
+프로필 생성·삭제/이름·PIN 변경, 계정 이메일·비밀번호·결제 설정 변경 금지.
+여러 기기 동시 시청 금지.`;
+    f.messages = [{ senderSeq: 99, messageType: 'TEXT', message: recovered }];
+    f.deps.management = vi.fn(async () => { throw new Error('403'); });
+    await syncGbutsOtt(f.deps, f.client as any, f.send);
+    expect(f.store.orders['100:1'].delivery).toBe('confirmed');
+    expect(f.store.orders['100:1'].deliveryMessage).toBe(recovered);
+    expect(f.send).not.toHaveBeenCalled(); expect(f.deps.management).not.toHaveBeenCalled();
   });
   it('uses the real default single-message transport for a newly paid Netflix buyer', async () => {
     const f = fixture(); const frames: string[] = [];

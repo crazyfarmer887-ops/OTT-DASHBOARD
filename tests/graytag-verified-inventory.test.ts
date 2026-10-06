@@ -1,5 +1,5 @@
 import { afterEach, expect, test, vi } from 'vitest';
-import { readVerifiedGraytagManagementSnapshot } from '../src/lib/graytag-management-snapshot';
+import { graytagCredentialHydrationDeals, readVerifiedGraytagManagementSnapshot } from '../src/lib/graytag-management-snapshot';
 const ok = (rows: any[] = []) => new Response(JSON.stringify({ succeeded: true, data: { lenderDeals: rows } }));
 afterEach(() => vi.useRealTimers());
 test('reads all verified inventory streams sequentially without overlapping requests', async () => {
@@ -49,4 +49,13 @@ test('finishes every full page before moving to another stream', async () => {
   const read = vi.fn().mockResolvedValueOnce(ok(Array.from({ length: 500 }, (_, i) => ({ ...row, productUsid: `sale${i}` })))).mockImplementation(async () => ok());
   expect((await readVerifiedGraytagManagementSnapshot(read)).afterOpenDeals).toHaveLength(500);
   expect(read.mock.calls.slice(0, 3)).toEqual([['after', false, 1], ['after', false, 2], ['after', true, 1]]);
+});
+
+test('shared OTT credential reads omit unrelated YouTube chats without dropping unknown or OTT claims', () => {
+  const youtube = Array.from({ length: 100 }, (_, i) => ({ productTypeString: '유튜브', dealUsid: `yt-${i}` }));
+  const relevant = ['넷플릭스', '디즈니플러스', '티빙', '웨이브', '기타', undefined].map(productTypeString => ({ productTypeString, dealUsid: 'claim' }));
+  const all = [...youtube, ...relevant];
+  expect(graytagCredentialHydrationDeals(all, true)).toEqual(relevant);
+  expect(graytagCredentialHydrationDeals(all, false)).toEqual(all);
+  expect(all).toHaveLength(106);
 });

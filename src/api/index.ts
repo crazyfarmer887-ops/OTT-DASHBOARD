@@ -74,7 +74,7 @@ import {
   type GraytagAuthCookies,
 } from '../lib/graytag-sales-session';
 import { loadGbutsSession, parseGbutsToken, saveGbutsSession } from '../lib/gbuts-session';
-import { dedupeGraytagManagementDeals, readVerifiedGraytagManagementSnapshot } from '../lib/graytag-management-snapshot';
+import { dedupeGraytagManagementDeals, graytagCredentialHydrationDeals, readVerifiedGraytagManagementSnapshot } from '../lib/graytag-management-snapshot';
 import { gbutsOttClient, registerGbutsOttRoutes, reserveGraytagOttPlace, settleGraytagOttPlace } from './gbuts-ott';
 import { registerManualAccountRoutes } from './manual-account-registration';
 import { assertUnclaimedGbutsNetflixProfile, availableNetflixProfiles } from '../lib/gbuts-netflix-profiles';
@@ -1944,9 +1944,12 @@ app.post('/my/management', async (c) => {
     );
     if (managementScope.persistLocalAccountState) writeAccountCheckInflowStore(accountCheckInflow.store);
 
+    const credentialDeals = graytagCredentialHydrationDeals(allDeals, body.gbutsInventory === false);
+    const beforeCredentialDeals = graytagCredentialHydrationDeals(beforeDeals, body.gbutsInventory === false);
+
     // 계정확인중 거래: keepAcct가 없으면 채팅방에서 판매자가 전달한 계정 ID를 파싱해서 계정 관리에 반영
     {
-      const deliveredDeals = allDeals.filter((d: any) => shouldHydrateDeliveredAccountFromChat(d));
+      const deliveredDeals = credentialDeals.filter((d: any) => shouldHydrateDeliveredAccountFromChat(d));
       if (deliveredDeals.length > 0) {
         await Promise.all(deliveredDeals.map(async (deal: any) => {
           try {
@@ -2082,7 +2085,7 @@ app.post('/my/management', async (c) => {
         .map(snapshotFromAccessRecord);
     };
     const snapshotByOnSaleProductUsid = new Map<string, PartyAccessDeliverySnapshot>();
-    const onSaleProductsNeedingLiveAccessLookup = beforeDeals.filter((deal: any) => {
+    const onSaleProductsNeedingLiveAccessLookup = beforeCredentialDeals.filter((deal: any) => {
       const productUsid = String(deal.productUsid || '').trim();
       if (!productUsid || deal.dealStatus !== 'OnSale') return false;
       const rawKeepAcct = String(deal.keepAcct || '').trim();
@@ -2138,7 +2141,7 @@ app.post('/my/management', async (c) => {
       return byAccount.size === 1 ? Array.from(byAccount.values())[0] : undefined;
     };
     const snapshotByPlaceholderDealUsid = new Map<string, PartyAccessDeliverySnapshot>();
-    const placeholderDealsNeedingChatLookup = allDeals.filter((deal: any) => {
+    const placeholderDealsNeedingChatLookup = credentialDeals.filter((deal: any) => {
       const rawKeepAcct = String(deal.keepAcct || '').trim();
       if (!isGraytagAccessNoticeCredential(rawKeepAcct)) return false;
       const direct = resolvePartyAccessDeliverySnapshotByListing(deliverySnapshotByMember, {

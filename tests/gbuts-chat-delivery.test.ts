@@ -60,11 +60,11 @@ test('splits a long paragraph without corrupting emoji, words or the account URL
 
 test('sends the approved compact guide and actual-length buyer URL in exactly one frame', async () => {
   const text = buildGbutsNetflixDeliveryText('https://email-verify.one/dashboard/access/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx', 5);
-  const accepted = broker({ frameBudget: true });
+  const accepted = broker();
   await sendGbutsSingleText('xxxxxxxxxxxx', 123456, text);
   expect(text.length).toBeLessThanOrEqual(400);
   expect(accepted).toEqual([text]);
-  expect(text).toContain('「5번」'); expect(text).not.toContain('[구매자 전용 링크]');
+  expect(text).toContain('5번'); expect(text).toContain('\n\nhttps://'); expect(Buffer.byteLength(text)).toBeLessThanOrEqual(500); expect(text).not.toContain('[구매자 전용 링크]');
 });
 test('single-message delivery rejects an oversized guide before opening a socket', async () => {
   const accepted = broker({ frameBudget: true });
@@ -74,7 +74,7 @@ test('single-message delivery rejects an oversized guide before opening a socket
 
 test('a permanent size failure is explicit and cannot be mistaken for a retryable connection failure', async () => {
   const accepted = broker({ frameBudget: true });
-  const text = buildGbutsNetflixDeliveryText('https://email-verify.one/dashboard/access/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx', 1);
+  const text = buildGbutsNetflixDeliveryText('https://email-verify.one/dashboard/access/' + 'x'.repeat(500), 1);
   await expect(sendGbutsSingleText('x'.repeat(36), 123456, text)).rejects.toMatchObject({ submitted: false, retryable: false });
   expect(accepted).toEqual([]);
 });
