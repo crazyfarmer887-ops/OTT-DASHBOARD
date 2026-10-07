@@ -16,6 +16,12 @@ describe('contextual YouTube email selection', () => {
     expect(await resolveYouTubeBuyerEmailWithContext('room', [buyer('buyer&#64;gmail.com')], select)).toEqual(['buyer@gmail.com']);
     expect(select).not.toHaveBeenCalled();
   });
+  test('imports the incident address after a nonverbal follow-up without depending on model availability', async () => {
+    const select = vi.fn(async () => null);
+    expect(await resolveYouTubeBuyerEmailWithContext('room', [buyer('buyer@gmail.com'), buyer('ㅜㅜ')], select)).toEqual(['buyer@gmail.com']);
+    expect(select).not.toHaveBeenCalled();
+    expect(await resolveYouTubeBuyerEmailWithContext('room', [buyer('buyer@gmail.com'), buyer('ㅠㅠ 취소해주세요')], select)).toBeNull();
+  });
   test('keeps later seller changes in contextual review, while allowing the exact automated receipt', async () => {
     const select = vi.fn(async () => null);
     for (const text of ['이 계정은 가족 그룹에 이미 가입되어 있어요. 초대받을 계정을 다시 알려주세요', '주문 취소 처리했습니다']) {

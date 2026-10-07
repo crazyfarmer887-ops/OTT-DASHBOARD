@@ -33,12 +33,12 @@ export async function resolveYouTubeBuyerEmailWithContext(room: string, messages
     if (buyer) candidates = [...new Set([...candidates, ...explicitYouTubeBuyerEmails(text)])];
   }
   if (!candidates.length) return fast;
-  const latestBuyerIndex = turns.findLastIndex(turn => turn.role === 'buyer');
-  const latestBuyer = turns[latestBuyerIndex];
-  const laterTurnsAreReceipts = turns.slice(latestBuyerIndex + 1).every(turn =>
-    turn.role === 'seller' && turn.text === normalizeYouTubeEmailChatMessage(YOUTUBE_EMAIL_RECEIPT_REPLY));
-  if (fast?.length === 1 && candidates.length === 1 && latestBuyer && laterTurnsAreReceipts
-    && normalizeYouTubeEmailWording(latestBuyer.text).trim().toLowerCase() === fast[0]) return fast;
+  const plainAddressIndex = fast?.length === 1 ? turns.findLastIndex(turn => turn.role === 'buyer'
+    && normalizeYouTubeEmailWording(turn.text).trim().toLowerCase() === fast[0]) : -1;
+  const laterTurnsKeepAddress = turns.slice(plainAddressIndex + 1).every(turn => turn.role === 'seller'
+    ? turn.text === normalizeYouTubeEmailChatMessage(YOUTUBE_EMAIL_RECEIPT_REPLY)
+    : /^[\s.?!…ㅋㅎㅠㅜ]+$/u.test(turn.text));
+  if (candidates.length === 1 && plainAddressIndex >= 0 && laterTurnsKeepAddress) return fast;
   const selected = await select(candidates, turns).catch(() => null);
   return selected && candidates.includes(selected) ? [selected] : null;
 }
