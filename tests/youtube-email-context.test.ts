@@ -1,5 +1,6 @@
 import { describe, expect, test, vi } from 'vitest';
 import { resolveYouTubeBuyerEmailWithContext } from '../src/api/youtube-email-context';
+import { YOUTUBE_EMAIL_RECEIPT_REPLY } from '../src/scheduler/youtube-email-receipt';
 const buyer = (message: string) => ({ message, owned: false });
 const seller = (message: string) => ({ message, owned: true });
 
@@ -13,6 +14,16 @@ describe('contextual YouTube email selection', () => {
   test('imports a plain address without depending on an AI abstention', async () => {
     const select = vi.fn(async () => null);
     expect(await resolveYouTubeBuyerEmailWithContext('room', [buyer('buyer&#64;gmail.com')], select)).toEqual(['buyer@gmail.com']);
+    expect(select).not.toHaveBeenCalled();
+  });
+  test('keeps later seller changes in contextual review, while allowing the exact automated receipt', async () => {
+    const select = vi.fn(async () => null);
+    for (const text of ['이 계정은 가족 그룹에 이미 가입되어 있어요. 초대받을 계정을 다시 알려주세요', '주문 취소 처리했습니다']) {
+      expect(await resolveYouTubeBuyerEmailWithContext('room', [buyer('buyer@gmail.com'), seller(text)], select)).toBeNull();
+    }
+    expect(select).toHaveBeenCalledTimes(2);
+    select.mockClear();
+    expect(await resolveYouTubeBuyerEmailWithContext('room', [buyer('buyer@gmail.com'), seller(YOUTUBE_EMAIL_RECEIPT_REPLY)], select)).toEqual(['buyer@gmail.com']);
     expect(select).not.toHaveBeenCalled();
   });
   test('does not use the plain-address path after withdrawal or ambiguous context', async () => {

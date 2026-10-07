@@ -1,3 +1,4 @@
+import { YOUTUBE_EMAIL_RECEIPT_REPLY } from '../lib/youtube-buyer-messages';
 import { selectYouTubeEmailWithOpenRouter } from './notion-chat-extraction';
 import { isBuyerTextMessage } from './auto-reply-message';
 import type { GraytagChatMessage } from './chat-message-summary';
@@ -32,8 +33,11 @@ export async function resolveYouTubeBuyerEmailWithContext(room: string, messages
     if (buyer) candidates = [...new Set([...candidates, ...explicitYouTubeBuyerEmails(text)])];
   }
   if (!candidates.length) return fast;
-  const latestBuyer = turns.filter(turn => turn.role === 'buyer').at(-1);
-  if (fast?.length === 1 && candidates.length === 1 && latestBuyer
+  const latestBuyerIndex = turns.findLastIndex(turn => turn.role === 'buyer');
+  const latestBuyer = turns[latestBuyerIndex];
+  const laterTurnsAreReceipts = turns.slice(latestBuyerIndex + 1).every(turn =>
+    turn.role === 'seller' && turn.text === normalizeYouTubeEmailChatMessage(YOUTUBE_EMAIL_RECEIPT_REPLY));
+  if (fast?.length === 1 && candidates.length === 1 && latestBuyer && laterTurnsAreReceipts
     && normalizeYouTubeEmailWording(latestBuyer.text).trim().toLowerCase() === fast[0]) return fast;
   const selected = await select(candidates, turns).catch(() => null);
   return selected && candidates.includes(selected) ? [selected] : null;

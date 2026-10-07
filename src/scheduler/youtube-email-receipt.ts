@@ -1,3 +1,4 @@
+import { YOUTUBE_EMAIL_RECEIPT_REPLY } from '../lib/youtube-buyer-messages';
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { isBuyerTextMessage, messageTimestamp, normalizeBuyerMessage } from '../api/auto-reply-message';
@@ -14,7 +15,7 @@ const DEFAULT_JOURNAL = '/home/ubuntu/.hermes/hermes-agent/graytag-aio-manager-0
 const DEFAULT_LOCK = '/home/ubuntu/.hermes/hermes-agent/graytag-aio-manager-0606/data/youtube-email-receipt.lock';
 const EMAIL_SETTLE_MS = 5 * 60_000;
 
-export const YOUTUBE_EMAIL_RECEIPT_REPLY = '이메일 남겨주셔서 감사합니다. 초대는 주문이 들어온 순서대로 해외 현지 담당자와 직접 진행하고 있어 시차로 인해 다소 지연될 수 있습니다. 24시간 이내에 초대장을 보내고 제가 [계정 전달] 버튼을 누르겠습니다. 결제는 이미 완료된 상태이지만, 계정 전달 후 구매자님이 확인하시기 전까지는 이용이 시작되지 않아 대기 시간만큼 이용료가 차감되지 않습니다. 조금만 기다려 주세요.';
+export { YOUTUBE_EMAIL_RECEIPT_REPLY } from '../lib/youtube-buyer-messages';
 
 type ReceiptState = 'attempted' | 'sent';
 export interface EmailReceiptJournal {

@@ -10,7 +10,7 @@ The email context extractor can abstain even for an exact bare address. A settle
 
 ## Requirements
 
-- A single unambiguous bare email in the latest buyer message must not depend on an AI response. Use the existing deterministic parser and normalized buyer-authored content only; do not invent addresses.
+- A single unambiguous bare email in the latest buyer message must not depend on an AI response. Use the existing deterministic parser and normalized buyer-authored content only; do not invent addresses. Later seller context still requires model review unless it is the exact existing automated email receipt. Share that receipt text without duplicating its wording.
 - Preserve withdrawal, cancellation, competing addresses and seller requests for a replacement account. A seller's later reversal must not revive an old address without another buyer submission.
 - Email-mode AI abstentions expire after one minute, while confirmed results retain their existing cache lifetime. Credential-mode cache behavior stays unchanged.
 - Import the two missing orders through the existing capacity-aware, order-bound Notion sync under its exclusive writer lock. New rows must remain uninvited. Verify fresh Notion rows and capacity summary.
