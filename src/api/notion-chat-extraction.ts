@@ -154,7 +154,9 @@ export async function cachedNotionChatExtraction(turns: readonly ExtractionTurn[
   if (existing && existing.expires > Date.now()) return existing.pending;
   const entry = { expires: Date.now() + 60_000, pending: Promise.resolve<SpotifyCredentials | null>(null) };
   entry.pending = classifyNotionChat(turns, mode).then(result => {
-    entry.expires = Date.now() + (result.settled ? 24 * 60 * 60_000 : 60_000);
+    // A model abstention must not hide a paid buyer's email for a whole day.
+    const stable = result.settled && (result.credentials !== null || mode === 'credentials');
+    entry.expires = Date.now() + (stable ? 24 * 60 * 60_000 : 60_000);
     console.info('[NotionChatExtraction] decision', { model: NOTION_CHAT_EXTRACTION_MODEL, mode,
       outcome: result.credentials ? 'confirmed' : result.settled ? 'pending' : 'invalid' });
     return result.credentials;

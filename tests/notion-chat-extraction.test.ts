@@ -87,14 +87,26 @@ describe('OpenRouter Notion extraction',()=>{
    expect(transport.mock.calls.every(call=>String(call[0]).startsWith('https://openrouter.ai/'))).toBe(true);
   }finally{vi.unstubAllGlobals();vi.unstubAllEnvs();}
  });
- test('caches a valid abstention until the conversation changes, without spending requests every minute',async()=>{
+ test('keeps an incomplete credential-pair abstention cached until the conversation changes',async()=>{
   const input:ExtractionTurn[]=[{role:'buyer',text:'stable-a@gmail.com 또는 stable-b@gmail.com 아직 선택하지 않았어요'}];
   const transport=vi.fn(async()=>Response.json({choices:[{finish_reason:'tool_calls',message:{tool_calls:[{function:{name:'submit_buyer_account',arguments:JSON.stringify({email:null,password:null,confidence:1})}}]}}]}));
   vi.useFakeTimers();vi.stubEnv('OPENROUTER_API_KEY','key');vi.stubGlobal('fetch',transport);
   try{
-   expect(await cachedNotionChatExtraction(input,'email')).toBeNull();vi.advanceTimersByTime(120_000);
-   expect(await cachedNotionChatExtraction(input,'email')).toBeNull();expect(transport).toHaveBeenCalledTimes(1);
-   await cachedNotionChatExtraction([...input,{role:'buyer',text:'두번째로 부탁드려요'}],'email');expect(transport).toHaveBeenCalledTimes(2);
+   expect(await cachedNotionChatExtraction(input,'credentials')).toBeNull();vi.advanceTimersByTime(120_000);
+   expect(await cachedNotionChatExtraction(input,'credentials')).toBeNull();expect(transport).toHaveBeenCalledTimes(1);
+   await cachedNotionChatExtraction([...input,{role:'buyer',text:'두번째로 부탁드려요'}],'credentials');expect(transport).toHaveBeenCalledTimes(2);
+  }finally{vi.useRealTimers();vi.unstubAllGlobals();vi.unstubAllEnvs();}
+ });
+ test('retries an email abstention after one minute instead of hiding a supplied address for a day',async()=>{
+  const input:ExtractionTurn[]=[{role:'buyer',text:'retry-plain@gmail.com'}];
+  const transport=vi.fn().mockResolvedValueOnce(Response.json({choices:[{message:{content:JSON.stringify({email:null,password:null,confidence:1})}}]}))
+   .mockResolvedValueOnce(Response.json({choices:[{message:{content:JSON.stringify({email:'VALUE_0',password:null,confidence:0.99})}}]}));
+  vi.useFakeTimers();vi.stubEnv('OPENROUTER_API_KEY','key');vi.stubGlobal('fetch',transport);
+  try{
+   expect(await cachedNotionChatExtraction(input,'email')).toBeNull();
+   await vi.advanceTimersByTimeAsync(60_001);
+   expect(await cachedNotionChatExtraction(input,'email')).toMatchObject({email:'retry-plain@gmail.com'});
+   expect(transport).toHaveBeenCalledTimes(2);
   }finally{vi.useRealTimers();vi.unstubAllGlobals();vi.unstubAllEnvs();}
  });
  test('imports the original missed message into one order-linked Notion row using the model extractor',async()=>{

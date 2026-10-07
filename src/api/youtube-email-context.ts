@@ -2,12 +2,12 @@ import { selectYouTubeEmailWithOpenRouter } from './notion-chat-extraction';
 import { isBuyerTextMessage } from './auto-reply-message';
 import type { GraytagChatMessage } from './chat-message-summary';
 import { isYouTubeDifferentAccountRequest, resolveYouTubeBuyerEmailFromChat, youtubeChatEmailTime, normalizeYouTubeEmailChatMessage } from './youtube-chat-email';
-import { explicitYouTubeBuyerEmails, isBuyerEmailWithdrawal } from '../lib/youtube-buyer-email';
+import { explicitYouTubeBuyerEmails, isBuyerEmailWithdrawal, normalizeYouTubeEmailWording } from '../lib/youtube-buyer-email';
 
 type EmailTurn = { role: 'buyer' | 'seller'; text: string };
 export type BuyerEmailSelector = (candidates: readonly string[], turns: readonly EmailTurn[]) => Promise<string | null>;
 
-/** All eligible buyer submissions are interpreted by the configured OpenRouter extractor. */
+/** Plain buyer-written addresses are authoritative; ambiguous wording uses the context extractor. */
 export async function resolveYouTubeBuyerEmailWithContext(room: string, messages: readonly GraytagChatMessage[],
   select: BuyerEmailSelector = selectYouTubeEmailWithOpenRouter): Promise<string[] | null> {
   const fast = resolveYouTubeBuyerEmailFromChat(room, messages);
@@ -32,6 +32,9 @@ export async function resolveYouTubeBuyerEmailWithContext(room: string, messages
     if (buyer) candidates = [...new Set([...candidates, ...explicitYouTubeBuyerEmails(text)])];
   }
   if (!candidates.length) return fast;
+  const latestBuyer = turns.filter(turn => turn.role === 'buyer').at(-1);
+  if (fast?.length === 1 && candidates.length === 1 && latestBuyer
+    && normalizeYouTubeEmailWording(latestBuyer.text).trim().toLowerCase() === fast[0]) return fast;
   const selected = await select(candidates, turns).catch(() => null);
   return selected && candidates.includes(selected) ? [selected] : null;
 }

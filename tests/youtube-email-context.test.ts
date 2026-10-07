@@ -10,6 +10,17 @@ describe('contextual YouTube email selection', () => {
     expect(select).toHaveBeenCalled();
   });
 
+  test('imports a plain address without depending on an AI abstention', async () => {
+    const select = vi.fn(async () => null);
+    expect(await resolveYouTubeBuyerEmailWithContext('room', [buyer('buyer&#64;gmail.com')], select)).toEqual(['buyer@gmail.com']);
+    expect(select).not.toHaveBeenCalled();
+  });
+  test('does not use the plain-address path after withdrawal or ambiguous context', async () => {
+    const select = vi.fn(async () => null);
+    expect(await resolveYouTubeBuyerEmailWithContext('room', [buyer('buyer@gmail.com'), buyer('잘못 보냈어요')], select)).toBeNull();
+    expect(select).toHaveBeenCalled();
+    expect(await resolveYouTubeBuyerEmailWithContext('room', [buyer('buyer@gmail.com'), seller('다른 계정으로 초대받으셔야 해요')], select)).toBeNull();
+  });
   test('uses context to confirm a previously ambiguous selection without allowing an invented address', async () => {
     const messages = [buyer('first@gmail.com 또는 second@gmail.com'), buyer('두 번째 주소로 부탁드려요')];
     const select = vi.fn(async () => 'second@gmail.com');
