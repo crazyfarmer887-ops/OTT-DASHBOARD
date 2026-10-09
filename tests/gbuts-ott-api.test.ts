@@ -28,7 +28,10 @@ function fixture() {
       const body = JSON.parse(String(options.body)); posts.push({ ...body, seq: 100, category1: { seq: body.category }, title: JSON.stringify({ ko: body.title }), status: 'ON_SALE', memberCount: 0 }); response = creationResponse;
     } else if (path.endsWith('/closed')) { closed = true; response = true; }
     else if (path.endsWith('/member')) response = members;
-    else if (path.endsWith('/view')) response = { ...posts.find((post: any) => post.seq === 100), status: closed ? 'CLOSED' : 'ON_SALE' };
+    else if (path.endsWith('/view')) {
+      const seq = Number(path.split('/').at(-2));
+      response = { ...posts.find((post: any) => post.seq === seq), status: closed && seq === 100 ? 'CLOSED' : 'ON_SALE' };
+    }
     else throw new Error(`unexpected ${path}`);
     return new Response(JSON.stringify({ success: true, error: null, response }), { headers: { 'content-type': 'application/json' } });
   });
@@ -51,6 +54,12 @@ describe('shared inventory publication', () => {
     expect((await f.app.request('/gbuts/ott/orders')).status).toBe(200);
     expect(f.deps.management).not.toHaveBeenCalled();
     expect(f.transport.mock.calls.some(([, options]) => options?.method === 'POST')).toBe(false);
+  });
+  it('keeps the order journal visible when the live seller listing check is unavailable', async () => {
+    const f = fixture(); f.transport.mockRejectedValue(new Error('seller offline'));
+    const response = await f.app.request('/gbuts/ott/orders');
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ ok: true, unlinkedCheckError: expect.stringContaining('확인하지 못했습니다') });
   });
   it('uses display snapshots for browsing but requires fresh inventory for publication', async () => {
     const f = fixture();
@@ -107,6 +116,31 @@ describe('shared inventory publication', () => {
     const inventory = await (await f.app.request('/gbuts/ott')).json();
     expect(inventory.unlinked).toMatchObject([{ seq: 777, memberCount: 1, status: 'CLOSED' }]);
     expect((await f.publish()).status).toBe(503); expect(f.posts).toHaveLength(1);
+  });
+  it('binds a paid legacy post to an explicitly selected account so the delivery poller can deliver it', async () => {
+    const f = fixture();
+    f.posts.push({ seq: 777, category1: { seq: 5 }, memberLimit: 2, memberCount: 1, status: 'ON_SALE',
+      subscriptionEndsAt: '2026-12-01 23:59:59', price: 199, priceType: 'DAY',
+      title: JSON.stringify({ ko: '[넷플릭스] 기존 판매글' }), description: '이용 안내' });
+    f.members = [{ seq: 71, userSeq: 107, productId: 'paid-71', nickname: '구매자', status: 'APPLY', cancelStatus: null,
+      createdAt: '2026-10-05 10:00:00', subscriptionEndsAt: '2026-12-01 23:59:59' }];
+    const response = await f.app.request('/gbuts/ott/listings/link', { method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ postSeq: 777, accountEmail: 'account@example.com' }) });
+    expect(response.status).toBe(200);
+    const linked = await response.json() as any;
+    expect(linked).toMatchObject({ ok: true, listing: { postSeq: 777, serviceType: '넷플릭스', accountEmail: 'account@example.com', state: 'registered' } });
+    expect(readGbutsOttStore().orders['777:71']).toMatchObject({ userSeq: 107, status: 'APPLY', delivery: 'ready' });
+    expect(f.deps.access).toHaveBeenCalledOnce();
+  });
+  it('refuses to bind a legacy post when its reserved places would oversell the selected account', async () => {
+    const f = fixture();
+    f.posts.push({ seq: 778, category1: { seq: 5 }, memberLimit: 3, memberCount: 0, status: 'ON_SALE',
+      subscriptionEndsAt: '2026-12-01 23:59:59', price: 199, priceType: 'DAY', title: '[넷플릭스] 기존 판매글', description: '이용 안내' });
+    const response = await f.app.request('/gbuts/ott/listings/link', { method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ postSeq: 778, accountEmail: 'account@example.com' }) });
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ ok: false, error: expect.stringContaining('재고가 부족') });
+    expect(Object.values(readGbutsOttStore().listings)).toHaveLength(0);
   });
   it('reserves GrayTag publication before GButs publication and validates end date', async () => {
     const f = fixture(); await reserveGraytagOttPlace('넷플릭스', 'account@example.com', f.deps, '2026-12-01');

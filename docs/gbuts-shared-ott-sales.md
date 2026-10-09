@@ -10,6 +10,8 @@ Published capacity is reserved: GrayTag current members, pending orders and unso
 
 Unlinked legacy OTT posts block new publication when they are still on sale or have any members, even if their displayed end date has passed. A closed post with zero members no longer occupies shared capacity and does not block new publication. The dashboard shows the post status, member count and seller link so the seller can resolve any remaining occupied post without guessing its account.
 
+An active unlinked legacy post is not part of the delivery poller's journal. The seller must choose its actual account once; linking verifies the live post, complete buyer roster, account period, shared capacity, Netflix profile availability and access credentials, then imports current orders into the same automatic delivery flow. The Orders page also lists unlinked posts and preserves its local order journal if the live seller-list read fails.
+
 ## Delivery rule
 
 Only a verified active paid GButs member can receive access. Listing ID + member ID identify the buyer; email does not join orders. Each order has a stable token and an at-most-once chat attempt, reconciled against seller chat history. Refunds and ended orders revoke GButs access. Unavailable order verification pauses delivery and access. Shared passwords/PINs continue to follow the existing maintenance record.
@@ -22,6 +24,8 @@ Only a verified active paid GButs member can receive access. Listing ID + member
 - [x] Seller UI with per-account date, daily price, capacity, preview and publication.
 - [x] Tests for capacity conflicts, uncertain writes, distinct buyer identities, duplicate polls, refunds and expiry.
 - [x] Build/review, commit/push, deploy and read-only production smoke checks.
+- [x] Existing unlinked seller posts can be explicitly connected to their actual account and imported orders enter the automatic 1:1 delivery poller.
+- [x] Unlinked posts are visible from Sales and Orders; order history remains visible during a temporary live-list outage.
 
 Live publication requires the seller to choose the account, period, daily price and reserved count in the dashboard. No arbitrary test listing is published.
 
@@ -43,3 +47,4 @@ Strict inventory reads use a separate in-flight cache key so a simultaneous norm
 - Production smoke: dashboard HTML/client asset 200, authenticated inventory 200, unauthenticated inventory 403, validated seller session 200, worker enabled and no journal error. No OTT listings/orders were created.
 - At smoke time the inventory showed available places: Netflix 5, Disney+ 8, TVING 10, Wavve 3. These are point-in-time counts and refresh from the provider.
 - Final profile review also excludes existing manual and recruiting profile names when allocating a new buyer.
+- Follow-up bug reproduction: the new legacy-link endpoint initially returned 404 for a paid unlinked post. After adding the binding flow, targeted API, delivery, polling and chat transport checks pass (44 tests), and the production client build passes. No live seller post or buyer chat was modified during verification.

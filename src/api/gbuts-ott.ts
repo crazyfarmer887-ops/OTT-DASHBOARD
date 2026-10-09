@@ -8,6 +8,7 @@ import { loadGbutsSession } from '../lib/gbuts-session';
 import { readGbutsOttStore, withGbutsOttInventory, writeGbutsOttStore } from '../lib/gbuts-ott-store';
 import type { GbutsOttRuntimeDependencies } from '../scheduler/gbuts-ott-sync';
 import { buildGbutsSalesOverview } from '../lib/gbuts-sales-overview';
+import { availableNetflixProfiles } from '../lib/gbuts-netflix-profiles';
 export function gbutsOttClient() {
   const token = loadGbutsSession()?.token || process.env.GBUTS_API_TOKEN?.trim();
   if (!token) throw new Error('벗츠 판매자 계정을 먼저 연결해주세요.');
@@ -28,12 +29,25 @@ function assertBoundPosts(store: GbutsOttStore, posts: GbutsOttPost[]): void {
       throw new Error('벗츠 판매글의 모집 인원·기간·상태가 바뀌어 공동 재고 확인이 필요합니다.');
   }
 }
-export function matchesGbutsOttListing(post: GbutsOttPost, listing: GbutsOttListing): boolean {
+function gbutsPostTitle(post: GbutsOttPost): string {
   let title = post.title;
   try { title = typeof title === 'string' ? JSON.parse(title).ko : title?.ko; } catch { /* plain title */ }
+  return String(title || '').trim();
+}
+function legacyPostTitle(post: GbutsOttPost, serviceType: string): string {
+  const normalized = gbutsPostTitle(post);
+  return normalized.startsWith(`[${serviceType}] `) ? normalized.slice(serviceType.length + 3).trim() : normalized || '기존 벗츠 판매글';
+}
+function legacyPostDescription(post: GbutsOttPost): string {
+  const value = post.description;
+  if (typeof value === 'string') return value;
+  if (value && typeof value === 'object') return String(value.ko || value.kr || Object.values(value)[0] || '');
+  return '';
+}
+export function matchesGbutsOttListing(post: GbutsOttPost, listing: GbutsOttListing): boolean {
   return post.category1.seq === GBUTS_OTT_CATEGORIES[listing.serviceType] && post.memberLimit === listing.capacity
     && ottDate(post.subscriptionEndsAt) === listing.endDate && Number(post.price) === listing.dailyPrice
-    && title === `[${listing.serviceType}] ${listing.title}`;
+    && gbutsPostTitle(post) === `[${listing.serviceType}] ${listing.title}`;
 }
 async function reconcileListing(listing: GbutsOttListing, client: ReturnType<typeof gbutsOttClient>): Promise<void> {
   const candidates = listing.postSeq ? [await client.getPost(listing.postSeq)]
@@ -51,11 +65,20 @@ export function registerGbutsOttRoutes(app: Hono, deps: GbutsOttRuntimeDependenc
       return c.json({ ok: true, ...buildGbutsSalesOverview(posts, store), enabled: process.env.GBUTS_OTT_SYNC_ENABLED === 'true' });
     } catch (e) { return c.json({ ok: false, error: e instanceof Error ? e.message : '벗츠 판매 현황 조회 실패' }, 503); }
   });
-  app.get('/gbuts/ott/orders', c => {
+  app.get('/gbuts/ott/orders', async c => {
     try {
-      const store = readGbutsOttStore();
-      return c.json({ ok: true, enabled: process.env.GBUTS_OTT_SYNC_ENABLED === 'true', accounts: [], unlinked: [],
-        listings: Object.values(store.listings), orders: Object.values(store.orders), lastSuccess: store.lastSuccess, lastError: store.lastError });
+      const store = readGbutsOttStore(); let unlinked: Array<{ seq: number; serviceType: string; status: string; memberCount: number; memberLimit: number; endDate: string }> = [];
+      let unlinkedCheckError: string | null = null;
+      try {
+        const posts = await gbutsOttClient().listPosts();
+        const bound = new Set(Object.values(store.listings).map(x => x.postSeq));
+        unlinked = posts.filter(x => needsOttAccountBinding(x, bound)).map(x => ({
+          seq: x.seq, serviceType: Object.entries(GBUTS_OTT_CATEGORIES).find(([, category]) => category === x.category1.seq)?.[0] || '',
+          status: x.status, memberCount: x.memberCount, memberLimit: x.memberLimit, endDate: ottDate(x.subscriptionEndsAt),
+        }));
+      } catch { unlinkedCheckError = '벗츠 판매글 연결 상태를 확인하지 못했습니다. 기존 주문은 표시하지만 미연결 글 자동 감시 상태는 확인이 필요합니다.'; }
+      return c.json({ ok: true, enabled: process.env.GBUTS_OTT_SYNC_ENABLED === 'true', accounts: [], unlinked,
+        unlinkedCheckError, listings: Object.values(store.listings), orders: Object.values(store.orders), lastSuccess: store.lastSuccess, lastError: store.lastError });
     } catch (e) { return c.json({ ok: false, error: e instanceof Error ? e.message : '벗츠 주문 기록 조회 실패' }, 503); }
   });
   app.get('/gbuts/ott', async c => {
@@ -66,12 +89,58 @@ export function registerGbutsOttRoutes(app: Hono, deps: GbutsOttRuntimeDependenc
       return c.json({ ok: true, enabled: process.env.GBUTS_OTT_SYNC_ENABLED === 'true',
         accounts: sharedOttAccounts(management, deps.manualMembers(), store),
         listings: Object.values(store.listings), orders: Object.values(store.orders), unlinked: unlinked.map(x => ({
-          seq: x.seq, status: x.status, memberCount: x.memberCount, memberLimit: x.memberLimit,
+          seq: x.seq, serviceType: Object.entries(GBUTS_OTT_CATEGORIES).find(([, category]) => category === x.category1.seq)?.[0] || '',
+          status: x.status, memberCount: x.memberCount, memberLimit: x.memberLimit,
           endDate: ottDate(x.subscriptionEndsAt),
         })),
         lastSuccess: store.lastSuccess, lastError: store.lastError, inventory: management.cache || null });
     } catch (e) { return c.json({ ok: false, error: e instanceof Error ? e.message : '벗츠 연결 확인 실패' }, 503); }
   });
+  app.post('/gbuts/ott/listings/link', c => withGbutsOttInventory(async () => {
+    try {
+      if (process.env.GBUTS_OTT_SYNC_ENABLED !== 'true') throw new Error('벗츠 자동 전달 연결이 꺼져 있습니다.');
+      const body = await c.req.json().catch(() => ({})) as any;
+      const postSeq = Number(body.postSeq); const accountEmail = String(body.accountEmail || '').trim();
+      if (!Number.isSafeInteger(postSeq) || postSeq < 1 || !accountEmail) throw new Error('판매글과 연결할 계정을 선택해주세요.');
+      const store = readGbutsOttStore();
+      const existing = Object.values(store.listings).find(x => x.postSeq === postSeq);
+      if (existing) {
+        if (ottKey(existing.serviceType, existing.accountEmail) !== ottKey(String(body.serviceType || existing.serviceType), accountEmail))
+          throw new Error('이 판매글은 이미 다른 계정에 연결되어 있습니다.');
+        return c.json({ ok: true, listing: existing, alreadyLinked: true });
+      }
+      const client = gbutsOttClient(); const post = await client.getPost(postSeq);
+      const serviceType = Object.entries(GBUTS_OTT_CATEGORIES).find(([, category]) => category === post.category1.seq)?.[0];
+      if (!serviceType) throw new Error('지원하지 않는 서비스 판매글입니다.');
+      if (!['ON_SALE', 'CLOSED', 'SUSPENDED', 'REFUNDED'].includes(post.status)) throw new Error('현재 상태의 판매글은 연결할 수 없습니다.');
+      if (post.priceType !== 'DAY' || !Number.isSafeInteger(Number(post.price)) || Number(post.price) < 1)
+        throw new Error('하루 요금으로 등록된 판매글만 연결할 수 있습니다.');
+      const members = await client.listOttMembers(postSeq);
+      if (members.length < post.memberCount) throw new Error('벗츠 구매자 목록을 모두 확인하지 못했습니다.');
+      const management = await deps.management(); const manualMembers = deps.manualMembers();
+      const account = sharedOttAccounts(management, manualMembers, store).find(x => x.key === ottKey(serviceType, accountEmail));
+      if (!account || !account.eligible || account.endDate < ottDate(post.subscriptionEndsAt)) throw new Error('선택한 계정의 서비스·결제 기간을 판매글과 대조할 수 없습니다.');
+      const activeMembers = members.filter(member => member.status === 'APPLY' && member.cancelStatus !== 'REFUNDED'
+        && ottDate(member.subscriptionEndsAt) >= koreaToday());
+      const reservedPlaces = post.status === 'ON_SALE' ? post.memberLimit : activeMembers.length;
+      if (account.overbooked || account.available < reservedPlaces) throw new Error('이 계정의 남은 공동 재고가 부족해 기존 판매글을 연결할 수 없습니다.');
+      if (serviceType === '넷플릭스' && availableNetflixProfiles(store, management, manualMembers, accountEmail).length < activeMembers.length)
+        throw new Error('구매자 수만큼 확인된 빈 넷플릭스 프로필이 없습니다.');
+      const id = `legacy-${postSeq}`;
+      const title = legacyPostTitle(post, serviceType);
+      const listing: GbutsOttListing = { id, requestHash: createHash('sha256').update(`legacy:${postSeq}:${ottKey(serviceType, accountEmail)}`).digest('hex'),
+        serviceType, accountEmail, endDate: ottDate(post.subscriptionEndsAt), capacity: post.memberLimit,
+        dailyPrice: Number(post.price), title, description: legacyPostDescription(post),
+        state: post.status === 'ON_SALE' ? 'registered' : 'closed', postSeq, createdAt: new Date().toISOString(), verifiedAt: new Date().toISOString() };
+      await deps.access({ key: `preview:${id}`, listingId: id, postSeq, memberSeq: 0, userSeq: 0,
+        name: '(기존 판매글 연결 확인)', status: 'PREVIEW', cancelStatus: null, startDate: koreaToday(), endDate: listing.endDate,
+        delivery: 'ready', verifiedAt: new Date().toISOString() }, listing, '미리보기');
+      store.listings[id] = listing;
+      updateGbutsOttOrders(store, listing, members, new Date().toISOString());
+      writeGbutsOttStore(store);
+      return c.json({ ok: true, listing, linkedOrders: members.length });
+    } catch (e) { return c.json({ ok: false, error: e instanceof Error ? e.message : '기존 판매글 연결 실패' }, 409); }
+  }));
   app.post('/gbuts/ott/listings', async c => {
     const body = await c.req.json().catch(() => ({}));
     return withGbutsOttInventory(async () => {

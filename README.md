@@ -84,7 +84,7 @@ With `GBUTS_SPOTIFY_AUTO_MESSAGE_ENABLED=true`, the seller sends one private req
 
 ## GButs shared OTT sales
 
-`/dashboard/gbuts-sales` publishes Netflix, Disney+, TVING and Wavve subscription listings for an existing account. Select the account, end date, daily price and reserved places. `GBUTS_OTT_SYNC_ENABLED=true` enables publication and paid-member checks every 30 seconds using the already validated GButs seller session. The durable journal uses `GBUTS_OTT_STORE_PATH` or the persistent data directory, never a release directory. The API and polling worker run in one process and serialize inventory transactions.
+`/dashboard/gbuts-sales` publishes Netflix, Disney+, TVING and Wavve subscription listings for an existing account. Select the account, end date, daily price and reserved places. `GBUTS_OTT_SYNC_ENABLED=true` enables publication and paid-member checks about every five seconds using the already validated GButs seller session. Existing unlinked seller posts must be assigned to their actual account once in the dashboard before their orders can be monitored. The durable journal uses `GBUTS_OTT_STORE_PATH` or the persistent data directory, never a release directory. The API and polling worker run in one process and serialize inventory transactions.
 
 GrayTag members, manual members, unsold listings, GButs places and uncertain submissions consume the same account capacity. Reserved places cannot be simultaneously advertised on both marketplaces. The GrayTag write flow also requires the selected shared account and rejects over-capacity publication. Unknown remote writes retain their places until read-only reconciliation. Unlinked existing GButs OTT listings block new publication rather than guessing account ownership.
 

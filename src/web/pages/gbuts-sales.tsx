@@ -8,7 +8,7 @@ import { makeGbutsOttDescription } from '../../lib/gbuts-ott-templates';
 type Account = { key: string; serviceType: string; accountEmail: string; total: number; graytag: number; manual: number; gbuts: number; claims: number; available: number; overbooked: boolean; endDate: string; suggestedDailyPrice: number | null };
 type Listing = { id: string; postSeq?: number; serviceType: string; accountEmail: string; capacity: number; dailyPrice: number; endDate: string; state: string; error?: string };
 type Order = { key: string; name: string; listingId: string; profileName?: string; profileNumber?: number; profileReleasedAt?: string; endDate: string; delivery: string; status: string; cancelStatus: string | null; accessUrl?: string; error?: string };
-type Data = { enabled: boolean; accounts: Account[]; listings: Listing[]; orders: Order[]; unlinked: { seq: number; status: string; memberCount: number; memberLimit: number; endDate: string }[]; lastSuccess: string | null; lastError: string | null; inventory?: { status: string; updatedAt: string } | null };
+type Data = { enabled: boolean; accounts: Account[]; listings: Listing[]; orders: Order[]; unlinked: { seq: number; serviceType: string; status: string; memberCount: number; memberLimit: number; endDate: string }[]; unlinkedCheckError?: string | null; lastSuccess: string | null; lastError: string | null; inventory?: { status: string; updatedAt: string } | null };
 const styles = { card: { background: '#fff', border: '1px solid #EDE9FE', borderRadius: 16, padding: 16, marginBottom: 14 },
   input: { display: 'block', width: '100%', padding: 10, border: '1px solid #DDD6FE', borderRadius: 9, marginTop: 5, boxSizing: 'border-box' as const, fontFamily: 'inherit' },
   button: { border: 0, borderRadius: 10, padding: '11px 14px', background: '#7C3AED', color: '#fff', fontWeight: 800, cursor: 'pointer' } };
@@ -19,6 +19,7 @@ export default function GbutsSalesPage({ view = 'sales' }: { view?: 'sales' | 'o
   const [loading, setLoading] = useState(false); const [busy, setBusy] = useState(false); const [message, setMessage] = useState('');
   const [key, setKey] = useState(''); const [endDate, setEndDate] = useState(''); const [price, setPrice] = useState(''); const [count, setCount] = useState('1');
   const [title, setTitle] = useState(''); const [description, setDescription] = useState(''); const requestId = useRef(crypto.randomUUID());
+  const [legacyAccounts, setLegacyAccounts] = useState<Record<number, string>>({});
   const query = new URLSearchParams(useSearch());
   const requestedService = query.get('service') || '';
   const requestedAccount = query.get('account') || '';
@@ -91,6 +92,20 @@ export default function GbutsSalesPage({ view = 'sales' }: { view?: 'sales' | 'o
       if (!response.ok || !result.ok) throw new Error(result.error); setMessage('판매글 등록 결과를 확인했습니다.'); await load();
     } catch (e) { setMessage(e instanceof Error ? e.message : '판매글 확인 실패'); } finally { setBusy(false); }
   };
+  const linkLegacyListing = async (postSeq: number) => {
+    const accountEmail = legacyAccounts[postSeq];
+    if (!accountEmail || busy) return;
+    setBusy(true); setMessage('');
+    try {
+      const response = await fetch('/api/gbuts/ott/listings/link', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ postSeq, accountEmail }) });
+      const result = await response.json();
+      if (!response.ok || !result.ok) throw new Error(result.error || '기존 판매글 연결 실패');
+      setMessage(`판매글 ${postSeq}의 계정 연결을 확인했습니다. 구매자 주문을 자동 감시합니다.`);
+      await load();
+    } catch (e) { setMessage(e instanceof Error ? e.message : '기존 판매글 연결 실패'); }
+    finally { setBusy(false); }
+  };
   return <main style={{ maxWidth: 950, margin: 'auto', padding: 20, color: '#1E1B4B' }}>
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}><h1 style={{ fontSize: 23 }}><ShoppingBag size={22} /> {view === 'orders' ? '벗츠 주문·전달 관리' : '벗츠 OTT 판매글 작성'}</h1>
       <button style={styles.button} disabled={loading || busy} onClick={load}><RefreshCw size={15} /> {loading ? '확인 중' : '새로고침'}</button></div>
@@ -98,11 +113,22 @@ export default function GbutsSalesPage({ view = 'sales' }: { view?: 'sales' | 'o
     {loadError && <p role="alert" style={{ ...styles.card, color: '#B91C1C' }}>{loadError}</p>}
     {message && <p role="status" style={{ ...styles.card, color: '#6D28D9' }}>{message}</p>}
     {data?.lastError && <p style={{ ...styles.card, color: '#B91C1C' }}>{data.lastError}</p>}
-    <div style={styles.card}><strong>{data ? (data.enabled ? '자동 전달 실행 중 · 약 30초 간격' : '자동 전달 중지 상태') : '판매 연결 확인 중'}</strong>
+    {data?.unlinkedCheckError && <p role="alert" style={{ ...styles.card, color: '#B91C1C' }}>{data.unlinkedCheckError}</p>}
+    <div style={styles.card}><strong>{data ? (data.enabled ? '자동 전달 실행 중 · 약 5초마다 확인' : '자동 전달 중지 상태') : '판매 연결 확인 중'}</strong>
       <p style={{ fontSize: 12 }}>최근 확인: {data?.lastSuccess ? new Date(data.lastSuccess).toLocaleString('ko-KR') : '연결된 판매글의 주문을 기다리고 있습니다.'}</p>
       <button style={styles.button} onClick={() => navigate('/spotify-invites')}>벗츠 판매자 연결 관리</button></div>
-    {!!data?.unlinked.length && <div style={{ ...styles.card, color: '#B91C1C' }}><p style={{ marginTop: 0 }}>계정 연결이 없는 기존 벗츠 판매글의 자리를 확인해주세요. 모집 중이거나 구매자가 남아 있는 글은 계정 연결 전까지 새 등록이 잠깁니다.</p>
-      {data.unlinked.map(x => <p key={x.seq} style={{ marginBottom: 0 }}><a href={`https://gbuts.com/seller/subscriptions/${x.seq}`} target="_blank" rel="noreferrer">판매글 {x.seq} 확인 <ExternalLink size={12} /></a> · {x.status === 'ON_SALE' ? '모집 중' : x.status} · {x.memberCount}/{x.memberLimit}명 · {x.endDate}까지</p>)}
+    {!!data?.unlinked.length && <div style={{ ...styles.card, color: '#B91C1C' }}><p style={{ marginTop: 0 }}>아래 기존 판매글은 계정 정보가 연결되지 않아 자동 주문 감시 대상이 아닙니다. 각 글의 실제 사용 계정을 한 번 연결하면 해당 구매자 주문도 자동 전달됩니다.</p>
+      {data.unlinked.map(x => <div key={x.seq} style={{ padding: '12px 0', borderTop: '1px solid #F3F0FF' }}>
+        <p style={{ margin: '0 0 8px' }}><a href={`https://gbuts.com/seller/subscriptions/${x.seq}`} target="_blank" rel="noreferrer">판매글 {x.seq} 확인 <ExternalLink size={12} /></a> · {x.serviceType} · {x.status === 'ON_SALE' ? '모집 중' : x.status} · {x.memberCount}/{x.memberLimit}명 · {x.endDate}까지</p>
+        <label style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}><span style={{ color: '#1E1B4B' }}>실제 사용 계정</span>
+          {view === 'sales' ? <>
+            <select aria-label={`판매글 ${x.seq} 계정 연결`} style={{ ...styles.input, width: 'auto', minWidth: 220, marginTop: 0 }} value={legacyAccounts[x.seq] || ''} onChange={e => setLegacyAccounts(current => ({ ...current, [x.seq]: e.target.value }))}>
+              <option value="">계정을 선택하세요</option>{data.accounts.filter(a => a.serviceType === x.serviceType).map(a => <option key={a.key} value={a.accountEmail}>{a.accountEmail} · 남은 {a.available}자리</option>)}
+            </select>
+            <button style={styles.button} disabled={busy || !legacyAccounts[x.seq]} onClick={() => void linkLegacyListing(x.seq)}>{busy ? '확인 중' : '계정 연결'}</button>
+          </> : <button style={styles.button} onClick={() => navigate(`/gbuts-sales?service=${encodeURIComponent(x.serviceType)}`)}>판매글 계정 연결</button>}
+        </label>
+      </div>)}
     </div>}
     {view === 'sales' && data?.inventory?.status === 'stale' && <p style={{ fontSize: 12, color: '#B45309' }}>최근 확인한 재고를 표시하며 최신 내역을 조회하고 있습니다. 판매 등록 직전에 남은 자리를 다시 확인합니다. ({new Date(data.inventory.updatedAt).toLocaleString('ko-KR')})</p>}
     {view === 'sales' && loading && !data && <p role="status">공동 재고와 계정 이용 기간을 확인하고 있습니다.</p>}
