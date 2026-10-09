@@ -28,7 +28,7 @@ function fixture() {
       const body = JSON.parse(String(options.body)); posts.push({ ...body, seq: 100, category1: { seq: body.category }, title: JSON.stringify({ ko: body.title }), status: 'ON_SALE', memberCount: 0 }); response = creationResponse;
     } else if (path.endsWith('/closed')) { closed = true; response = true; }
     else if (path.endsWith('/member')) response = members;
-    else if (path.endsWith('/view')) response = { ...posts[0], status: closed ? 'CLOSED' : 'ON_SALE' };
+    else if (path.endsWith('/view')) response = { ...posts.find((post: any) => post.seq === 100), status: closed ? 'CLOSED' : 'ON_SALE' };
     else throw new Error(`unexpected ${path}`);
     return new Response(JSON.stringify({ success: true, error: null, response }), { headers: { 'content-type': 'application/json' } });
   });
@@ -94,6 +94,18 @@ describe('shared inventory publication', () => {
   });
   it('refuses unlinked vendor listings rather than guessing their account', async () => {
     const f = fixture(); f.posts.push({ seq: 777, category1: { seq: 5 }, memberLimit: 2, memberCount: 0, status: 'ON_SALE', subscriptionEndsAt: '2026-12-01 23:59:59' });
+    expect((await f.publish()).status).toBe(503); expect(f.posts).toHaveLength(1);
+  });
+  it('allows registration when an unlinked legacy listing is closed with no members', async () => {
+    const f = fixture(); f.posts.push({ seq: 777, category1: { seq: 5 }, memberLimit: 2, memberCount: 0, status: 'CLOSED', subscriptionEndsAt: '2026-12-01 23:59:59' });
+    const inventory = await (await f.app.request('/gbuts/ott')).json();
+    expect(inventory.unlinked).toEqual([]);
+    expect((await f.publish()).status).toBe(200);
+  });
+  it('continues to block an unlinked closed legacy listing while members remain', async () => {
+    const f = fixture(); f.posts.push({ seq: 777, category1: { seq: 5 }, memberLimit: 2, memberCount: 1, status: 'CLOSED', subscriptionEndsAt: '2026-10-04 23:59:59' });
+    const inventory = await (await f.app.request('/gbuts/ott')).json();
+    expect(inventory.unlinked).toMatchObject([{ seq: 777, memberCount: 1, status: 'CLOSED' }]);
     expect((await f.publish()).status).toBe(503); expect(f.posts).toHaveLength(1);
   });
   it('reserves GrayTag publication before GButs publication and validates end date', async () => {

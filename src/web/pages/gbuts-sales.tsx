@@ -8,7 +8,7 @@ import { makeGbutsOttDescription } from '../../lib/gbuts-ott-templates';
 type Account = { key: string; serviceType: string; accountEmail: string; total: number; graytag: number; manual: number; gbuts: number; claims: number; available: number; overbooked: boolean; endDate: string; suggestedDailyPrice: number | null };
 type Listing = { id: string; postSeq?: number; serviceType: string; accountEmail: string; capacity: number; dailyPrice: number; endDate: string; state: string; error?: string };
 type Order = { key: string; name: string; listingId: string; profileName?: string; profileNumber?: number; profileReleasedAt?: string; endDate: string; delivery: string; status: string; cancelStatus: string | null; accessUrl?: string; error?: string };
-type Data = { enabled: boolean; accounts: Account[]; listings: Listing[]; orders: Order[]; unlinked: { seq: number }[]; lastSuccess: string | null; lastError: string | null; inventory?: { status: string; updatedAt: string } | null };
+type Data = { enabled: boolean; accounts: Account[]; listings: Listing[]; orders: Order[]; unlinked: { seq: number; status: string; memberCount: number; memberLimit: number; endDate: string }[]; lastSuccess: string | null; lastError: string | null; inventory?: { status: string; updatedAt: string } | null };
 const styles = { card: { background: '#fff', border: '1px solid #EDE9FE', borderRadius: 16, padding: 16, marginBottom: 14 },
   input: { display: 'block', width: '100%', padding: 10, border: '1px solid #DDD6FE', borderRadius: 9, marginTop: 5, boxSizing: 'border-box' as const, fontFamily: 'inherit' },
   button: { border: 0, borderRadius: 10, padding: '11px 14px', background: '#7C3AED', color: '#fff', fontWeight: 800, cursor: 'pointer' } };
@@ -101,7 +101,9 @@ export default function GbutsSalesPage({ view = 'sales' }: { view?: 'sales' | 'o
     <div style={styles.card}><strong>{data ? (data.enabled ? '자동 전달 실행 중 · 약 30초 간격' : '자동 전달 중지 상태') : '판매 연결 확인 중'}</strong>
       <p style={{ fontSize: 12 }}>최근 확인: {data?.lastSuccess ? new Date(data.lastSuccess).toLocaleString('ko-KR') : '연결된 판매글의 주문을 기다리고 있습니다.'}</p>
       <button style={styles.button} onClick={() => navigate('/spotify-invites')}>벗츠 판매자 연결 관리</button></div>
-    {!!data?.unlinked.length && <p style={{ ...styles.card, color: '#B91C1C' }}>계정 연결이 없는 기존 벗츠 판매글 {data.unlinked.map(x => x.seq).join(', ')}의 재고 확인이 필요합니다.</p>}
+    {!!data?.unlinked.length && <div style={{ ...styles.card, color: '#B91C1C' }}><p style={{ marginTop: 0 }}>계정 연결이 없는 기존 벗츠 판매글의 자리를 확인해주세요. 모집 중이거나 구매자가 남아 있는 글은 계정 연결 전까지 새 등록이 잠깁니다.</p>
+      {data.unlinked.map(x => <p key={x.seq} style={{ marginBottom: 0 }}><a href={`https://gbuts.com/seller/subscriptions/${x.seq}`} target="_blank" rel="noreferrer">판매글 {x.seq} 확인 <ExternalLink size={12} /></a> · {x.status === 'ON_SALE' ? '모집 중' : x.status} · {x.memberCount}/{x.memberLimit}명 · {x.endDate}까지</p>)}
+    </div>}
     {view === 'sales' && data?.inventory?.status === 'stale' && <p style={{ fontSize: 12, color: '#B45309' }}>최근 확인한 재고를 표시하며 최신 내역을 조회하고 있습니다. 판매 등록 직전에 남은 자리를 다시 확인합니다. ({new Date(data.inventory.updatedAt).toLocaleString('ko-KR')})</p>}
     {view === 'sales' && loading && !data && <p role="status">공동 재고와 계정 이용 기간을 확인하고 있습니다.</p>}
     {view === 'sales' && <section style={styles.card}><h2 style={{ fontSize: 17 }}>벗츠에서 판매할 자리{requestedService && ` · ${requestedService}`}</h2>

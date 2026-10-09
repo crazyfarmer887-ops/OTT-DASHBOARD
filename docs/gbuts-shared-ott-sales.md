@@ -8,6 +8,8 @@ Netflix, Disney+, TVING and Wavve use the existing account inventory and buyer a
 
 Published capacity is reserved: GrayTag current members, pending orders and unsold listings, manual members, GButs published places and uncertain submissions all consume capacity. A place cannot be advertised on both marketplaces simultaneously. GButs publication validates a fresh GrayTag snapshot and reserves places before sending its single external write. Unknown outcomes retain the reservation and are never automatically retried. GrayTag writes for linked services also reserve capacity before publication.
 
+Unlinked legacy OTT posts block new publication when they are still on sale or have any members, even if their displayed end date has passed. A closed post with zero members no longer occupies shared capacity and does not block new publication. The dashboard shows the post status, member count and seller link so the seller can resolve any remaining occupied post without guessing its account.
+
 ## Delivery rule
 
 Only a verified active paid GButs member can receive access. Listing ID + member ID identify the buyer; email does not join orders. Each order has a stable token and an at-most-once chat attempt, reconciled against seller chat history. Refunds and ended orders revoke GButs access. Unavailable order verification pauses delivery and access. Shared passwords/PINs continue to follow the existing maintenance record.

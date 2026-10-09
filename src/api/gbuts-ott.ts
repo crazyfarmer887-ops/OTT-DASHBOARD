@@ -13,9 +13,13 @@ export function gbutsOttClient() {
   if (!token) throw new Error('벗츠 판매자 계정을 먼저 연결해주세요.');
   return createGbutsOttSellerClient(token);
 }
+function needsOttAccountBinding(post: GbutsOttPost, boundPostSeqs: ReadonlySet<number | undefined>): boolean {
+  return Object.values(GBUTS_OTT_CATEGORIES).includes(post.category1.seq) && !boundPostSeqs.has(post.seq)
+    && (post.status === 'ON_SALE' || post.memberCount > 0);
+}
 function assertBoundPosts(store: GbutsOttStore, posts: GbutsOttPost[]): void {
   const bound = new Set(Object.values(store.listings).map(x => x.postSeq));
-  if (posts.some(x => Object.values(GBUTS_OTT_CATEGORIES).includes(x.category1.seq) && !bound.has(x.seq) && ottDate(x.subscriptionEndsAt) >= koreaToday()))
+  if (posts.some(x => needsOttAccountBinding(x, bound)))
     throw new Error('기존 벗츠 판매글의 계정 연결을 먼저 확인해야 합니다.');
   for (const listing of Object.values(store.listings).filter(x => x.state === 'registered' || x.state === 'closed')) {
     const post = posts.find(x => x.seq === listing.postSeq);
@@ -58,10 +62,13 @@ export function registerGbutsOttRoutes(app: Hono, deps: GbutsOttRuntimeDependenc
     try {
       const store = readGbutsOttStore(); const [management, posts] = await Promise.all([deps.management({ forceRefresh: false }), gbutsOttClient().listPosts()]);
       const bound = new Set(Object.values(store.listings).map(x => x.postSeq));
-      const unlinked = posts.filter(x => Object.values(GBUTS_OTT_CATEGORIES).includes(x.category1.seq) && !bound.has(x.seq) && ottDate(x.subscriptionEndsAt) >= koreaToday());
+      const unlinked = posts.filter(x => needsOttAccountBinding(x, bound));
       return c.json({ ok: true, enabled: process.env.GBUTS_OTT_SYNC_ENABLED === 'true',
         accounts: sharedOttAccounts(management, deps.manualMembers(), store),
-        listings: Object.values(store.listings), orders: Object.values(store.orders), unlinked: unlinked.map(x => ({ seq: x.seq })),
+        listings: Object.values(store.listings), orders: Object.values(store.orders), unlinked: unlinked.map(x => ({
+          seq: x.seq, status: x.status, memberCount: x.memberCount, memberLimit: x.memberLimit,
+          endDate: ottDate(x.subscriptionEndsAt),
+        })),
         lastSuccess: store.lastSuccess, lastError: store.lastError, inventory: management.cache || null });
     } catch (e) { return c.json({ ok: false, error: e instanceof Error ? e.message : '벗츠 연결 확인 실패' }, 503); }
   });
