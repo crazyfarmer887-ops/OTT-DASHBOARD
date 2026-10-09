@@ -2489,6 +2489,7 @@ app.post('/my/management', async (c) => {
     const management = await loadManagementFresh();
     return c.json(body.gbutsInventory === false || !managementScope.useLocalAccountRecords ? management : mergeGbutsOttManagement(management, readGbutsOttStore()));
   } catch (e: any) {
+    if (e?.diagnostic) console.warn('[management] GrayTag response contract:', JSON.stringify(e.diagnostic));
     if (e?.message === '쿠키가 만료됐어요.') return c.json({ error: e.message, code: 'COOKIE_EXPIRED' }, 401);
     return c.json({ error: e.message }, 500);
   }
