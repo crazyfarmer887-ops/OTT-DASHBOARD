@@ -34,9 +34,23 @@ test.each([302, 401])('does not retry authentication or redirect response %s', a
   const read = vi.fn(async () => new Response('', { status }));
   await expect(readVerifiedGraytagManagementSnapshot(read)).rejects.toThrow('로그인'); expect(read).toHaveBeenCalledOnce();
 });
-test('malformed successful responses stop without accepting partial earlier pages', async () => {
-  const read = vi.fn().mockResolvedValueOnce(ok([{ productUsid: 'sale1', dealStatus: 'OnSale' }])).mockResolvedValueOnce(new Response('<html>login</html>'));
-  await expect(readVerifiedGraytagManagementSnapshot(read)).rejects.toThrow('응답'); expect(read).toHaveBeenCalledTimes(2);
+test('retries malformed successful responses and still rejects an incomplete snapshot', async () => {
+  vi.useFakeTimers();
+  const malformed = () => new Response('<html>login</html>');
+  const read = vi.fn().mockResolvedValueOnce(ok([{ productUsid: 'sale1', dealStatus: 'OnSale' }])).mockImplementation(async () => malformed());
+  const task = readVerifiedGraytagManagementSnapshot(read);
+  const assertion = expect(task).rejects.toThrow('응답');
+  await vi.runAllTimersAsync();
+  await assertion; expect(read).toHaveBeenCalledTimes(4);
+});
+test('recovers when an invalid HTTP 200 body is followed by an authoritative inventory page', async () => {
+  vi.useFakeTimers();
+  const read = vi.fn().mockResolvedValueOnce(new Response('{}')).mockImplementation(async () => ok());
+  const task = readVerifiedGraytagManagementSnapshot(read);
+  const assertion = expect(task).resolves.toMatchObject({ afterOpenDeals: [] });
+  await vi.runAllTimersAsync();
+  await assertion;
+  expect(read.mock.calls.slice(0, 2)).toEqual([['after', false, 1], ['after', false, 1]]);
 });
 test('retries connection failures using the same read page', async () => {
   vi.useFakeTimers();

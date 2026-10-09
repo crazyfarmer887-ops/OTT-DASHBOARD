@@ -61,8 +61,13 @@ export async function readVerifiedGraytagManagementSnapshot(readPage: InventoryP
           try {
             rows = verifiedGraytagManagementDeals(payload, true, payload !== null);
           } catch (error: any) {
-            if (error?.diagnostic) Object.assign(error.diagnostic, { stream: kind, finished, page });
-            throw error;
+            if (!error?.diagnostic) throw error;
+            Object.assign(error.diagnostic, { stream: kind, finished, page });
+            if (attempt === 2) throw error;
+            const delay = (attempt + 1) * 1500;
+            await response.body?.cancel().catch(() => {});
+            await new Promise(resolve => setTimeout(resolve, delay));
+            continue;
           }
           break;
         }
