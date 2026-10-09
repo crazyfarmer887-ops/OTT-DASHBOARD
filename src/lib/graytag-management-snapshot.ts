@@ -28,6 +28,16 @@ export function verifiedGraytagManagementDeals(payload: any, httpOk: boolean, js
   }
   return rows;
 }
+
+export async function isAuthoritativeGraytagInventoryResponse(response: Response): Promise<boolean> {
+  if (!response.ok || response.redirected || (response.status >= 300 && response.status < 400)) return false;
+  const payload = await response.json().catch(() => null);
+  try {
+    verifiedGraytagManagementDeals(payload, true, payload !== null);
+    return true;
+  } catch { return false; }
+}
+
 export function dedupeGraytagManagementDeals(rows: any[]): any[] {
   const seen = new Set<string>();
   return rows.filter(row => { const key = row.dealUsid ? `deal:${row.dealUsid}` : `product:${row.productUsid}`; if (seen.has(key)) return false; seen.add(key); return true; });

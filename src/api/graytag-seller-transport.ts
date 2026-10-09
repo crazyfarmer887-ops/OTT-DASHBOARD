@@ -3,6 +3,7 @@ import { curlFetch } from './http-transport';
 export type GraytagSellerRoute = 'direct' | 'proxy';
 type DirectFetch = (url: string, options?: RequestInit) => Promise<Response>;
 type ProxyFetch = (url: string, options: RequestInit, proxyUrl: string) => Promise<Response>;
+type AuthoritativeResponse = (response: Response) => Promise<boolean>;
 const PROXY_DENIAL_COOLDOWN_MS = 60_000;
 const proxyDeniedUntil = new Map<string, number>();
 
@@ -13,13 +14,18 @@ export async function fetchGraytagReadWithFallback(
   proxyUrl: string | undefined,
   direct: DirectFetch = fetch,
   viaProxy: ProxyFetch = curlFetch,
+  isAuthoritative?: AuthoritativeResponse,
 ): Promise<Response> {
   if ((options.method || 'GET').toUpperCase() !== 'GET') throw new TypeError('read only GrayTag fallback');
   if (!proxyUrl) return direct(url, options);
+  const usable = async (response: Response) => {
+    if (!response.ok) return false;
+    return isAuthoritative ? isAuthoritative(response.clone()) : true;
+  };
   if ((proxyDeniedUntil.get(proxyUrl) || 0) > Date.now()) {
     try {
       const directResponse = await direct(url, options);
-      if (directResponse.ok) return directResponse;
+      if (await usable(directResponse)) return directResponse;
     } catch { /* Check whether the proxy has recovered. */ }
   }
   let proxied: Response;
@@ -27,12 +33,17 @@ export async function fetchGraytagReadWithFallback(
   catch { return direct(url, options); }
   if (proxied.status !== 403) {
     proxyDeniedUntil.delete(proxyUrl);
-    return proxied;
+    if (!isAuthoritative || await usable(proxied)) return proxied;
+    proxyDeniedUntil.set(proxyUrl, Date.now() + PROXY_DENIAL_COOLDOWN_MS);
+    try {
+      const directResponse = await direct(url, options);
+      return await usable(directResponse) ? directResponse : proxied;
+    } catch { return proxied; }
   }
   proxyDeniedUntil.set(proxyUrl, Date.now() + PROXY_DENIAL_COOLDOWN_MS);
   try {
     const directResponse = await direct(url, options);
-    return directResponse.ok ? directResponse : proxied;
+    return await usable(directResponse) ? directResponse : proxied;
   } catch { return proxied; }
 }
 

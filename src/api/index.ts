@@ -74,7 +74,7 @@ import {
   type GraytagAuthCookies,
 } from '../lib/graytag-sales-session';
 import { loadGbutsSession, parseGbutsToken, saveGbutsSession } from '../lib/gbuts-session';
-import { dedupeGraytagManagementDeals, graytagCredentialHydrationDeals, readVerifiedGraytagManagementSnapshot } from '../lib/graytag-management-snapshot';
+import { dedupeGraytagManagementDeals, graytagCredentialHydrationDeals, isAuthoritativeGraytagInventoryResponse, readVerifiedGraytagManagementSnapshot } from '../lib/graytag-management-snapshot';
 import { gbutsOttClient, registerGbutsOttRoutes, reserveGraytagOttPlace, settleGraytagOttPlace } from './gbuts-ott';
 import { registerManualAccountRoutes } from './manual-account-registration';
 import { assertUnclaimedGbutsNetflixProfile, availableNetflixProfiles } from '../lib/gbuts-netflix-profiles';
@@ -1575,7 +1575,8 @@ let _chatRoomsRefreshInFlight: Promise<void> | null = null;
 const CHAT_ROOMS_CACHE_TTL_MS = 60_000;
 const CHAT_RATE_LIMIT_BACKOFF_MS = 60_000;
 
-async function directFetch(url: string, options?: RequestInit, route?: GraytagSellerRoute): Promise<Response> {
+async function directFetch(url: string, options?: RequestInit, route?: GraytagSellerRoute,
+  isAuthoritativeRead?: (response: Response) => Promise<boolean>): Promise<Response> {
   const proxyUrl = process.env.GRAYTAG_PROXY_URL?.trim();
   if (route === 'direct') return fetch(url, options);
   if (route === 'proxy') {
@@ -1583,13 +1584,14 @@ async function directFetch(url: string, options?: RequestInit, route?: GraytagSe
     return curlFetch(url, options, proxyUrl);
   }
   if ((options?.method || 'GET').toUpperCase() === 'GET') {
-    return fetchGraytagReadWithFallback(url, options, proxyUrl);
+    return fetchGraytagReadWithFallback(url, options, proxyUrl, fetch, curlFetch, isAuthoritativeRead);
   }
   return proxyUrl ? curlFetch(url, options, proxyUrl) : fetch(url, options);
 }
 
 /** Use the configured transport once. Never retry uncertain writes. */
-async function rateLimitedFetch(url: string, options?: RequestInit, bypass = false, route?: GraytagSellerRoute): Promise<Response> {
+async function rateLimitedFetch(url: string, options?: RequestInit, bypass = false, route?: GraytagSellerRoute,
+  isAuthoritativeRead?: (response: Response) => Promise<boolean>): Promise<Response> {
   if (!bypass && Date.now() < _rateLimitUntil) {
     return new Response(JSON.stringify({ ok: false, error: 'rate_limit_backoff' }), {
       status: 429,
@@ -1599,7 +1601,7 @@ async function rateLimitedFetch(url: string, options?: RequestInit, bypass = fal
   const elapsed = Date.now() - _lastGraytagRequest;
   if (elapsed < 1500) await new Promise(r => setTimeout(r, 1500 - elapsed));
   _lastGraytagRequest = Date.now();
-  const response = await directFetch(url, options, route);
+  const response = await directFetch(url, options, route, isAuthoritativeRead);
   if (response.status === 429) _rateLimitUntil = Math.max(_rateLimitUntil, Date.now() + CHAT_RATE_LIMIT_BACKOFF_MS);
   return response;
 }
@@ -1916,6 +1918,7 @@ app.post('/my/management', async (c) => {
         buildFinishedDealsUrl(kind, page, 500, finished),
         { headers: authedHeaders(kind === 'after' ? 'https://graytag.co.kr/lender/deal/listAfterUsing' : 'https://graytag.co.kr/lender/deal/list'),
           redirect: 'manual', signal: AbortSignal.timeout(15_000) },
+        false, undefined, isAuthoritativeGraytagInventoryResponse,
       ))
       : await (async () => {
         const [afterOpenDeals, afterFinishedDeals, beforeOpenDeals, beforeFinishedDeals] = await Promise.all([

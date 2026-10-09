@@ -3,6 +3,7 @@ import {
   fetchGraytagReadWithFallback,
   selectGraytagSellerRoute,
 } from '../src/api/graytag-seller-transport';
+import { isAuthoritativeGraytagInventoryResponse } from '../src/lib/graytag-management-snapshot';
 
 const url = 'https://graytag.co.kr/ws/lender/findBeforeUsingLenderDeals?page=1&rows=1';
 const authoritative = () => new Response(JSON.stringify({ succeeded: true, data: { lenderDeals: [] } }), { status: 200 });
@@ -39,5 +40,25 @@ describe('GrayTag seller transport', () => {
     const direct = vi.fn(async () => new Response('<html>login</html>', { status: 200 }));
     const proxy = vi.fn(async () => new Response(JSON.stringify({ succeeded: true, data: {} }), { status: 200 }));
     expect(await selectGraytagSellerRoute(url, {}, 'http://proxy.invalid', direct, proxy)).toBeNull();
+  });
+
+  test('falls back to direct when proxy returns HTTP 200 with an unusable inventory body', async () => {
+    const direct = vi.fn(async () => authoritative());
+    const proxy = vi.fn(async () => new Response(JSON.stringify({ succeeded: true, data: {} }), { status: 200 }));
+    const result = await fetchGraytagReadWithFallback(url, { method: 'GET' }, 'http://empty-200-proxy.invalid',
+      direct, proxy, isAuthoritativeGraytagInventoryResponse);
+    expect(result.status).toBe(200);
+    expect(await isAuthoritativeGraytagInventoryResponse(result.clone())).toBe(true);
+    expect(proxy).toHaveBeenCalledOnce();
+    expect(direct).toHaveBeenCalledOnce();
+  });
+
+  test('keeps an authoritative empty inventory response from the proxy', async () => {
+    const direct = vi.fn(async () => authoritative());
+    const proxy = vi.fn(async () => authoritative());
+    const result = await fetchGraytagReadWithFallback(url, { method: 'GET' }, 'http://valid-proxy.invalid',
+      direct, proxy, isAuthoritativeGraytagInventoryResponse);
+    expect(await isAuthoritativeGraytagInventoryResponse(result.clone())).toBe(true);
+    expect(direct).not.toHaveBeenCalled();
   });
 });
