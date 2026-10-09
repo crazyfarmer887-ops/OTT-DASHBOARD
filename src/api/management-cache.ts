@@ -53,6 +53,7 @@ export function createStaleWhileRevalidateCache<T>(options: StaleWhileRevalidate
       if (!getOptions.forceRefresh && cached) {
         void refresh(key, loadFresh).catch((error) => {
           console.warn('[management-cache] background refresh failed:', error?.message || error);
+          if (error?.diagnostic) console.warn('[management-cache] GrayTag response contract:', JSON.stringify(error.diagnostic));
         });
         return { ...cached, cacheStatus: 'stale' };
       }

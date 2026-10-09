@@ -1,9 +1,31 @@
 /** Validate the provider snapshot before using it to reserve shared inventory. */
 export function verifiedGraytagManagementDeals(payload: any, httpOk: boolean, jsonOk: boolean): any[] {
-  const rows = payload?.data?.data?.lenderDeals ?? payload?.data?.lenderDeals ?? payload?.lenderDeals;
-  if (!httpOk || !jsonOk || payload?.succeeded !== true || !Array.isArray(rows)
-    || rows.some((x: any) => !x || (!x.dealUsid && !x.productUsid) || typeof x.dealStatus !== 'string'))
-    throw new Error('그레이태그 재고 응답을 확인하지 못했습니다.');
+  const candidates: Array<[string, unknown]> = [
+    ['data.data.lenderDeals', payload?.data?.data?.lenderDeals],
+    ['data.lenderDeals', payload?.data?.lenderDeals],
+    ['lenderDeals', payload?.lenderDeals],
+  ];
+  const [path, rows] = candidates.find(([, value]) => Array.isArray(value)) || ['', undefined];
+  const invalidRows = Array.isArray(rows) ? rows.flatMap((row, index) => {
+    const missing: string[] = [];
+    if (!row || typeof row !== 'object') missing.push('object');
+    else {
+      if (!row.dealUsid && !row.productUsid) missing.push('dealUsid|productUsid');
+      if (typeof row.dealStatus !== 'string') missing.push('dealStatus');
+    }
+    return missing.length ? [{ index, missing, keys: row && typeof row === 'object' ? Object.keys(row).sort() : [] }] : [];
+  }) : [];
+  if (!httpOk || !jsonOk || payload?.succeeded !== true || !Array.isArray(rows) || invalidRows.length) {
+    // Keep provider values private; these metadata make the failed contract diagnosable.
+    const diagnostic = { httpOk, jsonOk, succeeded: payload?.succeeded,
+      payloadKeys: payload && typeof payload === 'object' ? Object.keys(payload).sort() : [],
+      dataKeys: payload?.data && typeof payload.data === 'object' ? Object.keys(payload.data).sort() : [],
+      path: path || null, rowCount: Array.isArray(rows) ? rows.length : null,
+      invalidCount: invalidRows.length, invalidSamples: invalidRows.slice(0, 3) };
+    const error: any = new Error('그레이태그 재고 응답을 확인하지 못했습니다.');
+    error.diagnostic = diagnostic;
+    throw error;
+  }
   return rows;
 }
 export function dedupeGraytagManagementDeals(rows: any[]): any[] {
@@ -26,7 +48,12 @@ export async function readVerifiedGraytagManagementSnapshot(readPage: InventoryP
           throw new Error(`그레이태그 로그인 확인이 필요합니다 (${response.status}). 판매자 연결을 확인해주세요.`);
         if (response?.ok) {
           const payload = await response.json().catch(() => null);
-          rows = verifiedGraytagManagementDeals(payload, true, payload !== null);
+          try {
+            rows = verifiedGraytagManagementDeals(payload, true, payload !== null);
+          } catch (error: any) {
+            if (error?.diagnostic) Object.assign(error.diagnostic, { stream: kind, finished, page });
+            throw error;
+          }
           break;
         }
         if (response && ![403, 408, 429, 500, 502, 503, 504].includes(response.status))
