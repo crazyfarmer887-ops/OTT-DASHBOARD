@@ -65,6 +65,14 @@ test('finishes every full page before moving to another stream', async () => {
   expect(read.mock.calls.slice(0, 3)).toEqual([['after', false, 1], ['after', false, 2], ['after', true, 1]]);
 });
 
+test('continues after a full 100-row page instead of treating it as the last page', async () => {
+  const fullPage = Array.from({ length: 100 }, (_, i) => ({ productUsid: `sale${i}`, dealStatus: 'OnSale' }));
+  const read = vi.fn().mockResolvedValueOnce(ok(fullPage)).mockImplementation(async () => ok());
+  const snapshot = await readVerifiedGraytagManagementSnapshot(read);
+  expect(snapshot.afterOpenDeals).toHaveLength(100);
+  expect(read.mock.calls.slice(0, 2)).toEqual([['after', false, 1], ['after', false, 2]]);
+});
+
 test('shared OTT credential reads omit unrelated YouTube chats without dropping unknown or OTT claims', () => {
   const youtube = Array.from({ length: 100 }, (_, i) => ({ productTypeString: '유튜브', dealUsid: `yt-${i}` }));
   const relevant = ['넷플릭스', '디즈니플러스', '티빙', '웨이브', '기타', undefined].map(productTypeString => ({ productTypeString, dealUsid: 'claim' }));

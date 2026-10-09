@@ -74,7 +74,7 @@ import {
   type GraytagAuthCookies,
 } from '../lib/graytag-sales-session';
 import { loadGbutsSession, parseGbutsToken, saveGbutsSession } from '../lib/gbuts-session';
-import { dedupeGraytagManagementDeals, graytagCredentialHydrationDeals, isAuthoritativeGraytagInventoryResponse, readVerifiedGraytagManagementSnapshot } from '../lib/graytag-management-snapshot';
+import { dedupeGraytagManagementDeals, graytagCredentialHydrationDeals, GRAYTAG_INVENTORY_PAGE_SIZE, isAuthoritativeGraytagInventoryResponse, readVerifiedGraytagManagementSnapshot } from '../lib/graytag-management-snapshot';
 import { gbutsOttClient, registerGbutsOttRoutes, reserveGraytagOttPlace, settleGraytagOttPlace } from './gbuts-ott';
 import { registerManualAccountRoutes } from './manual-account-registration';
 import { assertUnclaimedGbutsNetflixProfile, availableNetflixProfiles } from '../lib/gbuts-netflix-profiles';
@@ -1915,7 +1915,7 @@ app.post('/my/management', async (c) => {
 
     const { afterOpenDeals, afterFinishedDeals, beforeOpenDeals, beforeFinishedDeals } = body.gbutsInventory === false
       ? await readVerifiedGraytagManagementSnapshot((kind, finished, page) => rateLimitedFetch(
-        buildFinishedDealsUrl(kind, page, 500, finished),
+        buildFinishedDealsUrl(kind, page, GRAYTAG_INVENTORY_PAGE_SIZE, finished),
         { headers: authedHeaders(kind === 'after' ? 'https://graytag.co.kr/lender/deal/listAfterUsing' : 'https://graytag.co.kr/lender/deal/list'),
           redirect: 'manual', signal: AbortSignal.timeout(15_000) },
         false, undefined, isAuthoritativeGraytagInventoryResponse,

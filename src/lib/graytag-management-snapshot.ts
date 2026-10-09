@@ -1,3 +1,6 @@
+export const GRAYTAG_INVENTORY_PAGE_SIZE = 100;
+const MAX_GRAYTAG_INVENTORY_PAGES = 100;
+
 /** Validate the provider snapshot before using it to reserve shared inventory. */
 export function verifiedGraytagManagementDeals(payload: any, httpOk: boolean, jsonOk: boolean): any[] {
   const candidates: Array<[string, unknown]> = [
@@ -49,7 +52,7 @@ type InventoryPageReader = (kind: 'after' | 'before', finished: boolean, page: n
 export async function readVerifiedGraytagManagementSnapshot(readPage: InventoryPageReader) {
   const read = async (kind: 'after' | 'before', finished: boolean) => {
     const collected: any[] = [];
-    for (let page = 1; page <= 10; page++) {
+    for (let page = 1; page <= MAX_GRAYTAG_INVENTORY_PAGES; page++) {
       let rows: any[] | undefined;
       for (let attempt = 0; attempt < 3; attempt++) {
         let response: Response | undefined;
@@ -85,7 +88,7 @@ export async function readVerifiedGraytagManagementSnapshot(readPage: InventoryP
         await new Promise(resolve => setTimeout(resolve, delay));
       }
       collected.push(...rows!);
-      if (rows!.length < 500) return collected;
+      if (rows!.length < GRAYTAG_INVENTORY_PAGE_SIZE) return collected;
     }
     throw new Error('그레이태그 재고 페이지를 모두 확인하지 못했습니다.');
   };
