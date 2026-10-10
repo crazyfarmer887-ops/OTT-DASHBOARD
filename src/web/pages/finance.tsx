@@ -463,7 +463,7 @@ export default function FinancePage() {
   return (
     <div className="fn-app">
       <aside className="fn-sidebar">
-        <a className="fn-brand" href="/finance">
+        <a className="fn-brand" href="/dashboard/finance">
           <span className="fn-logo">j.</span>
           <span>
             잠깐구독<small>BUSINESS DASHBOARD</small>
