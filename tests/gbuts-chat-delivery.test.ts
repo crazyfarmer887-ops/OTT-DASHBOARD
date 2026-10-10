@@ -58,16 +58,17 @@ test('splits a long paragraph without corrupting emoji, words or the account URL
   expect(chunks.at(-1)).toContain('https://example.com/private-token');
 });
 
-test('sends profile, labelled access link and rules as three separate visible messages', async () => {
+test('sends profile, labelled access link and rules and direct delivery offer as separate visible messages', async () => {
   const url = 'https://email-verify.one/dashboard/access/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx';
   const text = buildGbutsNetflixDeliveryText(url, 5);
   const accepted = broker();
   await sendGbutsText('xxxxxxxxxxxx', 123456, text);
-  expect(accepted).toHaveLength(3);
+  expect(accepted).toHaveLength(4);
   expect(accepted[0]).toContain('5번');
   expect(accepted[1]).toBe(`접근 링크: ${url}`);
   expect(accepted[2]).toContain('이용수칙:');
   expect(accepted[2]).toContain('이름·PIN 변경');
+  expect(accepted[3]).toContain('직접 전송해드립니다.');
   expect(accepted.every(part => Buffer.byteLength(part) <= 500)).toBe(true);
   expect(accepted.every(part => !part.includes('\u2028'))).toBe(true);
   expect(gbutsChatContainsText(accepted.map(message => ({ senderSeq: 123456, messageType: 'TEXT', message })), 123456, text)).toBe(true);

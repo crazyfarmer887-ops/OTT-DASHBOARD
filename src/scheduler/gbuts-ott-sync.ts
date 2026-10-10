@@ -5,15 +5,17 @@ import { readGbutsOttStore, withGbutsOttInventory, writeGbutsOttStore } from '..
 import { loadGbutsSession } from '../lib/gbuts-session';
 import { loadSafeModeConfig } from '../api/safe-mode';
 import { generateUniqueProfileNicknames, stableRandomFromSeed } from '../lib/profile-nickname';
-import { buildPartyAccessDeliveryTemplate } from '../lib/party-access-template';
 import { releaseCompletedNetflixProfiles, allocateNetflixProfilesForSync } from '../lib/gbuts-netflix-profiles';
-import { buildGbutsNetflixDeliveryText, buildGbutsNetflixLegacyDeliveryText, buildGbutsNetflixUnformattedDeliveryText } from '../lib/gbuts-ott-templates';
+import { buildGbutsOttDeliveryText, buildGbutsNetflixAccessText, buildGbutsNetflixDeliveryText, buildGbutsNetflixLegacyDeliveryText, buildGbutsNetflixUnformattedDeliveryText } from '../lib/gbuts-ott-templates';
+import { buildPartyAccessDeliveryTemplate } from '../lib/party-access-template';
+import { syncGbutsDirectCredentials } from './gbuts-ott-direct-delivery';
 import { sendGbutsText } from './gbuts-spotify-messages';
 
 export interface GbutsOttRuntimeDependencies {
   management(options?: { forceRefresh: boolean }): Promise<GbutsOttManagement>;
   manualMembers(): any[];
   access(order: GbutsOttOrder, listing: GbutsOttListing, profileName: string): Promise<string>;
+  credentials?(order: GbutsOttOrder, listing: GbutsOttListing): Promise<{ id: string; password: string }>;
   refreshAccess(orders: GbutsOttOrder[]): Promise<void>;
   readStore?(): GbutsOttStore;
   writeStore?(store: GbutsOttStore): void;
@@ -48,7 +50,7 @@ export async function syncGbutsOtt(deps: GbutsOttRuntimeDependencies,
   const sellerSeq = eligible.length ? await client.sellerAccountSeq() : 0;
   const deliveryText = (order: GbutsOttOrder) => order.deliveryMessage || (store.listings[order.listingId].serviceType === '넷플릭스'
     ? (order.attemptedAt || order.delivery === 'attempted' ? buildGbutsNetflixLegacyDeliveryText : buildGbutsNetflixDeliveryText)(order.accessUrl!, order.profileNumber!)
-    : buildPartyAccessDeliveryTemplate(order.accessUrl!));
+    : buildGbutsOttDeliveryText(order.accessUrl!));
   // Confirmation discloses nothing new: use the persisted link and profile lease,
   // after checking the paid buyer above. A GrayTag outage cannot hide a saved chat.
   for (const order of eligible) {
@@ -62,8 +64,10 @@ export async function syncGbutsOtt(deps: GbutsOttRuntimeDependencies,
     order.roomId = roomId;
     const messages = (await client.getChat(roomId)).messages;
     const candidates = [deliveryText(order)];
+    if (listing.serviceType !== '넷플릭스') candidates.push(buildPartyAccessDeliveryTemplate(order.accessUrl));
     if (listing.serviceType === '넷플릭스') candidates.push(
       buildGbutsNetflixDeliveryText(order.accessUrl, order.profileNumber!),
+      buildGbutsNetflixAccessText(order.accessUrl, order.profileNumber!),
       buildGbutsNetflixUnformattedDeliveryText(order.accessUrl, order.profileNumber!),
     );
     const savedText = candidates.find(text => gbutsChatContainsText(messages, sellerSeq, text));
@@ -73,7 +77,9 @@ export async function syncGbutsOtt(deps: GbutsOttRuntimeDependencies,
     write(store);
   }
   const pendingOrders = eligible.filter(order => !order.attemptedAt && order.delivery !== 'attempted' && order.delivery !== 'confirmed' && order.delivery !== 'blocked');
+  const directDelivery = () => syncGbutsDirectCredentials(store, eligible, sellerSeq, deps, client, write, sendText);
   if (!pendingOrders.length) {
+    await directDelivery();
     store.lastSuccess = new Date().toISOString(); store.lastError = null; write(store);
     return { orders: Object.values(store.orders).filter(x => activeOttOrder(x)).length, attempted, confirmed };
   }
@@ -128,6 +134,7 @@ export async function syncGbutsOtt(deps: GbutsOttRuntimeDependencies,
       write(store);
     }
   }
+  await directDelivery();
   store.lastSuccess = new Date().toISOString(); store.lastError = null; write(store);
   return { orders: Object.values(store.orders).filter(x => activeOttOrder(x)).length, attempted, confirmed };
 }

@@ -19,6 +19,12 @@ export function readGbutsOttStore(path = process.env.GBUTS_OTT_STORE_PATH || DEF
       || order.memberSeq < 1 || !Number.isSafeInteger(order.userSeq) || order.userSeq < 1
       || key !== `${order.postSeq}:${order.memberSeq}` || order.postSeq !== data.listings[order.listingId].postSeq
       || !['ready', 'attempted', 'confirmed', 'blocked'].includes(order.delivery) || typeof order.endDate !== 'string'
+      || (order.directDelivery !== undefined && (!order.directDelivery || typeof order.directDelivery !== 'object'
+        || !['ready', 'attempted', 'confirmed', 'blocked'].includes(order.directDelivery.state)
+        || !Number.isFinite(Date.parse(order.directDelivery.requestAt)) || !/^[a-f0-9]{64}$/.test(order.directDelivery.requestKey)
+        || (order.directDelivery.messageHash !== undefined && !/^[a-f0-9]{64}$/.test(order.directDelivery.messageHash))
+        || (['attempted', 'confirmed'].includes(order.directDelivery.state) && (!order.directDelivery.messageHash
+          || !Number.isFinite(Date.parse(order.directDelivery.attemptedAt))))))
       || (order.deliveryMessage !== undefined && (typeof order.deliveryMessage !== 'string' || !order.deliveryMessage.trim() || order.deliveryMessage.length > 2000))
       || (order.profileNumber !== undefined && (data.listings[order.listingId].serviceType !== '넷플릭스' || !Number.isInteger(order.profileNumber) || order.profileNumber < 1 || order.profileNumber > 5 || order.profileName !== String(order.profileNumber)))
       || (order.profileReleasedAt !== undefined && (order.profileNumber === undefined || !Number.isFinite(Date.parse(order.profileReleasedAt)) || !['refunded', 'expired'].includes(order.profileReleaseReason)))) throw new Error('벗츠 구매자 기록이 올바르지 않습니다.');

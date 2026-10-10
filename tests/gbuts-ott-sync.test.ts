@@ -11,8 +11,8 @@ function fixture() {
   const client = { getPost: vi.fn(async () => ({ seq: 100, category1: { seq: 5 }, memberLimit: 2, memberCount: members.length, status: 'ON_SALE', subscriptionEndsAt: '2026-12-01 23:59:59' })),
     listOttMembers: vi.fn(async () => members), sellerAccountSeq: async () => 99, openPrivateRoom: async (_p: number, user: number) => `room-${user}`, getChat: async () => ({ messages }) };
   const deps = { management: async () => fixtureManagement(), manualMembers: () => [] as any[], readStore: () => structuredClone(store), writeStore: (next: typeof store) => { store = structuredClone(next); },
-    access: vi.fn(async (order: any) => `https://email-verify.one/dashboard/access/token-${order.key}`), refreshAccess: vi.fn(async () => {}) };
-  const send = vi.fn(async (_r: string, _s: number, text: string) => { messages.push({ senderSeq: 99, messageType: 'TEXT', message: text }); });
+    access: vi.fn(async (order: any) => `https://email-verify.one/dashboard/access/token-${order.key}`), refreshAccess: vi.fn(async () => {}), credentials: vi.fn(async () => ({ id: 'current@example.com', password: 'latest-private-password' })) };
+  const send = vi.fn(async (_r: string, _s: number, text: string) => { messages.push({ senderSeq: 99, messageType: 'TEXT', message: text, createdAt: '2026-10-05T06:00:00Z' }); });
   return { client, deps, send, get store() { return store; }, set members(value: typeof members) { members = value; }, get members() { return members; }, set messages(value: any[]) { messages = value; } };
 }
 describe('GButs OTT order delivery', () => {
@@ -30,6 +30,71 @@ describe('GButs OTT order delivery', () => {
     expect(f.send.mock.calls[0][2]).toContain('4번');
     expect(f.send.mock.calls[0][2]).toContain('이름·PIN 변경');
     expect(f.send.mock.calls[0][2]).not.toContain('private-password');
+  });
+  it('offers direct delivery and answers a buyer bang once with current credentials', async () => {
+    const f = fixture(); await syncGbutsOtt(f.deps, f.client as any, f.send);
+    expect(f.send.mock.calls[0][2]).toContain('"!"라고 남겨주시면 직접 전송해드립니다.');
+    f.messages = [{ senderSeq: 10, messageType: 'TEXT', message: ' ! ', createdAt: '2026-10-05T05:59:00Z' }];
+    await syncGbutsOtt(f.deps, f.client as any, f.send);
+    await syncGbutsOtt(f.deps, f.client as any, f.send);
+    expect(f.send).toHaveBeenCalledTimes(2);
+    expect(f.send.mock.calls[1]).toEqual(['room-10', 99, 'ID : current@example.com\nPW : latest-private-password']);
+    expect(f.store.orders['100:1'].directDelivery?.state).toBe('confirmed');
+    expect(JSON.stringify(f.store)).not.toContain('latest-private-password');
+  });
+  it('ignores seller/other-user bangs and sentences containing punctuation', async () => {
+    const f = fixture(); await syncGbutsOtt(f.deps, f.client as any, f.send);
+    f.messages = [99, 20, 10].map(senderSeq => ({ senderSeq, messageType: 'TEXT', message: senderSeq === 10 ? '감사합니다!' : '!', createdAt: '2026-10-05T05:59:00Z' }));
+    await syncGbutsOtt(f.deps, f.client as any, f.send);
+    expect(f.send).toHaveBeenCalledOnce(); expect(f.deps.credentials).not.toHaveBeenCalled();
+  });
+  it('does not disclose direct credentials for a refunded buyer', async () => {
+    const f = fixture(); await syncGbutsOtt(f.deps, f.client as any, f.send);
+    f.messages = [{ senderSeq: 10, messageType: 'TEXT', message: '!', createdAt: '2026-10-05T05:59:00Z' }];
+    f.members = [{ ...f.members[0], cancelStatus: 'REFUNDED' }];
+    await syncGbutsOtt(f.deps, f.client as any, f.send);
+    expect(f.send).toHaveBeenCalledOnce(); expect(f.deps.credentials).not.toHaveBeenCalled();
+  });
+  it('reconciles an uncertain direct send after restart without repeating the secret', async () => {
+    const f = fixture(); await syncGbutsOtt(f.deps, f.client as any, f.send);
+    const request = { senderSeq: 10, messageType: 'TEXT', message: '!', createdAt: '2026-10-05T05:59:00Z' };
+    f.messages = [request]; f.send.mockImplementationOnce(async () => { throw new Error('uncertain'); });
+    await syncGbutsOtt(f.deps, f.client as any, f.send);
+    expect(f.store.orders['100:1'].directDelivery?.state).toBe('attempted');
+    await syncGbutsOtt(f.deps, f.client as any, f.send);
+    expect(f.send).toHaveBeenCalledTimes(2);
+    f.messages = [request, { senderSeq: 99, messageType: 'TEXT', message: 'ID : current@example.com\nPW : latest-private-password', createdAt: '2026-10-05T06:00:00Z' }];
+    await syncGbutsOtt(f.deps, f.client as any, f.send);
+    expect(f.store.orders['100:1'].directDelivery?.state).toBe('confirmed'); expect(f.send).toHaveBeenCalledTimes(2);
+  });
+  it('retries only a definite pre-send failure and reads updated credentials for a later request', async () => {
+    const f = fixture(); await syncGbutsOtt(f.deps, f.client as any, f.send);
+    f.messages = [{ senderSeq: 10, messageType: 'TEXT', message: '!', createdAt: '2026-10-05 14:59:00' }];
+    f.send.mockImplementationOnce(async () => { throw new GbutsChatDeliveryError('offline', false); });
+    await syncGbutsOtt(f.deps, f.client as any, f.send);
+    expect(f.store.orders['100:1'].directDelivery?.state).toBe('ready');
+    await syncGbutsOtt(f.deps, f.client as any, f.send);
+    expect(f.store.orders['100:1'].directDelivery?.state).toBe('confirmed');
+    vi.setSystemTime(new Date('2026-10-05T06:01:00Z'));
+    f.messages = [{ senderSeq: 10, messageType: 'TEXT', message: '!', createdAt: '2026-10-05T06:00:30Z' }];
+    f.deps.credentials.mockResolvedValue({ id: 'changed@example.com', password: 'new-password' });
+    await syncGbutsOtt(f.deps, f.client as any, f.send);
+    expect(f.send.mock.calls.at(-1)?.[2]).toBe('ID : changed@example.com\nPW : new-password');
+  });
+  it('does not disclose credentials for ended or unverifiable orders', async () => {
+    const f = fixture(); await syncGbutsOtt(f.deps, f.client as any, f.send);
+    f.messages = [{ senderSeq: 10, messageType: 'TEXT', message: '!', createdAt: '2026-10-05T05:59:00Z' }];
+    f.members = [{ ...f.members[0], subscriptionEndsAt: '2026-10-04 23:59:59', createdAt: '2026-10-01 10:00:00' }];
+    await syncGbutsOtt(f.deps, f.client as any, f.send);
+    expect(f.deps.credentials).not.toHaveBeenCalled(); expect(f.send).toHaveBeenCalledOnce();
+  });
+  it('pauses direct credentials when the resolver cannot validate the account without logging provider secrets', async () => {
+    const f = fixture(); await syncGbutsOtt(f.deps, f.client as any, f.send);
+    f.messages = [{ senderSeq: 10, messageType: 'TEXT', message: '!', createdAt: '2026-10-05T05:59:00Z' }];
+    f.deps.credentials.mockRejectedValue(new Error('sensitive-provider-response'));
+    await syncGbutsOtt(f.deps, f.client as any, f.send);
+    expect(f.send).toHaveBeenCalledOnce(); expect(JSON.stringify(f.store)).not.toContain('sensitive-provider-response');
+    expect(f.store.orders['100:1'].error).toContain('직접 계정 전달');
   });
   it('keeps unknown SEND outcomes attempted and never sends again', async () => {
     const f = fixture(); f.send.mockImplementation(async () => { throw new Error('socket disconnected'); });
@@ -107,7 +172,7 @@ ${url}
     try {
       await syncGbutsOtt(f.deps, f.client as any);
       await syncGbutsOtt(f.deps, f.client as any);
-      expect(frames).toHaveLength(3); expect(frames.every(frame => Buffer.byteLength(frame) <= 1000)).toBe(true);
+      expect(frames).toHaveLength(4); expect(frames.every(frame => Buffer.byteLength(frame) <= 1000)).toBe(true);
       expect(saved[1].message).toBe('접근 링크: https://email-verify.one/dashboard/access/token-100:1');
       expect(f.store.orders['100:1'].delivery).toBe('confirmed');
       expect(f.store.orders['100:1'].deliveryMessage).toContain('token-100:1');

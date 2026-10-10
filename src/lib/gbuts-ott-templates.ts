@@ -1,3 +1,4 @@
+import { buildPartyAccessDeliveryTemplate } from './party-access-template';
 import { makeDefaultProductDescription } from './write-default-template';
 
 export const GBUTS_ACCOUNT_CHANGE_WARNING = '무단 변경으로 피해가 발생하면 이용 제한과 함께 민사상 손해배상 청구 및 형사 고소·고발 등 법적 조치를 진행할 수 있습니다.';
@@ -60,14 +61,23 @@ function netflixDeliveryParagraphs(accessUrl: string, number: number): string[] 
     '여러 기기 동시 시청 금지.',
   ];
 }
+export const GBUTS_DIRECT_CREDENTIAL_NOTICE = '접근 링크 접속이 부담스러우시다면 "!"라고 남겨주시면 직접 전송해드립니다.';
+export function buildGbutsOttDeliveryText(accessUrl: string, netflixProfile?: number): string {
+  const text = netflixProfile === undefined ? buildPartyAccessDeliveryTemplate(accessUrl) : buildGbutsNetflixAccessText(accessUrl, netflixProfile);
+  return `${text}\n\n${GBUTS_DIRECT_CREDENTIAL_NOTICE}`;
+}
+
 /** GButs collapses line breaks inside a bubble: three paragraphs are sent as three bubbles. */
-export function buildGbutsNetflixDeliveryText(accessUrl: string, number: number): string {
+export function buildGbutsNetflixAccessText(accessUrl: string, number: number): string {
   if (!Number.isInteger(number) || number < 1 || number > 5) throw new Error('배정된 프로필 번호가 올바르지 않습니다.');
   return [
     `구매 감사합니다! 넷플릭스 ${number}번 프로필을 이용해 주세요.`,
     `접근 링크: ${accessUrl}`,
     '위 링크에서 이용 동의 후 ID·비밀번호·이메일 PIN, 가구 인증·로그인 코드를 확인하세요. 이용수칙: 프로필 생성·삭제/이름·PIN 변경 금지. 계정 이메일·비밀번호·결제 설정 변경 금지. 여러 기기 동시 시청 금지.',
   ].join('\n\n');
+}
+export function buildGbutsNetflixDeliveryText(accessUrl: string, number: number): string {
+  return buildGbutsOttDeliveryText(accessUrl, number);
 }
 /** History-only compatibility for the already delivered operational recovery. */
 export function buildGbutsNetflixUnformattedDeliveryText(accessUrl: string, number: number): string {

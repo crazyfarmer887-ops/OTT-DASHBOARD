@@ -48,3 +48,17 @@ Strict inventory reads use a separate in-flight cache key so a simultaneous norm
 - At smoke time the inventory showed available places: Netflix 5, Disney+ 8, TVING 10, Wavve 3. These are point-in-time counts and refresh from the provider.
 - Final profile review also excludes existing manual and recruiting profile names when allocating a new buyer.
 - Follow-up bug reproduction: the new legacy-link endpoint initially returned 404 for a paid unlinked post. After adding the binding flow, targeted API, delivery, polling and chat transport checks pass (44 tests), and the production client build passes. No live seller post or buyer chat was modified during verification.
+
+## Direct credentials on buyer request
+
+Append `접근 링크 접속이 부담스러우시다면 "!"라고 남겨주시면 직접 전송해드립니다.` to new GButs OTT private delivery guides. A buyer-authored TEXT message whose trimmed content is exactly `!` requests `ID : {current login}
+PW : {current password}` in that same verified order's private room. Existing confirmed orders can also request direct delivery. This applies to the four shared OTT services; Spotify retains its existing flow.
+
+Read current credentials from the same account records used by the access page, and verify the paid buyer, account binding, active period and profile lease before disclosing them. Seller messages, other users, punctuation inside a sentence, refunds and expired orders do not trigger it. Journal the request fingerprint and outgoing hash before sending, without duplicating plaintext credentials in the journal. Repeated polls/restarts must not repeat a request; a later distinct request can fetch updated credentials. Retry only definite pre-send connection failures; reconcile uncertain sends from seller history and keep them visible in order errors.
+
+- [x] Add guidance, direct credential resolver and durable request handling.
+- [x] Verify real polling behavior, buyer isolation, current credentials, refunds/expiry, duplicate suppression and uncertain-send recovery.
+- [x] Review and commit/push the tested local change.
+- [ ] Deploy and verify production when server access is available.
+
+Verification: six focused suites pass (66 tests), including the production DB resolver and actual private-journal round trip. Full suite: 1082 pass, 153 fail; the baseline commit has the same 153 failing tests (1068 passes before the 14 new cases). No new failure cases. Client build and whitespace checks pass. Worker typing retains unrelated existing errors; a duplicate Netflix profile import left in the preceding commit was removed. Standards review: 0 remaining findings. Spec review: 0 remaining findings. SSH to the configured production server still rejects authentication; this feature has not been deployed or exercised with a real buyer.

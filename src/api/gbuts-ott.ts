@@ -1,4 +1,3 @@
-import { availableNetflixProfiles } from '../lib/gbuts-netflix-profiles';
 import { makeGbutsOttDescription } from '../lib/gbuts-ott-templates';
 import { Hono } from 'hono';
 import { createHash, randomUUID } from 'node:crypto';

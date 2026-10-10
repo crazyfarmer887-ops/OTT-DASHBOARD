@@ -1,3 +1,4 @@
+import { resolveGbutsOttDirectCredentials } from '../lib/gbuts-ott-credentials';
 import { Hono } from 'hono';
 import { execFile } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
@@ -6728,6 +6729,10 @@ export const gbutsOttRuntimeDependencies: GbutsOttRuntimeDependencies = {
     if (existing) record = { ...record, createdAt: existing.createdAt, lastViewedAt: existing.lastViewedAt, viewCount: existing.viewCount };
     savePartyAccessLinkStore({ ...loadPartyAccessLinkStore(), [record.tokenHash]: record });
     return partyAccessUrlFromToken(token);
+  },
+  async credentials(order, listing) {
+    return resolveGbutsOttDirectCredentials(order, listing, { accessRecords: loadPartyAccessLinkStore(), inventory: readGbutsOttStore(),
+      maintenance: loadPartyMaintenanceChecklistStore(), generated: readGeneratedAccountStore() });
   },
   async refreshAccess(orders) {
     const store = loadPartyAccessLinkStore(); const inventory = readGbutsOttStore(); const byKey = new Map(orders.map(x => [x.key, x])); let changed = false;
