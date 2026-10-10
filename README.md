@@ -95,3 +95,7 @@ Paid GButs members receive their own existing-style account access URL in privat
 **CRITICAL: This project uses Tailwind CSS v4.** No `tailwind.config.js`, no `postcss.config.js`, no `@tailwind` directives. All configuration is CSS-first via `@theme` in `src/web/styles.css` and the `@tailwindcss/vite` plugin. Do NOT use Tailwind v3 syntax.
 
 **IMPORTANT: Don't assume how a package works from memory.** Check the installed version in `package.json` and read docs in `node_modules/<pkg>/` before using any package. APIs change between major versions — guessing leads to broken code.
+
+## GButs MS Office purchase guide
+
+`GBUTS_OFFICE_AUTO_MESSAGE_ENABLED=true` enables an independent five-second buyer poll for `GBUTS_OFFICE_POST_SEQ` (16285 by default). It verifies MSOffice category 530 and sends active paid buyers a private invitation-email request with the 24-hour delivery/free delay-extension notice. `GBUTS_OFFICE_MESSAGE_JOURNAL_PATH` defaults to the persistent data directory. The journal suppresses duplicates across restarts, reconciles uncertain sends and records permanent rejections as blocked. Safe mode pauses this worker.

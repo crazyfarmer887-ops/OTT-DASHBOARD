@@ -33,6 +33,7 @@ import { startPollDaemon } from './src/scheduler/poll-daemon.ts';
 import { startAutoReplyDaemon } from './src/scheduler/auto-reply-daemon.ts';
 import { startRenewalAutomationDaemon } from './src/scheduler/renewal-automation-daemon.ts';
 import { createNotionInvitationClient, createNotionSlotLedgerClient, DEFAULT_DATA_SOURCE_ID, DEFAULT_SLOT_LEDGER_DATA_SOURCE_ID, occupiedNotionSlots, startNotionInvitationSync } from './src/scheduler/notion-invitation-sync.ts';
+import { startGbutsOfficeMessages } from './src/scheduler/gbuts-office-messages.ts';
 import { startGbutsSpotifySync } from './src/scheduler/gbuts-spotify-sync.ts';
 import { startGbutsOttSync } from './src/scheduler/gbuts-ott-sync.ts';
 import { gbutsOttRuntimeDependencies } from './src/api/index.ts';
@@ -281,6 +282,7 @@ startNotionInvitationSync({
   providerStatus: fetchYouTubeInvitationProviderStatus,
   finishDelivery: finishYouTubeInvitationDelivery,
 });
+startGbutsOfficeMessages();
 startGbutsSpotifySync();
 startGbutsOttSync(gbutsOttRuntimeDependencies);
 startYouTubeBuyerGuide({
