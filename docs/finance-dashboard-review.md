@@ -18,3 +18,9 @@ Domain blocker: authoritative Porkbun DNS has no dashboard record and browser se
 - Production browser verified real platform data and rendered all finance sections. Local fixture QA verified a sixth Spotify member creates a second account and reduces contribution after its extra cost. Mobile width 390 has no page overflow; tables scroll independently.
 - Available now: `https://email-verify.one/dashboard/finance`. The existing browser administrator session works.
 - `dashboard.jamkkangudok.com` has no authoritative A record as of this release; Porkbun is waiting for owner login. HTTP host bootstrap is staged for ACME only; admin login is not exposed over plaintext HTTP. After adding `dashboard A 43.155.153.165`, run `bash /home/ubuntu/finance-domain-ops/scripts/activate-finance-domain.sh` on the host to issue TLS and apply the committed final proxy.
+
+## Follow-up review: famhead and custom hostname
+
+The owner completed DNS. TLS issuance and nginx activation succeeded; verified HTTPS gives the expected 401 login and HTTP redirects to HTTPS. This resolves the earlier domain blocker.
+
+Confirmed YouTube defaults: $6/account/month, 5 slots/account, monthly 15th shared billing, KRW 180/slot/day after platform fees before supplier cost. Review checked that existing and added slots use the same confirmed daily income without subtracting fees twice, existing expirations still apply, all accounts renew together on the 15th, dollar costs use an editable reference FX rate, and missing FX leaves profit unknown. The table explicitly labels post-fee income; it is not presented as gross sales. Legacy saved KRW settings preserve behavior. Three new model scenarios verify post-fee income, shared billing across two months, and missing/invalid FX.

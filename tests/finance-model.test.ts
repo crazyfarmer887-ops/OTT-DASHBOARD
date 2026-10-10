@@ -196,3 +196,44 @@ describe("seller read-only finance adapters", () => {
     expect(JSON.stringify(result)).not.toContain("private@example.com");
   });
 });
+
+describe("confirmed famhead terms", () => {
+  const famhead = {
+    ...plan,
+    dailyPrice: 180,
+    incomeBasis: "afterFee" as const,
+    currency: "USD" as const,
+    exchangeRate: 1340.44,
+    cost: 6,
+    fee: 10,
+    sharedPaymentDay: true,
+  };
+  it("uses the confirmed post-fee daily income without deducting fees twice", () => {
+    const r = project(row, famhead, 5, "2026-10-10", 30);
+    expect(r.gross).toBe(27000);
+    expect(r.fee).toBe(0);
+    expect(r.cost).toBeCloseTo(8042.64);
+    expect(r.net).toBeCloseTo(18957.36);
+    expect(r.breakEven).toBe(2);
+  });
+  it("bills all additional accounts on the shared 15th rather than today", () => {
+    const r = project(row, famhead, 6, "2026-10-10", 40);
+    expect(r.units).toBe(2);
+    expect(r.timeline[0].expense).toBe(0);
+    expect(r.timeline.filter((d) => d.expense).map((d) => d.date)).toEqual([
+      "2026-10-15",
+      "2026-11-15",
+    ]);
+    expect(
+      r.timeline.find((d) => d.date === "2026-10-15")?.expense,
+    ).toBeCloseTo(16085.28);
+  });
+  it("requires a conversion rate for dollar costs", () => {
+    expect(
+      project(row, { ...famhead, exchangeRate: null }, 5, "2026-10-10", 30).net,
+    ).toBeNull();
+    expect(() => validatePlan({ ...famhead, exchangeRate: 0 })).toThrow();
+    expect(() => validatePlan({ ...famhead, currency: "BAD" })).toThrow();
+    expect(validatePlan(famhead).sharedPaymentDay).toBe(true);
+  });
+});

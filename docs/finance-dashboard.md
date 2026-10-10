@@ -18,3 +18,9 @@ Data limits: BUTS uses the currently displayed listing daily price for confirmed
 Routing: the new hostname renders the finance page at all SPA entry paths. Existing deployment base `/dashboard/` and API routes are preserved; `/dashboard/finance` also opens the finance page on email-verify.one. The hostname uses the existing administrator login and host-only session cookie.
 
 Deploy the committed revision as a new release, retain the preceding release, then apply `deploy/nginx/dashboard.jamkkangudok.com.conf` after DNS and certificate issuance. DNS belongs to Porkbun and requires a valid account session or DNS API credentials. Never install the TLS config before its certificate exists.
+
+## Confirmed famhead terms (2026-10-10)
+
+The owner confirmed $6 per account monthly, 5 saleable slots, all accounts billed on the 15th, and KRW 180 per slot per day after platform fees but before supplier cost. YouTube defaults now use the post-fee income basis for existing and added slots while retaining existing contract end dates. Fees are not deducted twice. Added accounts join the shared next billing date, without an invented upfront payment. Default reference FX is KRW 1340.44/USD from https://exchangerate.guru/usd/krw/10/ (2026-10-10); it is editable and is not an automatic card settlement rate. Dollar costs without an FX rate leave profit unknown. Legacy saved won plans retain their original behavior.
+
+The custom hostname DNS and Let's Encrypt TLS were activated on 2026-10-10. Unauthenticated HTTPS returns the expected private dashboard login (401); HTTP redirects to HTTPS.

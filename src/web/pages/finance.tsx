@@ -59,6 +59,7 @@ const SEEDS: FinanceRow[] = [
   })),
 ];
 function starter(row: FinanceRow): Plan {
+  const youtube = row.id === "graytag:youtube" || row.id === "buts:7";
   return {
     ...DEFAULT_PLAN,
     dailyPrice: row.contracts.length
@@ -70,6 +71,20 @@ function starter(row: FinanceRow): Plan {
         ? 140
         : 150,
     capacity: ["티빙", "웨이브"].includes(row.service) ? 4 : 5,
+    ...(youtube
+      ? {
+          dailyPrice: 180,
+          incomeBasis: "afterFee" as const,
+          fee: 0,
+          cost: 6,
+          currency: "USD" as const,
+          exchangeRate: 1340.44,
+          capacity: 5,
+          cycleMonths: 1,
+          nextPayment: "2026-10-15",
+          sharedPaymentDay: true,
+        }
+      : {}),
     retainedUnits: Math.ceil(
       row.contracts.length / (["티빙", "웨이브"].includes(row.service) ? 4 : 5),
     ),
@@ -234,8 +249,8 @@ function PlanEditor({
       <input
         type="number"
         min={key === "openingBalance" ? undefined : key === "capacity" ? 1 : 0}
-        step={key === "fee" ? "0.1" : "1"}
-        value={draft[key] ?? ""}
+        step={["fee", "cost", "exchangeRate"].includes(key) ? "0.01" : "1"}
+        value={String(draft[key] ?? "")}
         placeholder={nullable ? "미입력" : ""}
         onChange={(e) =>
           setDraft({
@@ -288,8 +303,31 @@ function PlanEditor({
           }}
         >
           <div className="fn-fields">
-            {field("dailyPrice", "신규 파티원 일 요금 (원)")}
-            {field("fee", "판매 수수료 (%)")}
+            <label>
+              수익 입력 기준
+              <select
+                value={draft.incomeBasis ?? "gross"}
+                onChange={(e) =>
+                  setDraft({
+                    ...draft,
+                    incomeBasis: e.target.value as Plan["incomeBasis"],
+                  })
+                }
+              >
+                <option value="gross">판매 요금 · 수수료 별도 차감</option>
+                <option value="afterFee">
+                  수수료 차감 후 · 모든 파티원 동일 단가
+                </option>
+              </select>
+            </label>
+            {field(
+              "dailyPrice",
+              draft.incomeBasis === "afterFee"
+                ? "슬롯당 하루 수익 (수수료 차감 후, 원)"
+                : "신규 파티원 일 요금 (원)",
+            )}
+            {draft.incomeBasis !== "afterFee" &&
+              field("fee", "판매 수수료 (%)")}
             <label>
               비용 기준
               <select
@@ -305,7 +343,43 @@ function PlanEditor({
                 <option value="seat">자리당 청구</option>
               </select>
             </label>
-            {field("cost", "1회 청구 원가 (원)", true)}
+            <label>
+              원가 통화
+              <select
+                value={draft.currency ?? "KRW"}
+                onChange={(e) =>
+                  setDraft({
+                    ...draft,
+                    currency: e.target.value as Plan["currency"],
+                  })
+                }
+              >
+                <option value="KRW">원 (KRW)</option>
+                <option value="USD">달러 (USD)</option>
+              </select>
+            </label>
+            {field(
+              "cost",
+              `1회 청구 원가 (${draft.currency === "USD" ? "달러" : "원"})`,
+              true,
+            )}
+            {draft.currency === "USD" &&
+              field("exchangeRate", "계산 환율 (1달러당 원)", true)}
+            <label>
+              추가 계정 첫 결제
+              <select
+                value={draft.sharedPaymentDay ? "shared" : "immediate"}
+                onChange={(e) =>
+                  setDraft({
+                    ...draft,
+                    sharedPaymentDay: e.target.value === "shared",
+                  })
+                }
+              >
+                <option value="immediate">추가한 날 즉시 결제</option>
+                <option value="shared">다음 결제일에 전체 일괄 결제</option>
+              </select>
+            </label>
             {field("capacity", "계정당 판매 가능한 자리")}
             <label>
               청구 주기
@@ -641,12 +715,14 @@ export default function FinancePage() {
               </article>
               <article className="fn-metric">
                 <div>
-                  <span>예상 총매출</span>
+                  <span>예상 수익 유입</span>
                   <ArrowUpRight size={18} />
                 </div>
                 <strong>₩{money(gross)}</strong>
                 <p>수수료 차감 후 ₩{money(gross - fees)}</p>
-                <span className="fn-metric-foot">이용 기간 기준 매출 추정</span>
+                <span className="fn-metric-foot">
+                  서비스별 수수료 적용 기준으로 합산
+                </span>
               </article>
               <article className="fn-metric">
                 <div>
@@ -770,7 +846,7 @@ export default function FinancePage() {
                     <th>플랫폼 / 서비스</th>
                     <th className="fn-slider-heading">파티원 수 시뮬레이션</th>
                     <th>필요 계정 / 자리</th>
-                    <th>{days}일 매출</th>
+                    <th>{days}일 수익 유입</th>
                     <th>배분 원가</th>
                     <th>예상 기여이익</th>
                     <th aria-label="서비스 설정" />
@@ -895,7 +971,14 @@ export default function FinancePage() {
                       </td>
                       <td>
                         <b>₩{money(c.sim.gross)}</b>
-                        <small>수수료 {c.plan.fee}%</small>
+                        <small>
+                          {c.plan.incomeBasis === "afterFee"
+                            ? "슬롯당 일 180원 기준 · 수수료 차감 후".replace(
+                                "180",
+                                String(c.plan.dailyPrice),
+                              )
+                            : `수수료 ${c.plan.fee}%`}
+                        </small>
                       </td>
                       <td>
                         <b>
@@ -903,7 +986,12 @@ export default function FinancePage() {
                             ? "미입력"
                             : `₩${money(c.sim.cost)}`}
                         </b>
-                        <small>{c.plan.cycleMonths}개월 청구 주기</small>
+                        <small>
+                          {c.plan.currency === "USD"
+                            ? `$${c.plan.cost} × ₩${money(c.plan.exchangeRate ?? 0)} · `
+                            : ""}
+                          {c.plan.cycleMonths}개월 청구 주기
+                        </small>
                       </td>
                       <td>
                         <b>
@@ -1096,13 +1184,25 @@ export default function FinancePage() {
             </span>
           </footer>
           <p className="fn-method">
-            계산 기준: 기존 계약의 이용 기간과 조회된 일 요금을 사용한
-            추정치입니다. BUTS의 현재 게시 가격은 기존 구매 시점 가격과 다를 수
-            있습니다. 수수료 기본값 10%와 계정당 자리는 수정 가능한 가정입니다.
-            비용은 매출 규모에 맞춰 새 계정/자리를 추가한다고 가정하며, 설정한
-            유지 수량 아래로는 줄지 않습니다. 추가 계정·자리는 오늘 바로 첫
-            비용을 지불한다고 가정합니다. 이미 결제한 비용은 기간 배분 원가에
-            반영되지만 다음 결제일까지 현금 출금은 없습니다.
+            유튜브 famhead: 계정당 월 $6 · 5슬롯 · 매월 15일 일괄 결제. 슬롯당
+            일 180원은 수수료 차감 후이며 공급자 원가는 별도 차감합니다. 환율
+            기본값은 2026-10-10 참고값 1달러 = 1,340.44원이며 실제 카드 청구
+            환율로 수정할 수 있습니다.
+            <a
+              href="https://exchangerate.guru/usd/krw/10/"
+              target="_blank"
+              rel="noreferrer"
+            >
+              환율 참고
+            </a>
+            . 유튜브 이외 계산 기준: 기존 계약의 이용 기간과 조회된 일 요금을
+            사용한 추정치입니다. BUTS의 현재 게시 가격은 기존 구매 시점 가격과
+            다를 수 있습니다. 수수료 기본값 10%와 계정당 자리는 수정 가능한
+            가정입니다. 비용은 매출 규모에 맞춰 새 계정/자리를 추가한다고
+            가정하며, 설정한 유지 수량 아래로는 줄지 않습니다. 추가 계정·자리는
+            설정한 즉시 결제 또는 다음 결제일 일괄 청구 방식을 따릅니다. 이미
+            결제한 비용은 기간 배분 원가에 반영되지만 다음 결제일까지 현금
+            출금은 없습니다.
           </p>
         </main>
       </div>

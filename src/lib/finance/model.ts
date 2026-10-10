@@ -13,6 +13,10 @@ export interface FinanceRow {
 }
 export interface Plan {
   dailyPrice: number;
+  incomeBasis?: "gross" | "afterFee";
+  currency?: "KRW" | "USD";
+  exchangeRate?: number | null;
+  sharedPaymentDay?: boolean;
   fee: number;
   capacity: number;
   retainedUnits: number;
@@ -25,6 +29,10 @@ export interface Plan {
   openingBalance: number;
 }
 export const DEFAULT_PLAN: Plan = {
+  incomeBasis: "gross",
+  currency: "KRW",
+  exchangeRate: null,
+  sharedPaymentDay: false,
   dailyPrice: 150,
   fee: 10,
   capacity: 5,
@@ -76,6 +84,10 @@ export function validatePlan(raw: unknown): Plan {
   if (!raw || typeof raw !== "object" || Array.isArray(raw))
     throw new Error("설정 형식을 확인해주세요.");
   const p = raw as Plan;
+  const incomeBasis = p.incomeBasis ?? "gross";
+  const currency = p.currency ?? "KRW";
+  const exchangeRate = p.exchangeRate ?? null;
+  const sharedPaymentDay = p.sharedPaymentDay ?? false;
   const bounded = (v: unknown, max: number, integer = false) =>
     typeof v === "number" &&
     Number.isFinite(v) &&
@@ -83,6 +95,11 @@ export function validatePlan(raw: unknown): Plan {
     v <= max &&
     (!integer || Number.isInteger(v));
   if (
+    !["gross", "afterFee"].includes(incomeBasis) ||
+    !["KRW", "USD"].includes(currency) ||
+    (exchangeRate !== null &&
+      (!bounded(exchangeRate, 100000) || exchangeRate === 0)) ||
+    typeof sharedPaymentDay !== "boolean" ||
     !bounded(p.dailyPrice, 1000000) ||
     !bounded(p.fee, 100) ||
     !bounded(p.capacity, 1000, true) ||
@@ -103,6 +120,10 @@ export function validatePlan(raw: unknown): Plan {
   )
     throw new Error("금액·인원·날짜 범위를 확인해주세요.");
   return {
+    incomeBasis,
+    currency,
+    exchangeRate,
+    sharedPaymentDay,
     dailyPrice: p.dailyPrice,
     fee: p.fee,
     capacity: p.capacity,
@@ -143,12 +164,20 @@ export function project(
     plan.costBasis === "seat"
       ? Math.max(plan.retainedUnits, target)
       : Math.max(plan.retainedUnits, Math.ceil(target / plan.capacity));
+  const unitCost =
+    plan.cost === null
+      ? null
+      : plan.currency === "USD"
+        ? plan.exchangeRate
+          ? plan.cost * plan.exchangeRate
+          : null
+        : plan.cost;
   const monthlyCost =
     units === 0
       ? 0
-      : plan.cost === null
+      : unitCost === null
         ? null
-        : (units * plan.cost) / plan.cycleMonths;
+        : (units * unitCost) / plan.cycleMonths;
   const existingUnits = Math.min(
     units,
     plan.costBasis === "seat"
@@ -165,7 +194,7 @@ export function project(
       if (date >= start) paymentDates.add(date);
     }
   const newPaymentDates = new Set<string>();
-  if (newUnits > 0)
+  if (newUnits > 0 && !plan.sharedPaymentDay)
     for (let offset = 0; offset <= 2400; offset += plan.cycleMonths) {
       const date = monthlyDate(start, offset);
       if (date > end) break;
@@ -178,10 +207,16 @@ export function project(
     const gross =
       kept
         .filter((c) => c.start <= date && c.end >= date)
-        .reduce((s, c) => s + c.dailyPrice, 0) *
+        .reduce(
+          (s, c) =>
+            s +
+            (plan.incomeBasis === "afterFee" ? plan.dailyPrice : c.dailyPrice),
+          0,
+        ) *
         retainedRatio +
       added * plan.dailyPrice;
-    const fee = (gross * plan.fee) / 100;
+    const effectiveFee = plan.incomeBasis === "afterFee" ? 0 : plan.fee;
+    const fee = (gross * effectiveFee) / 100;
     const earned = gross - fee;
     if (plan.payoutDay !== null) {
       const dateAfterLag = addDays(date, plan.payoutLag);
@@ -203,11 +238,15 @@ export function project(
       earned,
       accruedCost: (monthlyCost || 0) / 30,
       expense:
-        plan.cost === null
+        unitCost === null
           ? 0
-          : ((paymentDates.has(date) ? existingUnits : 0) +
+          : ((paymentDates.has(date)
+              ? plan.sharedPaymentDay
+                ? units
+                : existingUnits
+              : 0) +
               (newPaymentDates.has(date) ? newUnits : 0)) *
-            plan.cost,
+            unitCost,
       deposit: 0,
       balance: 0,
     };
@@ -233,9 +272,14 @@ export function project(
     breakEven:
       monthlyCost === null
         ? null
-        : plan.dailyPrice * (1 - plan.fee / 100) > 0
+        : plan.dailyPrice *
+              (1 - (plan.incomeBasis === "afterFee" ? 0 : plan.fee) / 100) >
+            0
           ? Math.ceil(
-              monthlyCost / (plan.dailyPrice * 30 * (1 - plan.fee / 100)),
+              monthlyCost /
+                (plan.dailyPrice *
+                  30 *
+                  (1 - (plan.incomeBasis === "afterFee" ? 0 : plan.fee) / 100)),
             )
           : null,
     minBalance: Math.min(
