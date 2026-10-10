@@ -14,4 +14,6 @@ sudo certbot certonly --webroot -w /var/www/dashboard-acme -d dashboard.jamkkang
 sudo install -m 0644 deploy/nginx/dashboard.jamkkangudok.com.conf /etc/nginx/sites-available/dashboard.jamkkangudok.com.conf
 sudo nginx -t
 sudo systemctl reload nginx
-curl --fail-with-body -s -o /dev/null -w 'HTTPS response: %{http_code}\n' https://dashboard.jamkkangudok.com/ || test "$?" = 22
+status=$(curl -s -o /dev/null -w '%{http_code}' https://dashboard.jamkkangudok.com/)
+printf 'HTTPS response: %s\n' "$status"
+[ "$status" = 401 ] || [ "$status" = 200 ]
