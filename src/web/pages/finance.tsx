@@ -22,10 +22,12 @@ import {
   addDays,
   koreaDate,
   project,
+  annualRunRate,
   validatePlan,
   type FinanceRow,
   type Plan,
 } from "../../lib/finance/model";
+import type { ExchangeRate } from "../../lib/finance/exchange-rate";
 import "./finance.css";
 type Snapshot = {
   rows: FinanceRow[];
@@ -363,8 +365,32 @@ function PlanEditor({
               `1회 청구 원가 (${draft.currency === "USD" ? "달러" : "원"})`,
               true,
             )}
-            {draft.currency === "USD" &&
-              field("exchangeRate", "계산 환율 (1달러당 원)", true)}
+            {draft.currency === "USD" && (
+              <>
+                <label>
+                  환율 적용 방식
+                  <select
+                    value={draft.autoExchangeRate === false ? "manual" : "auto"}
+                    onChange={(e) =>
+                      setDraft({
+                        ...draft,
+                        autoExchangeRate: e.target.value === "auto",
+                      })
+                    }
+                  >
+                    <option value="auto">최신 시장 환율 자동 반영</option>
+                    <option value="manual">직접 입력한 환율 고정</option>
+                  </select>
+                </label>
+                {field(
+                  "exchangeRate",
+                  draft.autoExchangeRate === false
+                    ? "고정 환율 (1달러당 원)"
+                    : "조회 실패 시 예비 환율 (1달러당 원)",
+                  true,
+                )}
+              </>
+            )}
             <label>
               추가 계정 첫 결제
               <select
@@ -442,6 +468,31 @@ export default function FinancePage() {
     [editor, setEditor] = useState<FinanceRow | null>(null),
     [section, setSection] = useState("overview"),
     [saved, setSaved] = useState("");
+  const [fx, setFx] = useState<ExchangeRate | null>(null);
+  const [fxFailed, setFxFailed] = useState(false);
+  useEffect(() => {
+    let active = true;
+    const update = async () => {
+      try {
+        const quote = await request<ExchangeRate>("/api/finance/exchange-rate");
+        if (active) {
+          setFx(quote);
+          setFxFailed(false);
+        }
+      } catch {
+        if (active) {
+          setFx(null);
+          setFxFailed(true);
+        }
+      }
+    };
+    void update();
+    const timer = window.setInterval(update, 60_000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, []);
   const today = koreaDate();
   const load = useCallback(async () => {
     setLoading(true);
@@ -472,7 +523,11 @@ export default function FinancePage() {
     [snapshot, filter],
   );
   const calculations = rows.map((row) => {
-    const plan = plans[row.id] || starter(row);
+    const savedPlan = plans[row.id] || starter(row);
+    const plan =
+      savedPlan.currency === "USD" && savedPlan.autoExchangeRate !== false && fx
+        ? { ...savedPlan, exchangeRate: fx.rate }
+        : savedPlan;
     const current = row.contracts.length;
     const target = targets[row.id] ?? current;
     return {
@@ -482,6 +537,7 @@ export default function FinancePage() {
       target,
       base: project(row, plan, current, today, days),
       sim: project(row, plan, target, today, days),
+      annual: annualRunRate(row, plan, target, today),
     };
   });
   const unknown = calculations.filter(
@@ -492,6 +548,15 @@ export default function FinancePage() {
     fees = calculations.reduce((s, c) => s + c.sim.fee, 0),
     cost = calculations.reduce((s, c) => s + (c.sim.cost || 0), 0),
     net = gross - fees - cost;
+  const annual = calculations.reduce(
+    (sum, c) => ({
+      gross: sum.gross + c.annual.gross,
+      fee: sum.fee + c.annual.fee,
+      cost: sum.cost + (c.annual.cost ?? 0),
+      net: sum.net + (c.annual.net ?? 0),
+    }),
+    { gross: 0, fee: 0, cost: 0, net: 0 },
+  );
   const baseNet = calculations.reduce(
     (s, c) => s + c.base.gross - c.base.fee - (c.base.cost || 0),
     0,
@@ -618,6 +683,9 @@ export default function FinancePage() {
                       "수수료",
                       "기간 배분 원가",
                       "기여이익",
+                      "1년 환산 수익 유입",
+                      "1년 환산 원가",
+                      "1년 환산 기여이익",
                     ],
                     calculations.map((c) => [
                       CHANNEL[c.row.channel],
@@ -628,6 +696,13 @@ export default function FinancePage() {
                       Math.round(c.sim.fee),
                       c.sim.cost === null ? "미입력" : Math.round(c.sim.cost),
                       c.sim.net === null ? "확인 필요" : Math.round(c.sim.net),
+                      Math.round(c.annual.gross),
+                      c.annual.cost === null
+                        ? "미입력"
+                        : Math.round(c.annual.cost),
+                      c.annual.net === null
+                        ? "확인 필요"
+                        : Math.round(c.annual.net),
                     ]),
                     `수익시뮬레이션-${today}.csv`,
                   )
@@ -677,6 +752,39 @@ export default function FinancePage() {
                 </button>
               </div>
             </div>
+            <div className="fn-fx" role="status">
+              {fx ? (
+                <>
+                  <b>
+                    USD/KRW ₩
+                    {fx.rate.toLocaleString("ko-KR", {
+                      maximumFractionDigits: 2,
+                    })}
+                  </b>{" "}
+                  · {fx.stale ? "조회 지연 · 마지막 확인 환율" : "자동 환율"} ·
+                  거래 기준{" "}
+                  {new Date(fx.quotedAt).toLocaleString("ko-KR", {
+                    timeZone: "Asia/Seoul",
+                  })}{" "}
+                  KST · 60초마다 조회{" "}
+                  <a
+                    href="https://finance.yahoo.com/quote/KRW=X/"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {fx.source}
+                  </a>
+                </>
+              ) : fxFailed ? (
+                "환율 조회 실패 · 각 서비스에 저장한 예비 환율 적용"
+              ) : (
+                "최신 환율 조회 중 · 저장한 예비 환율로 계산"
+              )}
+              <span>
+                시장 휴장·시세 지연 시 마지막 거래 환율 사용 · 실제 카드 청구
+                환율과 다를 수 있습니다.
+              </span>
+            </div>
             {error && (
               <div role="alert" className="fn-alert">
                 {error}
@@ -702,6 +810,17 @@ export default function FinancePage() {
                 <strong>
                   {unknown || incomplete ? "확인 필요" : `₩${money(net)}`}
                 </strong>
+                <p
+                  className="fn-annual"
+                  title="현재 인원·요금 유지 및 계약 갱신 가정 · 수익 365일 · 원가 12개월"
+                >
+                  1년 환산{" "}
+                  <b>
+                    {unknown || incomplete
+                      ? "확인 필요"
+                      : `₩${money(annual.net)}`}
+                  </b>
+                </p>
                 <p>
                   {unknown
                     ? `${unknown}개 서비스의 비용을 입력해주세요`
@@ -719,6 +838,12 @@ export default function FinancePage() {
                   <ArrowUpRight size={18} />
                 </div>
                 <strong>₩{money(gross)}</strong>
+                <p
+                  className="fn-annual"
+                  title="현재 인원·요금 유지 및 계약 갱신 가정 · 수익 365일 · 원가 12개월"
+                >
+                  1년 환산 <b>₩{money(annual.gross)}</b>
+                </p>
                 <p>수수료 차감 후 ₩{money(gross - fees)}</p>
                 <span className="fn-metric-foot">
                   서비스별 수수료 적용 기준으로 합산
@@ -734,6 +859,17 @@ export default function FinancePage() {
                     ? "₩" + money(fees) + " + 미입력"
                     : "₩" + money(cost + fees)}
                 </strong>
+                <p
+                  className="fn-annual"
+                  title="현재 인원·요금 유지 및 계약 갱신 가정 · 수익 365일 · 원가 12개월"
+                >
+                  1년 환산{" "}
+                  <b>
+                    {unknown
+                      ? "확인 필요"
+                      : `₩${money(annual.cost + annual.fee)}`}
+                  </b>
+                </p>
                 <p>
                   원가 {unknown ? "확인 필요" : `₩${money(cost)}`} · 수수료 ₩
                   {money(fees)}
@@ -971,6 +1107,12 @@ export default function FinancePage() {
                       </td>
                       <td>
                         <b>₩{money(c.sim.gross)}</b>
+                        <small
+                          className="fn-annual"
+                          title="현재 인원·요금 유지 및 계약 갱신 가정 · 수익 365일 · 원가 12개월"
+                        >
+                          1년 환산 ₩{money(c.annual.gross)}
+                        </small>
                         <small>
                           {c.plan.incomeBasis === "afterFee"
                             ? "슬롯당 일 180원 기준 · 수수료 차감 후".replace(
@@ -986,6 +1128,15 @@ export default function FinancePage() {
                             ? "미입력"
                             : `₩${money(c.sim.cost)}`}
                         </b>
+                        <small
+                          className="fn-annual"
+                          title="현재 인원·요금 유지 및 계약 갱신 가정 · 수익 365일 · 원가 12개월"
+                        >
+                          1년 환산{" "}
+                          {c.annual.cost === null
+                            ? "확인 필요"
+                            : `₩${money(c.annual.cost)}`}
+                        </small>
                         <small>
                           {c.plan.currency === "USD"
                             ? `$${c.plan.cost} × ₩${money(c.plan.exchangeRate ?? 0)} · `
@@ -999,6 +1150,15 @@ export default function FinancePage() {
                             ? "확인 필요"
                             : `₩${money(c.sim.net)}`}
                         </b>
+                        <small
+                          className="fn-annual"
+                          title="현재 인원·요금 유지 및 계약 갱신 가정 · 수익 365일 · 원가 12개월"
+                        >
+                          1년 환산{" "}
+                          {c.annual.net === null
+                            ? "확인 필요"
+                            : `₩${money(c.annual.net)}`}
+                        </small>
                         <small>
                           {c.sim.net !== null && c.base.net !== null
                             ? `현재 대비 ${signed(c.sim.net - c.base.net)}원`
@@ -1027,10 +1187,36 @@ export default function FinancePage() {
                       </span>
                     </td>
                     <td />
-                    <td>₩{money(gross)}</td>
-                    <td>{unknown ? "확인 필요" : `₩${money(cost)}`}</td>
+                    <td>
+                      ₩{money(gross)}
+                      <small
+                        className="fn-annual"
+                        title="현재 인원·요금 유지 및 계약 갱신 가정 · 수익 365일 · 원가 12개월"
+                      >
+                        1년 환산 ₩{money(annual.gross)}
+                      </small>
+                    </td>
+                    <td>
+                      {unknown ? "확인 필요" : `₩${money(cost)}`}
+                      <small
+                        className="fn-annual"
+                        title="현재 인원·요금 유지 및 계약 갱신 가정 · 수익 365일 · 원가 12개월"
+                      >
+                        1년 환산{" "}
+                        {unknown ? "확인 필요" : `₩${money(annual.cost)}`}
+                      </small>
+                    </td>
                     <td>
                       {unknown || incomplete ? "확인 필요" : `₩${money(net)}`}
+                      <small
+                        className="fn-annual"
+                        title="현재 인원·요금 유지 및 계약 갱신 가정 · 수익 365일 · 원가 12개월"
+                      >
+                        1년 환산{" "}
+                        {unknown || incomplete
+                          ? "확인 필요"
+                          : `₩${money(annual.net)}`}
+                      </small>
                     </td>
                     <td />
                   </tr>
@@ -1041,7 +1227,8 @@ export default function FinancePage() {
               <SlidersHorizontal size={15} />
               <span>
                 인원 변경은 가상 계산입니다. 실제 판매글이나 파티원은 변경되지
-                않습니다.
+                않습니다. 1년 환산은 현재 인원·요금 유지 및 계약 갱신 가정으로
+                수익 365일, 원가 12개월을 적용합니다.
               </span>
             </div>
           </section>
@@ -1185,9 +1372,10 @@ export default function FinancePage() {
           </footer>
           <p className="fn-method">
             유튜브 famhead: 계정당 월 $6 · 5슬롯 · 매월 15일 일괄 결제. 슬롯당
-            일 180원은 수수료 차감 후이며 공급자 원가는 별도 차감합니다. 환율
-            기본값은 2026-10-10 참고값 1달러 = 1,340.44원이며 실제 카드 청구
-            환율로 수정할 수 있습니다.
+            일 180원은 수수료 차감 후이며 공급자 원가는 별도 차감합니다. 달러
+            원가는 최신 시장 환율을 자동 반영하며, 설정에서 고정 환율로 전환할
+            수 있습니다. 조회 실패 시 예비 환율을 적용합니다. 기본 예비 환율은
+            1달러 = 1,340.44원입니다.
             <a
               href="https://exchangerate.guru/usd/krw/10/"
               target="_blank"

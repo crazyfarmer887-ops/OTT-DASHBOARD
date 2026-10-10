@@ -16,6 +16,7 @@ export interface Plan {
   incomeBasis?: "gross" | "afterFee";
   currency?: "KRW" | "USD";
   exchangeRate?: number | null;
+  autoExchangeRate?: boolean;
   sharedPaymentDay?: boolean;
   fee: number;
   capacity: number;
@@ -32,6 +33,7 @@ export const DEFAULT_PLAN: Plan = {
   incomeBasis: "gross",
   currency: "KRW",
   exchangeRate: null,
+  autoExchangeRate: true,
   sharedPaymentDay: false,
   dailyPrice: 150,
   fee: 10,
@@ -87,6 +89,7 @@ export function validatePlan(raw: unknown): Plan {
   const incomeBasis = p.incomeBasis ?? "gross";
   const currency = p.currency ?? "KRW";
   const exchangeRate = p.exchangeRate ?? null;
+  const autoExchangeRate = p.autoExchangeRate ?? true;
   const sharedPaymentDay = p.sharedPaymentDay ?? false;
   const bounded = (v: unknown, max: number, integer = false) =>
     typeof v === "number" &&
@@ -100,6 +103,7 @@ export function validatePlan(raw: unknown): Plan {
     (exchangeRate !== null &&
       (!bounded(exchangeRate, 100000) || exchangeRate === 0)) ||
     typeof sharedPaymentDay !== "boolean" ||
+    typeof autoExchangeRate !== "boolean" ||
     !bounded(p.dailyPrice, 1000000) ||
     !bounded(p.fee, 100) ||
     !bounded(p.capacity, 1000, true) ||
@@ -123,6 +127,7 @@ export function validatePlan(raw: unknown): Plan {
     incomeBasis,
     currency,
     exchangeRate,
+    autoExchangeRate,
     sharedPaymentDay,
     dailyPrice: p.dailyPrice,
     fee: p.fee,
@@ -288,4 +293,18 @@ export function project(
     ),
     timeline,
   };
+}
+
+/** Annual run rate assumes today's active contracts renew at the same daily rates. */
+export function annualRunRate(
+  row: FinanceRow,
+  plan: Plan,
+  target: number,
+  start: string,
+) {
+  const day = project(row, plan, target, start, 1);
+  const gross = day.gross * 365;
+  const fee = day.fee * 365;
+  const cost = day.monthlyCost === null ? null : day.monthlyCost * 12;
+  return { gross, fee, cost, net: cost === null ? null : gross - fee - cost };
 }

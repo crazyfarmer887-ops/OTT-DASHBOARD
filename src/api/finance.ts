@@ -4,6 +4,8 @@ import { writeJsonAtomic } from "../lib/graytag-sales-session";
 import { koreaDate, validatePlan, type Plan } from "../lib/finance/model";
 import { graytagFinanceRows, butsFinanceRows } from "../lib/finance/snapshot";
 import { gbutsOttClient } from "./gbuts-ott";
+import { createExchangeRateService } from "../lib/finance/exchange-rate";
+const getExchangeRate = createExchangeRateService();
 const settingsPath = () =>
   process.env.FINANCE_SETTINGS_PATH ||
   "/home/ubuntu/.hermes/hermes-agent/graytag-aio-manager-0606/data/finance-settings.json";
@@ -16,6 +18,17 @@ function readSettings(): Record<string, Plan> {
   return result;
 }
 export function registerFinanceRoutes(app: Hono) {
+  app.get("/finance/exchange-rate", async (c) => {
+    c.header("Cache-Control", "no-store");
+    try {
+      return c.json(await getExchangeRate());
+    } catch {
+      return c.json(
+        { error: "환율을 조회하지 못했습니다. 설정의 예비 환율을 사용합니다." },
+        503,
+      );
+    }
+  });
   app.get("/finance/settings", (c) => {
     c.header("Cache-Control", "no-store");
     return c.json({ plans: readSettings() });

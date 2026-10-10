@@ -1088,3 +1088,33 @@ body:has(.fn-app) {
 .fn-tabs button {
   white-space: nowrap;
 }
+
+.fn-metric p.fn-annual {
+  font-size: 12px;
+  margin: 12px 0;
+  line-height: 1.6;
+}
+.fn-annual b {
+  font-weight: 600;
+}
+.fn-table td > small.fn-annual {
+  color: #505050;
+  font-size: 10px;
+}
+
+.fn-fx {
+  font-size: 11px;
+  color: #555;
+  margin: -12px 0 24px;
+  line-height: 1.8;
+  overflow-wrap: anywhere;
+}
+.fn-fx span {
+  display: block;
+  color: #888;
+  font-size: 10px;
+}
+.fn-fx a {
+  margin-left: 8px;
+  text-decoration: underline;
+}

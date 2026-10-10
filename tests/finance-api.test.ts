@@ -63,7 +63,11 @@ afterAll(() => {
 });
 describe("private finance endpoints", () => {
   it("blocks unauthenticated snapshot and settings reads before any provider access", async () => {
-    for (const path of ["/finance/snapshot", "/finance/settings"])
+    for (const path of [
+      "/finance/snapshot",
+      "/finance/settings",
+      "/finance/exchange-rate",
+    ])
       expect((await api.request(path)).status).toBe(403);
   });
   it("persists validated assumptions outside the release with private permissions", async () => {

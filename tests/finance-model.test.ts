@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   DEFAULT_PLAN,
+  annualRunRate,
   project,
   validatePlan,
   type FinanceRow,
@@ -235,5 +236,34 @@ describe("confirmed famhead terms", () => {
     expect(() => validatePlan({ ...famhead, exchangeRate: 0 })).toThrow();
     expect(() => validatePlan({ ...famhead, currency: "BAD" })).toThrow();
     expect(validatePlan(famhead).sharedPaymentDay).toBe(true);
+  });
+});
+
+describe("annual income run rate", () => {
+  it("holds today's members at their daily rate for 365 days and costs at 12 months", () => {
+    const annual = annualRunRate(
+      {
+        ...row,
+        contracts: row.contracts.map((c) => ({ ...c, end: "2026-10-10" })),
+      },
+      {
+        ...plan,
+        incomeBasis: "afterFee",
+        dailyPrice: 180,
+        currency: "USD",
+        exchangeRate: 1340.44,
+        cost: 6,
+      },
+      6,
+      "2026-10-10",
+    );
+    expect(annual.gross).toBe(6 * 180 * 365);
+    expect(annual.fee).toBe(0);
+    expect(annual.cost).toBeCloseTo(2 * 6 * 1340.44 * 12);
+    expect(annual.net).toBeCloseTo(394200 - 193023.36);
+  });
+  it("keeps unknown supplier costs unknown in annual results", () => {
+    expect(annualRunRate(row, DEFAULT_PLAN, 5, "2026-10-10").net).toBeNull();
+    expect(annualRunRate(row, DEFAULT_PLAN, 0, "2026-10-10").net).toBe(0);
   });
 });
