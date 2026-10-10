@@ -1,3 +1,4 @@
+import { registerFinanceRoutes } from './finance';
 import { resolveGbutsOttDirectCredentials } from '../lib/gbuts-ott-credentials';
 import { Hono } from 'hono';
 import { execFile } from 'node:child_process';
@@ -117,6 +118,7 @@ const ADMIN_REQUIRED_GET_PREFIXES = [
   '/renewal-automation',
   '/youtube',
   '/gbuts',
+  '/finance',
 ];
 
 function normalizedApiPath(path: string): string {
@@ -378,6 +380,7 @@ app.delete('/youtube/auto-listings/queue/:id', async (c) => {
 });
 
 app.route('/youtube', youtubeInvitationsApp);
+registerFinanceRoutes(app);
 
 function auditResultFromResults(results: any[]): 'success' | 'blocked' | 'error' {
   if (results.some((r) => r?.error === 'PRICE_SAFETY_BLOCKED' || r?.action === 'blocked')) return 'blocked';

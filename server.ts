@@ -127,7 +127,11 @@ function isSameOriginRequest(c: any): boolean {
   }
 }
 
-function dashboardLoginHtml(error = ''): string {
+function isFinanceRequest(c: any): boolean {
+  return String(c.req.header('host') || '').split(':')[0] === 'dashboard.jamkkangudok.com' || /\/finance\/?$/.test(c.req.path);
+}
+
+function dashboardLoginHtml(error = '', finance = false): string {
   const errorHtml = error ? `<div class="error">${error}</div>` : '';
   return `<!doctype html>
 <html lang="ko">
@@ -142,10 +146,12 @@ function dashboardLoginHtml(error = ''): string {
     input{width:100%;box-sizing:border-box;border:1.5px solid #ddd6fe;border-radius:14px;padding:13px 14px;font-size:16px;outline:none}input:focus{border-color:#7c3aed;box-shadow:0 0 0 4px #ede9fe}
     button{width:100%;border:0;border-radius:14px;background:#7c3aed;color:#fff;padding:13px 14px;font-size:15px;font-weight:900;margin-top:14px;cursor:pointer}.error{background:#fef2f2;color:#b91c1c;border:1px solid #fecaca;border-radius:12px;padding:10px 12px;font-size:12px;font-weight:800;margin-bottom:14px}
     .hint{font-size:11px;color:#9ca3af;margin-top:14px;line-height:1.45}
+    ${finance ? `html,body{background:#fafafa;color:#191919}.card{border-color:#e5e5e5;box-shadow:0 12px 45px #00000006}h1{color:#191919}button{background:#191919}.label{color:#555}input{border-color:#dedede}input:focus{outline-color:#191919}.desc,.hint{color:#888}` : ''}
   </style>
 </head>
 <body>
   <form class="card" method="post" action="/dashboard/login">
+    <input type="hidden" name="returnTo" value="${finance ? '/dashboard/finance' : '/dashboard'}" />
     <h1>관리자 비밀번호</h1>
     <p class="desc">/dashboard는 관리자만 볼 수 있어요. 한 번 인증하면 이 브라우저에서는 기존처럼 바로 열립니다.</p>
     ${errorHtml}
@@ -166,13 +172,13 @@ async function dashboardLoginHandler(c: any) {
   const password = String(params.get('password') || '');
   const expected = configuration.password;
   if (password !== expected) {
-    return new Response(dashboardLoginHtml('비밀번호가 맞지 않아요.'), { status: 401, headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } });
+    return new Response(dashboardLoginHtml('비밀번호가 맞지 않아요.', isFinanceRequest(c)), { status: 401, headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } });
   }
   const token = createDashboardSessionToken({ password: expected, secret: configuration.secret });
   return new Response(null, {
     status: 303,
     headers: {
-      'location': '/dashboard',
+      'location': params.get('returnTo') === '/dashboard/finance' ? '/dashboard/finance' : '/dashboard',
       'set-cookie': dashboardSessionCookie(token, undefined, isHttpsRequest(c)),
       'cache-control': 'no-store',
     },
@@ -225,7 +231,7 @@ app.get('*', async (c) => {
     const configuration = dashboardAuthConfiguration();
     if (!configuration) return dashboardConfigurationErrorResponse();
     if (!verifyDashboardSessionCookie(c.req.header('cookie'), configuration.password, configuration.secret)) {
-      return new Response(dashboardLoginHtml(), { status: 401, headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } });
+      return new Response(dashboardLoginHtml('', isFinanceRequest(c)), { status: 401, headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } });
     }
   }
   const assetPathname = normalizeDashboardAssetPath(pathname);

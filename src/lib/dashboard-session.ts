@@ -112,7 +112,7 @@ export function isDashboardHtmlPath(pathname: string): boolean {
   // the prefix before the request reaches this server. Keep these canonical
   // SPA routes protected without capturing unrelated root services/assets.
   const canonicalPath = pathname.replace(/\/+$/, '') || '/';
-  return new Set(['/', '/write', '/manage', '/youtube-invites', '/renewals', '/everyview', '/gbuts', '/gbuts-sales', '/gbuts-accounts', '/gbuts-orders', '/spotify-invites']).has(canonicalPath);
+  return new Set(['/', '/write', '/manage', '/youtube-invites', '/renewals', '/everyview', '/gbuts', '/gbuts-sales', '/gbuts-accounts', '/gbuts-orders', '/spotify-invites', '/finance']).has(canonicalPath);
 }
 
 export function dashboardSessionCookie(token: string, maxAgeSeconds = Math.floor(DASHBOARD_SESSION_TTL_MS / 1000), secure = false): string {

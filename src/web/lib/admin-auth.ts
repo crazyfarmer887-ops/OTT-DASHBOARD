@@ -29,6 +29,7 @@ const ADMIN_REQUIRED_GET_PREFIXES = [
   "/api/renewal-automation",
   "/api/youtube",
   "/api/gbuts",
+  "/api/finance",
 ];
 
 export type AdminAuthFailureDetail = {
