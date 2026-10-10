@@ -61,7 +61,11 @@ function netflixDeliveryParagraphs(accessUrl: string, number: number): string[] 
     '여러 기기 동시 시청 금지.',
   ];
 }
-export const GBUTS_DIRECT_CREDENTIAL_NOTICE = '접근 링크 접속이 부담스러우시다면 "!"라고 남겨주시면 직접 전송해드립니다.';
+export const GBUTS_DIRECT_CREDENTIAL_NOTICE = `접근 링크 접속이 부담스러우시다면 "!"라고 남겨주시면 직접 전송해드립니다.
+
+다만 이메일 코드 인증은 접근 링크에 접속하셔서 진행하셔야 하는 점 양해 부탁드립니다.
+
+계정 링크에 접근하지 못해 요청하시는 환불 또는 단순 변심에 의한 환불은 벗츠 이용약관에 의해 거절될 수 있습니다.`;
 export function buildGbutsOttDeliveryText(accessUrl: string, netflixProfile?: number): string {
   const text = netflixProfile === undefined ? buildPartyAccessDeliveryTemplate(accessUrl) : buildGbutsNetflixAccessText(accessUrl, netflixProfile);
   return `${text}\n\n${GBUTS_DIRECT_CREDENTIAL_NOTICE}`;

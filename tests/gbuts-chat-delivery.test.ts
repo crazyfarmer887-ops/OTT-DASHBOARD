@@ -63,12 +63,14 @@ test('sends profile, labelled access link and rules and direct delivery offer as
   const text = buildGbutsNetflixDeliveryText(url, 5);
   const accepted = broker();
   await sendGbutsText('xxxxxxxxxxxx', 123456, text);
-  expect(accepted).toHaveLength(4);
+  expect(accepted).toHaveLength(6);
   expect(accepted[0]).toContain('5번');
   expect(accepted[1]).toBe(`접근 링크: ${url}`);
   expect(accepted[2]).toContain('이용수칙:');
   expect(accepted[2]).toContain('이름·PIN 변경');
   expect(accepted[3]).toContain('직접 전송해드립니다.');
+  expect(accepted[4]).toContain('이메일 코드 인증은 접근 링크에 접속');
+  expect(accepted[5]).toContain('단순 변심에 의한 환불은 벗츠 이용약관에 의해 거절될 수 있습니다.');
   expect(accepted.every(part => Buffer.byteLength(part) <= 500)).toBe(true);
   expect(accepted.every(part => !part.includes('\u2028'))).toBe(true);
   expect(gbutsChatContainsText(accepted.map(message => ({ senderSeq: 123456, messageType: 'TEXT', message })), 123456, text)).toBe(true);

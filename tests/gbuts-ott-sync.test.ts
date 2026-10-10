@@ -172,7 +172,7 @@ ${url}
     try {
       await syncGbutsOtt(f.deps, f.client as any);
       await syncGbutsOtt(f.deps, f.client as any);
-      expect(frames).toHaveLength(4); expect(frames.every(frame => Buffer.byteLength(frame) <= 1000)).toBe(true);
+      expect(frames).toHaveLength(6); expect(frames.every(frame => Buffer.byteLength(frame) <= 1000)).toBe(true);
       expect(saved[1].message).toBe('접근 링크: https://email-verify.one/dashboard/access/token-100:1');
       expect(f.store.orders['100:1'].delivery).toBe('confirmed');
       expect(f.store.orders['100:1'].deliveryMessage).toContain('token-100:1');

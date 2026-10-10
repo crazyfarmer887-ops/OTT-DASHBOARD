@@ -62,3 +62,5 @@ Read current credentials from the same account records used by the access page, 
 - [ ] Deploy and verify production when server access is available.
 
 Verification: six focused suites pass (66 tests), including the production DB resolver and actual private-journal round trip. Full suite: 1082 pass, 153 fail; the baseline commit has the same 153 failing tests (1068 passes before the 14 new cases). No new failure cases. Client build and whitespace checks pass. Worker typing retains unrelated existing errors; a duplicate Netflix profile import left in the preceding commit was removed. Standards review: 0 remaining findings. Spec review: 0 remaining findings. SSH to the configured production server still rejects authentication; this feature has not been deployed or exercised with a real buyer.
+
+User-requested notice extension: after the direct-credential offer, explain that email-code verification still requires the access page, then state that refunds requested for inability to access the link or simple change of mind may be refused under GButs terms. Send each paragraph separately so GButs does not collapse the text into an unreadable bubble.
