@@ -1893,46 +1893,15 @@ app.post('/my/management', async (c) => {
       throw new Error('쿠키가 만료됐어요.');
     }
 
-    // 무한스크롤 완전 소진: page 반복으로 모든 거래 가져오기
-    // - findAfterUsingLenderDeals: 이용중(Using) 파티원 - 핵심 데이터
-    // - findBeforeUsingLenderDeals: 판매중/전달중 등 미이용 상태
-
-    const fetchPagedDeals = async (kind: 'after' | 'before', includeFinished: boolean, referer: string) => {
-      const collected: any[] = [];
-      for (let page = 1; page <= 10; page++) {
-        const resp = await rateLimitedFetch(
-          buildFinishedDealsUrl(kind, page, 500, includeFinished),
-          { headers: authedHeaders(referer), redirect: 'manual' }
-        );
-        if (resp.status === 302 || resp.status === 301) {
-          if (body.gbutsInventory === false) throw new Error('쿠키가 만료됐어요.');
-          break;
-        }
-        const r = await safeJson(resp);
-        const deals: any[] = extractLenderDeals(r.data);
-        collected.push(...deals);
-        if (deals.length < 500) break;
-        if (body.gbutsInventory === false && page === 10) throw new Error('그레이태그 재고 페이지를 모두 확인하지 못했습니다.');
-      }
-      return collected;
-    };
-
-    const { afterOpenDeals, afterFinishedDeals, beforeOpenDeals, beforeFinishedDeals } = body.gbutsInventory === false
-      ? await readVerifiedGraytagManagementSnapshot((kind, finished, page) => rateLimitedFetch(
+    // Both management views need the same complete, verified snapshot. Smaller pages
+    // prevent GrayTag from terminating large finished-deal response streams.
+    const { afterOpenDeals, afterFinishedDeals, beforeOpenDeals, beforeFinishedDeals } =
+      await readVerifiedGraytagManagementSnapshot((kind, finished, page) => rateLimitedFetch(
         buildFinishedDealsUrl(kind, page, GRAYTAG_INVENTORY_PAGE_SIZE, finished),
         { headers: authedHeaders(kind === 'after' ? 'https://graytag.co.kr/lender/deal/listAfterUsing' : 'https://graytag.co.kr/lender/deal/list'),
           redirect: 'manual', signal: AbortSignal.timeout(15_000) },
         false, undefined, isAuthoritativeGraytagInventoryResponse,
-      ))
-      : await (async () => {
-        const [afterOpenDeals, afterFinishedDeals, beforeOpenDeals, beforeFinishedDeals] = await Promise.all([
-          fetchPagedDeals('after', false, 'https://graytag.co.kr/lender/deal/listAfterUsing'),
-          fetchPagedDeals('after', true, 'https://graytag.co.kr/lender/deal/listAfterUsing'),
-          fetchPagedDeals('before', false, 'https://graytag.co.kr/lender/deal/list'),
-          fetchPagedDeals('before', true, 'https://graytag.co.kr/lender/deal/list'),
-        ]);
-        return { afterOpenDeals, afterFinishedDeals, beforeOpenDeals, beforeFinishedDeals };
-      })();
+      ));
 
     const afterDeals = [...afterOpenDeals, ...afterFinishedDeals];
     const beforeDeals = [...beforeOpenDeals, ...beforeFinishedDeals];
