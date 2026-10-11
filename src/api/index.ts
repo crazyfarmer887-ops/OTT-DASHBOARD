@@ -1595,7 +1595,7 @@ async function directFetch(url: string, options?: RequestInit, route?: GraytagSe
 
 /** Use the configured transport once. Never retry uncertain writes. */
 async function rateLimitedFetch(url: string, options?: RequestInit, bypass = false, route?: GraytagSellerRoute,
-  isAuthoritativeRead?: (response: Response) => Promise<boolean>): Promise<Response> {
+  isAuthoritativeRead?: (response: Response) => Promise<boolean>, minimumSpacingMs = 1500): Promise<Response> {
   if (!bypass && Date.now() < _rateLimitUntil) {
     return new Response(JSON.stringify({ ok: false, error: 'rate_limit_backoff' }), {
       status: 429,
@@ -1603,7 +1603,7 @@ async function rateLimitedFetch(url: string, options?: RequestInit, bypass = fal
     });
   }
   const elapsed = Date.now() - _lastGraytagRequest;
-  if (elapsed < 1500) await new Promise(r => setTimeout(r, 1500 - elapsed));
+  if (elapsed < minimumSpacingMs) await new Promise(r => setTimeout(r, minimumSpacingMs - elapsed));
   _lastGraytagRequest = Date.now();
   const response = await directFetch(url, options, route, isAuthoritativeRead);
   if (response.status === 429) _rateLimitUntil = Math.max(_rateLimitUntil, Date.now() + CHAT_RATE_LIMIT_BACKOFF_MS);
@@ -1900,7 +1900,7 @@ app.post('/my/management', async (c) => {
         buildFinishedDealsUrl(kind, page, GRAYTAG_INVENTORY_PAGE_SIZE, finished),
         { headers: authedHeaders(kind === 'after' ? 'https://graytag.co.kr/lender/deal/listAfterUsing' : 'https://graytag.co.kr/lender/deal/list'),
           redirect: 'manual', signal: AbortSignal.timeout(15_000) },
-        false, undefined, isAuthoritativeGraytagInventoryResponse,
+        false, undefined, isAuthoritativeGraytagInventoryResponse, 500,
       ));
 
     const afterDeals = [...afterOpenDeals, ...afterFinishedDeals];
