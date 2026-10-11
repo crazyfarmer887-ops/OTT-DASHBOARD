@@ -1210,7 +1210,7 @@ export default function ManagePage() {
     if (forceRefresh) headers['Cache-Control'] = 'no-cache';
     for (let attempt = 0; attempt < 2; attempt++) {
       const controller = new AbortController();
-      const timeoutId = window.setTimeout(() => controller.abort(), 70000);
+      const timeoutId = window.setTimeout(() => controller.abort(), 110000);
       try {
         const res = await fetch(forceRefresh ? '/api/my/management?refresh=1' : '/api/my/management', {
           method:'POST',
@@ -1246,7 +1246,7 @@ export default function ManagePage() {
       else { setData(json); if (!openService && json.services?.[0]) setOpenService(json.services[0].serviceType); void fetchEmailAliases(); void fetchMaintenanceChecklists(); }
     } catch (e: any) {
       const message = e?.name === 'AbortError'
-        ? '계정 관리 조회가 70초 안에 끝나지 않았어요. 잠시 후 다시 조회해주세요.'
+        ? '계정 관리 조회가 110초 안에 끝나지 않았어요. 잠시 후 다시 조회해주세요.'
         : isTransientFetchError(e)
           ? '네트워크 요청이 중간에 끊겼어요. 다시 조회를 눌러주세요. 계속 뜨면 화면을 새로고침해주세요.'
           : (e?.message || '계정 관리 조회 실패');
