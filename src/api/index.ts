@@ -31,6 +31,7 @@ import { mergeArchivedAccountsIntoManagement } from '../lib/management-archived-
 import { deleteManagementPaymentCard, isManagementPaymentCardAccountKeyKnown, loadManagementPaymentCards, managementPaymentCardKey, mergeManagementPaymentCards, replaceManagementPaymentCardAccountKeys, upsertManagementPaymentCard } from '../lib/management-payment-cards';
 import { applyManagementHiddenAccounts, hideManagementAccount, loadManagementHiddenAccounts, unhideManagementAccount } from '../lib/management-hidden-accounts';
 import { managementAccountScope } from '../lib/management-account-scope';
+import { loadManagementSubscriptions, upsertManagementSubscription } from '../lib/management-subscriptions';
 import { buildAccountCheckInflowStore, isAccountCheckStatus, type AccountCheckInflowStore } from '../lib/account-check-inflow';
 import { resolveManagementAccount } from '../lib/management-account-resolution';
 import { resolveCreatedSimpleLoginAliasId } from '../lib/simplelogin-alias-id';
@@ -114,6 +115,7 @@ const ADMIN_REQUIRED_GET_PREFIXES = [
   '/generated-accounts',
   '/management-hidden-accounts',
   '/management-payment-cards',
+  '/management-subscriptions',
   '/operations-center',
   '/renewal-automation',
   '/youtube',
@@ -1794,6 +1796,21 @@ app.put('/management-payment-cards', handleSaveManagementPaymentCard);
 app.put('/api/management-payment-cards', handleSaveManagementPaymentCard);
 app.delete('/management-payment-cards', handleDeleteManagementPaymentCard);
 app.delete('/api/management-payment-cards', handleDeleteManagementPaymentCard);
+
+// Cancellation metadata is independent of credentials and historical payments.
+app.get('/management-subscriptions', (c) => c.json({ store: managementAccountScope(graytagAccountIdFromRequest(c)).useLocalAccountRecords ? loadManagementSubscriptions() : {} }));
+app.put('/management-subscriptions', async (c) => {
+  if (!managementAccountScope(graytagAccountIdFromRequest(c)).persistLocalAccountState) return c.json({ ok:false, error:'primary account required' }, 409);
+  try {
+    const item = upsertManagementSubscription(await c.req.json());
+    writeAudit({ actor: authenticatedAdminActor(c), action: 'subscription.cancellation.recorded', targetType: 'managementAccount',
+      targetId: `${item.serviceType}:${item.accountEmail}`, summary: 'Confirmed automatic renewal cancellation recorded',
+      result: 'success', requestId: auditRequestId(c) });
+    return c.json({ ok: true, item });
+  } catch (error: any) {
+    return c.json({ ok: false, error: error.message }, 400);
+  }
+});
 
 // ─── 계정 생성기: SimpleLogin alias + 비밀번호 + PIN + 결제 체크 ─────
 registerManualAccountRoutes(app, { read: readGeneratedAccountStore, write: writeGeneratedAccountStore });

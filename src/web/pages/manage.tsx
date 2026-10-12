@@ -17,6 +17,8 @@ import { makeDefaultProductDescription, makeDefaultProductTitle } from "../../li
 import { parseJsonResponse } from "../lib/fetch-json";
 import { getAdminToken } from "../lib/admin-auth";
 import { getVisibleManagementAccounts, type FilterMode } from "../lib/management-account-order";
+import type { ManagementSubscriptionStore } from "../../lib/management-subscriptions";
+import { accountSubscription, cancellationSummary } from "../lib/management-subscriptions";
 import { buildYouTubeFamilyGroupCreateBody, buildYouTubeFamilyGroupPatchBody, getYouTubeFamilyGroupMutationError, getYouTubeRegistrationDisplayLabel, parseYouTubeFamilyGroupsResponse, parseYouTubeInvitationsResponse, parseYouTubeProductRegistrationsResponse, partitionYouTubeManagementServices, summarizeYouTubeFamilyGroup, validateYouTubeFamilyGroupDraft, type YouTubeFamilyGroupDraft, type YouTubeFamilyGroupDto, type YouTubeInvitationStatus, type YouTubeInvitationSummaryDto, type YouTubeProductRegistrationStatus, type YouTubeProductRegistrationSummaryDto } from "../lib/youtube-family-groups";
 import { RefreshCw, KeyRound, Mail, ChevronDown, ChevronRight, TrendingUp, Loader2, AlertCircle, ExternalLink, Calendar, UserX, Megaphone, PlusCircle, X, UserPlus, Trash2, Wifi, WifiOff, Eye, EyeOff, Youtube, Users } from "lucide-react";
 
@@ -284,6 +286,8 @@ export default function ManagePage() {
   const [paymentCardLoadingKey, setPaymentCardLoadingKey] = useState<string | null>(null);
   const [existingPinCache, setExistingPinCache] = useState<Record<string, ExistingPinCacheEntry>>({});
   const [maintenanceChecklistStore, setMaintenanceChecklistStore] = useState<PartyMaintenanceChecklistStore>({});
+  const [subscriptionStore, setSubscriptionStore] = useState<ManagementSubscriptionStore>({});
+  const [subscriptionError, setSubscriptionError] = useState('');
   const [pinResetLoadingKey, setPinResetLoadingKey] = useState<string | null>(null);
   const [pinResetNoticeKey, setPinResetNoticeKey] = useState<string | null>(null);
   const [accountIdDrafts, setAccountIdDrafts] = useState<Record<string, string>>({});
@@ -712,6 +716,16 @@ export default function ManagePage() {
     } catch { setMaintenanceChecklistStore({}); }
   };
 
+  const fetchSubscriptions = async () => {
+    try {
+      const res = await fetch('/api/management-subscriptions');
+      if (!res.ok) throw new Error('해지 기록을 불러오지 못했습니다.');
+      const json = await res.json() as { store: ManagementSubscriptionStore };
+      setSubscriptionStore(json.store);
+      setSubscriptionError('');
+    } catch { setSubscriptionError('해지 기록 조회 실패 · 다시 조회해주세요.'); }
+  };
+
   const isAccessNoticeCredentialValue = (value?: string | null) => {
     const normalized = String(value || '').replace(/\s+/g, ' ').trim();
     return normalized === GRAYTAG_ACCESS_NOTICE_ID || normalized === GRAYTAG_ACCESS_NOTICE_PW || /아래\s*메세지|아래\s*메시지|확인해주세요/.test(normalized);
@@ -1083,6 +1097,7 @@ export default function ManagePage() {
     fetchSessionStatus();
     fetchEmailAliases();
     fetchMaintenanceChecklists();
+    fetchSubscriptions();
     fetchHiddenAccounts();
     fetchYouTubeFamilyGroups();
     // 30초마다 세션 상태 갱신
@@ -1797,6 +1812,7 @@ export default function ManagePage() {
   ].sort((left, right) => managementServiceCategoryIndex(left.serviceType) - managementServiceCategoryIndex(right.serviceType));
 
   const archivedAccounts = (data?.services || []).flatMap(svc => svc.accounts).filter(acct => acct.archivedAccount === true);
+  const cancelledSubscriptions = cancellationSummary(subscriptionStore);
 
   const archivedAccountSummaryRow = (acct: Account) => (
     <div key={`${acct.serviceType}:${acct.email}`} style={{ background:'#fff', border:'1.5px solid #E5E7EB', borderRadius:12, padding:'9px 11px', display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}>
@@ -1824,7 +1840,7 @@ export default function ManagePage() {
           </p>
         </div>
         <div style={{ display:'flex', gap:6 }}>
-          <button onClick={() => { void Promise.all([doFetch(), fetchYouTubeFamilyGroups()]); }} disabled={loading || youtubeGroupsLoading} style={{ background:'#A78BFA', border:'none', borderRadius:12, padding:'8px 14px', fontSize:13, color:'#fff', cursor:loading || youtubeGroupsLoading?'not-allowed':'pointer', fontWeight:600, fontFamily:'inherit', opacity:loading || youtubeGroupsLoading?0.7:1, display:'flex', alignItems:'center', gap:6 }}>
+          <button onClick={() => { void Promise.all([doFetch(), fetchYouTubeFamilyGroups(), fetchSubscriptions()]); }} disabled={loading || youtubeGroupsLoading} style={{ background:'#A78BFA', border:'none', borderRadius:12, padding:'8px 14px', fontSize:13, color:'#fff', cursor:loading || youtubeGroupsLoading?'not-allowed':'pointer', fontWeight:600, fontFamily:'inherit', opacity:loading || youtubeGroupsLoading?0.7:1, display:'flex', alignItems:'center', gap:6 }}>
             {loading || youtubeGroupsLoading ? <Loader2 size={14} style={{ animation:'spin 1s linear infinite' }} /> : <RefreshCw size={14} />}
             {loading || youtubeGroupsLoading ? '조회중' : '조회'}
           </button>
@@ -1842,6 +1858,23 @@ export default function ManagePage() {
           })()}
         </div>
       </div>
+
+      {subscriptionError && <div role="alert" style={{ color:'#B91C1C', marginBottom:12 }}>{subscriptionError}</div>}
+      {cancelledSubscriptions.accounts.length > 0 && (
+        <details style={{ background:'#F0FDF4', border:'1px solid #BBF7D0', borderRadius:14, padding:'12px 14px', marginBottom:14 }}>
+          <summary style={{ cursor:'pointer', color:'#166534', fontWeight:800, fontSize:13 }}>
+            자동결제 해지 {cancelledSubscriptions.accounts.length}개 · 이번 해지로 월 {cancelledSubscriptions.newMonthlySavings.toLocaleString()}원 절감
+          </summary>
+          <p style={{ fontSize:11, color:'#4B5563' }}>기존 해지 포함 월 {cancelledSubscriptions.totalStoppedMonthlyBilling.toLocaleString()}원 자동결제 중단. 환불금과 별도이며, 남은 이용기간은 계정별로 다릅니다.</p>
+          {cancelledSubscriptions.accounts.map(row => (
+            <div key={`${row.serviceType}:${row.accountEmail}`} style={{ borderTop:'1px solid #DCFCE7', padding:'8px 0', fontSize:11, overflowWrap:'anywhere' }}>
+              <strong>{row.serviceType} · {row.accountEmail}</strong>
+              <div>{row.monthlyAmount.toLocaleString()}원/월 · {row.newlyCancelled ? '이번 해지' : '기존 해지'} · 확인 {row.confirmedAt}</div>
+              <div>{row.accessUntil ? `이용 종료일 ${row.accessUntil}` : '이용 종료일 별도 확인'}{row.note ? ` · ${row.note}` : ''}</div>
+            </div>
+          ))}
+        </details>
+      )}
 
       {/* 계정 선택 */}
       {cookies.length > 1 && (
@@ -2236,6 +2269,7 @@ export default function ManagePage() {
                         const emailAliasId = findEmailAliasId(acct);
                         const credential = findMaintenanceCredentialForAccount(acct);
                         const credentialKey = accountCredentialKey(acct);
+                        const subscription = accountSubscription(subscriptionStore, acct.serviceType, acct.email);
                         const existingPinRecord = findExistingPinRecordForAccount(acct);
                         const exitChecklist = maintenanceChecklistStore[credentialKey];
                         const displayAccountEmail = isAccessNoticeCredentialValue(acct.email) ? '계정 매핑 필요' : acct.email;
@@ -2258,7 +2292,7 @@ export default function ManagePage() {
                         const paymentCardSummary = hasPaymentCardMetadata
                           ? `결제 카드: ${paymentCardDisplayName}${acct.paymentCard?.last4 ? ` •••• ${acct.paymentCard.last4}` : ''}`
                           : '결제 카드: 미등록';
-                        const renewalDaySummary = acct.paymentCard?.renewalDay
+                        const renewalDaySummary = subscription ? '자동결제 해지' : acct.paymentCard?.renewalDay
                           ? `매월 ${acct.paymentCard.renewalDay}일 갱신`
                           : '';
                         const slotStates = buildAccountSlotStates({
@@ -2314,8 +2348,9 @@ export default function ManagePage() {
                                 <div style={{ display:'flex', gap:6, alignItems:'center', marginTop:3, flexWrap:'wrap' }}>
                                   {acct.gbutsInventory && (acct.gbutsInventory.currentUsers + acct.gbutsInventory.recruiting > 0) && <button onClick={ev => { ev.stopPropagation(); navigate('/gbuts-sales'); }} style={{ border:0, background:'#EDE9FE', color:'#6D28D9', borderRadius:6, fontSize:10, padding:'2px 7px', cursor:'pointer' }}>벗츠 이용 {acct.gbutsInventory.currentUsers} · 모집 {acct.gbutsInventory.recruiting}</button>}
                                   {acct.generatedAccount && <span style={{ fontSize:10, color:acct.generatedAccount.paymentStatus==='paid'?'#059669':'#C2410C', fontWeight:900, display:'flex', alignItems:'center', gap:3, background:acct.generatedAccount.paymentStatus==='paid'?'#ECFDF5':'#FFEDD5', borderRadius:6, padding:'1px 7px' }}>
-                                    <KeyRound size={10} /> {acct.generatedAccount.paymentStatus==='paid'?'결제 완료':'생성만 완료'}
+                                    <KeyRound size={10} /> {acct.generatedAccount.paymentStatus==='paid'?(subscription ? '기존 결제 완료' : '결제 완료'):'생성만 완료'}
                                   </span>}
+                                  {subscription && <span style={{ fontSize:10, color:'#166534', fontWeight:900, background:'#DCFCE7', borderRadius:6, padding:'2px 7px' }}>자동결제 해지</span>}
                                   {acct.archivedAccount && <span style={{ fontSize:10, color:'#6B7280', fontWeight:900, background:'#F3F4F6', borderRadius:6, padding:'1px 7px' }}>만료 · 보관 계정</span>}
                                   {vi.vacancy === 0 && <span style={{ fontSize:10, color:'#059669', fontWeight:600, display:'flex', alignItems:'center', gap:3 }}><TrendingUp size={10} /> 만석</span>}
                                   {vi.vacancy > 0 && vi.unfilled > 0 && (
@@ -2386,6 +2421,9 @@ export default function ManagePage() {
                               <div><dt>예상 매출</dt><dd>{fmtMoney(acct.totalIncome)}</dd></div>
                               <div><dt>카드 · 갱신일</dt><dd>{paymentCardSummary.replace('결제 카드: ', '')}{isNetflixManagementService(acct.serviceType) && renewalDaySummary ? ` · ${renewalDaySummary}` : ''}</dd></div>
                             </dl>
+                            {subscription && <div style={{ fontSize:11, color:'#166534', margin:'0 12px 10px', overflowWrap:'anywhere' }}>
+                              해지 확인 {subscription.confirmedAt} · {subscription.accessUntil ? `이용 종료일 ${subscription.accessUntil}` : '이용 종료일 별도 확인'}{subscription.note ? ` · ${subscription.note}` : ''}
+                            </div>}
 
                             <div className="management-account-actions">
                               <button type="button" className="management-touch-target management-primary-action" onClick={() => {
