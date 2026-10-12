@@ -1,3 +1,4 @@
+import { registerLinkidRoutes } from './linkid';
 import { registerFinanceRoutes } from './finance';
 import { resolveGbutsOttDirectCredentials } from '../lib/gbuts-ott-credentials';
 import { Hono } from 'hono';
@@ -120,6 +121,7 @@ const ADMIN_REQUIRED_GET_PREFIXES = [
   '/renewal-automation',
   '/youtube',
   '/gbuts',
+  '/linkid',
   '/finance',
 ];
 
@@ -6737,6 +6739,7 @@ export const gbutsOttRuntimeDependencies: GbutsOttRuntimeDependencies = {
   },
 };
 registerGbutsOttRoutes(app, gbutsOttRuntimeDependencies);
+registerLinkidRoutes(app);
 
 app.post('/party-access/:token/consent', async (c) => {
   const token = normalizePartyAccessToken(c.req.param('token'));

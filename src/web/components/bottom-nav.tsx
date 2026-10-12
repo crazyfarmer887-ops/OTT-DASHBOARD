@@ -7,6 +7,7 @@ const navGroups = [
   { label: "홈", items: [{ path: "/", label: "홈", Icon: Home }] },
   { label: "운영", items: [
     { path: "/manage",     label: "관리",    Icon: LayoutGrid },
+    { path: "/linkid", label: "링키드", Icon: Users },
     { path: "/everyview", label: "에브리뷰", Icon: Users },
     { path: "/renewals", label: "연장 관리", Icon: RefreshCw },
     { path: "/youtube-invites", label: "유튜브 초대", Icon: Youtube },
@@ -30,7 +31,9 @@ export default function BottomNav() {
   const [location, navigate] = useLocation();
   const [open, setOpen] = useState(false);
   const [workspace, setWorkspace] = useState<DashboardWorkspace>(() => getDashboardWorkspace());
-  const visibleGroups = workspace === 'gbuts'
+  const visibleGroups = workspace === 'linkid'
+    ? [{ label: '링키드 운영', items: [{ path: '/linkid', label: '링키드 판매·채팅', Icon: Users }] }]
+    : workspace === 'gbuts'
     ? [{ label: '벗츠 운영', items: [
       { path: '/gbuts', label: '벗츠 홈', Icon: Home },
       { path: '/gbuts-accounts', label: '계정 관리', Icon: LayoutGrid },
@@ -48,7 +51,10 @@ export default function BottomNav() {
     return () => window.removeEventListener('keydown', handler);
   }, []);
 
-  useEffect(() => { setOpen(false); }, [location]);
+  useEffect(() => {
+    setOpen(false);
+    if (location === '/linkid') { setWorkspace('linkid'); setDashboardWorkspace('linkid'); }
+  }, [location]);
 
   const isActive = (path: string) => location === path || (path !== "/" && location.startsWith(`${path}/`));
   const currentTab = tabs.find(t => isActive(t.path));
@@ -88,10 +94,10 @@ export default function BottomNav() {
             value={workspace}
             onChange={(event) => {
               const value = event.target.value;
-              const next: DashboardWorkspace = value === 'gbuts' || value === 'youtube-invite-sales' ? value : 'primary';
+              const next: DashboardWorkspace = value === 'gbuts' || value === 'linkid' || value === 'youtube-invite-sales' ? value : 'primary';
               setWorkspace(next);
               setDashboardWorkspace(next);
-              if (workspace === 'gbuts' || next === 'gbuts') window.location.assign(`/dashboard${dashboardWorkspaceHome(next)}`);
+              if (workspace === 'gbuts' || next === 'gbuts' || workspace === 'linkid' || next === 'linkid') window.location.assign(`/dashboard${dashboardWorkspaceHome(next)}`);
               else window.location.reload();
             }}
             style={{ minWidth:0, maxWidth:140, border:0, borderRadius:7, padding:'5px 7px', background:'#fff', color:'#111827', fontFamily:'inherit', fontSize:10, fontWeight:900 }}
@@ -99,6 +105,7 @@ export default function BottomNav() {
             <option value="primary">기본 GrayTag 계정</option>
             <option value="youtube-invite-sales">유튜브 판매 전용</option>
             <option value="gbuts">벗츠 전용</option>
+            <option value="linkid">링키드 전용</option>
           </select>
         </label>
       </div>

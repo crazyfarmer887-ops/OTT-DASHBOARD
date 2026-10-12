@@ -33,7 +33,7 @@ describe('dashboard workspace selection', () => {
     document.body.innerHTML = renderToStaticMarkup(<Router ssrPath="/gbuts-sales"><BottomNav /></Router>);
     const select = document.querySelector('select')!;
     expect(select.value).toBe('gbuts');
-    expect(Array.from(select.options, option => option.text)).toEqual(['기본 GrayTag 계정', '유튜브 판매 전용', '벗츠 전용']);
+    expect(Array.from(select.options, option => option.text)).toEqual(['기본 GrayTag 계정', '유튜브 판매 전용', '벗츠 전용', '링키드 전용']);
     const text = Array.from(document.querySelectorAll('button'), button => button.textContent?.trim());
     expect(text).toContain('벗츠 홈');
     expect(text).toContain('OTT 판매글 작성');
@@ -58,4 +58,18 @@ describe('dashboard workspace selection', () => {
       expect(dashboardWorkspaceRedirect('gbuts', path)).toBeNull();
     }
   });
+  test('isolates Linkid navigation and preserves the GrayTag preference', () => {
+    setGraytagAccountId('youtube-invite-sales'); setDashboardWorkspace('linkid');
+    expect(getDashboardWorkspace()).toBe('linkid'); expect(getGraytagAccountId()).toBe('primary');
+    expect(window.localStorage.getItem('aio.graytagAccount')).toBe('youtube-invite-sales');
+    expect(dashboardWorkspaceHome('linkid')).toBe('/linkid');
+    expect(dashboardWorkspaceRedirect('gbuts', '/linkid')).toBeNull();
+    expect(dashboardWorkspaceRedirect('linkid', '/manage')).toBe('/linkid');
+    expect(dashboardWorkspaceRedirect('linkid', '/linkid')).toBeNull();
+    expect(dashboardWorkspaceRedirect('linkid', '/access/buyer')).toBeNull();
+    document.body.innerHTML = renderToStaticMarkup(<Router ssrPath="/linkid"><BottomNav /></Router>);
+    expect(document.body.textContent).toContain('링키드 판매·채팅');
+    expect(document.body.textContent).not.toContain('OTT 판매글 작성');
+  });
+
 });

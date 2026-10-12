@@ -1,3 +1,4 @@
+import { startLinkidSync } from './src/scheduler/linkid-sync.ts';
 import { Hono } from 'hono';
 import { serve } from '@hono/node-server';
 import { readFile, stat } from 'node:fs/promises';
@@ -285,6 +286,7 @@ startNotionInvitationSync({
 startGbutsOfficeMessages();
 startGbutsSpotifySync();
 startGbutsOttSync(gbutsOttRuntimeDependencies);
+startLinkidSync();
 startYouTubeBuyerGuide({
   listDeals: fetchNotionDeliveryDeals,
   buyerEmails: fetchNotionDeliveryBuyerEmails,

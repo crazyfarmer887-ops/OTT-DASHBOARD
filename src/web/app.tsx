@@ -26,6 +26,7 @@ const SpotifyInvitesPage = lazy(() => import("./pages/spotify-invites"));
 const GbutsSalesPage = lazy(() => import("./pages/gbuts-sales"));
 const GbutsAccountsPage = lazy(() => import("./pages/gbuts-accounts"));
 const GbutsHomePage = lazy(() => import('./pages/gbuts-home'));
+const LinkidPage = lazy(() => import("./pages/linkid"));
 const EveryviewPage = lazy(() => import("./pages/everyview"));
 
 const RouteFallback = () => (
@@ -50,6 +51,7 @@ const GbutsSalesWrapped = () => <ErrorBoundary><GbutsSalesPage /></ErrorBoundary
 const GbutsOrdersWrapped = () => <ErrorBoundary><GbutsSalesPage view="orders" /></ErrorBoundary>;
 const GbutsAccountsWrapped = () => <ErrorBoundary><GbutsAccountsPage /></ErrorBoundary>;
 const GbutsHomeWrapped = () => <ErrorBoundary><GbutsHomePage /></ErrorBoundary>;
+const LinkidWrapped = () => <ErrorBoundary><LinkidPage /></ErrorBoundary>;
 const EveryviewWrapped = () => <ErrorBoundary><EveryviewPage /></ErrorBoundary>;
 
 function App() {
@@ -78,6 +80,7 @@ function App() {
             <Route path="/gbuts-sales" component={GbutsSalesWrapped} />
             <Route path="/gbuts" component={GbutsHomeWrapped} />
             <Route path="/gbuts-orders" component={GbutsOrdersWrapped} />
+            <Route path="/linkid" component={LinkidWrapped} />
             <Route path="/everyview" component={EveryviewWrapped} />
             <Route path="/profit"        component={ProfitWrapped} />
             <Route path="/write"         component={WriteWrapped} />
@@ -92,7 +95,7 @@ function App() {
       </div>
       {!isChat && <AdminTokenControl dockBottom={!isAccess} />}
       {!isChat && !isAccess && <BottomNav />}
-      {!isAccess && workspace !== 'gbuts' && <RealtimeChatNotifier />}
+      {!isAccess && location !== '/linkid' && workspace !== 'gbuts' && workspace !== 'linkid' && <RealtimeChatNotifier />}
       {import.meta.env.DEV && <AgentFeedback />}
     </Provider>
   );
