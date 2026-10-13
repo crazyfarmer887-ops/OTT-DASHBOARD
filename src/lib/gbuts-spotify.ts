@@ -5,6 +5,7 @@ export interface GbutsSpotifyMember {
   productId: string;
   status: string;
   cancelStatus: string | null;
+  nickname?: string;
 }
 
 export interface GbutsChatMessage {

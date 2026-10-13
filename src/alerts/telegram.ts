@@ -53,15 +53,15 @@ function saveState(path: string, state: AlertState): void {
   }
 }
 
-export function sanitizeAlertText(raw: string): string {
+export function redactAlertText(raw: string): string {
   return String(raw || '')
     .replace(/(JSESSIONID|AWSALB|AWSALBCORS|sessionId|token|secret|password|passwd|pw|authorization|cookie)\s*[=:]\s*[^\s\n;,&]+/gi, '$1=[redacted]')
     .replace(/\/home\/[^\s\n"']+/g, '[path]')
     .replace(/\/tmp\/[^\s\n"']+/g, '[path]')
     .replace(/\/var\/[^\s\n"']+/g, '[path]')
-    .replace(/\b\d{1,3}(?:\.\d{1,3}){3}(?::\d+)?\b/g, '[ip]')
-    .slice(0, 3500);
+    .replace(/\b\d{1,3}(?:\.\d{1,3}){3}(?::\d+)?\b/g, '[ip]');
 }
+export function sanitizeAlertText(raw: string): string { return redactAlertText(raw).slice(0, 3500); }
 
 function categoryLabel(category: SellerAlertCategory | undefined): string {
   if (category === 'purchase') return '🛒 계정 구매';
