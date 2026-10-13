@@ -5,7 +5,7 @@ import { loadSafeModeConfig } from '../api/safe-mode';
 import { readGbutsSpotifyMessageJournal, requestedSpotifyNewAccount, sendGbutsText, syncGbutsSpotifyMessages,
   writeGbutsSpotifyMessageJournal } from './gbuts-spotify-messages';
 import {
-  extractGbutsSpotifyCredentials, gbutsSpotifyOrderKey, isActiveGbutsSpotifyMember, isSpotifyAccountForBuyer,
+  GbutsSellerRequestError, extractGbutsSpotifyCredentials, gbutsSpotifyOrderKey, isActiveGbutsSpotifyMember, isSpotifyAccountForBuyer,
   type GbutsChatMessage, type GbutsSpotifyMember, type SpotifyCredentials,
 } from '../lib/gbuts-spotify';
 
@@ -337,7 +337,7 @@ export function createGbutsSpotifySellerClient(token: string, transport: typeof 
       headers: { 'Content-Type': 'application/json', api_key: `Bearer ${token}`, ...init?.headers },
       signal: AbortSignal.timeout(15_000),
     });
-    if (!response.ok) throw new Error(`GButs seller request failed: HTTP ${response.status}`);
+    if (!response.ok) throw new GbutsSellerRequestError(response.status);
     const payload = await response.json() as { response?: unknown; error?: unknown };
     if (payload.error || payload.response === undefined) throw new Error('GButs seller response invalid');
     return payload.response;

@@ -21,7 +21,7 @@ export async function syncGbutsChatAlerts(deps: ChatScanDependencies) {
   const posts = await deps.listPosts();
   if (new Set(posts.map(p => p.seq)).size !== posts.length || posts.some(p => !Number.isSafeInteger(p.seq) || p.seq < 1))
     throw new Error('벗츠 판매글 목록을 확인해주세요.');
-  const total = { posts: 0, sent: 0, messages: 0, failed: 0, errors: 0 };
+  const total = { posts: 0, sent: 0, messages: 0, failed: 0, errors: 0, unavailable: 0 };
   for (const post of posts) {
     try {
       const members = await deps.listMembers(post.seq);
@@ -32,7 +32,7 @@ export async function syncGbutsChatAlerts(deps: ChatScanDependencies) {
         startAt: post.seq === (deps.spotifyPostSeq || GBUTS_SPOTIFY_POST_SEQ) && deps.spotifyStartAt
           ? deps.spotifyStartAt : deps.startAt,
       }, post.seq);
-      total.posts++; total.sent += result.sent; total.messages += result.messages; total.failed += result.failed;
+      total.posts++; total.sent += result.sent; total.messages += result.messages; total.failed += result.failed; total.unavailable += result.unavailable;
     } catch { total.errors++; }
   }
   const journal = deps.readJournal();

@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { writeJsonAtomic } from '../lib/graytag-sales-session';
-import { gbutsSpotifyOrderKey, type GbutsChatMessage, type GbutsSpotifyMember } from '../lib/gbuts-spotify';
+import { GbutsSellerRequestError, gbutsSpotifyOrderKey, type GbutsChatMessage, type GbutsSpotifyMember } from '../lib/gbuts-spotify';
 import { redactAlertText, type SellerAlertInput, type SellerAlertResult } from '../alerts/telegram';
 
 const DEFAULT_JOURNAL_PATH = '/home/ubuntu/.hermes/hermes-agent/graytag-aio-manager-0606/data/gbuts-spotify-chat-alerts.json';
@@ -9,7 +9,7 @@ const DEFAULT_JOURNAL_PATH = '/home/ubuntu/.hermes/hermes-agent/graytag-aio-mana
 export interface GbutsSpotifyChatAlertJournal {
   version: 1;
   sent: Record<string, string>;
-  lastScan?: { at: string; posts: number; sent: number; messages: number; failed: number; errors: number };
+  lastScan?: { at: string; posts: number; sent: number; messages: number; failed: number; errors: number; unavailable?: number };
 }
 
 export function readGbutsSpotifyChatAlertJournal(
@@ -62,7 +62,7 @@ export function gbutsTelegramMessageParts(content: string): string[] {
 
 /** Incoming buyer messages only. Journals retain hashes, never chat contents. */
 export async function syncGbutsSpotifyChatAlerts(deps: GbutsSpotifyChatAlertDependencies, postSeq: number): Promise<{
-  sent: number; messages: number; failed: number;
+  sent: number; messages: number; failed: number; unavailable: number;
 }> {
   const startMs = Date.parse(deps.startAt);
   if (!Number.isFinite(startMs)) throw new Error('GButs Spotify chat alert start time invalid');
@@ -71,12 +71,19 @@ export async function syncGbutsSpotifyChatAlerts(deps: GbutsSpotifyChatAlertDepe
   let sent = 0;
   let messages = 0;
   let failed = 0;
+  let unavailable = 0;
   for (const member of members) {
     const orderKey = gbutsSpotifyOrderKey(postSeq, member);
     if (members.filter((candidate) => gbutsSpotifyOrderKey(postSeq, candidate) === orderKey).length !== 1) continue;
     let roomId: string; let chat: { messages: GbutsChatMessage[] };
     try { roomId = await deps.openPrivateRoom(postSeq, member.userSeq); chat = await deps.getChat(roomId); }
-    catch { failed++; continue; }
+    catch (error) {
+      // A completed refund can permanently close this buyer's room at the provider.
+      // Continue attempting other refunded buyers whose chats are still accessible.
+      if (member.cancelStatus === 'REFUNDED' && error instanceof GbutsSellerRequestError && error.status === 400) unavailable++;
+      else failed++;
+      continue;
+    }
     const occurrences = new Map<string, number>();
     const unseen: Array<{ id: string; entry: GbutsChatMessage }> = [];
     for (const entry of chat.messages) {
@@ -122,5 +129,5 @@ export async function syncGbutsSpotifyChatAlerts(deps: GbutsSpotifyChatAlertDepe
       } else { if (result.reason === 'failed') failed++; break; }
     }
   }
-  return { sent, messages, failed };
+  return { sent, messages, failed, unavailable };
 }

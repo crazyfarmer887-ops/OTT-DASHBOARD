@@ -26,19 +26,19 @@ function setup() {
 describe('GButs all-product chat alerts', () => {
   it('scans every product including completed sales, preserves the Spotify baseline and deduplicates after restart', async () => {
     const { deps, sendAlert, read } = setup();
-    expect(await syncGbutsChatAlerts(deps)).toEqual({ posts: 3, sent: 3, messages: 4, failed: 0, errors: 0 });
+    expect(await syncGbutsChatAlerts(deps)).toEqual({ posts: 3, sent: 3, messages: 4, failed: 0, errors: 0, unavailable: 0 });
     expect(sendAlert.mock.calls[0][0]).toEqual(expect.objectContaining({ title: 'GButs 넷플릭스 구매자 채팅', category: 'inquiry' }));
     expect(sendAlert.mock.calls[0][0].body).toContain('판매 계정: 판매 계정');
     expect(sendAlert.mock.calls[0][0].body).toContain('구매자: 구매자');
     expect(sendAlert.mock.calls[0][0].body).not.toContain('초대 언제 되나요?');
     expect(sendAlert.mock.calls[2][0].body).toContain('초대 언제 되나요?');
     expect(read().lastScan?.posts).toBe(3);
-    expect(await syncGbutsChatAlerts(deps)).toEqual({ posts: 3, sent: 0, messages: 0, failed: 0, errors: 0 });
+    expect(await syncGbutsChatAlerts(deps)).toEqual({ posts: 3, sent: 0, messages: 0, failed: 0, errors: 0, unavailable: 0 });
   });
   it('continues scanning other products when one fails, and records the failure for inspection', async () => {
     const { deps, sendAlert, read } = setup();
     deps.listMembers.mockRejectedValueOnce(new Error('provider outage'));
-    expect(await syncGbutsChatAlerts(deps)).toEqual({ posts: 2, sent: 2, messages: 3, failed: 0, errors: 1 });
+    expect(await syncGbutsChatAlerts(deps)).toEqual({ posts: 2, sent: 2, messages: 3, failed: 0, errors: 1, unavailable: 0 });
     expect(sendAlert).toHaveBeenCalledTimes(2);
     expect(read().lastScan?.errors).toBe(1);
   });

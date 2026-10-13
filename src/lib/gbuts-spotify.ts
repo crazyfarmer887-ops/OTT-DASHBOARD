@@ -1,4 +1,7 @@
 /** GButs Spotify orders are joined by the member record, never by an email alone. */
+export class GbutsSellerRequestError extends Error {
+  constructor(readonly status: number) { super(`GButs seller request failed: HTTP ${status}`); }
+}
 export interface GbutsSpotifyMember {
   seq: number;
   userSeq: number;
