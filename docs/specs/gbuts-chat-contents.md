@@ -11,6 +11,6 @@ The user requested viewing GButs 1:1 chat contents in the existing Telegram inte
 - One scan at a time, default 60-second interval. Product failures do not stop the remaining products. No dependency on Notion credential extraction or inventory delivery progress.
 
 ## Release checks
-- 74 targeted tests passed across chat content, masking, long message splitting, partial failure retry, restart dedup, multi-product scanning, Spotify credential sync, OTT delivery, Office guidance, existing Telegram and Linkid notification flows.
+- 75 targeted tests passed across chat content, masking, long message splitting, partial failure retry, restart dedup, multi-product scanning, Spotify credential sync, OTT delivery, Office guidance, existing Telegram and Linkid notification flows.
 - Production client build passed. Application type check still has 54 existing diagnostics; none reference the changed source files.
 - Enable `GBUTS_CHAT_ALERT_ENABLED=true` and set `GBUTS_CHAT_ALERT_START_AT` at deployment. Keep existing Telegram destination and Spotify activation timestamp/journal. Read runtime scan counters and send a clearly labeled fictional chat-format check through the existing Telegram sender.

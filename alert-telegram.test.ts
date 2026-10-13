@@ -25,6 +25,16 @@ function tempStatePath() {
 }
 
 describe('seller Telegram alerts', () => {
+  it('keeps an explicit official chat button even if a buyer message contains a different URL', async () => {
+    process.env.SELLER_ALERT_TELEGRAM_BOT_TOKEN = 'test-token';
+    process.env.SELLER_ALERT_TELEGRAM_CHAT_ID = 'test-chat';
+    const fetchMock = vi.fn(async () => new Response('{"ok":true}', { status: 200 }));
+    await sendSellerAlert({ key: 'chat-link', title: '벗츠 채팅', body: '여기 보세요 https://example.com/buyer-link',
+      actionUrl: 'https://gbuts.com/seller/chats', category: 'inquiry', statePath: tempStatePath(), fetchImpl: fetchMock as any });
+    const payload = JSON.parse(String(fetchMock.mock.calls[0][1].body));
+    expect(payload.text).toContain('https://example.com/buyer-link');
+    expect(payload.reply_markup.inline_keyboard[0][0].url).toBe('https://gbuts.com/seller/chats');
+  });
   it('is quietly disabled when Telegram env is missing', async () => {
     delete process.env.SELLER_ALERT_TELEGRAM_BOT_TOKEN;
     delete process.env.SELLER_ALERT_TELEGRAM_CHAT_ID;

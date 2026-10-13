@@ -16,6 +16,7 @@ export type SellerAlertInput = {
   key: string;
   title: string;
   body: string;
+  actionUrl?: string;
   severity?: 'warning' | 'critical';
   category?: SellerAlertCategory;
   statePath?: string;
@@ -109,7 +110,7 @@ export async function sendSellerAlert(input: SellerAlertInput): Promise<SellerAl
   const payload: Record<string, any> = { chat_id: chatId, text, disable_web_page_preview: true };
   const threadId = categoryThreadId(input.category);
   if (threadId) payload.message_thread_id = Number(threadId) || threadId;
-  const url = extractFirstUrl(input.body);
+  const url = input.actionUrl || extractFirstUrl(input.body);
   if (url) {
     payload.reply_markup = {
       inline_keyboard: [[{ text: input.category === 'purchase' ? '계정 구매 확인' : input.category === 'inquiry' ? '문의 바로보기' : '대시보드 열기', url }]],

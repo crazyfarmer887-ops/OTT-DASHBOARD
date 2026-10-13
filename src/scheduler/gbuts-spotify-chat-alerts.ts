@@ -110,7 +110,7 @@ export async function syncGbutsSpotifyChatAlerts(deps: GbutsSpotifyChatAlertDepe
         key: `gbuts-chat-content-${batchKey}`, title: `GButs ${(deps.productLabel || 'Spotify').slice(0, 100)} 구매자 채팅`,
         body: [`새 구매자 메시지 ${new Set(batch.map(x => x.id)).size}개가 도착했습니다.`, header,
           batch.map(x => x.text).join('\n\n')].join('\n\n') + footer,
-        category: 'inquiry', throttleMs: 30 * 24 * 60 * 60 * 1000,
+        category: 'inquiry', actionUrl: 'https://gbuts.com/seller/chats', throttleMs: 30 * 24 * 60 * 60 * 1000,
       });
       if (result.sent || result.reason === 'throttled') {
         const recordedAt = deps.now?.() ?? new Date().toISOString();
