@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Check, CheckCircle2, Clipboard, CreditCard, PenLine, X } from 'lucide-react';
 import { buildQuickAccountClipboard, type QuickGeneratedAccount } from '../lib/quick-generated-account-flow';
+import CredentialField from './credential-field';
+import { copyTextToClipboard } from '../lib/clipboard';
 
 interface QuickAccountCreatedModalProps {
   account: QuickGeneratedAccount;
@@ -9,25 +11,6 @@ interface QuickAccountCreatedModalProps {
   onMarkPaid(): Promise<void>;
   onWrite(): void;
   onClose(): void;
-}
-
-async function copyText(value: string) {
-  try {
-    if (!navigator.clipboard?.writeText) throw new Error('Clipboard API unavailable');
-    await navigator.clipboard.writeText(value);
-    return;
-  } catch {
-    const area = document.createElement('textarea');
-    area.value = value;
-    area.readOnly = true;
-    area.style.position = 'fixed';
-    area.style.opacity = '0';
-    document.body.appendChild(area);
-    area.select();
-    const copied = document.execCommand('copy');
-    area.remove();
-    if (!copied) throw new Error('복사 권한을 확인해주세요.');
-  }
 }
 
 export default function QuickAccountCreatedModal({ account, paymentLoading, paymentError, onMarkPaid, onWrite, onClose }: QuickAccountCreatedModalProps) {
@@ -66,7 +49,7 @@ export default function QuickAccountCreatedModal({ account, paymentLoading, paym
   const copy = async (value: string, label: string) => {
     setCopyError('');
     try {
-      await copyText(value);
+      await copyTextToClipboard(value);
       setCopied(label);
       window.setTimeout(() => setCopied(''), 1400);
     } catch (error: any) {
@@ -101,10 +84,7 @@ export default function QuickAccountCreatedModal({ account, paymentLoading, paym
         <div className="quick-account-service">{account.serviceType}</div>
         <div className="quick-account-credential-list">
           {rows.map((row) => (
-            <div className="quick-account-credential" key={row.label}>
-              <div><span>{row.label}</span><strong>{row.value}</strong></div>
-              <button type="button" onClick={() => void copy(row.value, row.label)}>{copied === row.label ? <Check size={14} /> : <Clipboard size={14} />} {copied === row.label ? '복사됨' : '복사'}</button>
-            </div>
+            <CredentialField key={row.label} label={row.label} value={row.value} secret={row.label === '비밀번호'} />
           ))}
         </div>
 

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import CredentialField from '../components/credential-field';
 
 /**
  * 에브리뷰 파티 관리 — 그레이태그 manage.tsx의 에브리뷰 로컬라이즈 버전
@@ -320,10 +321,8 @@ export default function EveryviewPage() {
           </div>
           {wForm.shareType === 'ACCOUNT' ? (
             <>
-              <input value={wForm.userId} onChange={e => setWForm(f => ({ ...f, userId: e.target.value }))} placeholder="아이디를 입력해주세요" maxLength={200}
-                style={{ width: '100%', boxSizing: 'border-box', border: `1px solid ${LINE}`, borderRadius: 8, padding: '9px 10px', fontSize: 13, marginBottom: 8 }} />
-              <input value={wForm.userPassword} onChange={e => setWForm(f => ({ ...f, userPassword: e.target.value }))} placeholder="비밀번호를 입력해주세요" maxLength={200}
-                style={{ width: '100%', boxSizing: 'border-box', border: `1px solid ${LINE}`, borderRadius: 8, padding: '9px 10px', fontSize: 13 }} />
+              <CredentialField label="아이디" value={wForm.userId} onChange={value => setWForm(f => ({ ...f, userId: value }))} placeholder="아이디를 입력해주세요" maxLength={200} />
+              <CredentialField label="비밀번호" secret value={wForm.userPassword} onChange={value => setWForm(f => ({ ...f, userPassword: value }))} placeholder="비밀번호를 입력해주세요" maxLength={200} />
             </>
           ) : (
             <input value={wForm.sharingDescription} onChange={e => setWForm(f => ({ ...f, sharingDescription: e.target.value }))} placeholder="(ex) 파티 참여 후, 초대 계정 정보를 채팅창으로 보내주세요." maxLength={300}
@@ -591,17 +590,13 @@ export default function EveryviewPage() {
       {editing && (
         <div onClick={e => { if (e.target === e.currentTarget) setEditing(null); }}
           style={{ position: 'fixed', inset: 0, background: 'rgba(25,22,34,.45)', zIndex: 1000, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-          <div style={{ background: '#fff', width: '100%', maxWidth: 480, borderRadius: '18px 18px 0 0', padding: '18px 18px calc(18px + env(safe-area-inset-bottom))' }}>
+          <div style={{ background: '#fff', width: '100%', maxWidth: 480, boxSizing: 'border-box', maxHeight: '90dvh', overflowY: 'auto', borderRadius: '18px 18px 0 0', padding: '18px 18px calc(18px + env(safe-area-inset-bottom))' }}>
             <div style={{ fontSize: 15, fontWeight: 900, marginBottom: 12 }}>🔑 로그인 정보 변경 — 파티 #{editing.partyId}</div>
 
             {editing.shareType === 'ACCOUNT' ? (
               <>
-                <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 4 }}>아이디</div>
-                <input value={editing.accountId} onChange={e => setEditing(ed => ed ? { ...ed, accountId: e.target.value } : ed)}
-                  style={{ width: '100%', boxSizing: 'border-box', border: `1px solid ${LINE}`, borderRadius: 8, padding: '9px 10px', fontSize: 13, marginBottom: 10 }} />
-                <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 4 }}>비밀번호</div>
-                <input value={editing.accountPassword} onChange={e => setEditing(ed => ed ? { ...ed, accountPassword: e.target.value } : ed)}
-                  style={{ width: '100%', boxSizing: 'border-box', border: `1px solid ${LINE}`, borderRadius: 8, padding: '9px 10px', fontSize: 13 }} />
+                <CredentialField label="아이디" value={editing.accountId} onChange={value => setEditing(ed => ed ? { ...ed, accountId: value } : ed)} />
+                <CredentialField label="비밀번호" secret value={editing.accountPassword} onChange={value => setEditing(ed => ed ? { ...ed, accountPassword: value } : ed)} />
               </>
             ) : (
               <>

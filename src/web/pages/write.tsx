@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import CredentialField from '../components/credential-field';
 import { KeyRound, PartyPopper, CheckCircle2, KeySquare, Loader2, AlertTriangle, Trophy, Info, PenLine, Check, X, Square, Clock, ArrowLeftRight, Type, Mail, Link } from "lucide-react";
 import type { PartyMaintenanceChecklistStore } from "../../lib/party-maintenance-checklist";
 import { findMaintenanceCredentialForAlias } from "../../lib/write-maintenance-autofill";
@@ -709,14 +710,11 @@ export default function WritePage() {
               <div style={{ background: '#F0FDF4', borderRadius: 8, padding: '8px 10px', marginBottom: 10, fontSize: 11, color: '#047857' }}>
                 ✅ 계정 접근 링크 템플릿이 기본으로 들어갑니다. 구매자별 링크는 계정 관리에서 파티원별로 생성·복사하세요.
               </div>
-          <label style={labelStyle}>아이디 (이메일) *</label>
-          <input value={keepAcct} onChange={e => setKeepAcct(e.target.value)} placeholder="example@email.com" style={inputStyle} />
-          <label style={labelStyle}>비밀번호 *</label>
-          <input value={keepPasswd} onChange={e => setKeepPasswd(e.target.value)} placeholder="비밀번호" style={inputStyle} />
+          <CredentialField label="아이디 (이메일) *" value={keepAcct} onChange={setKeepAcct} placeholder="example@email.com" />
+          <CredentialField label="비밀번호 *" secret value={keepPasswd} onChange={setKeepPasswd} placeholder="비밀번호" />
 
           {/* PIN 입력 */}
-          <label style={labelStyle}>셀프인증 핀번호</label>
-          <input value={keepPin} onChange={e => handlePinChange(e.target.value)} placeholder="예: 1234" style={inputStyle} />
+          <CredentialField label="셀프인증 핀번호" value={keepPin} onChange={handlePinChange} placeholder="예: 1234" />
           {selectedAliasId && keepPin && (
             <div style={{ background: '#F0FDF4', borderRadius: 8, padding: '8px 10px', marginTop: -4, marginBottom: 10, fontSize: 11, color: '#059669', display: 'flex', alignItems: 'center', gap: 5 }}>
               <CheckCircle2 size={12} /> 인증 링크 자동 생성됨

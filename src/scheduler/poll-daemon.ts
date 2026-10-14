@@ -41,7 +41,7 @@ const BASE_HEADERS = {
   'Referer': 'https://graytag.co.kr/lender/deal/list',
 };
 
-export function fetchPollGraytag(
+export async function fetchPollGraytag(
   url: string,
   options: RequestInit = {},
   env: NodeJS.ProcessEnv = process.env,
@@ -49,7 +49,35 @@ export function fetchPollGraytag(
   viaProxy: (url: string, options: RequestInit, proxyUrl: string) => Promise<Response> = curlFetch,
 ): Promise<Response> {
   const proxyUrl = env.GRAYTAG_PROXY_URL?.trim();
-  return fetchGraytagReadWithFallback(url, options, proxyUrl, direct, viaProxy);
+  const parsed = new URL(url);
+  const isLargeSellingList = (options.method || 'GET').toUpperCase() === 'GET'
+    && parsed.pathname === '/ws/lender/findBeforeUsingLenderDeals'
+    && parsed.searchParams.get('page') === '1'
+    && Number(parsed.searchParams.get('rows')) > 50;
+  if (!isLargeSellingList) return fetchGraytagReadWithFallback(url, options, proxyUrl, direct, viaProxy);
+
+  const pageSize = 50;
+  const deals: any[] = [];
+  const seenPages = new Set<string>();
+  for (let page = 1; page <= 100; page += 1) {
+    parsed.searchParams.set('page', String(page));
+    parsed.searchParams.set('rows', String(pageSize));
+    const response = await fetchGraytagReadWithFallback(parsed.toString(), options, proxyUrl, direct, viaProxy);
+    if (!response.ok) return response;
+    const pageDeals = extractAuthoritativeLenderDeals(await response.json());
+    if (!pageDeals.authoritative) throw new Error('GrayTag selling list response is incomplete');
+    if (pageDeals.deals.length > pageSize) throw new Error('GrayTag selling list exceeded page size');
+    if (pageDeals.deals.length === pageSize) {
+      const fingerprint = JSON.stringify(pageDeals.deals.map((deal) => deal?.dealUsid ?? deal?.usid ?? deal?.id ?? deal));
+      if (seenPages.has(fingerprint)) throw new Error('GrayTag selling list repeated a page');
+      seenPages.add(fingerprint);
+    }
+    deals.push(...pageDeals.deals);
+    if (pageDeals.deals.length < pageSize) {
+      return Response.json({ succeeded: true, data: { lenderDeals: deals } });
+    }
+  }
+  throw new Error('GrayTag selling list exceeded pagination limit');
 }
 
 export function buildPollDealsUrl(page = 1, rows = 500): string {

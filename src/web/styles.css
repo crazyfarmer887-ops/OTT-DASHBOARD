@@ -91,6 +91,15 @@ body {
 /* scrollbar hide */
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+.credential-field { min-width:0; margin:10px 0 14px; }
+.credential-field > label { display:block; margin-bottom:6px; font-size:14px; font-weight:800; color:#1E1B4B; }
+.credential-field-row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; min-width:0; }
+.credential-field-row input { flex:1 1 160px; width:100%; min-width:0; max-width:100%; box-sizing:border-box; border:1px solid #DDD6FE; border-radius:10px; padding:12px; font:inherit; font-size:16px; color:#1E1B4B; background:#fff; min-height:46px; }
+.credential-field-actions { display:flex; flex-wrap:wrap; gap:6px; }
+.credential-field-actions button { display:inline-flex; align-items:center; justify-content:center; gap:5px; min-height:44px; padding:10px 12px; border:1px solid #DDD6FE; border-radius:10px; background:#F5F3FF; color:#6D28D9; font:inherit; font-size:13px; font-weight:800; cursor:pointer; }
+.credential-field-actions button:disabled { opacity:.45; cursor:default; }
+.credential-field-actions button:focus-visible, .credential-field-row input:focus-visible { outline:2px solid #7C3AED; outline-offset:2px; }
+.credential-field-status { display:block; margin-top:6px; font-size:12px; color:#5B21B6; }
 
 /* 채팅 페이지 풀스크린 — max-width 해제 */
 #root.chat-fullscreen {

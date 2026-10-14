@@ -50,6 +50,32 @@ describe('PollDaemon Graytag deal list URL', () => {
     expect(url).toContain('rows=500');
   });
 
+  test('reads a large selling list in small complete pages instead of a terminated 500-row stream', async () => {
+    const direct = vi.fn(async (url: string) => {
+      const parsed = new URL(url); const rows = Number(parsed.searchParams.get('rows'));
+      if (rows > 50) return new Response(new ReadableStream({ start(controller) { controller.error(new Error('terminated')); } }), { status: 200 });
+      const page = Number(parsed.searchParams.get('page'));
+      const deals = Array.from({ length: page === 1 ? 50 : 20 }, (_, i) => ({ dealUsid: `deal-${(page - 1) * 50 + i}` }));
+      return new Response(JSON.stringify({ succeeded: true, data: { lenderDeals: deals } }));
+    });
+    const response = await fetchPollGraytag(buildPollDealsUrl(), {}, {}, direct);
+    const payload = await response.json(); expect(payload.data.lenderDeals).toHaveLength(70);
+    expect(direct).toHaveBeenCalledTimes(2);
+  });
+
+  test('refuses an incomplete or repeated selling-list page', async () => {
+    const malformed = vi.fn(async () => Response.json({ succeeded: true, data: {} }));
+    await expect(fetchPollGraytag(buildPollDealsUrl(), {}, {}, malformed))
+      .rejects.toThrow('incomplete');
+    const repeated = vi.fn(async () => Response.json({
+      succeeded: true,
+      data: { lenderDeals: Array.from({ length: 50 }, (_, i) => ({ dealUsid: `deal-${i}` })) },
+    }));
+    await expect(fetchPollGraytag(buildPollDealsUrl(), {}, {}, repeated))
+      .rejects.toThrow('repeated a page');
+    expect(repeated).toHaveBeenCalledTimes(2);
+  });
+
   test('also polls active deals so unread Graytag chats can trigger Telegram alerts', () => {
     const url = buildPollAfterUsingDealsUrl();
     expect(url).toContain('/ws/lender/findAfterUsingLenderDeals');

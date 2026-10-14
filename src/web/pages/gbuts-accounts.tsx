@@ -2,11 +2,13 @@ import { useCallback, useEffect, useState } from 'react';
 import { useLocation, useSearch } from 'wouter';
 import { REGISTERABLE_OTT_SERVICES, getGeneratedAccountCreationCopy, registeredAccountSalesTargets, type GeneratedAccount } from '../../lib/generated-accounts';
 import { buildQuickAccountClipboard } from '../lib/quick-generated-account-flow';
+import CredentialField from '../components/credential-field';
+import { copyTextToClipboard } from '../lib/clipboard';
 
 const styles = {
   card: { background: '#fff', border: '1px solid #EDE9FE', borderRadius: 16, padding: 18, marginBottom: 16 },
-  input: { display: 'block', width: '100%', boxSizing: 'border-box' as const, padding: 11, border: '1px solid #DDD6FE', borderRadius: 9, margin: '6px 0 14px', fontFamily: 'inherit' },
-  button: { border: 0, borderRadius: 10, padding: '11px 14px', background: '#7C3AED', color: '#fff', fontWeight: 800, cursor: 'pointer' },
+  input: { display: 'block', width: '100%', maxWidth: '100%', minWidth: 0, boxSizing: 'border-box' as const, padding: 11, border: '1px solid #DDD6FE', borderRadius: 9, margin: '6px 0 14px', fontFamily: 'inherit', fontSize: 16 },
+  button: { border: 0, borderRadius: 10, minHeight: 44, padding: '11px 14px', background: '#7C3AED', color: '#fff', fontWeight: 800, cursor: 'pointer' },
 };
 async function requestAccount(url: string, method: string, body: unknown): Promise<GeneratedAccount> {
   const response = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -29,16 +31,16 @@ function RegisteredAccountCard({ account, onSaved, expanded }: { account: Genera
   };
   const write = (service: string, email = account.email) => navigate(`/gbuts-sales?service=${encodeURIComponent(service)}&account=${encodeURIComponent(email)}`);
   return <article style={styles.card}>
-    <h3 style={{ fontSize: 16, margin: '0 0 8px' }}>{account.serviceType} · {account.email}</h3>
+    <h3 style={{ fontSize: 16, margin: '0 0 8px', overflowWrap: 'anywhere' }}>{account.serviceType} · {account.email}</h3>
     <p style={{ fontSize: 13 }}>{account.paymentStatus === 'paid' ? '결제 완료' : '결제 대기'} · {account.expiryDate ? `${account.expiryDate}까지` : '이용 종료일 미입력'}</p>
     <details open={expanded || undefined}>
       <summary style={{ cursor: 'pointer', padding: '8px 0' }}>계정 정보·이용 기간</summary>
-      <label>로그인 ID<input style={styles.input} readOnly value={account.email} /></label>
-      {tvingLoginId && <label>티빙 로그인 ID<input style={styles.input} readOnly value={tvingLoginId} /></label>}
-      <label>비밀번호<input style={styles.input} type="password" readOnly value={account.password} /></label>
-      {account.pin && <p style={{ fontSize: 13 }}>이메일 PIN: {account.pin}</p>}
+      <CredentialField label="로그인 ID" value={account.email} />
+      {tvingLoginId && <CredentialField label="티빙 로그인 ID" value={tvingLoginId} />}
+      <CredentialField label="비밀번호" secret value={account.password} />
+      {account.pin && <CredentialField label="이메일 PIN" value={account.pin} />}
       <button style={styles.button} onClick={async () => {
-        try { await navigator.clipboard.writeText(buildQuickAccountClipboard(account) + (tvingLoginId ? `\n티빙 ID: ${tvingLoginId}` : '')); setMessage('계정 정보를 복사했습니다.'); }
+        try { await copyTextToClipboard(buildQuickAccountClipboard(account) + (tvingLoginId ? `\n티빙 ID: ${tvingLoginId}` : '')); setMessage('계정 정보를 복사했습니다.'); }
         catch { setMessage('복사 권한을 확인하거나 입력 칸에서 직접 복사해주세요.'); }
       }}>계정 정보 복사</button>
       <fieldset disabled={busy} style={{ border: 0, padding: '15px 0 0', margin: 0 }}>
@@ -101,7 +103,7 @@ export default function GbutsAccountsPage() {
         {mode === 'register' ? <>
           <label>{service === '티빙+웨이브' ? '웨이브 이메일' : '로그인 ID / 이메일'}<input autoComplete="off" style={styles.input} required value={email} onChange={e => setEmail(e.target.value)} placeholder="OTT 로그인에 쓰는 ID" /></label>
           {service === '티빙+웨이브' && <label>티빙 로그인 ID<input style={styles.input} required value={tvingLoginId} onChange={e => setTvingLoginId(e.target.value)} placeholder="실제 티빙 로그인 ID" /></label>}
-          <label>비밀번호<input autoComplete="new-password" type="password" style={styles.input} required value={password} onChange={e => setPassword(e.target.value)} /></label>
+          <CredentialField label="비밀번호" secret autoComplete="new-password" required value={password} onChange={setPassword} />
           <label>계정 이용 종료일 (나중에 입력 가능)<input style={styles.input} type="date" value={expiry} onChange={e => setExpiry(e.target.value)} /></label>
           <label style={{ display: 'block', marginBottom: 16 }}><input type="checkbox" checked={paid} onChange={e => setPaid(e.target.checked)} /> OTT 서비스의 실제 결제를 완료했습니다</label>
           {service === '티빙+웨이브' && <p style={{ fontSize: 12 }}>웨이브 이메일과 티빙 로그인 ID를 각각 입력하세요. 두 서비스의 비밀번호가 다르면 각각 등록하세요.</p>}

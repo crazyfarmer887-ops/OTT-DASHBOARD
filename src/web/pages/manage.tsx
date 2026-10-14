@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import QuickAccountCreatedModal from "../components/quick-account-created-modal";
+import CredentialField from '../components/credential-field';
+import { copyTextToClipboard } from '../lib/clipboard';
 import YouTubeSalesSessionCard from "../components/youtube-sales-session-card";
 import YouTubeAutoListingCard from "../components/youtube-auto-listing-card";
 import { findQuickPostAccount, type QuickGeneratedAccount } from "../lib/quick-generated-account-flow";
@@ -754,7 +756,7 @@ export default function ManagePage() {
 
   const copyText = async (value: string) => {
     if (!value) return;
-    try { await navigator.clipboard?.writeText(value); showToast('복사했습니다.'); } catch { showToast('복사 권한을 확인해주세요.', 'error'); }
+    try { await copyTextToClipboard(value); showToast('복사했습니다.'); } catch { showToast('복사 권한을 확인해주세요.', 'error'); }
   };
 
   const handleGeneratePasswordDraft = (acct: Account) => {
@@ -2503,15 +2505,9 @@ export default function ManagePage() {
                                       PIN 번호 재설정
                                     </button>
                                   </div>
-                                  <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:7 }}>
+                                  <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(min(100%,220px),1fr))', gap:12 }}>
                                     {credentialRows.map(row => (
-                                      <div key={row.label} style={{ background:'#F8F6FF', borderRadius:10, padding:'8px 9px', minWidth:0 }}>
-                                        <div style={{ display:'flex', justifyContent:'space-between', gap:4, alignItems:'center' }}>
-                                          <span style={{ fontSize:9, color:'#9CA3AF', fontWeight:900 }}>{row.label}</span>
-                                          <button onClick={(e) => { e.stopPropagation(); copyText(row.value); }} disabled={!row.value} style={{ border:'none', background:'transparent', color:row.value?'#7C3AED':'#D1D5DB', fontSize:9, fontWeight:900, cursor:row.value?'pointer':'not-allowed' }}>복사</button>
-                                        </div>
-                                        <div style={{ fontSize:11, color:'#1E1B4B', fontWeight:900, marginTop:3, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{row.value || '-'}</div>
-                                      </div>
+                                      <CredentialField key={row.label} label={row.label} value={row.value} secret={row.label === 'PW'} />
                                     ))}
                                   </div>
                                   {existingPinRecord?.loading && (
@@ -2542,9 +2538,9 @@ export default function ManagePage() {
                                       </button>
                                     </div>
                                     <div style={{ display:'grid', gap:7, alignItems:'center' }}>
-                                      <input value={currentAccountIdDraft} onChange={(e) => setAccountIdDrafts(prev => ({ ...prev, [credentialKey]: e.target.value }))} placeholder="최신 ID 입력" style={{ border:'1px solid #EDE9FE', borderRadius:10, padding:'8px 10px', fontSize:11, fontWeight:800, color:'#1E1B4B', fontFamily:'inherit', minWidth:0 }} />
-                                      <div style={{ display:'grid', gridTemplateColumns:'1fr auto', gap:7, alignItems:'center' }}>
-                                        <input value={currentPasswordDraft} onChange={(e) => setPasswordDrafts(prev => ({ ...prev, [credentialKey]: e.target.value }))} placeholder="최신 비밀번호 입력" style={{ border:'1px solid #EDE9FE', borderRadius:10, padding:'8px 10px', fontSize:11, fontWeight:800, color:'#1E1B4B', fontFamily:'inherit', minWidth:0 }} />
+                                      <CredentialField label="최신 로그인 ID" value={currentAccountIdDraft} onChange={value => setAccountIdDrafts(prev => ({ ...prev, [credentialKey]: value }))} placeholder="최신 ID 입력" />
+                                      <div style={{ display:'grid', gap:7, alignItems:'center' }}>
+                                        <CredentialField label="최신 비밀번호" secret value={currentPasswordDraft} onChange={value => setPasswordDrafts(prev => ({ ...prev, [credentialKey]: value }))} placeholder="최신 비밀번호 입력" />
                                         <button type="button" onClick={(e) => { e.stopPropagation(); handleSaveLatestPassword(acct); }} disabled={passwordSaveLoadingKey === credentialKey} style={{ border:'none', borderRadius:999, padding:'8px 10px', background:passwordSaveLoadingKey === credentialKey ? '#C4B5FD' : '#10B981', color:'#fff', fontSize:10, fontWeight:900, cursor:passwordSaveLoadingKey === credentialKey ? 'not-allowed' : 'pointer' }}>
                                           {passwordSaveLoadingKey === credentialKey ? '저장중' : '최신 ID/PW 저장'}
                                         </button>
