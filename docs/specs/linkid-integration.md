@@ -13,8 +13,8 @@ Official production web client inspected on 2026-10-12. JSON POST uses `version-
 - `/api/party/tri_partyinfo`: sid/partyid; party/member/pay. Credentials and payment details must not enter public snapshots.
 - `/api/users/alarmlist`: sid/read/lastidx; list/result/totalcnt, id/type/date/partyid/msg.
 - `/chat/room/list`: sid/partyid; array. `/chat/room/reload`: sid/partyid/ownerid/memberid/mindex/size; items/totalPage.
-- Chat messages use CryptoJS OpenSSL salted AES passphrase format, confirmed in the official client. Plaintext is visible only in authenticated dashboard; Telegram gets an arrival notice, never message contents.
-- Browser shows five named profiles, and Microsoft 365 seller parties 75730–75734 were verified by API across all five profiles. No chat rooms were present during verification; profile 3 had one existing invitation request. Live incoming chat delivery remains fixture verified until a real message arrives. Never create a test listing or message in customer rooms.
+- Chat messages use CryptoJS OpenSSL salted AES passphrase format, confirmed in the official client. Plaintext is visible only in authenticated dashboard; Initial release sent only arrival notices. The 2026-10-14 update forwards buyer text to Telegram as requested; see `all-service-chat-contents.md`.
+- Browser shows five named profiles, and Microsoft 365 seller parties 75730–75734 were verified by API across all five profiles. No chat rooms were present during verification; profile 3 had one existing invitation request. At initial release incoming chat delivery was fixture verified; a real chat notification was reported on 2026-10-14. Never create a test listing or message in customer rooms.
 
 ## Acceptance
 - New Linkid workspace and entry in existing navigation; login account and profile selection stay distinct.

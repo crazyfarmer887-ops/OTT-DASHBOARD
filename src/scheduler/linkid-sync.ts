@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { LinkidClient, LinkidError, linkidTime, type LinkidSnapshot } from '../lib/linkid-client';
 import { readLinkidStore, writeLinkidStore, withLinkidLock, type LinkidAccount, type LinkidEvent, type LinkidStore } from '../lib/linkid-store';
 import { sendSellerAlert, type SellerAlertInput, type SellerAlertResult } from '../alerts/telegram';
+import { sendChatContentAlert, splitTelegramChatText } from '../alerts/chat-content';
 
 export function collectLinkidEvents(account: LinkidAccount, snapshot: LinkidSnapshot): void {
   const index = snapshot.profile.index; const floor = Date.parse(account.connectedAt);
@@ -22,7 +23,8 @@ export function collectLinkidEvents(account: LinkidAccount, snapshot: LinkidSnap
   for (const room of snapshot.rooms) for (const message of room.messages) {
     if (message.writer <= 0 || message.writer === snapshot.profile.uid) continue;
     add({ key: `${account.id}:${index}:chat:${room.id}:${message.id}`, kind: 'chat', profileIndex: index,
-      title: '새 1:1 채팅 메시지', partyId: room.partyId, date: message.date });
+      title: '새 1:1 채팅 메시지', partyId: room.partyId, date: message.date,
+      message: splitTelegramChatText(message.text).join(''), buyerName: room.name });
   }
 }
 export type LinkidSyncDependencies = {
@@ -38,12 +40,24 @@ async function deliverPending(store: LinkidStore, account: LinkidAccount, deps: 
   for (const event of [...account.pending]) {
     const profile = account.profiles.find(x => x.index === event.profileIndex);
     const key = `linkid-${createHash('sha256').update(event.key).digest('hex').slice(0, 40)}`;
-    const result = await deps.alert({ key, title: `링키드 · ${event.title}`, category: event.kind === 'chat' ? 'inquiry' : /가입|파티원|매칭|구매/.test(event.title) ? 'purchase' : 'system',
-      body: [`로그인 계정: ${account.label}`, `프로필 ${event.profileIndex}: ${profile?.name || '확인 필요'}`,
-        event.partyId ? `파티: ${event.partyId}` : '', event.date,
-        event.kind === 'chat' ? '새 메시지가 도착했습니다. 내용은 대시보드에서 확인해주세요.' : '링키드에 새 알림이 도착했습니다.',
-        `https://email-verify.one/dashboard/linkid?account=${encodeURIComponent(account.id)}&profile=${event.profileIndex}`].filter(Boolean).join('\n'),
-      throttleMs: 365 * 24 * 60 * 60 * 1000 });
+    const actionUrl = `https://email-verify.one/dashboard/linkid?account=${encodeURIComponent(account.id)}&profile=${event.profileIndex}`;
+    const context = [`로그인 계정: ${account.label.slice(0, 80)}`, `프로필 ${event.profileIndex}: ${profile?.name.slice(0, 80) || '확인 필요'}`,
+      event.partyId ? `파티: ${event.partyId}` : '', `시간: ${new Date(linkidTime(event.date)).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}`];
+    let result: SellerAlertResult;
+    if (event.kind === 'chat') {
+      if (!event.message) {
+        const match = event.key.match(/:chat:(\d+):(\d+)$/);
+        const room = account.snapshots[String(event.profileIndex)]?.rooms.find(r => r.id === Number(match?.[1]));
+        const message = room?.messages.find(m => m.id === Number(match?.[2]) && m.writer > 0 && m.writer !== profile?.uid);
+        if (!message?.text) continue; // Keep legacy events pending until their text can be read.
+        event.message = splitTelegramChatText(message.text).join(''); event.buyerName = room?.name; deps.write(store);
+      }
+      result = await sendChatContentAlert({ key, title: `링키드 · ${event.title}`, body: [...context,
+        `구매자: ${(event.buyerName || '파티 채팅').slice(0, 80)}`].join('\n'), message: event.message,
+        actionUrl, category: 'inquiry', throttleMs: 365 * 86400000 }, deps.alert);
+    } else result = await deps.alert({ key, title: `링키드 · ${event.title}`,
+      category: /가입|파티원|매칭|구매/.test(event.title) ? 'purchase' : 'system',
+      body: [...context, '링키드에 새 알림이 도착했습니다.', actionUrl].join('\n'), actionUrl, throttleMs: 365 * 86400000 });
     if (result.sent || result.reason === 'throttled') {
       account.seen[event.key] = new Date(deps.now()).toISOString(); account.pending = account.pending.filter(x => x.key !== event.key); deps.write(store);
     } else return false;
@@ -70,8 +84,10 @@ export async function syncLinkid(deps: LinkidSyncDependencies = linkidRuntime, o
       account.profiles = profiles; account.profileErrors = {};
       for (const profile of profiles) {
         try {
+          const pendingFloor = account.pending.filter(e => e.kind === 'chat' && !e.message && e.profileIndex === profile.index)
+            .reduce((floor, e) => Math.min(floor, linkidTime(e.date) - 1000), Infinity);
           const snapshot = await deps.client.snapshot(account.credentials.sid, profile,
-            Math.max(Date.parse(account.connectedAt), Date.parse(account.lastScanStartedAt || account.connectedAt) - 120000));
+            Math.max(Date.parse(account.connectedAt), Math.min(Date.parse(account.lastScanStartedAt || account.connectedAt) - 120000, pendingFloor)));
           collectLinkidEvents(account, snapshot);
           account.snapshots[String(profile.index)] = snapshot; deps.write(store);
         } catch (e) {

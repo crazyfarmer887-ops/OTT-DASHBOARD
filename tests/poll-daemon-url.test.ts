@@ -172,11 +172,11 @@ describe('PollDaemon Graytag deal list URL', () => {
     const publishRealtime = vi.fn(() => { order.push('realtime'); });
 
     await expect(reserveAndSendChatAlert(alert, known, (state) => {
-      expect(state[alert.fingerprint]).toBe(alert.timestamp);
+      expect([`pending:${alert.timestamp}`, alert.timestamp]).toContain(state[alert.fingerprint]);
       order.push('persist');
       return true;
     }, send, publishRealtime)).resolves.toBe(true);
-    expect(order).toEqual(['persist', 'realtime', 'send']);
+    expect(order).toEqual(['persist', 'realtime', 'send', 'persist']);
     expect(publishRealtime).toHaveBeenCalledOnce();
 
     const failedSend = vi.fn(async () => ({ sent: true as const, reason: 'sent' as const }));

@@ -1,7 +1,8 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { writeJsonAtomic } from './graytag-sales-session';
 import type { LinkidProfile, LinkidSnapshot } from './linkid-client';
-export type LinkidEvent = { key: string; profileIndex: number; kind: 'notice' | 'chat'; title: string; partyId: number; date: string };
+export type LinkidEvent = { key: string; profileIndex: number; kind: 'notice' | 'chat'; title: string; partyId: number; date: string;
+  message?: string; buyerName?: string };
 export type LinkidAccount = { id: string; label: string; enabled: boolean; connectedAt: string;
   credentials: { sid: string; provider: string; providerId: string }; profiles: LinkidProfile[];
   snapshots: Record<string, LinkidSnapshot>; seen: Record<string, string>; pending: LinkidEvent[];

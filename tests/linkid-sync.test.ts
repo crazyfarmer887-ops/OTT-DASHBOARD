@@ -49,7 +49,7 @@ describe('Linkid durable event notifications', () => {
     expect(f.store.accounts[0].pending).toHaveLength(0);
     const bodies = vi.mocked(f.deps.alert).mock.calls.map(x => x[0].body).join('\n');
     expect(bodies).toContain('둘째 프로필'); expect(bodies).toContain('링키드 1호기');
-    expect(bodies).not.toContain('MY_PRIVATE_MESSAGE'); expect(bodies).not.toContain('server-secret');
+    expect(bodies).toContain('MY_PRIVATE_MESSAGE'); expect(bodies).not.toContain('server-secret');
     vi.mocked(f.deps.alert).mockClear(); await syncLinkid(f.deps); expect(f.deps.alert).not.toHaveBeenCalled();
   });
   it('persists the outbox before delivery and treats sender-side throttle as acknowledged', async () => {
@@ -61,6 +61,28 @@ describe('Linkid durable event notifications', () => {
   it('preserves pending alerts when Telegram is disabled', async () => {
     const f = fixture(); vi.mocked(f.deps.alert).mockResolvedValue({ sent: false, reason: 'disabled' });
     await syncLinkid(f.deps); expect(f.store.accounts[0].pending).toHaveLength(4);
+  });
+  it('persists chat text before sending and resumes long messages after a partial failure', async () => {
+    const a = account(); a.profiles = [a.profiles[0]]; const f = fixture([a]);
+    const text = '긴문의😊'.repeat(900) + '\n비밀번호: hidden-pass';
+    vi.mocked(f.deps.client.snapshot).mockImplementation(async (_sid, p) => { const s = snapshot(p); s.notices = []; s.rooms[0].messages[0].text = text; return s; });
+    const delivered = new Set<string>(); const seenBodies: string[] = []; let fail = true;
+    vi.mocked(f.deps.alert).mockImplementation(async input => {
+      expect(f.store.accounts[0].pending[0].message).toContain('긴문의');
+      if (delivered.has(input.key)) return { sent: false, reason: 'throttled' };
+      if (input.key.endsWith(':1') && fail) { fail = false; return { sent: false, reason: 'failed' }; }
+      delivered.add(input.key); seenBodies.push(input.body); return { sent: true, reason: 'sent' };
+    });
+    await syncLinkid(f.deps); expect(f.store.accounts[0].pending).toHaveLength(1);
+    await syncLinkid(f.deps); expect(f.store.accounts[0].pending).toHaveLength(0);
+    expect(seenBodies.join('')).not.toContain('hidden-pass'); expect(seenBodies.every(x => x.length < 3500)).toBe(true);
+    expect(delivered.size).toBe(3);
+  });
+  it('hydrates legacy pending alerts from cached snapshots instead of sending an empty arrival notice', async () => {
+    const a = account(); a.profiles = [a.profiles[0]]; const s = snapshot(); a.snapshots['1'] = s;
+    a.pending = [{ key: 'login-1:1:chat:6:7', kind: 'chat', title: '새 메시지', profileIndex: 1, partyId: 77, date: s.rooms[0].messages[0].date }];
+    const f = fixture([a]); await syncLinkid(f.deps);
+    expect(vi.mocked(f.deps.alert).mock.calls[0][0].body).toContain('MY_PRIVATE_MESSAGE');
   });
   it('continues another profile after failure and retains the previous snapshot', async () => {
     const a = account(); a.snapshots['1'] = snapshot(); const f = fixture([a]);

@@ -1,14 +1,16 @@
 // ─── 구매 감지 폴링 데몬 ──────────────────────────────────────
 import { closeSync, existsSync, openSync, readFileSync, writeFileSync, mkdirSync, statSync, renameSync, rmSync } from 'node:fs';
 import { sendSellerAlert } from '../alerts/telegram';
-import { extractGraytagChats, findLatestBuyerInquiryMessage, type GraytagChatMessage } from '../api/chat-message-summary';
+import { createHash } from 'node:crypto';
+import { sendChatContentAlert } from '../alerts/chat-content';
+import { extractGraytagChats, buyerInquiryMessages, type GraytagChatMessage } from '../api/chat-message-summary';
 import { messageFingerprint, normalizeBuyerMessage, type AutoReplyCandidateMessage } from '../api/auto-reply-message';
 import { chatNotificationBroker } from '../realtime/chat-notification-broker';
 import { observeYouTubeInvitationPollSources } from '../lib/youtube-invitation-poller';
 import { buildGraytagCookieHeader, loadGraytagAuthCookies } from '../lib/graytag-sales-session';
 import { curlFetch } from '../api/http-transport';
 import { fetchGraytagReadWithFallback } from '../api/graytag-seller-transport';
-import { buildYouTubeInvitationAlert, sendYouTubeInvitationAlert } from '../api/youtube-auto-reply';
+import { buildYouTubeInvitationAlert } from '../api/youtube-auto-reply';
 import {
   normalizeYouTubeInvitationEmail,
   YouTubeFamilyGroupsStore,
@@ -339,7 +341,8 @@ export function buildNewChatAlertCandidate(
     messageType: message.messageType,
   };
   const fp = messageFingerprint(candidate);
-  if (!fp || known[fp]) return null;
+  const pending = known[fp]?.startsWith('pending:');
+  if (!fp || (known[fp] && !pending)) return null;
   const timestamp = candidate.registeredDateTime || candidate.createdAt || candidate.updatedAt || '';
   const occurredAtMs = parseGraytagMessageTime(timestamp);
   if (occurredAtMs === null) return null;
@@ -352,8 +355,8 @@ export function buildNewChatAlertCandidate(
     options.futureClockSkewMs ?? options.env?.POLL_ALERT_FUTURE_CLOCK_SKEW_MS ?? process.env.POLL_ALERT_FUTURE_CLOCK_SKEW_MS,
     DEFAULT_FUTURE_CLOCK_SKEW_MS,
   );
-  if (!isEventWithinWindow(occurredAtMs, nowMs, maxAgeMs, futureClockSkewMs)) return null;
-  const text = normalizeBuyerMessage(message.message).slice(0, 800);
+  if (!pending && !isEventWithinWindow(occurredAtMs, nowMs, maxAgeMs, futureClockSkewMs)) return null;
+  const text = normalizeBuyerMessage(message.message);
   if (!text) return null;
   return {
     fingerprint: fp,
@@ -372,17 +375,23 @@ export async function reserveAndSendChatAlert(
   alert: Pick<PollChatAlertCandidate, 'fingerprint' | 'timestamp'>,
   known: Record<string, string>,
   persist: (state: Record<string, string>) => boolean,
-  send: () => Promise<{ sent: boolean }>,
+  send: () => Promise<{ sent: boolean; reason?: string }>,
   onReserved?: () => void,
 ): Promise<boolean> {
-  known[alert.fingerprint] = alert.timestamp;
+  const previous = known[alert.fingerprint];
+  known[alert.fingerprint] = `pending:${alert.timestamp}`;
   if (!persist(known)) {
-    delete known[alert.fingerprint];
+    if (previous) known[alert.fingerprint] = previous; else delete known[alert.fingerprint];
     return false;
   }
   try { onReserved?.(); } catch {}
   const result = await send();
-  return result.sent;
+  if (result.sent || result.reason === 'throttled') {
+    known[alert.fingerprint] = alert.timestamp;
+    persist(known);
+    return true;
+  }
+  return false;
 }
 
 export async function persistAndSendDealAlerts(
@@ -503,7 +512,8 @@ async function sendNewChatMessageAlerts(
     const room = String(deal.chatRoomUuid || deal.dealDetail?.chatRoomUuid || '').trim();
     if (!room || seenRooms.has(room)) return false;
     seenRooms.add(room);
-    return Boolean(deal.lenderChatUnread || deal.dealDetail?.lenderChatUnread);
+    return Boolean(deal.lenderChatUnread || deal.dealDetail?.lenderChatUnread
+      || Object.entries(updated).some(([key, value]) => key.startsWith(`${room}:`) && value.startsWith('pending:')));
   }).slice(0, 25);
 
   for (const deal of chatDeals) {
@@ -516,45 +526,38 @@ async function sendNewChatMessageAlerts(
       });
       if (!msgResp.ok) continue;
       const msgJson = await msgResp.json() as any;
-      const alert = buildNewChatAlertCandidate(deal, findLatestBuyerInquiryMessage(extractGraytagChats(msgJson)), updated);
-      if (!alert) continue;
-      const accountLine = alert.keepAcct ? `\n계정: ${alert.keepAcct}` : '';
-      const dealLine = alert.dealUsid ? `\nUSID: ${alert.dealUsid}` : '';
-      const alertPrefix = accountLabel ? `${accountLabel} · ` : '';
-      const didSend = await reserveAndSendChatAlert(alert, updated, (state) => saveKnownChatMessages(state, statePath), async () => {
-        if (options.sendInvitationEmailAlert) {
-          const invitation = youtubeInvitationAlertForMessage(alert.dealUsid, alert.text);
-          if (invitation) {
-            return sendYouTubeInvitationAlert({
-              alert: {
-                ...invitation,
-                body: `${accountLabel ? `운영 계정: ${accountLabel}\n` : ''}${invitation.body}`,
-              },
-              messageFingerprint: `${accountId}:${alert.fingerprint}`,
-              sender: sendSellerAlert,
-            });
-          }
-        }
-        return sendSellerAlert({
-          key: `graytag-chat-${accountId}-${alert.fingerprint}`,
-          title: `${alertPrefix}새 문의 도착`,
-          body: `${accountLabel ? `운영 계정: ${accountLabel}\n` : ''}${alert.productType} · ${alert.borrowerName}${accountLine}${dealLine}\n시간: ${alert.timestamp}\n메시지: ${alert.text}\n바로가기: https://email-verify.one/dashboard/chat?room=${encodeURIComponent(alert.chatRoomUuid)}`,
-          category: 'inquiry',
-          throttleMs: 0,
+      const incoming = buyerInquiryMessages(extractGraytagChats(msgJson)).sort((a, b) =>
+        (parseGraytagMessageTime(a.registeredDateTime || a.createdAt || a.updatedAt) || 0)
+        - (parseGraytagMessageTime(b.registeredDateTime || b.createdAt || b.updatedAt) || 0));
+      for (const message of incoming) {
+        const alert = buildNewChatAlertCandidate(deal, message, updated);
+        if (!alert) continue;
+        const accountLine = alert.keepAcct ? `\n계정: ${alert.keepAcct}` : '';
+        const dealLine = alert.dealUsid ? `\nUSID: ${alert.dealUsid}` : '';
+        const alertPrefix = accountLabel ? `${accountLabel} · ` : '';
+        const didSend = await reserveAndSendChatAlert(alert, updated, (state) => saveKnownChatMessages(state, statePath), async () => {
+          const invitation = options.sendInvitationEmailAlert ? youtubeInvitationAlertForMessage(alert.dealUsid, alert.text) : null;
+          return sendChatContentAlert({
+            key: `graytag-chat-${accountId}-${createHash('sha256').update(alert.fingerprint).digest('hex')}`,
+            title: `${alertPrefix}${invitation ? invitation.title : '새 문의 도착'}`,
+            body: `${accountLabel ? `운영 계정: ${accountLabel}\n` : ''}${alert.productType} · ${alert.borrowerName}${accountLine}${dealLine}\n시간: ${alert.timestamp}${invitation ? `\n${invitation.body}` : ''}`,
+            message: alert.text, actionUrl: `https://email-verify.one/dashboard/chat?room=${encodeURIComponent(alert.chatRoomUuid)}`,
+            category: invitation ? 'purchase' : 'inquiry', throttleMs: 30 * 86400000,
+          });
+        }, () => {
+          chatNotificationBroker.publish({
+            chatRoomUuid: alert.chatRoomUuid,
+            dealUsid: alert.dealUsid,
+            buyerName: alert.borrowerName,
+            serviceType: alert.productType,
+            productName: alert.productName,
+            accountLabel: alert.keepAcct,
+            message: alert.text,
+            messageAt: alert.timestamp,
+          });
         });
-      }, () => {
-        chatNotificationBroker.publish({
-          chatRoomUuid: alert.chatRoomUuid,
-          dealUsid: alert.dealUsid,
-          buyerName: alert.borrowerName,
-          serviceType: alert.productType,
-          productName: alert.productName,
-          accountLabel: alert.keepAcct,
-          message: alert.text,
-          messageAt: alert.timestamp,
-        });
-      });
-      if (didSend) sent += 1;
+        if (didSend) sent += 1;
+      }
     } catch (e: any) {
       console.warn('[PollDaemon] 채팅 알림 확인 실패:', e?.message || e);
     }

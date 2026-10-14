@@ -52,7 +52,7 @@ function isOwnedMessage(message: GraytagChatMessage): boolean {
   return Boolean(message.owned || message.isOwned);
 }
 
-function buyerInquiryMessages(messages: GraytagChatMessage[]): GraytagChatMessage[] {
+export function buyerInquiryMessages(messages: GraytagChatMessage[]): GraytagChatMessage[] {
   return [...messages]
     .filter((message) => Boolean(message.message) && !isInfoMessage(message) && !isOwnedMessage(message));
 }

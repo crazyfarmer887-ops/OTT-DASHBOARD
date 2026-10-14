@@ -27,7 +27,7 @@ export function decodeLinkidMessage(raw: string): string {
     while (key.length < 48) { previous = createHash('md5').update(Buffer.concat([previous, Buffer.from('$specialchaat$1@'), salt])).digest(); key = Buffer.concat([key, previous]); }
     const decipher = createDecipheriv('aes-256-cbc', key.subarray(0, 32), key.subarray(32, 48));
     const decoded: unknown = JSON.parse(Buffer.concat([decipher.update(data.subarray(16)), decipher.final()]).toString('utf8'));
-    return typeof decoded === 'string' ? decoded.slice(0, 8000) : '[메시지 형식 확인 필요]';
+    return typeof decoded === 'string' ? decoded : '[메시지 형식 확인 필요]';
   } catch { return '[메시지를 링키드에서 확인해주세요]'; }
 }
 export function linkidNotice(raw: any): LinkidNotice {

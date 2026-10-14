@@ -2,7 +2,8 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { writeJsonAtomic } from '../lib/graytag-sales-session';
 import { GbutsSellerRequestError, gbutsSpotifyOrderKey, type GbutsChatMessage, type GbutsSpotifyMember } from '../lib/gbuts-spotify';
-import { redactAlertText, type SellerAlertInput, type SellerAlertResult } from '../alerts/telegram';
+import type { SellerAlertInput, SellerAlertResult } from '../alerts/telegram';
+import { splitTelegramChatText } from '../alerts/chat-content';
 
 const DEFAULT_JOURNAL_PATH = '/home/ubuntu/.hermes/hermes-agent/graytag-aio-manager-0606/data/gbuts-spotify-chat-alerts.json';
 
@@ -48,17 +49,7 @@ function fingerprint(roomId: string, entry: GbutsChatMessage, occurrence: number
 }
 
 /** Split before the shared Telegram length limit, retaining per-part receipts on retry. */
-export function gbutsTelegramMessageParts(content: string): string[] {
-  const parts: string[] = [];
-  const redacted = redactAlertText(content.replace(/((?:비밀번호|비번|암호|pwd)\s*[:：=]\s*)[^\s\n]+/gi, '$1[redacted]'));
-  let chunk = '';
-  for (const character of redacted) {
-    if (chunk.length + character.length > 1800) { parts.push(chunk); chunk = ''; }
-    chunk += character;
-  }
-  if (chunk) parts.push(chunk);
-  return parts;
-}
+export const gbutsTelegramMessageParts = splitTelegramChatText;
 
 /** Incoming buyer messages only. Journals retain hashes, never chat contents. */
 export async function syncGbutsSpotifyChatAlerts(deps: GbutsSpotifyChatAlertDependencies, postSeq: number): Promise<{
