@@ -1,12 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 import { LinkidClient, LinkidError, decodeLinkidMessage, linkidNotice, parseLinkidCredentials } from '../src/lib/linkid-client';
 const profile = { index: 2, uid: 22, name: '프로필 둘', money: 0, newAlarm: false };
-function provider(options: { wrongProfile?: boolean; rate?: boolean; badParty?: boolean; notices?: boolean; rooms?: boolean } = {}) {
+function provider(options: { wrongProfile?: boolean; rate?: boolean; badParty?: boolean; notices?: boolean; rooms?: boolean; notFoundPath?: string } = {}) {
   let activeUid = 11; const browserUid = 11;
   const transport = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
     const path = new URL(String(url)).pathname; const body = JSON.parse(String(init?.body));
     expect(new Headers(init?.headers).get('version-service')).toBe('3.0.1');
     if (options.rate) return new Response('{}', { status: 429 });
+    if (path === options.notFoundPath) return new Response('{}', { status: 404 });
     let value: unknown;
     if (path === '/api/users/change_subaccount') { expect(body.sid).toBe('server-session'); activeUid = 22; value = { result: 0 }; }
     else if (path === '/api/users/auth') value = { result: 0, uid: options.wrongProfile ? 99 : body.sid === 'browser-session' ? browserUid : activeUid, acc_idx: body.sid === 'browser-session' ? 1 : 2, nickname: '둘' };
@@ -48,6 +49,10 @@ describe('Linkid verified provider contract', () => {
     await expect(provider({ rate: true }).client.auth('server-session')).rejects.toMatchObject({ kind: 'rate' });
     await expect(provider({ badParty: true }).client.snapshot('server-session', profile, 0)).rejects.toBeInstanceOf(LinkidError);
     expect(linkidNotice({ id: 1, type: 9999999, date: '2026-10-12', msg: { password: 'private' } }).title).toBe('링키드 새 알림');
+  });
+  it('identifies the safe endpoint when a provider read returns 404', async () => {
+    await expect(provider({ notFoundPath: '/api/party/tri_my' }).client.snapshot('server-session', profile, 0))
+      .rejects.toThrow('/api/party/tri_my 조회 실패 (404)');
   });
   it('imports only Linkid credentials and rejects another domain or conflicting cookies', () => {
     const cookies = ['token', 'provider', 'providerId'].map(name => ({ name, value: 'value', domain: '.linkid.pw' }));

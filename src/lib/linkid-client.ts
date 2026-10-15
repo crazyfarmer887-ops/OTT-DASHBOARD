@@ -57,7 +57,7 @@ export function parseLinkidCredentials(input: unknown): { token: string; provide
 }
 export class LinkidClient {
   private lastRequestAt = 0;
-  constructor(private readonly fetcher: typeof fetch = fetch, private readonly spacingMs = 1500) {}
+  constructor(private readonly fetcher: typeof fetch = fetch, private readonly spacingMs = 2500) {}
   private async post(path: string, data: Record<string, unknown>): Promise<any> {
     const delay = this.spacingMs - (Date.now() - this.lastRequestAt);
     if (delay > 0) await new Promise(resolve => setTimeout(resolve, delay));
@@ -69,7 +69,7 @@ export class LinkidClient {
     catch { throw new LinkidError('링키드에 연결하지 못했습니다. 잠시 후 다시 확인합니다.'); }
     if (response.status === 429) throw new LinkidError('링키드 요청 제한으로 잠시 기다린 뒤 다시 확인합니다.', 'rate');
     if ([401, 403].includes(response.status)) throw new LinkidError('링키드 로그인을 다시 연결해주세요.', 'auth');
-    if (!response.ok) throw new LinkidError(`링키드 조회 실패 (${response.status}).`);
+    if (!response.ok) throw new LinkidError(`링키드 ${path} 조회 실패 (${response.status}).`);
     let result: any;
     try { result = await response.json(); } catch { throw new LinkidError('링키드 응답을 읽지 못했습니다.', 'schema'); }
     if (result?.result !== undefined && result.result !== 0) {

@@ -99,12 +99,19 @@ export async function syncLinkid(deps: LinkidSyncDependencies = linkidRuntime, o
       if (canSend) await deliverPending(store, account, deps);
       if (allSucceeded) {
         account.lastScanStartedAt = startedAt; account.lastSuccess = new Date(deps.now()).toISOString(); delete account.lastError; delete account.retryAfter;
+        delete account.firstFailureAt; delete account.consecutiveFailures;
       } else account.lastError = '일부 프로필 조회가 지연되고 있습니다. 마지막 확인 정보를 표시합니다.';
     } catch (e) {
+      const failedAt = deps.now();
+      account.firstFailureAt ||= new Date(failedAt).toISOString();
+      account.consecutiveFailures = (account.consecutiveFailures || 0) + 1;
       account.lastError = e instanceof LinkidError ? e.message : '링키드 연결을 확인하지 못했습니다.';
-      account.retryAfter = deps.now() + (e instanceof LinkidError && e.kind === 'rate' ? 5 * 60000 : 90000);
-      await deps.alert({ key: `linkid-connection-${account.id}`, category: 'system', title: '링키드 연결 확인 필요',
-        body: `${account.label}\n${account.lastError}\nhttps://email-verify.one/dashboard/linkid`, throttleMs: 60 * 60000 });
+      account.retryAfter = failedAt + (e instanceof LinkidError && e.kind === 'rate' ? 5 * 60000 : 90000);
+      const sustained = account.consecutiveFailures >= 3 && failedAt - Date.parse(account.firstFailureAt) >= 15 * 60000;
+      if ((e instanceof LinkidError && e.kind === 'auth') || sustained) {
+        await deps.alert({ key: `linkid-connection-${account.id}`, category: 'system', title: '링키드 연결 확인 필요',
+          body: `${account.label}\n${account.lastError}\nhttps://email-verify.one/dashboard/linkid`, throttleMs: 60 * 60000 });
+      }
     }
     deps.write(store);
   }
@@ -118,6 +125,6 @@ export function linkidSyncRunning(): boolean { return running; }
 export function startLinkidSync(): (() => void) | undefined {
   if (process.env.LINKID_SYNC_ENABLED === 'false') return;
   const run = () => { if (running) return; void runLinkidSync().catch(() => console.error('[linkid] 연결 기록 점검 필요')); };
-  const first = setTimeout(run, 3000); const interval = setInterval(run, 90000);
+  const first = setTimeout(run, 3000); const interval = setInterval(run, 180000);
   first.unref(); interval.unref(); return () => { clearTimeout(first); clearInterval(interval); };
 }

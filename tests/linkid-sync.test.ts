@@ -97,6 +97,40 @@ describe('Linkid durable event notifications', () => {
     await syncLinkid(f.deps); expect(f.store.accounts[0].retryAfter).toBe(f.deps.now() + 300000);
     vi.mocked(f.deps.client.auth).mockClear(); await syncLinkid(f.deps); expect(f.deps.client.auth).not.toHaveBeenCalled();
   });
+  it('shows a transient rate error in status but alerts only after a sustained outage', async () => {
+    const f = fixture(); let now = Date.parse('2026-10-12T03:05:00Z');
+    f.deps.now = () => now;
+    vi.mocked(f.deps.client.auth).mockRejectedValue(new LinkidError('링키드 요청 제한', 'rate'));
+    await syncLinkid(f.deps);
+    expect(f.store.accounts[0].lastError).toContain('요청 제한');
+    expect(f.deps.alert).not.toHaveBeenCalled();
+    for (let attempt = 0; attempt < 3; attempt++) {
+      now += 5 * 60000;
+      await syncLinkid(f.deps);
+    }
+    expect(f.deps.alert).toHaveBeenCalledTimes(1);
+    expect(f.store.accounts[0].consecutiveFailures).toBe(4);
+    now += 5 * 60000;
+    vi.mocked(f.deps.client.auth).mockResolvedValue({ uid: 11, index: 1, name: '첫 프로필' });
+    await syncLinkid(f.deps);
+    expect(f.store.accounts[0].lastError).toBeUndefined();
+    expect(f.store.accounts[0].firstFailureAt).toBeUndefined();
+    expect(f.store.accounts[0].consecutiveFailures).toBeUndefined();
+  });
+  it('alerts immediately when Linkid requires a fresh login', async () => {
+    const f = fixture();
+    vi.mocked(f.deps.client.auth).mockRejectedValue(new LinkidError('로그인 필요', 'auth'));
+    vi.mocked(f.deps.client.login).mockRejectedValue(new LinkidError('로그인 필요', 'auth'));
+    await syncLinkid(f.deps);
+    expect(f.deps.alert).toHaveBeenCalledWith(expect.objectContaining({ title: '링키드 연결 확인 필요' }));
+  });
+  it('keeps one transient 404 in the dashboard without a Telegram warning', async () => {
+    const f = fixture();
+    vi.mocked(f.deps.client.auth).mockRejectedValue(new LinkidError('링키드 /api/users/auth 조회 실패 (404).'));
+    await syncLinkid(f.deps);
+    expect(f.store.accounts[0].lastError).toContain('/api/users/auth 조회 실패 (404)');
+    expect(f.deps.alert).not.toHaveBeenCalled();
+  });
   it('refreshes expired dedicated sessions, but rejects another account identity', async () => {
     const f = fixture(); vi.mocked(f.deps.client.auth).mockRejectedValueOnce(new LinkidError('만료', 'auth'));
     await syncLinkid(f.deps); expect(f.store.accounts[0].credentials.sid).toBe('new-server-secret');

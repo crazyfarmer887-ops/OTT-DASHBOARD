@@ -21,7 +21,8 @@ Official production web client inspected on 2026-10-12. JSON POST uses `version-
 - Existing listing, participant, date, chat and bell status visible, with direct original-site links for operations.
 - Connection imports only Linkid auth fields, verifies browser identity, obtains a separate server sid, and checks every profile uid before publishing data.
 - Durable 0600 JSON, atomic saves, no secrets in API/Telegram/logs. Fail closed on invalid stores and provider schemas. All API routes admin protected.
-- Serial profile switching/reads; request spacing and 429 backoff. Cached dashboard reads don't trigger provider traffic. One account failure does not stop others.
+- Serial profile switching/reads; 2.5-second request spacing, 3-minute scan interval, and 429 backoff. Cached dashboard reads don't trigger provider traffic. One account failure does not stop others.
+- A transient 429 or 404 appears in the dashboard status immediately; Telegram sends a connection warning only after 15 minutes of consecutive failures. Authentication failures alert immediately. Successful scans clear the failure streak. HTTP failures identify the provider endpoint without logging request bodies or credentials.
 - First successful scan baselines old notifications/messages. Subsequent events have account/profile-scoped keys; failed Telegram sends remain pending; restart does not replay successful events. Read/unread bells both scanned without marking them read.
 - Chat history paginates through events since last scan; outgoing/system messages do not trigger buyer inquiry alerts.
 - Existing inventory, auto delivery and financial totals remain separate until explicit cross-market inventory binding is specified. Wallet balance is labeled wallet balance, not sales or profit.

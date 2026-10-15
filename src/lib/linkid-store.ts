@@ -6,7 +6,8 @@ export type LinkidEvent = { key: string; profileIndex: number; kind: 'notice' | 
 export type LinkidAccount = { id: string; label: string; enabled: boolean; connectedAt: string;
   credentials: { sid: string; provider: string; providerId: string }; profiles: LinkidProfile[];
   snapshots: Record<string, LinkidSnapshot>; seen: Record<string, string>; pending: LinkidEvent[];
-  lastScanStartedAt?: string; lastSuccess?: string; lastError?: string; retryAfter?: number; profileErrors?: Record<string, string> };
+  lastScanStartedAt?: string; lastSuccess?: string; lastError?: string; retryAfter?: number; profileErrors?: Record<string, string>;
+  firstFailureAt?: string; consecutiveFailures?: number };
 export type LinkidStore = { version: 1; accounts: LinkidAccount[] };
 export function linkidStorePath(): string { return process.env.LINKID_STORE_PATH || '/home/ubuntu/.hermes/hermes-agent/graytag-aio-manager-0606/data/linkid-accounts.json'; }
 export function readLinkidStore(path = linkidStorePath()): LinkidStore {
@@ -21,7 +22,7 @@ export function readLinkidStore(path = linkidStorePath()): LinkidStore {
 }
 export function writeLinkidStore(store: LinkidStore, path = linkidStorePath()): void { writeJsonAtomic(path, store); }
 export function publicLinkidStore(store: LinkidStore) {
-  return { enabled: process.env.LINKID_SYNC_ENABLED !== 'false', intervalSeconds: 90,
+  return { enabled: process.env.LINKID_SYNC_ENABLED !== 'false', intervalSeconds: 180,
     accounts: store.accounts.map(({ credentials: _credentials, seen: _seen, pending, ...account }) => ({ ...account,
       pendingAlerts: pending.length, snapshots: Object.fromEntries(Object.entries(account.snapshots).map(([key, value]) => [key, {
         ...value, notices: value.notices.slice(0, 100), rooms: value.rooms.map(room => ({ ...room, messages: room.messages.slice(0, 100) })),
