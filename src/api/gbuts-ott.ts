@@ -1,7 +1,7 @@
 import { makeGbutsOttDescription } from '../lib/gbuts-ott-templates';
 import { Hono } from 'hono';
 import { createHash, randomUUID } from 'node:crypto';
-import { GBUTS_OTT_CATEGORIES, koreaToday, ottKey, ottDate, sharedOttAccounts, updateGbutsOttOrders, type GbutsOttListing, type GbutsOttStore } from '../lib/gbuts-ott';
+import { GBUTS_OTT_CATEGORIES, koreaToday, ottKey, ottDate, sharedOttAccounts, updateGbutsOttOrders, type GbutsOttListing, type GbutsOttManagement, type GbutsOttStore } from '../lib/gbuts-ott';
 import { createGbutsOttSellerClient, type GbutsOttPost } from '../lib/gbuts-ott-client';
 import { loadGbutsSession } from '../lib/gbuts-session';
 import { readGbutsOttStore, withGbutsOttInventory, writeGbutsOttStore } from '../lib/gbuts-ott-store';
@@ -27,6 +27,15 @@ function assertBoundPosts(store: GbutsOttStore, posts: GbutsOttPost[]): void {
       || post.category1.seq !== GBUTS_OTT_CATEGORIES[listing.serviceType] || (listing.state === 'closed' && post.status === 'ON_SALE'))
       throw new Error('벗츠 판매글의 모집 인원·기간·상태가 바뀌어 공동 재고 확인이 필요합니다.');
   }
+}
+async function publicationManagement(deps: GbutsOttRuntimeDependencies): Promise<GbutsOttManagement> {
+  const snapshot = await deps.management({ forceRefresh: false });
+  const verifiedAt = Date.parse(String(snapshot.cache?.updatedAt || ''));
+  const age = Date.now() - verifiedAt;
+  // A complete provider snapshot was already verified for the form. Local sales
+  // remain serialized below; older or unverified snapshots require a fresh read.
+  if (Number.isFinite(verifiedAt) && age >= 0 && age <= 60_000) return snapshot;
+  return deps.management();
 }
 function gbutsPostTitle(post: GbutsOttPost): string {
   let title = post.title;
@@ -172,7 +181,7 @@ export function registerGbutsOttRoutes(app: Hono, deps: GbutsOttRuntimeDependenc
         if (Object.values(store.listings).some(x => x.requestHash === requestHash && ['submitting', 'uncertain', 'registered'].includes(x.state)))
           return c.json({ ok: false, error: '같은 내용의 판매글 등록 요청이 이미 있습니다. 연결된 판매글을 확인해주세요.' }, 409);
         const client = gbutsOttClient();
-        const [management, posts] = await Promise.all([deps.management(), client.listPosts()]);
+        const [management, posts] = await Promise.all([publicationManagement(deps), client.listPosts()]);
         assertBoundPosts(store, posts);
         const account = sharedOttAccounts(management, deps.manualMembers(), store).find(x => x.key === ottKey(serviceType, accountEmail));
         if (!account || account.available < capacity || account.endDate < endDate || account.overbooked)

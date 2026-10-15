@@ -38,7 +38,7 @@ function fixture() {
     return new Response(JSON.stringify({ success: true, error: null, response }), { headers: { 'content-type': 'application/json' } });
   });
   vi.stubGlobal('fetch', transport);
-  const deps = { management: vi.fn(async () => fixtureManagement()), manualMembers: () => [], access: vi.fn(async () => 'validated'), refreshAccess: async () => {} };
+  const deps = { management: vi.fn(async () => ({ ...fixtureManagement(), cache: { status: 'hit', updatedAt: new Date().toISOString() } })), manualMembers: () => [], access: vi.fn(async () => 'validated'), refreshAccess: async () => {} };
   const app = new Hono(); registerGbutsOttRoutes(app, deps);
   const body = { requestId: 'request-123', serviceType: '넷플릭스', accountEmail: 'account@example.com', endDate: '2026-12-01', dailyPrice: 200, capacity: 1, title: '프리미엄', description: '본인 프로필을 이용해주세요.' };
   const publish = (patch = {}) => app.request('/gbuts/ott/listings', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...body, ...patch }) });
@@ -70,11 +70,21 @@ describe('shared inventory publication', () => {
     expect(response.status).toBe(200);
     expect((await response.json()).inventory.status).toBe('stale');
     expect(f.deps.management).toHaveBeenLastCalledWith({ forceRefresh: false });
-    f.deps.management.mockRejectedValueOnce(new Error('fresh inventory unavailable'));
+    f.deps.management.mockImplementation(async options => {
+      if (options?.forceRefresh === false) return { ...fixtureManagement(), cache: { status: 'stale', updatedAt: '2026-10-05T05:00:00Z' } };
+      throw new Error('fresh inventory unavailable');
+    });
     expect((await f.publish()).status).toBe(503);
     expect(f.deps.management).toHaveBeenLastCalledWith();
     expect(f.posts).toHaveLength(0);
     expect(f.transport.mock.calls.some(([, options]) => options?.method === 'POST')).toBe(false);
+  });
+  it('publishes quickly from a recently verified inventory snapshot without refreshing all GrayTag pages again', async () => {
+    const f = fixture();
+    f.deps.management.mockResolvedValue({ ...fixtureManagement(), cache: { status: 'stale', updatedAt: '2026-10-05T05:59:40Z' } } as any);
+    expect((await f.publish()).status).toBe(200);
+    expect(f.deps.management).toHaveBeenCalledTimes(1);
+    expect(f.deps.management).toHaveBeenCalledWith({ forceRefresh: false });
   });
   it('serializes concurrent registration against the last place and writes externally once', async () => {
     const f = fixture(); const replies = await Promise.all([f.publish({ capacity: 2 }), f.publish({ requestId: 'request-456', capacity: 1 })]);
@@ -85,7 +95,7 @@ describe('shared inventory publication', () => {
     const f = fixture();
     expect((await f.publish()).status).toBe(200);
     expect(f.deps.management).toHaveBeenCalledTimes(1);
-    expect(f.deps.access).toHaveBeenCalledWith(expect.anything(), expect.anything(), '미리보기', fixtureManagement());
+    expect(f.deps.access.mock.calls[0][3]).toMatchObject(fixtureManagement());
   });
   it('recovers a transient seller listing lookup failure before the write', async () => {
     const f = fixture();
