@@ -69,12 +69,25 @@ export default function GbutsSalesPage({ view = 'sales' }: { view?: 'sales' | 'o
     }
   }, [data, key, requestedService, requestedAccount, selectionRequest, choose]);
   const publish = async () => {
-    if (!account || busy || registrationIssue) return; setBusy(true); setMessage('');
+    if (!account || busy || registrationIssue) return; setBusy(true); setMessage('공동 재고와 벗츠 판매글을 확인하고 있습니다.');
     try {
+      const currentRequestId = requestId.current;
       const response = await fetch('/api/gbuts/ott/listings', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ requestId: requestId.current, serviceType: account.serviceType, accountEmail: account.accountEmail,
+        body: JSON.stringify({ requestId: currentRequestId, serviceType: account.serviceType, accountEmail: account.accountEmail,
           endDate, dailyPrice: Number(price), capacity: Number(count), title, description }) });
-      const result = await response.json(); if (!response.ok || !result.ok) throw new Error(result.error || '판매글 등록 결과를 확인해주세요.');
+      let result = await response.json();
+      if (response.status === 202 && result.pending) {
+        setMessage('재고 확인과 판매글 등록이 진행 중입니다. 완료될 때까지 이 화면을 유지해주세요.');
+        for (let attempt = 0; attempt < 120; attempt++) {
+          await new Promise(resolve => setTimeout(resolve, 1500));
+          const status = await fetch(`/api/gbuts/ott/listings/requests/${encodeURIComponent(currentRequestId)}`, { cache: 'no-store' });
+          result = await status.json();
+          if (status.status === 202 && result.pending) continue;
+          if (!status.ok || !result.ok) throw new Error(result.error || '판매글 등록 결과를 확인해주세요.');
+          break;
+        }
+        if (result.pending) throw new Error('판매글 등록을 계속 확인 중입니다. 잠시 후 연결된 판매글을 확인해주세요. 같은 내용을 다시 등록하지 마세요.');
+      } else if (!response.ok || !result.ok) throw new Error(result.error || '판매글 등록 결과를 확인해주세요.');
       setMessage('벗츠 판매글 등록 완료 · 구매 시 1:1 채팅으로 접근 링크를 자동 전달합니다.'); requestId.current = crypto.randomUUID();
       await load();
     } catch (e) { setMessage(e instanceof Error ? e.message : '판매글 등록 실패'); await load(); } finally { setBusy(false); }

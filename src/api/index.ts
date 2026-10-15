@@ -6699,7 +6699,7 @@ async function readGraytagOttManagement(options = { forceRefresh: true }) {
 export const gbutsOttRuntimeDependencies: GbutsOttRuntimeDependencies = {
   management: readGraytagOttManagement,
   manualMembers: () => manualOttMembersWithProfiles(loadManualMembers(), Object.values(loadPartyAccessLinkStore())),
-  async access(order, listing, profileName) {
+  async access(order, listing, profileName, managementSnapshot) {
     const store = loadPartyAccessLinkStore();
     const existing = Object.values(store).filter(x => x.member.kind === 'gbuts' && x.member.memberId === order.key)
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
@@ -6711,7 +6711,7 @@ export const gbutsOttRuntimeDependencies: GbutsOttRuntimeDependencies = {
       member: { kind: 'gbuts', memberId: order.key, memberName: order.name, status: 'active', statusName: '벗츠 이용 중',
         startDateTime: order.startDate, endDateTime: order.endDate, verifiedAt: order.verifiedAt } }), store);
     if (!record.fallbackPassword) {
-      const management = await readGraytagOttManagement();
+      const management = managementSnapshot || await readGraytagOttManagement();
       const account = management.services.flatMap((x: any) => x.accounts).find((x: any) => ottKey(x.serviceType, x.email) === ottKey(listing.serviceType, listing.accountEmail));
       record = { ...record, fallbackPassword: String(account?.keepPasswd || '') };
     }

@@ -19,14 +19,16 @@ afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); rmSync(directory, {
   }
 });
 function fixture() {
-  const posts: any[] = []; let closed = false; let members: any[] = []; let creationResponse: any = 100;
+  const posts: any[] = []; let closed = false; let members: any[] = []; let creationResponse: any; let createdCount = 0;
   const transport = vi.fn(async (url: any, options?: RequestInit) => {
     const path = new URL(String(url)).pathname;
     let response: any;
     if (path === '/api/seller/subscribe/share/list') response = String(url).includes('page=1') ? posts : [];
     else if (path === '/api/subscribe/share' && options?.method === 'POST') {
-      const body = JSON.parse(String(options.body)); posts.push({ ...body, seq: 100, category1: { seq: body.category }, title: JSON.stringify({ ko: body.title }), status: 'ON_SALE', memberCount: 0 }); response = creationResponse;
-    } else if (path.endsWith('/closed')) { closed = true; response = true; }
+      const body = JSON.parse(String(options.body)); const seq = 100 + createdCount++;
+      posts.push({ ...body, seq, category1: { seq: body.category }, title: JSON.stringify({ ko: body.title }), status: 'ON_SALE', memberCount: 0 });
+      response = creationResponse === undefined ? seq : creationResponse;
+    } else if (path.endsWith('/closed')) { closed = true; const post = posts.find(x => x.seq === Number(path.split('/').at(-2))); if (post) post.status = 'CLOSED'; response = true; }
     else if (path.endsWith('/member')) response = members;
     else if (path.endsWith('/view')) {
       const seq = Number(path.split('/').at(-2));
@@ -79,9 +81,58 @@ describe('shared inventory publication', () => {
     expect(replies.map(x => x.status)).toEqual([200, 409]); expect(f.posts).toHaveLength(1);
     expect(readGbutsOttStore().listings['request-123'].state).toBe('registered');
   });
+  it('reuses the verified inventory snapshot for preview credentials instead of refreshing it twice', async () => {
+    const f = fixture();
+    expect((await f.publish()).status).toBe(200);
+    expect(f.deps.management).toHaveBeenCalledTimes(1);
+    expect(f.deps.access).toHaveBeenCalledWith(expect.anything(), expect.anything(), '미리보기', fixtureManagement());
+  });
+  it('recovers a transient seller listing lookup failure before the write', async () => {
+    const f = fixture();
+    const original = f.transport.getMockImplementation()!;
+    let failed = false;
+    f.transport.mockImplementation(async (url, options) => {
+      if (!failed && String(url).includes('/api/seller/subscribe/share/list')) {
+        failed = true;
+        return new Response('{}', { status: 502 });
+      }
+      return original(url, options);
+    });
+    const result = f.publish();
+    await vi.advanceTimersByTimeAsync(300);
+    expect((await result).status).toBe(200);
+    expect(f.posts).toHaveLength(1);
+  });
   it('replays the same publication without another external POST and rejects a changed request', async () => {
     const f = fixture(); await f.publish(); expect((await f.publish()).status).toBe(200); expect(f.posts).toHaveLength(1);
     expect((await f.publish({ dailyPrice: 210 })).status).toBe(409);
+  });
+  it('returns a progress receipt before a slow inventory check and publishes only once', async () => {
+    const f = fixture();
+    let resume!: (value: ReturnType<typeof fixtureManagement>) => void;
+    f.deps.management.mockImplementationOnce(() => new Promise(resolve => { resume = resolve; }));
+    const pending = f.publish();
+    await vi.advanceTimersByTimeAsync(1600);
+    const accepted = await pending;
+    expect(accepted.status).toBe(202);
+    expect(await accepted.json()).toMatchObject({ pending: true, requestId: 'request-123' });
+    expect((await f.app.request('/gbuts/ott/listings/requests/request-123')).status).toBe(202);
+    resume(fixtureManagement());
+    await vi.waitFor(async () => expect((await f.app.request('/gbuts/ott/listings/requests/request-123')).status).toBe(200));
+    expect(f.posts).toHaveLength(1);
+  });
+  it('rejects a second request ID with identical listing details instead of posting a duplicate', async () => {
+    const f = fixture();
+    expect((await f.publish()).status).toBe(200);
+    expect((await f.publish({ requestId: 'request-456' })).status).toBe(409);
+    expect(f.posts).toHaveLength(1);
+  });
+  it('can create a new matching listing after the previous listing is closed', async () => {
+    const f = fixture();
+    expect((await f.publish()).status).toBe(200);
+    expect((await f.app.request('/gbuts/ott/listings/request-123/close', { method: 'POST' })).status).toBe(200);
+    expect((await f.publish({ requestId: 'request-456' })).status).toBe(200);
+    expect(f.posts).toHaveLength(2);
   });
   it('retains unknown POST outcomes, capacity and request identity without retry', async () => {
     const f = fixture(); f.transport.mockImplementation(async (url, options) => {

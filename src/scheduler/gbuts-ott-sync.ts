@@ -14,7 +14,7 @@ import { sendGbutsText } from './gbuts-spotify-messages';
 export interface GbutsOttRuntimeDependencies {
   management(options?: { forceRefresh: boolean }): Promise<GbutsOttManagement>;
   manualMembers(): any[];
-  access(order: GbutsOttOrder, listing: GbutsOttListing, profileName: string): Promise<string>;
+  access(order: GbutsOttOrder, listing: GbutsOttListing, profileName: string, managementSnapshot?: GbutsOttManagement): Promise<string>;
   credentials?(order: GbutsOttOrder, listing: GbutsOttListing): Promise<{ id: string; password: string }>;
   refreshAccess(orders: GbutsOttOrder[]): Promise<void>;
   readStore?(): GbutsOttStore;

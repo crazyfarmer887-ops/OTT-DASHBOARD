@@ -93,3 +93,27 @@ test('clearing the daily price explains why registration is blocked and entering
   expect(register.disabled).toBe(false);
   expect(host.querySelector('[role="status"]')).toBeNull();
 });
+
+test('slow publication shows progress and waits for the confirmed listing without submitting twice', async () => {
+  const accounts = [{ key: '넷플릭스:new@example.com', serviceType: '넷플릭스', accountEmail: 'new@example.com',
+    total: 5, graytag: 0, manual: 0, gbuts: 0, claims: 0, available: 5, overbooked: false,
+    endDate: '2099-10-01', suggestedDailyPrice: 150 }];
+  const overview = { ok: true, enabled: true, accounts, listings: [], orders: [], unlinked: [] };
+  const transport = vi.fn(async (url: string, options?: RequestInit) => {
+    if (url === '/api/gbuts/ott/listings' && options?.method === 'POST')
+      return { ok: true, status: 202, json: async () => ({ ok: true, pending: true }) };
+    if (url.startsWith('/api/gbuts/ott/listings/requests/'))
+      return { ok: true, status: 200, json: async () => ({ ok: true, listing: { postSeq: 123 } }) };
+    return { ok: true, status: 200, json: async () => overview };
+  });
+  vi.stubGlobal('fetch', transport);
+  const host = document.createElement('div'); document.body.append(host); const root = createRoot(host);
+  dispose = () => { root.unmount(); host.remove(); };
+  window.history.replaceState(null, '', '/gbuts-sales?service=' + encodeURIComponent('넷플릭스') + '&account=new%40example.com');
+  await act(async () => root.render(<Router><GbutsSalesPage /></Router>));
+  const register = Array.from(host.querySelectorAll('button')).find(button => button.textContent === '벗츠 판매글 등록')!;
+  await act(async () => { register.click(); await new Promise(resolve => setTimeout(resolve, 1600)); });
+  expect(host.querySelector('[role="status"]')?.textContent).toContain('등록 완료');
+  expect(transport.mock.calls.filter(([url, options]) => url === '/api/gbuts/ott/listings' && options?.method === 'POST')).toHaveLength(1);
+  expect(transport.mock.calls.some(([url]) => String(url).startsWith('/api/gbuts/ott/listings/requests/'))).toBe(true);
+});

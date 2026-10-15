@@ -57,6 +57,7 @@ async function reconcileListing(listing: GbutsOttListing, client: ReturnType<typ
   listing.verifiedAt = new Date().toISOString(); delete listing.error;
 }
 export function registerGbutsOttRoutes(app: Hono, deps: GbutsOttRuntimeDependencies): void {
+  const registrationJobs = new Map<string, { fingerprint: string; promise: Promise<Response>; response?: Response }>();
   app.get('/gbuts/sales/overview', async c => {
     try {
       const store = readGbutsOttStore();
@@ -142,7 +143,17 @@ export function registerGbutsOttRoutes(app: Hono, deps: GbutsOttRuntimeDependenc
   }));
   app.post('/gbuts/ott/listings', async c => {
     const body = await c.req.json().catch(() => ({}));
-    return withGbutsOttInventory(async () => {
+    const requestId = String(body.requestId || '');
+    if (!/^[A-Za-z0-9_-]{8,100}$/.test(requestId))
+      return c.json({ ok: false, error: '등록 요청 식별자를 확인해주세요.' }, 400);
+    const fingerprint = createHash('sha256').update(JSON.stringify(body)).digest('hex');
+    let job = registrationJobs.get(requestId);
+    if (job && job.fingerprint !== fingerprint) return c.json({ ok: false, error: '이미 사용한 등록 요청입니다.' }, 409);
+    if (!job) {
+      job = { fingerprint, promise: undefined! };
+      const currentJob = job;
+      registrationJobs.set(requestId, currentJob);
+      currentJob.promise = withGbutsOttInventory(async () => {
       try {
         if (process.env.GBUTS_OTT_SYNC_ENABLED !== 'true') throw new Error('벗츠 판매 연결이 아직 켜져 있지 않습니다.');
         const serviceType = String(body.serviceType || ''); const accountEmail = String(body.accountEmail || '').trim();
@@ -158,6 +169,8 @@ export function registerGbutsOttRoutes(app: Hono, deps: GbutsOttRuntimeDependenc
         const store = readGbutsOttStore(); const previous = store.listings[id];
         if (previous) return c.json({ ok: previous.state === 'registered', listing: previous,
           error: previous.requestHash !== requestHash ? '이미 사용한 등록 요청입니다.' : '기존 등록 결과를 확인해주세요.' }, previous.requestHash !== requestHash ? 409 : 200);
+        if (Object.values(store.listings).some(x => x.requestHash === requestHash && ['submitting', 'uncertain', 'registered'].includes(x.state)))
+          return c.json({ ok: false, error: '같은 내용의 판매글 등록 요청이 이미 있습니다. 연결된 판매글을 확인해주세요.' }, 409);
         const client = gbutsOttClient();
         const [management, posts] = await Promise.all([deps.management(), client.listPosts()]);
         assertBoundPosts(store, posts);
@@ -171,7 +184,7 @@ export function registerGbutsOttRoutes(app: Hono, deps: GbutsOttRuntimeDependenc
         await deps.access({ key: `preview:${id}`, listingId: id, postSeq: 0, memberSeq: 0, userSeq: 0,
           name: '(미리보기)', status: 'PREVIEW', cancelStatus: null, startDate: koreaToday(), endDate,
           delivery: 'ready', verifiedAt: new Date().toISOString() },
-          { id, serviceType, accountEmail: rawAccount.email } as GbutsOttListing, '미리보기');
+          { id, serviceType, accountEmail: rawAccount.email } as GbutsOttListing, '미리보기', management);
         const listing: GbutsOttListing = { id, requestHash, serviceType, accountEmail: rawAccount.email, endDate, capacity, dailyPrice,
           title, description, state: 'submitting', createdAt: new Date().toISOString(), beforePostSeqs: posts.map(x => x.seq) };
         store.listings[id] = listing; writeGbutsOttStore(store);
@@ -185,7 +198,27 @@ export function registerGbutsOttRoutes(app: Hono, deps: GbutsOttRuntimeDependenc
           return c.json({ ok: false, listing, error: '등록 결과를 확인해야 합니다. 자리는 보존되며 같은 요청을 자동 재등록하지 않습니다.' }, 502);
         }
       } catch (e) { return c.json({ ok: false, error: e instanceof Error ? e.message : '판매글 등록 실패' }, 503); }
-    });
+      }).catch(e => c.json({ ok: false, error: e instanceof Error ? e.message : '판매글 등록 실패' }, 503))
+        .then(response => { currentJob.response = response; const timer = setTimeout(() => {
+          if (registrationJobs.get(requestId) === currentJob) registrationJobs.delete(requestId);
+        }, 10 * 60_000); (timer as any).unref?.(); return response; });
+    }
+    if (job.response) return job.response.clone();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const response = await Promise.race([job.promise, new Promise<undefined>(resolve => {
+      timer = setTimeout(() => resolve(undefined), 1200);
+    })]);
+    if (timer) clearTimeout(timer);
+    return response ? response.clone() : c.json({ ok: true, pending: true, requestId }, 202);
+  });
+  app.get('/gbuts/ott/listings/requests/:id', c => {
+    const id = c.req.param('id'); const job = registrationJobs.get(id);
+    if (job?.response) return job.response.clone();
+    if (job) return c.json({ ok: true, pending: true, requestId: id }, 202);
+    const listing = readGbutsOttStore().listings[id];
+    if (!listing) return c.json({ ok: false, error: '등록 요청을 찾지 못했습니다. 판매글 목록을 새로고침해 확인해주세요.' }, 404);
+    if (listing.state === 'registered') return c.json({ ok: true, listing });
+    return c.json({ ok: false, listing, error: '등록 결과를 확인해야 합니다. 연결된 판매글을 확인해주세요.' }, 409);
   });
   app.post('/gbuts/ott/listings/:id/reconcile', c => withGbutsOttInventory(async () => {
     try {

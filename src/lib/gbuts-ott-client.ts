@@ -17,12 +17,22 @@ export function buildGbutsOttPost(listing: GbutsOttListing, now = new Date()): R
 }
 export function createGbutsOttSellerClient(token: string, transport: typeof fetch = fetch) {
   const request = async (path: string, init?: RequestInit) => {
-    const response = await transport(`https://api.gbuts.com${path}`, { ...init,
-      headers: { 'Content-Type': 'application/json', api_key: `Bearer ${token}` }, signal: AbortSignal.timeout(15000) });
-    if (!response.ok) throw new Error(`벗츠 요청 실패 (${response.status})`);
-    const payload = await response.json() as any;
-    if (payload.success !== true || payload.error || payload.response === undefined) throw new Error('벗츠 요청 결과를 확인하지 못했습니다.');
-    return payload;
+    const readOnly = !init?.method || init.method.toUpperCase() === 'GET';
+    for (let attempt = 0; attempt < (readOnly ? 2 : 1); attempt++) {
+      const response = await transport(`https://api.gbuts.com${path}`, { ...init,
+        headers: { 'Content-Type': 'application/json', api_key: `Bearer ${token}` }, signal: AbortSignal.timeout(15000) });
+      if (!response.ok && readOnly && attempt === 0 && [429, 500, 502, 503, 504].includes(response.status)) {
+        const retryAfter = Number(response.headers.get('retry-after'));
+        await response.body?.cancel().catch(() => {});
+        await new Promise(resolve => setTimeout(resolve, Math.min(1500, Math.max(250, Number.isFinite(retryAfter) ? retryAfter * 1000 : 250))));
+        continue;
+      }
+      if (!response.ok) throw new Error(`벗츠 요청 실패 (${response.status})`);
+      const payload = await response.json() as any;
+      if (payload.success !== true || payload.error || payload.response === undefined) throw new Error('벗츠 요청 결과를 확인하지 못했습니다.');
+      return payload;
+    }
+    throw new Error('벗츠 조회 결과를 확인하지 못했습니다.');
   };
   const validatePost = (post: any): GbutsOttPost => {
     integer(post?.seq); integer(post?.category1?.seq); integer(post?.memberLimit);
