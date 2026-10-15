@@ -92,11 +92,16 @@ export async function readVerifiedGraytagManagementSnapshot(readPage: InventoryP
     }
     throw new Error('그레이태그 재고 페이지를 모두 확인하지 못했습니다.');
   };
-  // Sequential streams avoid the burst caused by four concurrent page loops.
-  const afterOpenDeals = await read('after', false);
-  const afterFinishedDeals = await read('after', true);
-  const beforeOpenDeals = await read('before', false);
-  const beforeFinishedDeals = await read('before', true);
+  // The account-owner streams are independent. Read two lanes concurrently;
+  // the shared transport still spaces request starts to avoid provider bursts.
+  const [after, before] = await Promise.all([
+    (async () => ({ open: await read('after', false), finished: await read('after', true) }))(),
+    (async () => ({ open: await read('before', false), finished: await read('before', true) }))(),
+  ]);
+  const afterOpenDeals = after.open;
+  const afterFinishedDeals = after.finished;
+  const beforeOpenDeals = before.open;
+  const beforeFinishedDeals = before.finished;
   return { afterOpenDeals, afterFinishedDeals, beforeOpenDeals, beforeFinishedDeals };
 }
 

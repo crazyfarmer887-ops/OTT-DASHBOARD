@@ -1,7 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { dedupeGraytagManagementDeals, verifiedGraytagManagementDeals } from '../src/lib/graytag-management-snapshot';
+import { dedupeGraytagManagementDeals, readVerifiedGraytagManagementSnapshot, verifiedGraytagManagementDeals } from '../src/lib/graytag-management-snapshot';
 const sale = (productUsid: string) => ({ dealUsid: null, productUsid, dealStatus: 'OnSale' });
 describe('authoritative shared inventory snapshot', () => {
+  it('reads independent account streams concurrently without mixing their verified pages', async () => {
+    let active = 0; let peak = 0;
+    const result = await readVerifiedGraytagManagementSnapshot(async (kind, finished) => {
+      active++; peak = Math.max(peak, active);
+      await new Promise(resolve => setTimeout(resolve, 5));
+      active--;
+      return new Response(JSON.stringify({ succeeded: true, data: { lenderDeals: [{ dealUsid: `${kind}-${finished}`, dealStatus: 'Using' }] } }));
+    });
+    expect(peak).toBe(2);
+    expect(result.afterOpenDeals[0].dealUsid).toBe('after-false');
+    expect(result.beforeFinishedDeals[0].dealUsid).toBe('before-true');
+  });
   it('accepts unsold provider listings identified by product rather than a buyer deal', () => {
     const rows = [sale('sale-1'), sale('sale-2')];
     expect(verifiedGraytagManagementDeals({ succeeded: true, data: { lenderDeals: rows } }, true, true)).toEqual(rows);
