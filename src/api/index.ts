@@ -1576,7 +1576,6 @@ const BASE_HEADERS = {
 // ─── Direct GrayTag requests + rate limiting ──────────────────
 let _lastGraytagRequest = 0;
 let _rateLimitUntil: number = 0;
-let _graytagRequestStartQueue: Promise<void> = Promise.resolve();
 let _chatRoomsCache: FastChatRoomsSnapshot | null = null;
 let _chatRoomsHydrationGeneration = 0;
 let _chatRoomsHydrationInFlight: Promise<void> | null = null;
@@ -1601,20 +1600,15 @@ async function directFetch(url: string, options?: RequestInit, route?: GraytagSe
 /** Use the configured transport once. Never retry uncertain writes. */
 async function rateLimitedFetch(url: string, options?: RequestInit, bypass = false, route?: GraytagSellerRoute,
   isAuthoritativeRead?: (response: Response) => Promise<boolean>): Promise<Response> {
-  const start = _graytagRequestStartQueue.then(async () => {
-    if (!bypass && Date.now() < _rateLimitUntil) return false;
-    const elapsed = Date.now() - _lastGraytagRequest;
-    if (elapsed < 1500) await new Promise(r => setTimeout(r, 1500 - elapsed));
-    _lastGraytagRequest = Date.now();
-    return true;
-  });
-  _graytagRequestStartQueue = start.then(() => {}, () => {});
-  if (!await start) {
+  if (!bypass && Date.now() < _rateLimitUntil) {
     return new Response(JSON.stringify({ ok: false, error: 'rate_limit_backoff' }), {
       status: 429,
       headers: { 'Content-Type': 'application/json', 'Retry-After': String(Math.max(1, Math.ceil((_rateLimitUntil - Date.now()) / 1000))) },
     });
   }
+  const elapsed = Date.now() - _lastGraytagRequest;
+  if (elapsed < 1500) await new Promise(r => setTimeout(r, 1500 - elapsed));
+  _lastGraytagRequest = Date.now();
   const response = await directFetch(url, options, route, isAuthoritativeRead);
   if (response.status === 429) _rateLimitUntil = Math.max(_rateLimitUntil, Date.now() + CHAT_RATE_LIMIT_BACKOFF_MS);
   return response;
