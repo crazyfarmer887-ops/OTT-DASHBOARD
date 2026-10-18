@@ -4,6 +4,7 @@ import { RefreshCw, ExternalLink, ShoppingBag } from 'lucide-react';
 import { makeDefaultProductTitle } from '../../lib/write-default-template';
 
 import { makeGbutsOttDescription } from '../../lib/gbuts-ott-templates';
+import GbutsSpotifySalesPage from './gbuts-spotify-sales';
 
 type Account = { key: string; serviceType: string; accountEmail: string; total: number; graytag: number; manual: number; gbuts: number; claims: number; available: number; overbooked: boolean; endDate: string; suggestedDailyPrice: number | null };
 type Listing = { id: string; postSeq?: number; serviceType: string; accountEmail: string; capacity: number; dailyPrice: number; endDate: string; state: string; error?: string };
@@ -14,6 +15,11 @@ const styles = { card: { background: '#fff', border: '1px solid #EDE9FE', border
   button: { border: 0, borderRadius: 10, padding: '11px 14px', background: '#7C3AED', color: '#fff', fontWeight: 800, cursor: 'pointer' } };
 const labels: Record<string, string> = { submitting: '등록 확인 중', registered: '판매 연결됨', uncertain: '등록 결과 확인 필요', failed: '등록 실패', closed: '모집 종료', ready: '자동 전달 대기', attempted: '발송 확인 중', confirmed: '전달 완료', blocked: '전달 보류' };
 export default function GbutsSalesPage({ view = 'sales' }: { view?: 'sales' | 'orders' }) {
+  const search = useSearch();
+  return view === 'sales' && new URLSearchParams(search).get('service') === '스포티파이'
+    ? <GbutsSpotifySalesPage /> : <GbutsOttSalesPage view={view} />;
+}
+function GbutsOttSalesPage({ view }: { view: 'sales' | 'orders' }) {
   const [, navigate] = useLocation(); const [data, setData] = useState<Data | null>(null);
   const [loadError, setLoadError] = useState('');
   const [loading, setLoading] = useState(false); const [busy, setBusy] = useState(false); const [message, setMessage] = useState('');

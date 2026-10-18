@@ -29,7 +29,7 @@ export default function GbutsHomePage() {
       <h1 style={{ fontSize: 24 }}><ShoppingBag size={23} /> 벗츠 판매 관리</h1>
       <button style={button} disabled={loading} onClick={load}><RefreshCw size={14} /> {loading ? '확인 중' : '새로고침'}</button>
     </header>
-    <p style={{ fontSize: 13, lineHeight: 1.6 }}>서비스를 선택하고 계정·이용 기간·하루 요금을 정해 판매하세요. 구매 후 계정 확인 링크가 1:1 채팅으로 전달됩니다.</p>
+    <p style={{ fontSize: 13, lineHeight: 1.6 }}>서비스를 선택하고 이용 기간·하루 요금을 정해 판매하세요. 구매 후 서비스별 이용 안내가 1:1 채팅으로 전달됩니다.</p>
     {error && <p role="alert" style={{ ...card, color: '#B91C1C' }}>{error}</p>}
     {data?.lastError && <p role="alert" style={{ ...card, color: '#B91C1C' }}>자동 전달 확인 필요: {data.lastError}</p>}
     <section style={{ ...card, marginBottom: 18 }}>
@@ -38,6 +38,7 @@ export default function GbutsHomePage() {
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
         <button style={button} onClick={() => navigate('/gbuts-accounts')}>계정 추가·관리</button>
         <button style={button} onClick={() => navigate('/gbuts-sales')}>OTT 판매글 작성</button>
+        <button style={button} onClick={() => navigate(`/gbuts-sales?service=${encodeURIComponent('스포티파이')}`)}>스포티파이 판매글 작성</button>
         <button style={{ ...button, background: '#F3F0FF', color: '#6D28D9' }} onClick={() => navigate('/gbuts-orders')}>주문·전달 관리</button>
       </div>
     </section>
@@ -50,7 +51,7 @@ export default function GbutsHomePage() {
           <p style={{ fontSize: 13 }}>진행 중 판매글 <strong>{service?.listings ?? '—'}</strong>개 · 참여 표시 <strong>{service?.members ?? '—'}</strong>명</p>
           <p style={{ fontSize: 12, color: '#6B7280' }}>판매글의 모집 잔여 <strong>{service?.recruiting ?? '—'}</strong>자리</p>
           {!spotify && service && <p style={{ fontSize: 12 }}>전달 완료 {service.confirmed}건 · 대기/확인 필요 {service.pending}건</p>}
-          <button style={button} onClick={() => navigate(spotify ? '/spotify-invites' : `/gbuts-sales?service=${encodeURIComponent(serviceType)}`)}>{spotify ? '초대·판매자 연결 관리' : '판매글 작성'} <ArrowRight size={13} /></button>
+          <button style={button} onClick={() => navigate(`/gbuts-sales?service=${encodeURIComponent(serviceType)}`)}>판매글 작성 <ArrowRight size={13} /></button>
         </article>;
       })}
     </section>

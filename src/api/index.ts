@@ -80,6 +80,8 @@ import {
 import { loadGbutsSession, parseGbutsToken, saveGbutsSession } from '../lib/gbuts-session';
 import { dedupeGraytagManagementDeals, graytagCredentialHydrationDeals, GRAYTAG_INVENTORY_PAGE_SIZE, isAuthoritativeGraytagInventoryResponse, readVerifiedGraytagManagementSnapshot } from '../lib/graytag-management-snapshot';
 import { gbutsOttClient, registerGbutsOttRoutes, reserveGraytagOttPlace, settleGraytagOttPlace } from './gbuts-ott';
+import { registerGbutsSpotifyListingRoutes } from './gbuts-spotify-listings';
+import { spotifyPostSeqs } from '../lib/gbuts-spotify-listings';
 import { registerManualAccountRoutes } from './manual-account-registration';
 import { assertUnclaimedGbutsNetflixProfile, availableNetflixProfiles } from '../lib/gbuts-netflix-profiles';
 import { deliverableOttOrder, hasGbutsOttProfileLease, isGbutsOttBuyerMatch, mergeGbutsOttManagement, manualOttMembersWithProfiles, sharedOttAccounts, ottKey, ottDate } from '../lib/gbuts-ott';
@@ -1126,10 +1128,10 @@ app.get('/gbuts/session', async (c) => {
     autoMessageEnabled: process.env.GBUTS_SPOTIFY_AUTO_MESSAGE_ENABLED === 'true',
     chatAlertEnabled: process.env.GBUTS_SPOTIFY_CHAT_ALERT_ENABLED === 'true' });
   try {
-    const members = await createGbutsSpotifySellerClient(token).listMembers(
-      Number(process.env.GBUTS_SPOTIFY_POST_SEQ || GBUTS_SPOTIFY_POST_SEQ));
+    const client = createGbutsSpotifySellerClient(token); const posts = spotifyPostSeqs();
+    const members = (await Promise.all(posts.map(seq => client.listMembers(seq)))).flat();
     return c.json({ connected: true, sellerLabel: saved?.sellerLabel || 'GButs seller',
-      connectedAt: saved?.connectedAt || null, memberCount: members.length,
+      connectedAt: saved?.connectedAt || null, memberCount: members.length, postCount: posts.length,
       syncEnabled: process.env.GBUTS_SPOTIFY_SYNC_ENABLED === 'true',
       autoMessageEnabled: process.env.GBUTS_SPOTIFY_AUTO_MESSAGE_ENABLED === 'true',
       chatAlertEnabled: process.env.GBUTS_SPOTIFY_CHAT_ALERT_ENABLED === 'true' });
@@ -6739,6 +6741,7 @@ export const gbutsOttRuntimeDependencies: GbutsOttRuntimeDependencies = {
   },
 };
 registerGbutsOttRoutes(app, gbutsOttRuntimeDependencies);
+registerGbutsSpotifyListingRoutes(app);
 registerLinkidRoutes(app);
 
 app.post('/party-access/:token/consent', async (c) => {

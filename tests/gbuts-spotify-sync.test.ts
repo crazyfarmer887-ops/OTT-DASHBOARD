@@ -1,11 +1,42 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createGbutsSpotifyNotionClient, createGbutsSpotifySellerClient, syncGbutsSpotifyCredentials, type SpotifyNotionRow } from '../src/scheduler/gbuts-spotify-sync';
+import { createGbutsSpotifyNotionClient, createGbutsSpotifySellerClient, syncGbutsSpotifyCredentials, syncGbutsSpotifyPosts, type SpotifyNotionRow } from '../src/scheduler/gbuts-spotify-sync';
+import { syncGbutsSpotifyMessages, SPOTIFY_INVITED_REPLY, type GbutsSpotifyMessageJournal } from '../src/scheduler/gbuts-spotify-messages';
 
 const member = { seq: 91, userSeq: 42, productId: '801', status: 'APPLY', cancelStatus: null };
 const credentialMessage = { senderSeq: 42, message: 'Spotify email: buyer@example.com\nPassword: secret123',
   messageType: 'TEXT', createdAt: '2026-10-02T10:00:00Z' };
 
 describe('GButs Spotify Notion sync', () => {
+  it('keeps old and new listing buyers separate and delivers the existing invited reply for both', async () => {
+    const rows: SpotifyNotionRow[] = [];
+    const chats = new Map([15557, 17000].map(post => [String(post), [
+      { ...credentialMessage, message: `Spotify email: buyer${post}@example.com\nPassword: secret123` },
+    ]]));
+    let journal: GbutsSpotifyMessageJournal = { version: 1, records: {} };
+    const deps = {
+      listMembers: async (post: number) => { if (post === 1) throw new Error('old listing unavailable'); return [member]; },
+      openPrivateRoom: async (post: number) => String(post),
+      getChat: async (room: string) => ({ roomId: room, members: [], messages: chats.get(room)! }),
+      listRows: async () => [...rows], getRow: async (id: string) => rows.find(x => x.id === id) || null,
+      createRow: async (orderKey: string, credentials: { email: string; password: string }) => {
+        const row = { id: orderKey, orderKey, email: credentials.email, password: credentials.password,
+          emailHistory: [], invited: false, registered: false, cancelled: false }; rows.push(row); return row;
+      },
+      replaceCredentials: vi.fn(), cancelRow: vi.fn(), sellerAccountSeq: async () => 7,
+      readJournal: () => journal, writeJournal: (value: GbutsSpotifyMessageJournal) => { journal = value; },
+      sendText: vi.fn(async (room: string, senderSeq: number, message: string) => {
+        chats.get(room)!.push({ senderSeq, message, messageType: 'TEXT', createdAt: '2026-10-18T08:00:00Z' });
+      }),
+    };
+    const after = (post: number) => syncGbutsSpotifyMessages(deps, post).then(() => {});
+    expect((await syncGbutsSpotifyPosts(deps, [1, 15557, 17000], after)).errors).toHaveLength(1);
+    expect(rows.map(x => x.orderKey)).toEqual(['15557:91', '17000:91']);
+    rows.forEach(row => { row.invited = true; });
+    await syncGbutsSpotifyPosts(deps, [15557, 17000], after);
+    expect(deps.sendText.mock.calls.filter(([, , text]) => text === SPOTIFY_INVITED_REPLY).map(([room]) => room)).toEqual(['15557', '17000']);
+    await syncGbutsSpotifyPosts(deps, [15557, 17000], after);
+    expect(deps.sendText.mock.calls.filter(([, , text]) => text === SPOTIFY_INVITED_REPLY)).toHaveLength(2);
+  });
   it('accepts the string product IDs returned by GButs seller members', async () => {
     const liveFormatMember = { ...member, productId: 'SPOT1234' };
     const transport = vi.fn(async () => new Response(JSON.stringify({ response: [liveFormatMember] }), { status: 200 })) as unknown as typeof fetch;

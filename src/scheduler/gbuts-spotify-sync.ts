@@ -2,6 +2,7 @@ import { extractGbutsCredentialsWithOpenRouter } from '../api/notion-chat-extrac
 import { createSingleFlightRunner } from './poll-daemon';
 import { loadGbutsSession } from '../lib/gbuts-session';
 import { loadSafeModeConfig } from '../api/safe-mode';
+import { LEGACY_SPOTIFY_POST_SEQ, spotifyPostSeqs } from '../lib/gbuts-spotify-listings';
 import { readGbutsSpotifyMessageJournal, requestedSpotifyNewAccount, sendGbutsText, syncGbutsSpotifyMessages,
   writeGbutsSpotifyMessageJournal } from './gbuts-spotify-messages';
 import {
@@ -11,7 +12,7 @@ import {
 
 const NOTION_VERSION = '2025-09-03';
 export const SPOTIFY_NOTION_DATA_SOURCE_ID = '560bff3e-13e1-4c84-8352-0a91899d045c';
-export const GBUTS_SPOTIFY_POST_SEQ = 15557;
+export const GBUTS_SPOTIFY_POST_SEQ = LEGACY_SPOTIFY_POST_SEQ;
 
 export interface SpotifyNotionRow {
   id: string;
@@ -377,6 +378,19 @@ export function createGbutsSpotifySellerClient(token: string, transport: typeof 
   };
 }
 
+export async function syncGbutsSpotifyPosts(deps: GbutsSpotifySyncDependencies, postSeqs: number[],
+  afterSync?: (postSeq: number) => Promise<void>) {
+  const errors: Array<{ postSeq: number; error: string }> = [];
+  for (const postSeq of new Set(postSeqs)) {
+    try {
+      const result = await syncGbutsSpotifyCredentials(deps, postSeq);
+      if (result.created || result.updated || result.cancelled || result.conflicts) console.log('[GbutsSpotifySync] sync', postSeq, result);
+      await afterSync?.(postSeq);
+    } catch (e) { errors.push({ postSeq, error: e instanceof Error ? e.message : '스포티파이 주문 처리 실패' }); }
+  }
+  return { errors };
+}
+
 export function startGbutsSpotifySync(): void {
   if (process.env.GBUTS_SPOTIFY_SYNC_ENABLED !== 'true') return;
   const notionToken = process.env.NOTION_API_TOKEN?.trim();
@@ -386,7 +400,6 @@ export function startGbutsSpotifySync(): void {
   }
   const notion = createGbutsSpotifyNotionClient(notionToken,
     process.env.NOTION_SPOTIFY_DATA_SOURCE_ID?.trim() || SPOTIFY_NOTION_DATA_SOURCE_ID);
-  const postSeq = Number(process.env.GBUTS_SPOTIFY_POST_SEQ || GBUTS_SPOTIFY_POST_SEQ);
   const intervalMs = Math.max(30_000, Number(process.env.GBUTS_SPOTIFY_SYNC_INTERVAL_MS) || 30_000);
   const run = createSingleFlightRunner(async () => {
     try {
@@ -394,10 +407,8 @@ export function startGbutsSpotifySync(): void {
       const gbutsToken = loadGbutsSession()?.token || process.env.GBUTS_API_TOKEN?.trim();
       if (!gbutsToken) return;
       const deps = { ...notion, ...createGbutsSpotifySellerClient(gbutsToken), extractCredentials: extractGbutsCredentialsWithOpenRouter };
-      const result = await syncGbutsSpotifyCredentials(deps, postSeq);
-      if (result.created || result.updated || result.cancelled || result.conflicts)
-        console.log('[GbutsSpotifySync] sync', result);
-      if (process.env.GBUTS_SPOTIFY_AUTO_MESSAGE_ENABLED === 'true') {
+      const result = await syncGbutsSpotifyPosts(deps, spotifyPostSeqs(), async postSeq => {
+        if (process.env.GBUTS_SPOTIFY_AUTO_MESSAGE_ENABLED !== 'true') return;
         const messages = await syncGbutsSpotifyMessages({ ...deps, sendText: sendGbutsText,
           readJournal: readGbutsSpotifyMessageJournal,
           writeJournal: writeGbutsSpotifyMessageJournal,
@@ -405,7 +416,8 @@ export function startGbutsSpotifySync(): void {
         if (messages.guidesAttempted || messages.acknowledgementsAttempted
           || messages.invitedRepliesAttempted || messages.confirmed)
           console.log('[GbutsSpotifySync] messages', messages);
-      }
+      });
+      for (const failure of result.errors) console.error('[GbutsSpotifySync]', failure.postSeq, failure.error);
     } catch (error) {
       console.error('[GbutsSpotifySync] sync failed', error instanceof Error ? error.message : 'unknown error');
     }

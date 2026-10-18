@@ -1,5 +1,6 @@
 import { createGbutsSpotifySellerClient } from '../scheduler/gbuts-spotify-sync';
 import { GBUTS_OTT_CATEGORIES, koreaToday, ottDate, type GbutsOttListing } from './gbuts-ott';
+import { buildSpotifyListing, type SpotifyListingInput } from './gbuts-spotify-listings';
 export interface GbutsOttMember {
   seq: number; userSeq: number; productId: string; nickname: string; status: string;
   cancelStatus: string | null; createdAt: string; subscriptionEndsAt: string;
@@ -62,6 +63,11 @@ export function createGbutsOttSellerClient(token: string, transport: typeof fetc
     },
     async createPost(listing: GbutsOttListing): Promise<number | null> {
       const data = (await request('/api/subscribe/share', { method: 'POST', body: JSON.stringify(buildGbutsOttPost(listing)) })).response;
+      const seq = typeof data === 'number' ? data : data?.seq ?? data?.postSeq;
+      return seq == null ? null : integer(seq);
+    },
+    async createSpotifyPost(input: SpotifyListingInput & { countries: string[] }): Promise<number | null> {
+      const data = (await request('/api/subscribe/share', { method: 'POST', body: JSON.stringify(buildSpotifyListing(input)) })).response;
       const seq = typeof data === 'number' ? data : data?.seq ?? data?.postSeq;
       return seq == null ? null : integer(seq);
     },
