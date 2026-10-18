@@ -5,8 +5,8 @@ import { ArrowRight, RefreshCw, ShoppingBag } from 'lucide-react';
 type Service = { serviceType: string; listings: number; recruiting: number; members: number; confirmed: number; pending: number; invitationFlow: boolean };
 type Overview = { services: Service[]; enabled: boolean; updatedAt: string; lastError: string | null; listings: Array<{ seq: number; serviceType: string; memberCount: number; memberLimit: number; status: string; endDate: string; dailyPrice: number | null }> };
 const serviceNames = ['넷플릭스', '디즈니플러스', '티빙', '웨이브', '스포티파이'];
-const card = { background: '#fff', border: '1px solid #EDE9FE', borderRadius: 16, padding: 18 };
-const button = { border: 0, borderRadius: 10, background: '#7C3AED', color: '#fff', padding: '11px 14px', fontFamily: 'inherit', fontWeight: 800, cursor: 'pointer' };
+const card = { background: '#fff', border: '1px solid var(--secondary)', borderRadius: 16, padding: 18 };
+const button = { border: 0, borderRadius: 10, background: 'var(--action)', color: '#fff', padding: '11px 14px', fontFamily: 'inherit', fontWeight: 800, cursor: 'pointer' };
 
 export default function GbutsHomePage() {
   const [, navigate] = useLocation();
@@ -24,7 +24,7 @@ export default function GbutsHomePage() {
     finally { setLoading(false); }
   }, []);
   useEffect(() => { void load(); }, [load]);
-  return <main style={{ maxWidth: 950, margin: 'auto', padding: 20, color: '#1E1B4B' }}>
+  return <main style={{ maxWidth: 950, margin: 'auto', padding: 20, color: 'var(--foreground)' }}>
     <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
       <h1 style={{ fontSize: 24 }}><ShoppingBag size={23} /> 벗츠 판매 관리</h1>
       <button style={button} disabled={loading} onClick={load}><RefreshCw size={14} /> {loading ? '확인 중' : '새로고침'}</button>
@@ -39,7 +39,7 @@ export default function GbutsHomePage() {
         <button style={button} onClick={() => navigate('/gbuts-accounts')}>계정 추가·관리</button>
         <button style={button} onClick={() => navigate('/gbuts-sales')}>OTT 판매글 작성</button>
         <button style={button} onClick={() => navigate(`/gbuts-sales?service=${encodeURIComponent('스포티파이')}`)}>스포티파이 판매글 작성</button>
-        <button style={{ ...button, background: '#F3F0FF', color: '#6D28D9' }} onClick={() => navigate('/gbuts-orders')}>주문·전달 관리</button>
+        <button style={{ ...button, background: 'var(--muted)', color: 'var(--action)' }} onClick={() => navigate('/gbuts-orders')}>주문·전달 관리</button>
       </div>
     </section>
     <section aria-label="서비스별 판매 현황" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: 14 }}>
@@ -58,7 +58,7 @@ export default function GbutsHomePage() {
     <section style={{ ...card, marginTop: 18 }}>
       <h2 style={{ fontSize: 17 }}>현재 벗츠 판매글</h2>
       {data && !data.listings.length && <p style={{ fontSize: 13 }}>새 서비스의 판매글을 작성해 주세요.</p>}
-      {data?.listings.map(listing => <div key={listing.seq} style={{ padding: '12px 0', borderTop: '1px solid #EDE9FE', fontSize: 13 }}>
+      {data?.listings.map(listing => <div key={listing.seq} style={{ padding: '12px 0', borderTop: '1px solid var(--secondary)', fontSize: 13 }}>
         <strong>{listing.serviceType}</strong> · {listing.dailyPrice == null ? '요금 확인 필요' : `${listing.dailyPrice}원/일`} · {listing.memberCount}/{listing.memberLimit}명 · {listing.endDate}까지
         <p style={{ marginBottom: 0 }}><a href={`https://gbuts.com/seller/subscriptions/${listing.seq}`} target="_blank" rel="noreferrer">벗츠에서 판매글·채팅 확인</a></p>
       </div>)}

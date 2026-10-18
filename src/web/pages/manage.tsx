@@ -105,13 +105,13 @@ const VERIFYING_SET = new Set(['DeliveredAndCheckPrepaid']);
 const isAccountCheckingMember = (m: Pick<Member, 'status' | 'statusName'>) => VERIFYING_SET.has(m.status) || String(m.statusName || '').includes('계정확인중') || String(m.statusName || '').includes('계정 확인중');
 
 const STATUS_BADGE: Record<string, { label: string; color: string; bg: string }> = {
-  Using:                       { label:'이용 중',   color:'#7C3AED', bg:'#F5F3FF' },
+  Using:                       { label:'이용 중',   color:'var(--action)', bg:'var(--muted)' },
   UsingNearExpiration:         { label:'만료 임박',  color:'#D97706', bg:'#FFFBEB' },
   DeliveredAndCheckPrepaid:    { label:'계정 확인중', color:'#2563EB', bg:'#EFF6FF' },
   OnSale:                      { label:'판매 중',   color:'#059669', bg:'#ECFDF5' },
   Delivered:                   { label:'전달 완료',  color:'#2563EB', bg:'#EFF6FF' },
   Delivering:                  { label:'전달 중',   color:'#0891B2', bg:'#ECFEFF' },
-  Reserved:                    { label:'예약됨',    color:'#6366F1', bg:'#EEF2FF' },
+  Reserved:                    { label:'예약됨',    color:'#6366F1', bg:'var(--muted)' },
   LendingAcceptanceWaiting:    { label:'수락 대기',  color:'#D97706', bg:'#FFFBEB' },
   NormalFinished:              { label:'완료',      color:'#6B7280', bg:'#F3F4F6' },
   FinishedByBorrowerRequest:   { label:'중도 종료',  color:'#9CA3AF', bg:'#F9FAFB' },
@@ -1819,7 +1819,7 @@ export default function ManagePage() {
   const archivedAccountSummaryRow = (acct: Account) => (
     <div key={`${acct.serviceType}:${acct.email}`} style={{ background:'#fff', border:'1.5px solid #E5E7EB', borderRadius:12, padding:'9px 11px', display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}>
       <div style={{ minWidth:0 }}>
-        <div style={{ fontSize:12, fontWeight:900, color:'#1E1B4B', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{acct.email}</div>
+        <div style={{ fontSize:12, fontWeight:900, color:'var(--foreground)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{acct.email}</div>
         <div style={{ fontSize:10, color:'#9CA3AF' }}>{acct.serviceType}{acct.expiryDate ? ` · 만료 ${acct.expiryDate}` : ''}</div>
       </div>
       <span style={{ fontSize:10, fontWeight:900, color:'#6B7280', background:'#F3F4F6', borderRadius:999, padding:'3px 8px', flexShrink:0 }}>보관</span>
@@ -1829,20 +1829,20 @@ export default function ManagePage() {
   return (
     <div className="account-management-page">
       {toast && (
-        <div style={{ position:'fixed', left:'50%', bottom:'calc(74px + env(safe-area-inset-bottom))', transform:'translateX(-50%)', zIndex:300, maxWidth:420, width:'calc(100% - 32px)', background:toast.tone === 'error' ? '#FFF0F0' : toast.tone === 'info' ? '#EEF2FF' : '#ECFDF5', color:toast.tone === 'error' ? '#EF4444' : toast.tone === 'info' ? '#4F46E5' : '#059669', border:`1.5px solid ${toast.tone === 'error' ? '#FCA5A5' : toast.tone === 'info' ? '#C7D2FE' : '#A7F3D0'}`, borderRadius:999, padding:'10px 14px', boxShadow:'0 8px 26px rgba(17,24,39,0.14)', fontSize:12, fontWeight:900, textAlign:'center' }}>
+        <div style={{ position:'fixed', left:'50%', bottom:'calc(74px + env(safe-area-inset-bottom))', transform:'translateX(-50%)', zIndex:300, maxWidth:420, width:'calc(100% - 32px)', background:toast.tone === 'error' ? '#FFF0F0' : toast.tone === 'info' ? 'var(--muted)' : '#ECFDF5', color:toast.tone === 'error' ? '#EF4444' : toast.tone === 'info' ? 'var(--action)' : '#059669', border:`1.5px solid ${toast.tone === 'error' ? '#FCA5A5' : toast.tone === 'info' ? 'var(--border)' : '#A7F3D0'}`, borderRadius:999, padding:'10px 14px', boxShadow:'0 8px 26px rgba(17,24,39,0.14)', fontSize:12, fontWeight:900, textAlign:'center' }}>
           {toast.message}
         </div>
       )}
       {/* 헤더 */}
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>
         <div>
-          <h1 style={{ fontSize:22, fontWeight:700, color:'#1E1B4B', margin:0 }}>계정 관리</h1>
+          <h1 style={{ fontSize:22, fontWeight:700, color:'var(--foreground)', margin:0 }}>계정 관리</h1>
           <p style={{ fontSize:12, color:'#9CA3AF', margin:'4px 0 0' }}>
             {data?.updatedAt ? `${new Date(data.updatedAt).getHours().toString().padStart(2,'0')}:${new Date(data.updatedAt).getMinutes().toString().padStart(2,'0')} 기준` : '이메일 계정별 파티원 현황'}
           </p>
         </div>
         <div style={{ display:'flex', gap:6 }}>
-          <button onClick={() => { void Promise.all([doFetch(), fetchYouTubeFamilyGroups(), fetchSubscriptions()]); }} disabled={loading || youtubeGroupsLoading} style={{ background:'#A78BFA', border:'none', borderRadius:12, padding:'8px 14px', fontSize:13, color:'#fff', cursor:loading || youtubeGroupsLoading?'not-allowed':'pointer', fontWeight:600, fontFamily:'inherit', opacity:loading || youtubeGroupsLoading?0.7:1, display:'flex', alignItems:'center', gap:6 }}>
+          <button onClick={() => { void Promise.all([doFetch(), fetchYouTubeFamilyGroups(), fetchSubscriptions()]); }} disabled={loading || youtubeGroupsLoading} style={{ background:'var(--action)', border:'none', borderRadius:12, padding:'8px 14px', fontSize:13, color:'#fff', cursor:loading || youtubeGroupsLoading?'not-allowed':'pointer', fontWeight:600, fontFamily:'inherit', opacity:loading || youtubeGroupsLoading?0.7:1, display:'flex', alignItems:'center', gap:6 }}>
             {loading || youtubeGroupsLoading ? <Loader2 size={14} style={{ animation:'spin 1s linear infinite' }} /> : <RefreshCw size={14} />}
             {loading || youtubeGroupsLoading ? '조회중' : '조회'}
           </button>
@@ -1882,7 +1882,7 @@ export default function ManagePage() {
       {cookies.length > 1 && (
         <div className="no-scrollbar" style={{ display:'flex', gap:8, marginBottom:12, overflowX:'auto' }}>
           {cookies.map(cs => (
-            <button key={cs.id} onClick={() => setSelectedId(cs.id)} style={{ flexShrink:0, padding:'6px 14px', borderRadius:20, border:'none', fontFamily:'inherit', fontSize:12, fontWeight:600, cursor:'pointer', background: selectedId===cs.id ? '#A78BFA' : '#fff', color: selectedId===cs.id ? '#fff' : '#6B7280', boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
+            <button key={cs.id} onClick={() => setSelectedId(cs.id)} style={{ flexShrink:0, padding:'6px 14px', borderRadius:20, border:'none', fontFamily:'inherit', fontSize:12, fontWeight:600, cursor:'pointer', background: selectedId===cs.id ? 'var(--action)' : '#fff', color: selectedId===cs.id ? '#fff' : '#6B7280', boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
               {cs.label}
             </button>
           ))}
@@ -1936,9 +1936,9 @@ export default function ManagePage() {
 
       {/* 초기 안내 */}
       {!data && !loading && !error && (
-        <div style={{ background:'#EDE9FE', borderRadius:16, padding:20, textAlign:'center' }}>
-          <Mail size={32} color="#C4B5FD" style={{ margin:'0 auto 10px' }} />
-          <div style={{ fontSize:14, fontWeight:600, color:'#7C3AED' }}>조회 버튼을 눌러주세요</div>
+        <div style={{ background:'var(--secondary)', borderRadius:16, padding:20, textAlign:'center' }}>
+          <Mail size={32} color="var(--text-subtle)" style={{ margin:'0 auto 10px' }} />
+          <div style={{ fontSize:14, fontWeight:600, color:'var(--action)' }}>조회 버튼을 눌러주세요</div>
           <div style={{ fontSize:12, color:'#9CA3AF', marginTop:4 }}>이메일 계정별 파티원 · 매출 현황</div>
         </div>
       )}
@@ -1951,7 +1951,7 @@ export default function ManagePage() {
           </div>
           <div style={{ fontSize:12, color:'#6B7280' }}>{error}</div>
           {error.includes('만료') && (
-            <a href="https://graytag.co.kr/login" target="_blank" rel="noreferrer" style={{ display:'inline-flex', alignItems:'center', gap:4, marginTop:8, fontSize:12, color:'#7C3AED', fontWeight:600 }}>
+            <a href="https://graytag.co.kr/login" target="_blank" rel="noreferrer" style={{ display:'inline-flex', alignItems:'center', gap:4, marginTop:8, fontSize:12, color:'var(--action)', fontWeight:600 }}>
               graytag.co.kr 로그인 <ExternalLink size={11} />
             </a>
           )}
@@ -1998,7 +1998,7 @@ export default function ManagePage() {
           )}
 
           {/* 요약 배너 */}
-          <div style={{ background:'linear-gradient(135deg, #A78BFA 0%, #818CF8 100%)', borderRadius:20, padding:'16px 20px', marginBottom:14, color:'#fff' }}>
+          <div style={{ background:'linear-gradient(135deg, var(--action) 0%, var(--action) 100%)', borderRadius:20, padding:'16px 20px', marginBottom:14, color:'#fff' }}>
             <div style={{ fontSize:12, opacity:0.85, marginBottom:10 }}>전체 현황</div>
             <div style={{ display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:6, textAlign:'center' }}>
               {[
@@ -2050,7 +2050,7 @@ export default function ManagePage() {
               { key:'unpaid', label:'미결제 계정' },
               { key:'paid',   label:'결제 계정' },
             ] as { key: FilterMode; label: string }[]).map(f => (
-              <button key={f.key} onClick={() => setFilter(f.key)} style={{ flex:1, padding:'7px 4px', borderRadius:10, border:'none', fontFamily:'inherit', fontSize:11, fontWeight:600, cursor:'pointer', background: filter===f.key ? '#A78BFA' : '#F3F0FF', color: filter===f.key ? '#fff' : '#6B7280' }}>{f.label}</button>
+              <button key={f.key} onClick={() => setFilter(f.key)} style={{ flex:1, padding:'7px 4px', borderRadius:10, border:'none', fontFamily:'inherit', fontSize:11, fontWeight:600, cursor:'pointer', background: filter===f.key ? 'var(--action)' : 'var(--muted)', color: filter===f.key ? '#fff' : '#6B7280' }}>{f.label}</button>
             ))}
           </div>
 
@@ -2064,7 +2064,7 @@ export default function ManagePage() {
                 <button type="button" className="management-service-toggle management-touch-target" onClick={() => setOpenService(isYouTubeServiceOpen ? null : '유튜브 프리미엄')} aria-expanded={isYouTubeServiceOpen} aria-controls="management-service-youtube">
                   <div className="youtube-management-logo" aria-hidden="true"><Youtube size={24} /></div>
                   <div style={{ flex:1, minWidth:0 }}>
-                    <div style={{ fontSize:15, fontWeight:800, color:'#1E1B4B' }}>유튜브 프리미엄</div>
+                    <div style={{ fontSize:15, fontWeight:800, color:'var(--foreground)' }}>유튜브 프리미엄</div>
                     <div style={{ fontSize:11, color:'#6B7280', marginTop:2 }}>가족 그룹 {youtubeFamilyGroups.length}개 · 등록 판매 글 {youtubeRegisteredListingCount}개{pooledYouTubeRegistrations.length > 0 ? ` · 자유 배정 ${pooledYouTubeRegistrations.length}건` : ''}{youtubeRegistrationRecordCount !== youtubeRegisteredListingCount ? ` · 등록 기록 ${youtubeRegistrationRecordCount}건` : ''} · 현재 파티원 {youtubeCurrentCount}명 · 초대 대기 {youtubePendingCount}명{youtubeRegistrationPendingCount > 0 ? ` · 처리중 ${youtubeRegistrationPendingCount}건` : ''}{youtubeRegistrationUncertainCount > 0 ? ` · 확인필요 ${youtubeRegistrationUncertainCount}건` : ''}{youtubeRegistrationFailedCount + youtubeFailedCount > 0 ? ` · 실패 ${youtubeRegistrationFailedCount + youtubeFailedCount}건` : ''}{unmappedYouTubeRegistrationCount > 0 ? ` · 매칭 필요 ${unmappedYouTubeRegistrationCount}건` : ''}</div>
                   </div>
                   <div className="youtube-service-vacancy"><strong>{youtubeVacancyCount}</strong><span>빈자리</span></div>
@@ -2122,7 +2122,7 @@ export default function ManagePage() {
                               <div className="management-account-logo" style={{ background:'#FEF2F2', color:'#DC2626' }} aria-hidden="true"><Youtube size={24} /></div>
                               <div style={{ flexShrink:0, display:'flex', flexDirection:'column', alignItems:'center', gap:3, minWidth:36 }}>
                                 <div style={{ display:'flex', gap:3 }}>
-                                  {youtubeSlotStates.map((state, index) => <div key={index} title={state === 'using' ? '이용중' : state === 'recruiting' ? '모집 게시글 등록됨' : '비어있음'} style={{ width:state === 'empty'?6:7, height:state === 'empty'?14:18, borderRadius:3, alignSelf:'flex-end', background:state === 'using'?'#A78BFA':state === 'recruiting'?'#D1D5DB':'#E9E4FF' }} />)}
+                                  {youtubeSlotStates.map((state, index) => <div key={index} title={state === 'using' ? '이용중' : state === 'recruiting' ? '모집 게시글 등록됨' : '비어있음'} style={{ width:state === 'empty'?6:7, height:state === 'empty'?14:18, borderRadius:3, alignSelf:'flex-end', background:state === 'using'?'var(--action)':state === 'recruiting'?'#D1D5DB':'var(--border)' }} />)}
                                 </div>
                                 <div style={{ fontSize:9, color:'#9CA3AF' }}>{group.activeCount}/{group.sellableSeats}</div>
                               </div>
@@ -2202,21 +2202,21 @@ export default function ManagePage() {
               const serviceBulkLoading = bulkFillLoading && bulkFillTarget === svc.serviceType;
               const servicePanelId = `management-service-${encodeURIComponent(svc.serviceType)}`;
               return (
-                <section key={svc.serviceType} className="management-service-group" style={{ borderColor:isOpen?'#A78BFA':'#F3F0FF' }}>
+                <section key={svc.serviceType} className="management-service-group" style={{ borderColor:isOpen?'var(--action)':'var(--muted)' }}>
                   <div className="management-service-header">
                     <button className="management-service-toggle management-touch-target" onClick={() => setOpenService(isOpen ? null : svc.serviceType)} aria-expanded={isOpen} aria-controls={servicePanelId}>
                       <div style={{ width:40, height:40, borderRadius:12, background:sc.bg, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
                         {logo ? <img src={logo} alt={svc.serviceType} style={{ width:26, height:26, objectFit:'contain' }} onError={e=>{(e.target as HTMLImageElement).style.display='none';}} /> : null}
                       </div>
                       <div style={{ flex:1, textAlign:'left' }}>
-                        <div style={{ fontSize:15, fontWeight:700, color:'#1E1B4B' }}>{svc.serviceType}</div>
+                        <div style={{ fontSize:15, fontWeight:700, color:'var(--foreground)' }}>{svc.serviceType}</div>
                         <div style={{ fontSize:11, color:'#9CA3AF', marginTop:2 }}>계정 {visibleAccounts.length}개 · 이용중 {serviceUsingWithManual}명{serviceManualUsingCount(svc) > 0 ? ` (수동 포함 +${serviceManualUsingCount(svc)})` : ''}{serviceVerifyingCount > 0 ? ` · 확인중 ${serviceVerifyingCount}명` : ''}</div>
                       </div>
                       <div style={{ textAlign:'right', flexShrink:0 }}>
-                        <div style={{ fontSize:14, fontWeight:700, color:'#A78BFA' }}>{fmtMoney(svc.totalIncome)}</div>
+                        <div style={{ fontSize:14, fontWeight:700, color:'var(--action)' }}>{fmtMoney(svc.totalIncome)}</div>
                         <div style={{ fontSize:10, color:'#059669', marginTop:1 }}>정산누적 {fmtMoney(svc.totalRealized)}</div>
                       </div>
-                      {isOpen ? <ChevronDown size={16} color="#A78BFA" /> : <ChevronRight size={16} color="#A78BFA" />}
+                      {isOpen ? <ChevronDown size={16} color="var(--action)" /> : <ChevronRight size={16} color="var(--action)" />}
                     </button>
                     {serviceBulkUnfilled > 0 && (
                       <button
@@ -2315,12 +2315,12 @@ export default function ManagePage() {
                                 <div style={{ display:'flex', gap:3 }}>
                                   {slotStates.map((state: SlotState, i) => {
                                     const filled = state !== 'empty';
-                                    const background = state === 'using' ? '#A78BFA'
+                                    const background = state === 'using' ? 'var(--action)'
                                       : state === 'verifying' ? '#2563EB'
                                       : state === 'manual' ? '#10B981'
                                       : state === 'recruiting' ? '#D1D5DB'
-                                      : state === 'active' ? '#C4B5FD'
-                                      : '#E9E4FF';
+                                      : state === 'active' ? 'var(--text-subtle)'
+                                      : 'var(--border)';
                                     const title = state === 'using' ? '이용중'
                                       : state === 'verifying' ? '계정 확인중(파란색 추적)'
                                       : state === 'manual' ? '수동파티원'
@@ -2343,12 +2343,12 @@ export default function ManagePage() {
                                   <Mail size={12} color="#9CA3AF" />
                                   <span className="management-account-email">{displayAccountEmail}</span>
                                 </div>
-                                <div style={{ fontSize:10, color:acct.paymentCard?'#4F46E5':'#9CA3AF', fontWeight:acct.paymentCard?800:600, marginTop:3 }}>
+                                <div style={{ fontSize:10, color:acct.paymentCard?'var(--action)':'#9CA3AF', fontWeight:acct.paymentCard?800:600, marginTop:3 }}>
                                   {paymentCardSummary}
                                   {isNetflixManagementService(acct.serviceType) && renewalDaySummary && <span style={{ color:'#059669' }}> · {renewalDaySummary}</span>}
                                 </div>
                                 <div style={{ display:'flex', gap:6, alignItems:'center', marginTop:3, flexWrap:'wrap' }}>
-                                  {acct.gbutsInventory && (acct.gbutsInventory.currentUsers + acct.gbutsInventory.recruiting > 0) && <button onClick={ev => { ev.stopPropagation(); navigate('/gbuts-sales'); }} style={{ border:0, background:'#EDE9FE', color:'#6D28D9', borderRadius:6, fontSize:10, padding:'2px 7px', cursor:'pointer' }}>벗츠 이용 {acct.gbutsInventory.currentUsers} · 모집 {acct.gbutsInventory.recruiting}</button>}
+                                  {acct.gbutsInventory && (acct.gbutsInventory.currentUsers + acct.gbutsInventory.recruiting > 0) && <button onClick={ev => { ev.stopPropagation(); navigate('/gbuts-sales'); }} style={{ border:0, background:'var(--secondary)', color:'var(--action)', borderRadius:6, fontSize:10, padding:'2px 7px', cursor:'pointer' }}>벗츠 이용 {acct.gbutsInventory.currentUsers} · 모집 {acct.gbutsInventory.recruiting}</button>}
                                   {acct.generatedAccount && <span style={{ fontSize:10, color:acct.generatedAccount.paymentStatus==='paid'?'#059669':'#C2410C', fontWeight:900, display:'flex', alignItems:'center', gap:3, background:acct.generatedAccount.paymentStatus==='paid'?'#ECFDF5':'#FFEDD5', borderRadius:6, padding:'1px 7px' }}>
                                     <KeyRound size={10} /> {acct.generatedAccount.paymentStatus==='paid'?(subscription ? '기존 결제 완료' : '결제 완료'):'생성만 완료'}
                                   </span>}
@@ -2375,10 +2375,10 @@ export default function ManagePage() {
                                     <span key={p.productUsid} style={{ display:'inline-flex', alignItems:'center', gap:2 }}>
                                       <a href={`https://graytag.co.kr/product/detail?productUsid=${p.productUsid}`}
                                         target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()}
-                                        style={{ fontSize:9, color:'#7C3AED', textDecoration:'underline', display:'inline-flex', alignItems:'center', gap:2 }}>
+                                        style={{ fontSize:9, color:'var(--action)', textDecoration:'underline', display:'inline-flex', alignItems:'center', gap:2 }}>
                                         <ExternalLink size={8} />{p.price}
                                       </a>
-                                      {p.profileName && <span style={{ fontSize:9, color:'#4F46E5', fontWeight:900 }}>프로필 {p.profileName}</span>}
+                                      {p.profileName && <span style={{ fontSize:9, color:'var(--action)', fontWeight:900 }}>프로필 {p.profileName}</span>}
                                       <button onClick={async (e) => {
                                         e.stopPropagation();
                                         if (!window.confirm(`이 모집 게시글(${p.price})을 삭제하시겠습니까?`)) return;
@@ -2407,8 +2407,8 @@ export default function ManagePage() {
                                 {/* 파티 기간 표시 */}
                                 {partyInfo.startDate && (
                                   <div style={{ display:'flex', alignItems:'center', gap:4, marginTop:3 }}>
-                                    <Calendar size={10} color="#C4B5FD" />
-                                    <span style={{ fontSize:10, color:'#A78BFA', fontWeight:600 }}>
+                                    <Calendar size={10} color="var(--text-subtle)" />
+                                    <span style={{ fontSize:10, color:'var(--action)', fontWeight:600 }}>
                                       {fmtDate(partyInfo.startDate)} ~ {fmtDate(partyInfo.endDate)}
                                       {partyInfo.totalDays > 0 && ` (${partyInfo.totalDays}일)`}
                                     </span>
@@ -2445,26 +2445,26 @@ export default function ManagePage() {
                             {isAcctOpen && (
                               <div id={accountPanelId} role="region" aria-label={`${displayAccountEmail} 상세 관리`} className="management-account-details">
 
-                                <div style={{ background:'#FFFFFF', border:'1.5px solid #C7D2FE', borderRadius:14, padding:12, marginBottom:10 }}>
+                                <div style={{ background:'#FFFFFF', border:'1.5px solid var(--border)', borderRadius:14, padding:12, marginBottom:10 }}>
                                   <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, marginBottom:8 }}>
                                     <div>
-                                      <div style={{ fontSize:13, fontWeight:900, color:'#1E1B4B' }}>결제 카드</div>
+                                      <div style={{ fontSize:13, fontWeight:900, color:'var(--foreground)' }}>결제 카드</div>
                                       <div style={{ fontSize:10, color:'#9CA3AF', marginTop:2 }}>카드 전체번호 · CVV · 유효기간은 입력하거나 저장하지 않아요.</div>
                                     </div>
-                                    <div style={{ fontSize:10, color:'#4F46E5', fontWeight:900 }}>{paymentCardSummary}</div>
+                                    <div style={{ fontSize:10, color:'var(--action)', fontWeight:900 }}>{paymentCardSummary}</div>
                                   </div>
                                   <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 120px', gap:7 }}>
                                     <label style={{ display:'grid', gap:4, fontSize:9, color:'#6B7280', fontWeight:900 }}>
                                       카드 별칭
-                                      <input value={paymentCardDraft.label} maxLength={60} autoComplete="off" onChange={(e) => updatePaymentCardDraft(acct, { label: e.target.value })} placeholder="예: 현대카드" style={{ border:'1px solid #EDE9FE', borderRadius:10, padding:'8px 10px', fontSize:11, fontWeight:800, color:'#1E1B4B', fontFamily:'inherit', minWidth:0 }} />
+                                      <input value={paymentCardDraft.label} maxLength={60} autoComplete="off" onChange={(e) => updatePaymentCardDraft(acct, { label: e.target.value })} placeholder="예: 현대카드" style={{ border:'1px solid var(--secondary)', borderRadius:10, padding:'8px 10px', fontSize:11, fontWeight:800, color:'var(--foreground)', fontFamily:'inherit', minWidth:0 }} />
                                     </label>
                                     <label style={{ display:'grid', gap:4, fontSize:9, color:'#6B7280', fontWeight:900 }}>
                                       카드사
-                                      <input value={paymentCardDraft.cardIssuer} maxLength={60} autoComplete="off" onChange={(e) => updatePaymentCardDraft(acct, { cardIssuer: e.target.value })} placeholder="예: 현대" style={{ border:'1px solid #EDE9FE', borderRadius:10, padding:'8px 10px', fontSize:11, fontWeight:800, color:'#1E1B4B', fontFamily:'inherit', minWidth:0 }} />
+                                      <input value={paymentCardDraft.cardIssuer} maxLength={60} autoComplete="off" onChange={(e) => updatePaymentCardDraft(acct, { cardIssuer: e.target.value })} placeholder="예: 현대" style={{ border:'1px solid var(--secondary)', borderRadius:10, padding:'8px 10px', fontSize:11, fontWeight:800, color:'var(--foreground)', fontFamily:'inherit', minWidth:0 }} />
                                     </label>
                                     <label style={{ display:'grid', gap:4, fontSize:9, color:'#6B7280', fontWeight:900 }}>
                                       끝 4자리
-                                      <input value={paymentCardDraft.last4} maxLength={4} inputMode="numeric" pattern="[0-9]{4}" autoComplete="off" onChange={(e) => updatePaymentCardDraft(acct, { last4: e.target.value.replace(/\D/g, '').slice(0, 4) })} placeholder="1234" style={{ border:'1px solid #EDE9FE', borderRadius:10, padding:'8px 10px', fontSize:11, fontWeight:800, color:'#1E1B4B', fontFamily:'inherit', minWidth:0 }} />
+                                      <input value={paymentCardDraft.last4} maxLength={4} inputMode="numeric" pattern="[0-9]{4}" autoComplete="off" onChange={(e) => updatePaymentCardDraft(acct, { last4: e.target.value.replace(/\D/g, '').slice(0, 4) })} placeholder="1234" style={{ border:'1px solid var(--secondary)', borderRadius:10, padding:'8px 10px', fontSize:11, fontWeight:800, color:'var(--foreground)', fontFamily:'inherit', minWidth:0 }} />
                                     </label>
                                   </div>
                                   {isNetflixManagementService(acct.serviceType) && (
@@ -2480,27 +2480,27 @@ export default function ManagePage() {
                                         onChange={(e) => updatePaymentCardDraft(acct, { renewalDay: e.target.value })}
                                         placeholder="1~31"
                                         aria-label="구독 갱신일"
-                                        style={{ border:'1px solid #EDE9FE', borderRadius:10, padding:'8px 10px', fontSize:11, fontWeight:800, color:'#1E1B4B', fontFamily:'inherit', minWidth:0 }}
+                                        style={{ border:'1px solid var(--secondary)', borderRadius:10, padding:'8px 10px', fontSize:11, fontWeight:800, color:'var(--foreground)', fontFamily:'inherit', minWidth:0 }}
                                       />
                                       <span style={{ fontSize:9, color:'#9CA3AF', fontWeight:600 }}>넷플릭스 결제 기준일 (매월 1~31일)</span>
                                     </label>
                                   )}
                                   <div style={{ display:'flex', justifyContent:'flex-end', gap:7, marginTop:9 }}>
                                     <button type="button" onClick={() => clearPaymentCard(acct)} disabled={!acct.paymentCard || paymentCardLoadingKey === credentialKey} style={{ border:'none', borderRadius:999, padding:'7px 10px', background:'#F3F4F6', color:acct.paymentCard?'#B91C1C':'#9CA3AF', fontSize:10, fontWeight:900, cursor:acct.paymentCard?'pointer':'not-allowed' }}>지우기</button>
-                                    <button type="button" onClick={() => savePaymentCard(acct, paymentCardDraft)} disabled={paymentCardLoadingKey === credentialKey} style={{ border:'none', borderRadius:999, padding:'7px 12px', background:paymentCardLoadingKey === credentialKey?'#C4B5FD':'#4F46E5', color:'#fff', fontSize:10, fontWeight:900, cursor:paymentCardLoadingKey === credentialKey?'not-allowed':'pointer' }}>
+                                    <button type="button" onClick={() => savePaymentCard(acct, paymentCardDraft)} disabled={paymentCardLoadingKey === credentialKey} style={{ border:'none', borderRadius:999, padding:'7px 12px', background:paymentCardLoadingKey === credentialKey?'var(--text-subtle)':'var(--action)', color:'#fff', fontSize:10, fontWeight:900, cursor:paymentCardLoadingKey === credentialKey?'not-allowed':'pointer' }}>
                                       {paymentCardLoadingKey === credentialKey ? '저장중' : '저장'}
                                     </button>
                                   </div>
                                 </div>
 
-                                <div style={{ background:'#FFFFFF', border:'1.5px solid #EDE9FE', borderRadius:14, padding:12, marginBottom:10 }}>
+                                <div style={{ background:'#FFFFFF', border:'1.5px solid var(--secondary)', borderRadius:14, padding:12, marginBottom:10 }}>
                                   <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, marginBottom:8 }}>
                                     <div>
-                                      <div style={{ fontSize:13, fontWeight:900, color:'#1E1B4B' }}>관리자 전용 ID · PW · PIN</div>
+                                      <div style={{ fontSize:13, fontWeight:900, color:'var(--foreground)' }}>관리자 전용 ID · PW · PIN</div>
                                       <div style={{ fontSize:10, color:'#9CA3AF', marginTop:2 }}>{acct.archivedAccount ? '보관된 실제 ID/PW · 계정 클릭 시에만 표시' : '계정 클릭 시에만 표시 · 복붙용'}</div>
                                     </div>
                                     <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleRegeneratePin(acct); }} disabled={pinResetLoadingKey === credentialKey}
-                                      style={{ border:'none', borderRadius:999, padding:'7px 10px', background:pinResetLoadingKey === credentialKey ? '#C4B5FD' : '#7C3AED', color:'#fff', fontSize:11, fontWeight:900, cursor:pinResetLoadingKey === credentialKey ? 'not-allowed' : 'pointer', display:'flex', alignItems:'center', gap:5 }}>
+                                      style={{ border:'none', borderRadius:999, padding:'7px 10px', background:pinResetLoadingKey === credentialKey ? 'var(--text-subtle)' : 'var(--action)', color:'#fff', fontSize:11, fontWeight:900, cursor:pinResetLoadingKey === credentialKey ? 'not-allowed' : 'pointer', display:'flex', alignItems:'center', gap:5 }}>
                                       {pinResetLoadingKey === credentialKey ? <Loader2 size={12} style={{ animation:'spin 1s linear infinite' }} /> : <KeyRound size={12} />}
                                       PIN 번호 재설정
                                     </button>
@@ -2511,7 +2511,7 @@ export default function ManagePage() {
                                     ))}
                                   </div>
                                   {existingPinRecord?.loading && (
-                                    <div style={{ marginTop:8, background:'#EEF2FF', border:'1px solid #C7D2FE', borderRadius:10, padding:'7px 9px', fontSize:10, color:'#4338CA', fontWeight:900, display:'flex', alignItems:'center', gap:6 }}>
+                                    <div style={{ marginTop:8, background:'var(--muted)', border:'1px solid var(--border)', borderRadius:10, padding:'7px 9px', fontSize:10, color:'var(--action)', fontWeight:900, display:'flex', alignItems:'center', gap:6 }}>
                                       <Loader2 size={11} style={{ animation:'spin 1s linear infinite' }} /> 기존 PIN 로딩중
                                     </div>
                                   )}
@@ -2521,7 +2521,7 @@ export default function ManagePage() {
                                     </div>
                                   )}
                                   {existingPinRecord?.checked && existingPinRecord.pinConfigured && !existingPinRecord.pinRecoverable && (
-                                    <div style={{ marginTop:8, background:'#EEF2FF', border:'1px solid #C7D2FE', borderRadius:10, padding:'7px 9px', fontSize:10, color:'#4338CA', fontWeight:900 }}>
+                                    <div style={{ marginTop:8, background:'var(--muted)', border:'1px solid var(--border)', borderRadius:10, padding:'7px 9px', fontSize:10, color:'var(--action)', fontWeight:900 }}>
                                       PIN 설정됨 · 기존 번호 확인 불가
                                     </div>
                                   )}
@@ -2530,10 +2530,10 @@ export default function ManagePage() {
                                       {existingPinRecord.message || '기존 PIN 없음'}
                                     </div>
                                   )}
-                                  <div style={{ marginTop:9, background:'#F8F6FF', borderRadius:12, padding:9 }}>
+                                  <div style={{ marginTop:9, background:'var(--background)', borderRadius:12, padding:9 }}>
                                     <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, marginBottom:7 }}>
                                       <span style={{ fontSize:10, color:'#6B7280', fontWeight:900 }}>ID/PW 변경 준비</span>
-                                      <button type="button" onClick={(e) => { e.stopPropagation(); handleGeneratePasswordDraft(acct); }} style={{ border:'none', borderRadius:999, padding:'5px 8px', background:'#EEF2FF', color:'#4F46E5', fontSize:9, fontWeight:900, cursor:'pointer' }}>
+                                      <button type="button" onClick={(e) => { e.stopPropagation(); handleGeneratePasswordDraft(acct); }} style={{ border:'none', borderRadius:999, padding:'5px 8px', background:'var(--muted)', color:'var(--action)', fontSize:9, fontWeight:900, cursor:'pointer' }}>
                                         비밀번호 재설정
                                       </button>
                                     </div>
@@ -2541,7 +2541,7 @@ export default function ManagePage() {
                                       <CredentialField label="최신 로그인 ID" value={currentAccountIdDraft} onChange={value => setAccountIdDrafts(prev => ({ ...prev, [credentialKey]: value }))} placeholder="최신 ID 입력" />
                                       <div style={{ display:'grid', gap:7, alignItems:'center' }}>
                                         <CredentialField label="최신 비밀번호" secret value={currentPasswordDraft} onChange={value => setPasswordDrafts(prev => ({ ...prev, [credentialKey]: value }))} placeholder="최신 비밀번호 입력" />
-                                        <button type="button" onClick={(e) => { e.stopPropagation(); handleSaveLatestPassword(acct); }} disabled={passwordSaveLoadingKey === credentialKey} style={{ border:'none', borderRadius:999, padding:'8px 10px', background:passwordSaveLoadingKey === credentialKey ? '#C4B5FD' : '#10B981', color:'#fff', fontSize:10, fontWeight:900, cursor:passwordSaveLoadingKey === credentialKey ? 'not-allowed' : 'pointer' }}>
+                                        <button type="button" onClick={(e) => { e.stopPropagation(); handleSaveLatestPassword(acct); }} disabled={passwordSaveLoadingKey === credentialKey} style={{ border:'none', borderRadius:999, padding:'8px 10px', background:passwordSaveLoadingKey === credentialKey ? 'var(--text-subtle)' : '#10B981', color:'#fff', fontSize:10, fontWeight:900, cursor:passwordSaveLoadingKey === credentialKey ? 'not-allowed' : 'pointer' }}>
                                           {passwordSaveLoadingKey === credentialKey ? '저장중' : '최신 ID/PW 저장'}
                                         </button>
                                       </div>
@@ -2559,7 +2559,7 @@ export default function ManagePage() {
                                   <div style={{ background:acct.generatedAccount.paymentStatus==='paid'?'#ECFDF5':'#FFF7ED', border:`1.5px solid ${acct.generatedAccount.paymentStatus==='paid'?'#A7F3D0':'#FED7AA'}`, borderRadius:14, padding:12, marginBottom:10 }}>
                                     <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:10, marginBottom:8 }}>
                                       <div>
-                                        <div style={{ fontSize:13, fontWeight:900, color:'#1E1B4B' }}>✨ 방금 생성한 계정</div>
+                                        <div style={{ fontSize:13, fontWeight:900, color:'var(--foreground)' }}>✨ 방금 생성한 계정</div>
                                         <div style={{ fontSize:10, color:'#9CA3AF', marginTop:2 }}>판매 게시물 없이도 계정 관리에 유지돼요 · Email ID #{acct.generatedAccount.emailId}</div>
                                       </div>
                                       <div style={{ display:'flex', alignItems:'center', gap:6, flexShrink:0 }}>
@@ -2569,7 +2569,7 @@ export default function ManagePage() {
                                             <button key={label} onClick={() => toggleGeneratedAccountPaid(acct, paid)} style={{ border:'none', borderRadius:999, padding:'4px 8px', fontSize:10, fontWeight:900, cursor:'pointer', fontFamily:'inherit', background:(acct.generatedAccount!.paymentStatus === 'paid') === paid ? (paid ? '#10B981' : '#F97316') : '#F3F4F6', color:(acct.generatedAccount!.paymentStatus === 'paid') === paid ? '#fff' : '#9CA3AF' }}>{label}</button>
                                           ))}
                                         </div>
-                                        <button onClick={e => { e.stopPropagation(); reopenQuickAccount(acct); }} title="복사·결제·글쓰기 빠른 작업 다시 열기" style={{ border:'none', background:'#EEF2FF', color:'#4338CA', borderRadius:999, padding:'6px 9px', fontSize:11, fontWeight:900, cursor:'pointer' }}>
+                                        <button onClick={e => { e.stopPropagation(); reopenQuickAccount(acct); }} title="복사·결제·글쓰기 빠른 작업 다시 열기" style={{ border:'none', background:'var(--muted)', color:'var(--action)', borderRadius:999, padding:'6px 9px', fontSize:11, fontWeight:900, cursor:'pointer' }}>
                                           빠른 작업
                                         </button>
                                         <button onClick={e => { e.stopPropagation(); handleDeleteGeneratedAccount(acct); }} title="방금 생성한 계정 삭제" style={{ border:'none', background:'#FFF0F0', color:'#EF4444', borderRadius:999, padding:'6px 9px', fontSize:11, fontWeight:900, cursor:'pointer', display:'flex', alignItems:'center', gap:4 }}>
@@ -2578,9 +2578,9 @@ export default function ManagePage() {
                                       </div>
                                     </div>
                                     <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:7 }}>
-                                      <div style={{ background:'#fff', borderRadius:10, padding:'8px 9px' }}><div style={{ fontSize:9, color:'#9CA3AF', fontWeight:800 }}>로그인 ID</div><div style={{ fontSize:12, color:'#1E1B4B', fontWeight:900, marginTop:2, wordBreak:'break-all' }}>{acct.email}</div></div>
-                                      <div style={{ background:'#fff', borderRadius:10, padding:'8px 9px' }}><div style={{ fontSize:9, color:'#9CA3AF', fontWeight:800 }}>비밀번호</div><div style={{ fontSize:12, color:'#1E1B4B', fontWeight:900, marginTop:2 }}>{acct.keepPasswd || '-'}</div></div>
-                                      <div style={{ background:'#fff', borderRadius:10, padding:'8px 9px' }}><div style={{ fontSize:9, color:'#9CA3AF', fontWeight:800 }}>PIN</div><div style={{ fontSize:12, color:'#1E1B4B', fontWeight:900, marginTop:2 }}>{acct.generatedAccount.pin}</div></div>
+                                      <div style={{ background:'#fff', borderRadius:10, padding:'8px 9px' }}><div style={{ fontSize:9, color:'#9CA3AF', fontWeight:800 }}>로그인 ID</div><div style={{ fontSize:12, color:'var(--foreground)', fontWeight:900, marginTop:2, wordBreak:'break-all' }}>{acct.email}</div></div>
+                                      <div style={{ background:'#fff', borderRadius:10, padding:'8px 9px' }}><div style={{ fontSize:9, color:'#9CA3AF', fontWeight:800 }}>비밀번호</div><div style={{ fontSize:12, color:'var(--foreground)', fontWeight:900, marginTop:2 }}>{acct.keepPasswd || '-'}</div></div>
+                                      <div style={{ background:'#fff', borderRadius:10, padding:'8px 9px' }}><div style={{ fontSize:9, color:'#9CA3AF', fontWeight:800 }}>PIN</div><div style={{ fontSize:12, color:'var(--foreground)', fontWeight:900, marginTop:2 }}>{acct.generatedAccount.pin}</div></div>
                                       <div style={{ background:'#fff', borderRadius:10, padding:'8px 9px' }}><div style={{ fontSize:9, color:'#9CA3AF', fontWeight:800 }}>상태</div><div style={{ fontSize:12, color:acct.generatedAccount.paymentStatus==='paid'?'#059669':'#C2410C', fontWeight:900, marginTop:2 }}>{acct.generatedAccount.paymentStatus==='paid'?'결제/가입 완료':'결제/가입 대기'}</div></div>
                                     </div>
                                     {isGeneratedPending && <div style={{ fontSize:10, color:'#C2410C', marginTop:8, lineHeight:1.35 }}>다음 단계: 이 계정으로 티빙·웨이브 가입/결제 → Y 표시 → 아래 생성계정 게시글 작성으로 바로 모집글을 올리세요.</div>}
@@ -2597,26 +2597,26 @@ export default function ManagePage() {
                                   const memberAdminAccessKey = `${acct.serviceType}:${acct.email}:graytag:${m.dealUsid}:admin-url`;
                                   const memberTemplateKey = `${acct.serviceType}:${acct.email}:graytag:${m.dealUsid}:template`;
                                   const assignedProfileName = m.profileName || profileNameForMember('graytag', m.dealUsid);
-                                  const circleBg = isVerifying ? '#2563EB' : isUsing ? '#A78BFA' : ACTIVE_SET.has(m.status) ? '#C4B5FD' : '#E9E4FF';
+                                  const circleBg = isVerifying ? '#2563EB' : isUsing ? 'var(--action)' : ACTIVE_SET.has(m.status) ? 'var(--text-subtle)' : 'var(--border)';
                                   const circleColor = (isVerifying || isUsing || ACTIVE_SET.has(m.status)) ? '#fff' : '#9CA3AF';
                                   return (
-                                    <div key={m.dealUsid} style={{ display:'flex', alignItems:'flex-start', gap:10, padding:'9px 0', borderBottom: idx<filteredMembers.length-1 ? '1px solid #F3F0FF' : 'none' }}>
+                                    <div key={m.dealUsid} style={{ display:'flex', alignItems:'flex-start', gap:10, padding:'9px 0', borderBottom: idx<filteredMembers.length-1 ? '1px solid var(--muted)' : 'none' }}>
                                       <div style={{ width:26, height:26, borderRadius:8, flexShrink:0, background: circleBg, display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:700, marginTop:2, color: circleColor }}>{idx+1}</div>
                                       <div style={{ flex:1, minWidth:0 }}>
                                         <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
-                                          <span style={{ fontSize:13, fontWeight:700, color:'#1E1B4B' }}>{m.name||'(미확인)'}</span>
+                                          <span style={{ fontSize:13, fontWeight:700, color:'var(--foreground)' }}>{m.name||'(미확인)'}</span>
                                           <span style={{ fontSize:10, fontWeight:600, color:b.color, background:b.bg, borderRadius:6, padding:'2px 7px' }}>{b.label}</span>
                                         </div>
                                         {(m.startDateTime||m.endDateTime) && <div style={{ fontSize:11, color:'#9CA3AF', marginTop:2 }}>{m.startDateTime&&fmtDate(m.startDateTime)}{m.startDateTime&&m.endDateTime&&' ~ '}{m.endDateTime&&fmtDate(m.endDateTime)}{m.remainderDays>0&&` (${m.remainderDays}일)`}</div>}
-                                        <div style={{ fontSize:10, color:'#4F46E5', fontWeight:900, marginTop:3 }}>배정 프로필: {assignedProfileName}</div>
+                                        <div style={{ fontSize:10, color:'var(--action)', fontWeight:900, marginTop:3 }}>배정 프로필: {assignedProfileName}</div>
                                         <div style={{ marginTop:5, display:'flex', alignItems:'center', gap:5, flexWrap:'wrap' }}>
-                                          <button onClick={(e) => { e.stopPropagation(); createPartyAccessLink(acct, { kind:'graytag', memberId:m.dealUsid, memberName:m.name || '(미확인)', profileName:assignedProfileName, status:m.status, statusName:m.statusName, startDateTime:m.startDateTime, endDateTime:m.endDateTime }); }} disabled={accessLinkLoadingKey === memberAccessKey} style={{ border:'none', borderRadius:999, background:accessLinkLoadingKey === memberAccessKey ? '#C4B5FD' : '#EEF2FF', color:'#4F46E5', padding:'4px 8px', fontSize:9, fontWeight:900, cursor:accessLinkLoadingKey === memberAccessKey ? 'not-allowed' : 'pointer' }}>
+                                          <button onClick={(e) => { e.stopPropagation(); createPartyAccessLink(acct, { kind:'graytag', memberId:m.dealUsid, memberName:m.name || '(미확인)', profileName:assignedProfileName, status:m.status, statusName:m.statusName, startDateTime:m.startDateTime, endDateTime:m.endDateTime }); }} disabled={accessLinkLoadingKey === memberAccessKey} style={{ border:'none', borderRadius:999, background:accessLinkLoadingKey === memberAccessKey ? 'var(--text-subtle)' : 'var(--muted)', color:'var(--action)', padding:'4px 8px', fontSize:9, fontWeight:900, cursor:accessLinkLoadingKey === memberAccessKey ? 'not-allowed' : 'pointer' }}>
                                             {accessLinkLoadingKey === memberAccessKey ? '생성중' : '접근 링크 만들기'}
                                           </button>
                                           <button onClick={(e) => { e.stopPropagation(); createPartyAccessLink(acct, { kind:'graytag', memberId:m.dealUsid, memberName:m.name || '(미확인)', profileName:assignedProfileName, status:m.status, statusName:m.statusName, startDateTime:m.startDateTime, endDateTime:m.endDateTime }, 'admin-url'); }} disabled={accessLinkLoadingKey === memberAdminAccessKey} style={{ border:'none', borderRadius:999, background:accessLinkLoadingKey === memberAdminAccessKey ? '#FDBA74' : '#FFF7ED', color:'#C2410C', padding:'4px 8px', fontSize:9, fontWeight:900, cursor:accessLinkLoadingKey === memberAdminAccessKey ? 'not-allowed' : 'pointer' }}>
                                             {accessLinkLoadingKey === memberAdminAccessKey ? '생성중' : '(인증 무시)바로 접근 링크 만들기'}
                                           </button>
-                                          <button onClick={(e) => { e.stopPropagation(); createPartyAccessLink(acct, { kind:'graytag', memberId:m.dealUsid, memberName:m.name || '(미확인)', profileName:assignedProfileName, status:m.status, statusName:m.statusName, startDateTime:m.startDateTime, endDateTime:m.endDateTime }, 'template'); }} disabled={accessLinkLoadingKey === memberTemplateKey} style={{ border:'none', borderRadius:999, background:accessLinkLoadingKey === memberTemplateKey ? '#C4B5FD' : '#F5F3FF', color:'#7C3AED', padding:'4px 8px', fontSize:9, fontWeight:900, cursor:accessLinkLoadingKey === memberTemplateKey ? 'not-allowed' : 'pointer' }}>
+                                          <button onClick={(e) => { e.stopPropagation(); createPartyAccessLink(acct, { kind:'graytag', memberId:m.dealUsid, memberName:m.name || '(미확인)', profileName:assignedProfileName, status:m.status, statusName:m.statusName, startDateTime:m.startDateTime, endDateTime:m.endDateTime }, 'template'); }} disabled={accessLinkLoadingKey === memberTemplateKey} style={{ border:'none', borderRadius:999, background:accessLinkLoadingKey === memberTemplateKey ? 'var(--text-subtle)' : 'var(--muted)', color:'var(--action)', padding:'4px 8px', fontSize:9, fontWeight:900, cursor:accessLinkLoadingKey === memberTemplateKey ? 'not-allowed' : 'pointer' }}>
                                             {accessLinkLoadingKey === memberTemplateKey ? '복사중' : '수동 전달 템플릿 복사'}
                                           </button>
                                           {accessLinkResult?.key === memberAccessKey && <span style={{ fontSize:9, color:'#059669', fontWeight:900 }}>파티원 전용 계정정보 링크 복사됨</span>}
@@ -2626,12 +2626,12 @@ export default function ManagePage() {
                                         {isUsing && m.progressRatio && m.progressRatio!=='0%' && (
                                           <div style={{ marginTop:5 }}>
                                             <div style={{ display:'flex', justifyContent:'space-between', fontSize:10, color:'#9CA3AF', marginBottom:2 }}><span>진행률</span><span>{m.progressRatio}</span></div>
-                                            <div style={{ background:'#E9E4FF', borderRadius:4, height:4 }}><div style={{ background:'#A78BFA', borderRadius:4, height:'100%', width:m.progressRatio, maxWidth:'100%' }} /></div>
+                                            <div style={{ background:'var(--border)', borderRadius:4, height:4 }}><div style={{ background:'var(--action)', borderRadius:4, height:'100%', width:m.progressRatio, maxWidth:'100%' }} /></div>
                                           </div>
                                         )}
                                       </div>
                                       <div style={{ textAlign:'right', flexShrink:0 }}>
-                                        <div style={{ fontSize:13, fontWeight:700, color:'#A78BFA' }}>{m.price}</div>
+                                        <div style={{ fontSize:13, fontWeight:700, color:'var(--action)' }}>{m.price}</div>
                                         {m.purePrice > 0 && m.startDateTime && m.endDateTime && (() => {
                                           const s = new Date(m.startDateTime!.replace(/\s/g,'').replace(/\./g,'-').replace(/-$/,'').split('-').map((p,i) => i===0 && parseInt(p)<100 ? String(parseInt(p)+2000) : p).join('-'));
                                           const e = new Date(m.endDateTime!.replace(/\s/g,'').replace(/\./g,'-').replace(/-$/,'').split('-').map((p,i) => i===0 && parseInt(p)<100 ? String(parseInt(p)+2000) : p).join('-'));
@@ -2651,7 +2651,7 @@ export default function ManagePage() {
                                     <>
                                       {manuals.length > 0 && (
                                         <div style={{ marginTop:8, marginBottom:4 }}>
-                                          <div style={{ fontSize:10, fontWeight:700, color:'#A78BFA', marginBottom:6, display:'flex', alignItems:'center', gap:4 }}>
+                                          <div style={{ fontSize:10, fontWeight:700, color:'var(--action)', marginBottom:6, display:'flex', alignItems:'center', gap:4 }}>
                                             <UserPlus size={10} /> 수동 추가 파티원 ({manuals.length}명)
                                           </div>
                                           {manuals.map((mm) => {
@@ -2667,18 +2667,18 @@ export default function ManagePage() {
                                             const manualTemplateKey = `${acct.serviceType}:${acct.email}:manual:${mm.id}:template`;
                                             const assignedProfileName = profileNameForMember('manual', mm.id);
                                             return (
-                                              <div key={mm.id} style={{ display:'flex', alignItems:'flex-start', gap:10, padding:'9px 0', borderBottom:'1px solid #F3F0FF', opacity: isExpired?0.5:1 }}>
-                                                <div style={{ width:26, height:26, borderRadius:8, flexShrink:0, background: isExpired?'#E9E4FF':'#10B981', display:'flex', alignItems:'center', justifyContent:'center', marginTop:2 }}>
+                                              <div key={mm.id} style={{ display:'flex', alignItems:'flex-start', gap:10, padding:'9px 0', borderBottom:'1px solid var(--muted)', opacity: isExpired?0.5:1 }}>
+                                                <div style={{ width:26, height:26, borderRadius:8, flexShrink:0, background: isExpired?'var(--border)':'#10B981', display:'flex', alignItems:'center', justifyContent:'center', marginTop:2 }}>
                                                   <UserPlus size={12} color="#fff" />
                                                 </div>
                                                 <div style={{ flex:1, minWidth:0 }}>
                                                   <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
-                                                    <span style={{ fontSize:13, fontWeight:700, color:'#1E1B4B' }}>{mm.memberName}</span>
+                                                    <span style={{ fontSize:13, fontWeight:700, color:'var(--foreground)' }}>{mm.memberName}</span>
                                                     <span style={{ fontSize:10, fontWeight:600, color: isExpired?'#9CA3AF':'#10B981', background: isExpired?'#F3F4F6':'#ECFDF5', borderRadius:6, padding:'2px 7px' }}>
                                                       {isExpired ? '만료' : '수동'}
                                                     </span>
                                                     {mm.source && (
-                                                      <span style={{ fontSize:9, fontWeight:600, color:'#7C3AED', background:'#EDE9FE', borderRadius:6, padding:'2px 7px' }}>
+                                                      <span style={{ fontSize:9, fontWeight:600, color:'var(--action)', background:'var(--secondary)', borderRadius:6, padding:'2px 7px' }}>
                                                         {mm.source}
                                                       </span>
                                                     )}
@@ -2689,7 +2689,7 @@ export default function ManagePage() {
                                                   </div>
                                                   <div style={{ fontSize:10, color:'#059669', fontWeight:900, marginTop:3 }}>배정 프로필: {assignedProfileName}</div>
                                                   <div style={{ marginTop:5, display:'flex', alignItems:'center', gap:5, flexWrap:'wrap' }}>
-                                                    <button onClick={(ev) => { ev.stopPropagation(); createPartyAccessLink(acct, { kind:'manual', memberId:mm.id, memberName:mm.memberName, profileName:assignedProfileName, status:mm.status, statusName:mm.status, startDateTime:mm.startDate, endDateTime:mm.endDate }); }} disabled={accessLinkLoadingKey === manualAccessKey || isExpired} style={{ border:'none', borderRadius:999, background:(accessLinkLoadingKey === manualAccessKey || isExpired) ? '#F3F4F6' : '#EEF2FF', color:isExpired ? '#9CA3AF' : '#4F46E5', padding:'4px 8px', fontSize:9, fontWeight:900, cursor:(accessLinkLoadingKey === manualAccessKey || isExpired) ? 'not-allowed' : 'pointer' }}>
+                                                    <button onClick={(ev) => { ev.stopPropagation(); createPartyAccessLink(acct, { kind:'manual', memberId:mm.id, memberName:mm.memberName, profileName:assignedProfileName, status:mm.status, statusName:mm.status, startDateTime:mm.startDate, endDateTime:mm.endDate }); }} disabled={accessLinkLoadingKey === manualAccessKey || isExpired} style={{ border:'none', borderRadius:999, background:(accessLinkLoadingKey === manualAccessKey || isExpired) ? '#F3F4F6' : 'var(--muted)', color:isExpired ? '#9CA3AF' : 'var(--action)', padding:'4px 8px', fontSize:9, fontWeight:900, cursor:(accessLinkLoadingKey === manualAccessKey || isExpired) ? 'not-allowed' : 'pointer' }}>
                                                       {accessLinkLoadingKey === manualAccessKey ? '생성중' : '접근 링크 만들기'}
                                                     </button>
                                                     <button onClick={(ev) => { ev.stopPropagation(); createPartyAccessLink(acct, { kind:'manual', memberId:mm.id, memberName:mm.memberName, profileName:assignedProfileName, status:mm.status, statusName:mm.status, startDateTime:mm.startDate, endDateTime:mm.endDate }, 'admin-url'); }} disabled={accessLinkLoadingKey === manualAdminAccessKey || isExpired} style={{ border:'none', borderRadius:999, background:(accessLinkLoadingKey === manualAdminAccessKey || isExpired) ? '#F3F4F6' : '#FFF7ED', color:isExpired ? '#9CA3AF' : '#C2410C', padding:'4px 8px', fontSize:9, fontWeight:900, cursor:(accessLinkLoadingKey === manualAdminAccessKey || isExpired) ? 'not-allowed' : 'pointer' }}>
@@ -2702,7 +2702,7 @@ export default function ManagePage() {
                                                     {accessLinkResult?.key === manualAdminAccessKey && <span style={{ fontSize:9, color:'#C2410C', fontWeight:900 }}>관리자 바로 접근 링크 복사됨</span>}
                                                     {accessLinkResult?.key === manualTemplateKey && <span style={{ fontSize:9, color:'#059669', fontWeight:900 }}>수동 전달 템플릿 복사됨</span>}
                                                   </div>
-                                                  {mm.memo && <div style={{ fontSize:10, color:'#C4B5FD', marginTop:2 }}>{mm.memo}</div>}
+                                                  {mm.memo && <div style={{ fontSize:10, color:'var(--text-subtle)', marginTop:2 }}>{mm.memo}</div>}
                                                 </div>
                                                 <div style={{ textAlign:'right', flexShrink:0, display:'flex', flexDirection:'column', alignItems:'flex-end', gap:2 }}>
                                                   <div style={{ fontSize:13, fontWeight:700, color:'#10B981' }}>{mm.price.toLocaleString()}원</div>
@@ -2765,24 +2765,24 @@ export default function ManagePage() {
           <div onClick={e => e.stopPropagation()} style={{ width:'100%', maxWidth:480, background:'#fff', borderRadius:'24px 24px 0 0', padding:'20px 20px env(safe-area-inset-bottom)', maxHeight:'85vh', overflow:'auto' }}>
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>
               <div>
-                <div style={{ fontSize:16, fontWeight:900, color:'#1E1B4B', display:'flex', alignItems:'center', gap:7 }}><Megaphone size={18} color="#C2410C" /> 계정별 파티원 공지</div>
+                <div style={{ fontSize:16, fontWeight:900, color:'var(--foreground)', display:'flex', alignItems:'center', gap:7 }}><Megaphone size={18} color="#C2410C" /> 계정별 파티원 공지</div>
                 <div style={{ fontSize:11, color:'#9CA3AF', marginTop:2 }}>{noticeModal.account.email} · {noticeModal.account.serviceType}</div>
               </div>
               <button onClick={() => setNoticeModal(null)} style={{ background:'none', border:'none', cursor:'pointer', padding:4 }}><X size={20} color="#9CA3AF" /></button>
             </div>
             <label style={{ display:'block', fontSize:12, fontWeight:900, color:'#6B7280', marginBottom:6 }}>공지 메시지</label>
-            <textarea value={noticeMessage} onChange={e => setNoticeMessage(e.target.value)} placeholder="파티원에게 보낼 공지 내용을 입력하세요" rows={6} style={{ width:'100%', boxSizing:'border-box', border:'1.5px solid #FED7AA', borderRadius:12, padding:'11px 12px', fontSize:12, fontFamily:'inherit', color:'#1E1B4B', background:'#FFF7ED', resize:'vertical', marginBottom:12 }} />
-            <div style={{ background:'#F8F6FF', border:'1.5px solid #EDE9FE', borderRadius:12, padding:10, marginBottom:12 }}>
+            <textarea value={noticeMessage} onChange={e => setNoticeMessage(e.target.value)} placeholder="파티원에게 보낼 공지 내용을 입력하세요" rows={6} style={{ width:'100%', boxSizing:'border-box', border:'1.5px solid #FED7AA', borderRadius:12, padding:'11px 12px', fontSize:12, fontFamily:'inherit', color:'var(--foreground)', background:'#FFF7ED', resize:'vertical', marginBottom:12 }} />
+            <div style={{ background:'var(--background)', border:'1.5px solid var(--secondary)', borderRadius:12, padding:10, marginBottom:12 }}>
               <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, marginBottom:6 }}>
                 <label style={{ fontSize:12, fontWeight:900, color:'#6B7280' }}>공지 템플릿</label>
                 <span style={{ fontSize:9, color:'#9CA3AF', fontWeight:800 }}>저장된 템플릿은 모든 카테고리 공지에서 같이 사용돼요</span>
               </div>
-              <select value={selectedNoticeTemplateId} onChange={e => applyNoticeTemplate(e.target.value)} style={{ width:'100%', border:'1px solid #DDD6FE', borderRadius:10, padding:'8px 10px', fontSize:12, fontFamily:'inherit', color:'#1E1B4B', background:'#fff', marginBottom:8 }}>
+              <select value={selectedNoticeTemplateId} onChange={e => applyNoticeTemplate(e.target.value)} style={{ width:'100%', border:'1px solid var(--border)', borderRadius:10, padding:'8px 10px', fontSize:12, fontFamily:'inherit', color:'var(--foreground)', background:'#fff', marginBottom:8 }}>
                 {noticeTemplates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
               </select>
               <div style={{ display:'grid', gridTemplateColumns:'1fr auto', gap:6 }}>
-                <input value={noticeTemplateName} onChange={e => setNoticeTemplateName(e.target.value)} placeholder="템플릿 이름" style={{ border:'1px solid #DDD6FE', borderRadius:10, padding:'8px 10px', fontSize:11, fontFamily:'inherit', minWidth:0 }} />
-                <button onClick={addGlobalNoticeTemplate} style={{ border:'none', borderRadius:10, background:'#7C3AED', color:'#fff', padding:'8px 10px', fontSize:10, fontWeight:900, cursor:'pointer' }}>현재 메시지를 전역 템플릿으로 추가</button>
+                <input value={noticeTemplateName} onChange={e => setNoticeTemplateName(e.target.value)} placeholder="템플릿 이름" style={{ border:'1px solid var(--border)', borderRadius:10, padding:'8px 10px', fontSize:11, fontFamily:'inherit', minWidth:0 }} />
+                <button onClick={addGlobalNoticeTemplate} style={{ border:'none', borderRadius:10, background:'var(--action)', color:'#fff', padding:'8px 10px', fontSize:10, fontWeight:900, cursor:'pointer' }}>현재 메시지를 전역 템플릿으로 추가</button>
               </div>
               {noticeTemplates.find(t => t.id === selectedNoticeTemplateId)?.custom && (
                 <button onClick={deleteSelectedCustomNoticeTemplate} style={{ marginTop:6, border:'none', borderRadius:999, background:'#FEE2E2', color:'#DC2626', padding:'5px 9px', fontSize:10, fontWeight:900, cursor:'pointer' }}>선택한 커스텀 템플릿 삭제</button>
@@ -2790,13 +2790,13 @@ export default function ManagePage() {
             </div>
             <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:7 }}>
               <div style={{ fontSize:12, fontWeight:900, color:'#6B7280' }}>보낼 사람 선택</div>
-              <button onClick={() => setNoticeSelected(Object.fromEntries(noticeModal.recipients.map(r => [r.dealUsid, true])))} style={{ border:'none', background:'#F5F3FF', color:'#7C3AED', borderRadius:999, padding:'4px 8px', fontSize:10, fontWeight:900, cursor:'pointer' }}>전체 선택</button>
+              <button onClick={() => setNoticeSelected(Object.fromEntries(noticeModal.recipients.map(r => [r.dealUsid, true])))} style={{ border:'none', background:'var(--muted)', color:'var(--action)', borderRadius:999, padding:'4px 8px', fontSize:10, fontWeight:900, cursor:'pointer' }}>전체 선택</button>
             </div>
             <div style={{ display:'grid', gap:6, marginBottom:12 }}>
               {noticeModal.recipients.length === 0 ? <div style={{ fontSize:11, color:'#9CA3AF', background:'#F9FAFB', borderRadius:10, padding:'8px 9px' }}>공지 보낼 이용중 파티원이 없어요.</div> : noticeModal.recipients.map((r) => (
-                <label key={r.dealUsid} style={{ display:'flex', alignItems:'center', gap:9, background:'#F8F6FF', borderRadius:10, padding:'8px 9px', cursor:'pointer' }}>
+                <label key={r.dealUsid} style={{ display:'flex', alignItems:'center', gap:9, background:'var(--background)', borderRadius:10, padding:'8px 9px', cursor:'pointer' }}>
                   <input type="checkbox" checked={noticeSelected[r.dealUsid] !== false} onChange={e => setNoticeSelected(prev => ({ ...prev, [r.dealUsid]: e.target.checked }))} />
-                  <div style={{ flex:1, minWidth:0 }}><div style={{ fontSize:12, color:'#1E1B4B', fontWeight:900 }}>{r.name}</div><div style={{ fontSize:10, color:'#9CA3AF' }}>{r.statusName || r.status}</div></div>
+                  <div style={{ flex:1, minWidth:0 }}><div style={{ fontSize:12, color:'var(--foreground)', fontWeight:900 }}>{r.name}</div><div style={{ fontSize:10, color:'#9CA3AF' }}>{r.statusName || r.status}</div></div>
                 </label>
               ))}
             </div>
@@ -2814,7 +2814,7 @@ export default function ManagePage() {
           <div onClick={e => e.stopPropagation()} style={{ width:'100%', maxWidth:480, background:'#fff', borderRadius:'24px 24px 0 0', padding:'20px 20px env(safe-area-inset-bottom)', maxHeight:'80vh', overflow:'auto' }}>
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
               <div>
-                <div style={{ fontSize:16, fontWeight:700, color:'#1E1B4B' }}>파티원 메꾸기</div>
+                <div style={{ fontSize:16, fontWeight:700, color:'var(--foreground)' }}>파티원 메꾸기</div>
                 <div style={{ fontSize:11, color:'#9CA3AF', marginTop:2 }}>{fillModal.email} · {fillModal.serviceType}</div>
               </div>
               <button onClick={() => setFillModal(null)} style={{ background:'none', border:'none', cursor:'pointer', padding:4 }}><X size={20} color="#9CA3AF" /></button>
@@ -2827,15 +2827,15 @@ export default function ManagePage() {
 
             <label style={{ display:'block', fontSize:12, fontWeight:700, color:'#6B7280', marginBottom:6 }}>종료일 *</label>
             <input type="date" value={fillEndDate} min={tomorrow()} onChange={e => setFillEndDate(e.target.value)}
-              style={{ width:'100%', padding:'11px 14px', borderRadius:10, border:'1.5px solid #EDE9FE', fontSize:13, color:'#1E1B4B', background:'#F8F6FF', outline:'none', fontFamily:'inherit', marginBottom:10, boxSizing:'border-box' }} />
+              style={{ width:'100%', padding:'11px 14px', borderRadius:10, border:'1.5px solid var(--secondary)', fontSize:13, color:'var(--foreground)', background:'var(--background)', outline:'none', fontFamily:'inherit', marginBottom:10, boxSizing:'border-box' }} />
 
             <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:6 }}>
               <label style={{ fontSize:12, fontWeight:700, color:'#6B7280' }}>
                 {fillPriceMode === 'total' ? '총 가격 (원) *' : '일당 가격 (원) *'}
               </label>
               <button onClick={toggleFillPriceMode} style={{
-                background:'#EDE9FE', border:'none', borderRadius:8, padding:'4px 10px',
-                fontSize:11, color:'#7C3AED', fontWeight:600, cursor:'pointer', fontFamily:'inherit',
+                background:'var(--secondary)', border:'none', borderRadius:8, padding:'4px 10px',
+                fontSize:11, color:'var(--action)', fontWeight:600, cursor:'pointer', fontFamily:'inherit',
               }}>
                 {fillPriceMode === 'total' ? '↔ 일당으로 입력' : '↔ 총액으로 입력'}
               </button>
@@ -2857,7 +2857,7 @@ export default function ManagePage() {
                     (window as any).__fillRankTimer = setTimeout(() => fetchFillRank(daily, catKey), 500);
                   }
                 }}
-                style={{ width:'100%', padding:'11px 14px', borderRadius:10, border:'1.5px solid #EDE9FE', fontSize:13, color:'#1E1B4B', background:'#F8F6FF', outline:'none', fontFamily:'inherit', marginBottom:10, boxSizing:'border-box' }} />
+                style={{ width:'100%', padding:'11px 14px', borderRadius:10, border:'1.5px solid var(--secondary)', fontSize:13, color:'var(--foreground)', background:'var(--background)', outline:'none', fontFamily:'inherit', marginBottom:10, boxSizing:'border-box' }} />
             ) : (
               <input type="text" inputMode="numeric" value={fillDailyPrice} placeholder="예: 132"
                 onChange={e => {
@@ -2872,20 +2872,20 @@ export default function ManagePage() {
                     (window as any).__fillRankTimer = setTimeout(() => fetchFillRank(d, catKey), 500);
                   }
                 }}
-                style={{ width:'100%', padding:'11px 14px', borderRadius:10, border:'1.5px solid #EDE9FE', fontSize:13, color:'#1E1B4B', background:'#F8F6FF', outline:'none', fontFamily:'inherit', marginBottom:10, boxSizing:'border-box' }} />
+                style={{ width:'100%', padding:'11px 14px', borderRadius:10, border:'1.5px solid var(--secondary)', fontSize:13, color:'var(--foreground)', background:'var(--background)', outline:'none', fontFamily:'inherit', marginBottom:10, boxSizing:'border-box' }} />
             )}
 
             {/* 계산 결과 */}
             {fillInfo && (
-              <div style={{ background:'#F8F6FF', borderRadius:10, padding:'8px 12px', marginBottom:10 }}>
+              <div style={{ background:'var(--background)', borderRadius:10, padding:'8px 12px', marginBottom:10 }}>
                 {fillPriceMode === 'total' ? (
                   <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, color:'#6B7280' }}>
-                    <span>일당 <strong style={{ color:'#A78BFA' }}>{fillInfo.daily.toLocaleString()}원</strong></span>
+                    <span>일당 <strong style={{ color:'var(--action)' }}>{fillInfo.daily.toLocaleString()}원</strong></span>
                     <span>{fillInfo.days}일 기준</span>
                   </div>
                 ) : (
                   <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, color:'#6B7280' }}>
-                    <span>총 <strong style={{ color:'#A78BFA' }}>{fillInfo.total.toLocaleString()}원</strong></span>
+                    <span>총 <strong style={{ color:'var(--action)' }}>{fillInfo.total.toLocaleString()}원</strong></span>
                     <span>{fillInfo.days}일 × {fillInfo.daily.toLocaleString()}원</span>
                   </div>
                 )}
@@ -2893,12 +2893,12 @@ export default function ManagePage() {
             )}
 
             {/* 가격 비교 순위 */}
-            {fillRankLoading && <div style={{ fontSize:11, color:'#C4B5FD', marginBottom:8 }}>순위 계산 중...</div>}
+            {fillRankLoading && <div style={{ fontSize:11, color:'var(--text-subtle)', marginBottom:8 }}>순위 계산 중...</div>}
             {!fillRankLoading && fillRank && (
               <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10 }}>
                 <div style={{
                   padding:'4px 12px', borderRadius:8, fontSize:13, fontWeight:700,
-                  background: fillRank.rank === 1 ? '#A78BFA' : fillRank.rank <= 3 ? '#C4B5FD' : fillRank.rank <= 5 ? '#EDE9FE' : '#F3F4F6',
+                  background: fillRank.rank === 1 ? 'var(--action)' : fillRank.rank <= 3 ? 'var(--text-subtle)' : fillRank.rank <= 5 ? 'var(--secondary)' : '#F3F4F6',
                   color: fillRank.rank <= 3 ? '#fff' : '#6B7280',
                 }}>
                   {fillRank.rank}위
@@ -2923,14 +2923,14 @@ export default function ManagePage() {
                   setFillKeepMemo(nextMemo);
                   if (fillAliasStatus?.ok) setFillAliasStatus({ ...fillAliasStatus, memo: nextMemo });
                 }}
-                style={{ flex:1, padding:'11px 14px', borderRadius:10, border:`1.5px solid ${fillProfileNickname && (!isValidProfileNickname(fillProfileNickname) || fillModal.excludedProfileNames.includes(normalizeProfileNickname(fillProfileNickname))) ? '#FCA5A5' : '#EDE9FE'}`, fontSize:13, color:'#1E1B4B', background:'#F8F6FF', outline:'none', fontFamily:'inherit', boxSizing:'border-box' }} />
+                style={{ flex:1, padding:'11px 14px', borderRadius:10, border:`1.5px solid ${fillProfileNickname && (!isValidProfileNickname(fillProfileNickname) || fillModal.excludedProfileNames.includes(normalizeProfileNickname(fillProfileNickname))) ? '#FCA5A5' : 'var(--secondary)'}`, fontSize:13, color:'var(--foreground)', background:'var(--background)', outline:'none', fontFamily:'inherit', boxSizing:'border-box' }} />
               <button onClick={() => {
                 const nickname = generateUniqueProfileNicknames(1, '', Math.random, fillModal.excludedProfileNames)[0] || generateProfileNickname();
                 setFillProfileNickname(nickname);
                 const nextMemo = buildAutoFillDeliveryMemo(nickname, PARTY_ACCESS_URL_PLACEHOLDER);
                 setFillKeepMemo(nextMemo);
                 if (fillAliasStatus?.ok) setFillAliasStatus({ ...fillAliasStatus, memo: nextMemo });
-              }} style={{ border:'none', borderRadius:10, padding:'0 12px', background:'#EDE9FE', color:'#7C3AED', fontSize:12, fontWeight:800, cursor:'pointer', fontFamily:'inherit' }}>
+              }} style={{ border:'none', borderRadius:10, padding:'0 12px', background:'var(--secondary)', color:'var(--action)', fontSize:12, fontWeight:800, cursor:'pointer', fontFamily:'inherit' }}>
                 랜덤
               </button>
             </div>
@@ -2940,7 +2940,7 @@ export default function ManagePage() {
 
             <label style={{ display:'block', fontSize:12, fontWeight:700, color:'#6B7280', marginBottom:6 }}>추가 안내 (계정 전달 메모)</label>
             {fillAliasLoading && (
-              <div style={{ background:'#F3F0FF', borderRadius:10, padding:'8px 10px', marginBottom:8, fontSize:11, color:'#7C3AED', fontWeight:700 }}>
+              <div style={{ background:'var(--muted)', borderRadius:10, padding:'8px 10px', marginBottom:8, fontSize:11, color:'var(--action)', fontWeight:700 }}>
                 이메일 대시보드 DB에서 이메일/PIN 자동 조회 중...
               </div>
             )}
@@ -2951,7 +2951,7 @@ export default function ManagePage() {
             )}
             <textarea value={fillKeepMemo} readOnly={fillAliasStatus?.ok === true} onChange={e => setFillKeepMemo(e.target.value)}
               placeholder={fillAliasStatus?.ok ? '이메일 대시보드 DB에서 자동 입력됐어요' : '이메일/PIN 정보가 있으면 자동으로 채워져요'}
-              style={{ width:'100%', padding:'11px 14px', borderRadius:10, border:'1.5px solid #EDE9FE', fontSize:12, color:'#1E1B4B', background:'#F8F6FF', outline:'none', fontFamily:'inherit', marginBottom:10, boxSizing:'border-box', height:180, resize:'vertical' }} />
+              style={{ width:'100%', padding:'11px 14px', borderRadius:10, border:'1.5px solid var(--secondary)', fontSize:12, color:'var(--foreground)', background:'var(--background)', outline:'none', fontFamily:'inherit', marginBottom:10, boxSizing:'border-box', height:180, resize:'vertical' }} />
 
             <label style={{ display:'block', fontSize:12, fontWeight:700, color:'#6B7280', marginBottom:6 }}>등록 개수</label>
             <div style={{ display:'flex', gap:6, marginBottom:14 }}>
@@ -2959,8 +2959,8 @@ export default function ManagePage() {
                 <button key={n} onClick={() => setFillCount(n)} style={{
                   flex:1, padding:'8px 4px', borderRadius:10, border:'none', fontFamily:'inherit',
                   fontSize:14, fontWeight:700, cursor:'pointer',
-                  background: fillCount === n ? '#A78BFA' : '#EDE9FE',
-                  color: fillCount === n ? '#fff' : '#7C3AED',
+                  background: fillCount === n ? 'var(--action)' : 'var(--secondary)',
+                  color: fillCount === n ? '#fff' : 'var(--action)',
                 }}>{n}</button>
               ))}
             </div>
@@ -2975,10 +2975,10 @@ export default function ManagePage() {
 
             <button onClick={handleFill} disabled={!canSubmitFill} style={{
               width:'100%', padding:14, borderRadius:12, border:'none',
-              background: !canSubmitFill ? '#C4B5FD' : '#A78BFA', color:'#fff', fontSize:15, fontWeight:700,
+              background: !canSubmitFill ? 'var(--text-subtle)' : 'var(--action)', color:'#fff', fontSize:15, fontWeight:700,
               cursor: !canSubmitFill ? 'not-allowed' : 'pointer', fontFamily:'inherit',
               opacity: !canSubmitFill ? 0.72 : 1,
-              boxShadow:'0 4px 16px rgba(167,139,250,0.35)',
+              boxShadow:'0 4px 16px rgba(17,17,17,0.35)',
               display:'flex', alignItems:'center', justifyContent:'center', gap:8,
             }}>
               {fillLoading || fillAliasLoading ? <Loader2 size={16} style={{ animation:'spin 1s linear infinite' }} /> : <PlusCircle size={16} />}
@@ -2994,7 +2994,7 @@ export default function ManagePage() {
           <div onClick={e => e.stopPropagation()} style={{ width:'100%', maxWidth:480, background:'#fff', borderRadius:'24px 24px 0 0', padding:'20px 20px env(safe-area-inset-bottom)', maxHeight:'85vh', overflow:'auto' }}>
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
               <div>
-                <div style={{ fontSize:16, fontWeight:700, color:'#1E1B4B', display:'flex', alignItems:'center', gap:8 }}>
+                <div style={{ fontSize:16, fontWeight:700, color:'var(--foreground)', display:'flex', alignItems:'center', gap:8 }}>
                   <UserPlus size={18} color="#059669" /> 수동 파티원 추가
                 </div>
                 <div style={{ fontSize:11, color:'#9CA3AF', marginTop:2 }}>{addManualModal.accountEmail} · {addManualModal.serviceType}</div>
@@ -3011,18 +3011,18 @@ export default function ManagePage() {
             <label style={{ display:'block', fontSize:12, fontWeight:700, color:'#6B7280', marginBottom:6 }}>파티원 이름 *</label>
             <input type="text" value={mmName} placeholder="예: 홍길동"
               onChange={e => setMmName(e.target.value)}
-              style={{ width:'100%', padding:'11px 14px', borderRadius:10, border:'1.5px solid #D1FAE5', fontSize:13, color:'#1E1B4B', background:'#F0FDF4', outline:'none', fontFamily:'inherit', marginBottom:12, boxSizing:'border-box' }} />
+              style={{ width:'100%', padding:'11px 14px', borderRadius:10, border:'1.5px solid #D1FAE5', fontSize:13, color:'var(--foreground)', background:'#F0FDF4', outline:'none', fontFamily:'inherit', marginBottom:12, boxSizing:'border-box' }} />
 
             {/* 이용 기간 */}
             <label style={{ display:'block', fontSize:12, fontWeight:700, color:'#6B7280', marginBottom:6 }}>이용 시작일 *</label>
             <input type="date" value={mmStartDate}
               onChange={e => setMmStartDate(e.target.value)}
-              style={{ width:'100%', padding:'11px 14px', borderRadius:10, border:'1.5px solid #D1FAE5', fontSize:13, color:'#1E1B4B', background:'#F0FDF4', outline:'none', fontFamily:'inherit', marginBottom:10, boxSizing:'border-box' }} />
+              style={{ width:'100%', padding:'11px 14px', borderRadius:10, border:'1.5px solid #D1FAE5', fontSize:13, color:'var(--foreground)', background:'#F0FDF4', outline:'none', fontFamily:'inherit', marginBottom:10, boxSizing:'border-box' }} />
 
             <label style={{ display:'block', fontSize:12, fontWeight:700, color:'#6B7280', marginBottom:6 }}>이용 종료일 *</label>
             <input type="date" value={mmEndDate} min={mmStartDate || undefined}
               onChange={e => setMmEndDate(e.target.value)}
-              style={{ width:'100%', padding:'11px 14px', borderRadius:10, border:'1.5px solid #D1FAE5', fontSize:13, color:'#1E1B4B', background:'#F0FDF4', outline:'none', fontFamily:'inherit', marginBottom:10, boxSizing:'border-box' }} />
+              style={{ width:'100%', padding:'11px 14px', borderRadius:10, border:'1.5px solid #D1FAE5', fontSize:13, color:'var(--foreground)', background:'#F0FDF4', outline:'none', fontFamily:'inherit', marginBottom:10, boxSizing:'border-box' }} />
 
             {/* 가격 */}
             <label style={{ display:'block', fontSize:12, fontWeight:700, color:'#6B7280', marginBottom:6 }}>가격 (원) *</label>
@@ -3031,7 +3031,7 @@ export default function ManagePage() {
                 const raw = e.target.value.replace(/[^0-9]/g,'');
                 setMmPrice(raw ? Number(raw).toLocaleString() : '');
               }}
-              style={{ width:'100%', padding:'11px 14px', borderRadius:10, border:'1.5px solid #D1FAE5', fontSize:13, color:'#1E1B4B', background:'#F0FDF4', outline:'none', fontFamily:'inherit', marginBottom:10, boxSizing:'border-box' }} />
+              style={{ width:'100%', padding:'11px 14px', borderRadius:10, border:'1.5px solid #D1FAE5', fontSize:13, color:'var(--foreground)', background:'#F0FDF4', outline:'none', fontFamily:'inherit', marginBottom:10, boxSizing:'border-box' }} />
 
             {/* 가격 요약 */}
             {(() => {
@@ -3062,14 +3062,14 @@ export default function ManagePage() {
             {mmSource === '기타' && (
               <input type="text" value={mmSourceCustom} placeholder="직접 입력 (예: 트위터, 오픈채팅 등)"
                 onChange={e => setMmSourceCustom(e.target.value)}
-                style={{ width:'100%', padding:'11px 14px', borderRadius:10, border:'1.5px solid #D1FAE5', fontSize:13, color:'#1E1B4B', background:'#F0FDF4', outline:'none', fontFamily:'inherit', marginBottom:10, boxSizing:'border-box' }} />
+                style={{ width:'100%', padding:'11px 14px', borderRadius:10, border:'1.5px solid #D1FAE5', fontSize:13, color:'var(--foreground)', background:'#F0FDF4', outline:'none', fontFamily:'inherit', marginBottom:10, boxSizing:'border-box' }} />
             )}
 
             {/* 메모 */}
             <label style={{ display:'block', fontSize:12, fontWeight:700, color:'#6B7280', marginBottom:6, marginTop:4 }}>메모 (선택)</label>
             <textarea value={mmMemo} placeholder="연락처, 특이사항 등"
               onChange={e => setMmMemo(e.target.value)}
-              style={{ width:'100%', padding:'11px 14px', borderRadius:10, border:'1.5px solid #D1FAE5', fontSize:12, color:'#1E1B4B', background:'#F0FDF4', outline:'none', fontFamily:'inherit', marginBottom:14, boxSizing:'border-box', height:60, resize:'vertical' }} />
+              style={{ width:'100%', padding:'11px 14px', borderRadius:10, border:'1.5px solid #D1FAE5', fontSize:12, color:'var(--foreground)', background:'#F0FDF4', outline:'none', fontFamily:'inherit', marginBottom:14, boxSizing:'border-box', height:60, resize:'vertical' }} />
 
             {/* 결과 */}
             {mmResult && (
@@ -3108,17 +3108,17 @@ export default function ManagePage() {
             </div>
 
             <label style={{ display:'block', color:'#4B5563', fontSize:12, fontWeight:900, marginBottom:5 }}>그룹 이름 *</label>
-            <input value={youtubeGroupDraft.label} maxLength={120} onChange={event => setYouTubeGroupDraft(current => ({ ...current, label:event.target.value }))} placeholder="예: 유튜브 가족 그룹 A" style={{ width:'100%', boxSizing:'border-box', border:'1.5px solid #FECACA', borderRadius:11, padding:'10px 12px', color:'#1E1B4B', background:'#FFF7F7', fontFamily:'inherit', marginBottom:12 }} />
+            <input value={youtubeGroupDraft.label} maxLength={120} onChange={event => setYouTubeGroupDraft(current => ({ ...current, label:event.target.value }))} placeholder="예: 유튜브 가족 그룹 A" style={{ width:'100%', boxSizing:'border-box', border:'1.5px solid #FECACA', borderRadius:11, padding:'10px 12px', color:'var(--foreground)', background:'#FFF7F7', fontFamily:'inherit', marginBottom:12 }} />
 
             <label style={{ display:'block', color:'#4B5563', fontSize:12, fontWeight:900, marginBottom:5 }}>관리자 이메일 {youtubeGroupForm.mode === 'create' ? '*' : ''}</label>
-            <input type="email" value={youtubeGroupDraft.managerEmail} maxLength={254} onChange={event => setYouTubeGroupDraft(current => ({ ...current, managerEmail:event.target.value }))} placeholder={youtubeGroupForm.mode === 'edit' ? '변경할 때만 입력' : 'manager@example.com'} style={{ width:'100%', boxSizing:'border-box', border:'1.5px solid #FECACA', borderRadius:11, padding:'10px 12px', color:'#1E1B4B', background:'#FFF7F7', fontFamily:'inherit', marginBottom:12 }} />
+            <input type="email" value={youtubeGroupDraft.managerEmail} maxLength={254} onChange={event => setYouTubeGroupDraft(current => ({ ...current, managerEmail:event.target.value }))} placeholder={youtubeGroupForm.mode === 'edit' ? '변경할 때만 입력' : 'manager@example.com'} style={{ width:'100%', boxSizing:'border-box', border:'1.5px solid #FECACA', borderRadius:11, padding:'10px 12px', color:'var(--foreground)', background:'#FFF7F7', fontFamily:'inherit', marginBottom:12 }} />
 
             <div style={{ display:'grid', gridTemplateColumns:'repeat(2,minmax(0,1fr))', gap:9 }}>
               <label style={{ display:'block', color:'#4B5563', fontSize:12, fontWeight:900 }}>구독 종료일
-                <input type="date" value={youtubeGroupDraft.subscriptionEndDate} onChange={event => setYouTubeGroupDraft(current => ({ ...current, subscriptionEndDate:event.target.value }))} style={{ display:'block', width:'100%', boxSizing:'border-box', border:'1.5px solid #FECACA', borderRadius:11, padding:'9px 8px', color:'#1E1B4B', background:'#FFF7F7', fontFamily:'inherit', marginTop:5 }} />
+                <input type="date" value={youtubeGroupDraft.subscriptionEndDate} onChange={event => setYouTubeGroupDraft(current => ({ ...current, subscriptionEndDate:event.target.value }))} style={{ display:'block', width:'100%', boxSizing:'border-box', border:'1.5px solid #FECACA', borderRadius:11, padding:'9px 8px', color:'var(--foreground)', background:'#FFF7F7', fontFamily:'inherit', marginTop:5 }} />
               </label>
               <label style={{ display:'block', color:'#4B5563', fontSize:12, fontWeight:900 }}>판매 좌석 *
-                <input type="number" inputMode="numeric" min={youtubeGroupForm.group ? Math.max(1, youtubeGroupForm.group.sellableSeats - youtubeGroupForm.group.availableSeats) : 1} max={20} step={1} value={youtubeGroupDraft.sellableSeats} onChange={event => setYouTubeGroupDraft(current => ({ ...current, sellableSeats:event.target.value }))} style={{ display:'block', width:'100%', boxSizing:'border-box', border:'1.5px solid #FECACA', borderRadius:11, padding:'9px 10px', color:'#1E1B4B', background:'#FFF7F7', fontFamily:'inherit', marginTop:5 }} />
+                <input type="number" inputMode="numeric" min={youtubeGroupForm.group ? Math.max(1, youtubeGroupForm.group.sellableSeats - youtubeGroupForm.group.availableSeats) : 1} max={20} step={1} value={youtubeGroupDraft.sellableSeats} onChange={event => setYouTubeGroupDraft(current => ({ ...current, sellableSeats:event.target.value }))} style={{ display:'block', width:'100%', boxSizing:'border-box', border:'1.5px solid #FECACA', borderRadius:11, padding:'9px 10px', color:'var(--foreground)', background:'#FFF7F7', fontFamily:'inherit', marginTop:5 }} />
               </label>
             </div>
             {youtubeGroupForm.group && <div style={{ color:'#9CA3AF', fontSize:10, marginTop:7 }}>사용 중인 좌석 {youtubeGroupForm.group.sellableSeats - youtubeGroupForm.group.availableSeats}석 미만으로 줄일 수 없습니다.</div>}

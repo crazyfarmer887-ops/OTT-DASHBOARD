@@ -9,6 +9,7 @@ import BottomNav from "./components/bottom-nav";
 import AdminTokenControl from "./components/admin-token-control";
 import RealtimeChatNotifier from "./components/realtime-chat-notifier";
 import "./styles.css";
+import "./operations.css";
 
 const HomePage = lazy(() => import("./pages/home"));
 const PricePage = lazy(() => import("./pages/price"));
@@ -30,7 +31,7 @@ const LinkidPage = lazy(() => import("./pages/linkid"));
 const EveryviewPage = lazy(() => import("./pages/everyview"));
 
 const RouteFallback = () => (
-  <div style={{ padding: 20, color: '#7C3AED', fontSize: 13, fontWeight: 900 }}>대시보드 불러오는 중...</div>
+  <div style={{ padding: 20, color: 'var(--action)', fontSize: 13, fontWeight: 900 }}>대시보드 불러오는 중...</div>
 );
 
 // ErrorBoundary로 감싼 named 래퍼들 (인라인 화살표 함수 X)
@@ -67,7 +68,8 @@ function App() {
 
   return (
     <Provider>
-      <div style={{ paddingTop: (isChat || isAccess) ? 0 : 52 }}>
+      <div className={isAccess ? undefined : `dashboard-app${isChat ? ' dashboard-chat' : ''}`}>
+      <div className={isAccess ? undefined : 'dashboard-content'}>
         <Suspense fallback={<RouteFallback />}>
           {workspaceRedirect ? <Redirect to={workspaceRedirect} /> : <Switch>
             <Route path="/"              component={HomeWrapped} />
@@ -97,6 +99,7 @@ function App() {
       {!isChat && !isAccess && <BottomNav />}
       {!isAccess && location !== '/linkid' && workspace !== 'gbuts' && workspace !== 'linkid' && <RealtimeChatNotifier />}
       {import.meta.env.DEV && <AgentFeedback />}
+      </div>
     </Provider>
   );
 }

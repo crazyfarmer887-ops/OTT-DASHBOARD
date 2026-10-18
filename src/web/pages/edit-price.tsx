@@ -447,11 +447,11 @@ export default function EditPricePage() {
       {/* 헤더 */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
         <div>
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: '#1E1B4B', margin: 0 }}>게시물 관리</h1>
+          <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--foreground)', margin: 0 }}>게시물 관리</h1>
           <p style={{ fontSize: 12, color: '#9CA3AF', margin: '4px 0 0' }}>판매중 게시물 가격 변경 · 삭제</p>
         </div>
         <button onClick={fetchProducts} disabled={loading} style={{
-          background: '#A78BFA', border: 'none', borderRadius: 12, padding: '8px 14px',
+          background: 'var(--action)', border: 'none', borderRadius: 12, padding: '8px 14px',
           fontSize: 13, color: '#fff', cursor: loading ? 'not-allowed' : 'pointer',
           fontWeight: 600, fontFamily: 'inherit', opacity: loading ? 0.7 : 1,
           display: 'flex', alignItems: 'center', gap: 6,
@@ -469,7 +469,7 @@ export default function EditPricePage() {
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <TrendingDown size={16} color="#D97706" />
-            <span style={{ fontSize: 14, fontWeight: 700, color: '#1E1B4B' }}>실시간 가격 자동 인하</span>
+            <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--foreground)' }}>실시간 가격 자동 인하</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <span style={{ fontSize: 11, fontWeight: 700, color: undercutterOn ? '#059669' : '#9CA3AF', background: undercutterOn ? '#D1FAE5' : '#F3F4F6', padding: '2px 8px', borderRadius: 20 }}>
@@ -496,7 +496,7 @@ export default function EditPricePage() {
                 ].map(([key, label]) => (
                   <label key={key} style={{ display:'grid', gap:3, fontSize:10, color:'#92400E', fontWeight:800 }}>
                     {label}
-                    <input inputMode="numeric" value={undercutterFloors[key] || ''} onChange={e => setUndercutterFloors(prev => ({ ...prev, [key]: e.target.value.replace(/[^0-9]/g, '') }))} placeholder="원/일" style={{ border:'1px solid #FDE68A', borderRadius:9, padding:'7px 8px', fontSize:12, fontFamily:'inherit', color:'#1E1B4B', fontWeight:800 }} />
+                    <input inputMode="numeric" value={undercutterFloors[key] || ''} onChange={e => setUndercutterFloors(prev => ({ ...prev, [key]: e.target.value.replace(/[^0-9]/g, '') }))} placeholder="원/일" style={{ border:'1px solid #FDE68A', borderRadius:9, padding:'7px 8px', fontSize:12, fontFamily:'inherit', color:'var(--foreground)', fontWeight:800 }} />
                   </label>
                 ))}
               </div>
@@ -541,7 +541,7 @@ export default function EditPricePage() {
                     background: r.action === 'updated' ? '#FFFBEB' : r.action === 'at_floor' ? '#FFF0F0' : '#F9FAFB',
                     border: `1px solid ${r.action === 'updated' ? '#FDE68A' : r.action === 'at_floor' ? '#FCA5A5' : '#E5E7EB'}`,
                   }}>
-                    <span style={{ fontSize: 12, fontWeight: 700, color: '#1E1B4B' }}>{r.category}</span>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--foreground)' }}>{r.category}</span>
                     <span style={{ fontSize: 11, color: r.action === 'updated' ? '#D97706' : r.action === 'skip' ? '#059669' : '#6B7280' }}>
                       {r.action === 'updated' && `▼ ${r.myDaily}→${r.targetDaily}원/일`}
                       {r.action === 'skip' && `✓ 이미 최저 (${r.myDaily}원/일)`}
@@ -619,14 +619,14 @@ export default function EditPricePage() {
       </div>
 
       {/* 일당 가격 자동 동기화 설정 */}
-      <div style={{ background: '#fff', borderRadius: 16, marginBottom: 12, border: '1.5px solid #EDE9FE', overflow: 'hidden' }}>
+      <div style={{ background: '#fff', borderRadius: 16, marginBottom: 12, border: '1.5px solid var(--secondary)', overflow: 'hidden' }}>
         <button onClick={() => setShowRateSettings(!showRateSettings)} style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%',
           padding: '12px 16px', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Settings size={16} color="#A78BFA" />
-            <span style={{ fontSize: 14, fontWeight: 700, color: '#1E1B4B' }}>일당 가격 자동 동기화</span>
+            <Settings size={16} color="var(--action)" />
+            <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--foreground)' }}>일당 가격 자동 동기화</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <span style={{ fontSize: 11, color: '#059669', fontWeight: 600 }}>매일 자정 자동 실행</span>
@@ -734,9 +734,9 @@ export default function EditPricePage() {
 
       {/* 초기 */}
       {!loading && products.length === 0 && !error && (
-        <div style={{ background: '#EDE9FE', borderRadius: 16, padding: 24, textAlign: 'center' }}>
-          <DollarSign size={32} color="#C4B5FD" style={{ margin: '0 auto 10px' }} />
-          <div style={{ fontSize: 14, fontWeight: 600, color: '#7C3AED' }}>조회 버튼을 눌러주세요</div>
+        <div style={{ background: 'var(--secondary)', borderRadius: 16, padding: 24, textAlign: 'center' }}>
+          <DollarSign size={32} color="var(--text-subtle)" style={{ margin: '0 auto 10px' }} />
+          <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--action)' }}>조회 버튼을 눌러주세요</div>
           <div style={{ fontSize: 12, color: '#9CA3AF', marginTop: 4 }}>판매중인 게시물을 불러와요</div>
         </div>
       )}
@@ -752,7 +752,7 @@ export default function EditPricePage() {
             <button onClick={selectAll} style={{
               display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none',
               cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 600,
-              color: selected.size === products.length ? '#A78BFA' : '#6B7280',
+              color: selected.size === products.length ? 'var(--action)' : '#6B7280',
             }}>
               {selected.size === products.length ? <CheckSquare size={16} /> : <Square size={16} />}
               전체 선택 ({selected.size}/{products.length})
@@ -771,9 +771,9 @@ export default function EditPricePage() {
                   background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit',
                   padding: 0,
                 }}>
-                  {allTypeSelected ? <CheckSquare size={14} color="#A78BFA" /> : <Square size={14} color="#9CA3AF" />}
+                  {allTypeSelected ? <CheckSquare size={14} color="var(--action)" /> : <Square size={14} color="#9CA3AF" />}
                   {cat?.logo && <img src={cat.logo} alt={type} style={{ width: 20, height: 20, objectFit: 'contain', borderRadius: 4 }} onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />}
-                  <span style={{ fontSize: 13, fontWeight: 700, color: cat?.color || '#1E1B4B' }}>{type}</span>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: cat?.color || 'var(--foreground)' }}>{type}</span>
                   <span style={{ fontSize: 11, color: '#9CA3AF' }}>{typeProducts.length}개</span>
                   {marketData[type] && marketData[type].products[0] && (
                     <span style={{ fontSize: 10, color: '#059669', fontWeight: 600, marginLeft: 4 }}>
@@ -791,19 +791,19 @@ export default function EditPricePage() {
                         display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px',
                         background: '#fff', borderRadius: 12, cursor: 'pointer', fontFamily: 'inherit',
                         textAlign: 'left', width: '100%',
-                        border: `1.5px solid ${isSelected ? '#A78BFA' : wasUpdated?.ok ? '#6EE7B7' : '#F3F0FF'}`,
-                        boxShadow: '0 1px 6px rgba(167,139,250,0.06)',
+                        border: `1.5px solid ${isSelected ? 'var(--action)' : wasUpdated?.ok ? '#6EE7B7' : 'var(--muted)'}`,
+                        boxShadow: '0 1px 6px rgba(17,17,17,0.06)',
                       }}>
-                        {isSelected ? <CheckSquare size={18} color="#A78BFA" style={{ flexShrink: 0 }} /> : <Square size={18} color="#D1D5DB" style={{ flexShrink: 0 }} />}
+                        {isSelected ? <CheckSquare size={18} color="var(--action)" style={{ flexShrink: 0 }} /> : <Square size={18} color="#D1D5DB" style={{ flexShrink: 0 }} />}
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 12, fontWeight: 600, color: '#1E1B4B', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--foreground)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {p.productName}
                           </div>
                           {(() => {
                             const acct = p.keepAcct || emailMap[p.productType] || '';
                             if (!acct) return null;
                             return (
-                              <div style={{ fontSize: 10, color: '#7C3AED', marginTop: 2, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              <div style={{ fontSize: 10, color: 'var(--action)', marginTop: 2, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                 {acct.includes('@') ? acct.split('@')[0] : acct}
                               </div>
                             );
@@ -813,7 +813,7 @@ export default function EditPricePage() {
                           </div>
                         </div>
                         <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                          <div style={{ fontSize: 15, fontWeight: 700, color: '#A78BFA' }}>{p.price}</div>
+                          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--action)' }}>{p.price}</div>
                           {p.remainderDays > 0 && (() => {
                             const mi = getMarketInfo(p);
                             const daily = Math.ceil(p.priceNum / p.remainderDays);
@@ -854,8 +854,8 @@ export default function EditPricePage() {
           {selected.size > 0 && (
             <div style={{
               position: 'sticky', bottom: 72, background: '#fff', borderRadius: 20,
-              padding: 16, boxShadow: '0 -4px 24px rgba(167,139,250,0.15)',
-              border: '1.5px solid #EDE9FE', marginTop: 8, zIndex: 50,
+              padding: 16, boxShadow: '0 -4px 24px rgba(17,17,17,0.15)',
+              border: '1.5px solid var(--secondary)', marginTop: 8, zIndex: 50,
             }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: '#6B7280', marginBottom: 8 }}>
                 {selected.size}개 선택됨
@@ -863,12 +863,12 @@ export default function EditPricePage() {
 
               {/* 가격 모드 토글 */}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                <span style={{ fontSize: 12, fontWeight: 600, color: '#1E1B4B' }}>
+                <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--foreground)' }}>
                   {priceMode === 'total' ? '총 가격 (원)' : '일당 가격 (원)'}
                 </span>
                 <button onClick={togglePriceMode} style={{
-                  background: '#EDE9FE', border: 'none', borderRadius: 8, padding: '4px 10px',
-                  fontSize: 11, color: '#7C3AED', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+                  background: 'var(--secondary)', border: 'none', borderRadius: 8, padding: '4px 10px',
+                  fontSize: 11, color: 'var(--action)', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
                   display: 'flex', alignItems: 'center', gap: 4,
                 }}>
                   <ArrowLeftRight size={11} />
@@ -884,8 +884,8 @@ export default function EditPricePage() {
                   }}
                   placeholder="새 가격 입력"
                   style={{
-                    width: '100%', padding: '11px 14px', borderRadius: 10, border: '1.5px solid #EDE9FE',
-                    fontSize: 16, fontWeight: 700, color: '#1E1B4B', background: '#F8F6FF', outline: 'none',
+                    width: '100%', padding: '11px 14px', borderRadius: 10, border: '1.5px solid var(--secondary)',
+                    fontSize: 16, fontWeight: 700, color: 'var(--foreground)', background: 'var(--background)', outline: 'none',
                     fontFamily: 'inherit', boxSizing: 'border-box',
                   }} />
               ) : (
@@ -896,8 +896,8 @@ export default function EditPricePage() {
                   }}
                   placeholder="일당 가격 입력"
                   style={{
-                    width: '100%', padding: '11px 14px', borderRadius: 10, border: '1.5px solid #EDE9FE',
-                    fontSize: 16, fontWeight: 700, color: '#1E1B4B', background: '#F8F6FF', outline: 'none',
+                    width: '100%', padding: '11px 14px', borderRadius: 10, border: '1.5px solid var(--secondary)',
+                    fontSize: 16, fontWeight: 700, color: 'var(--foreground)', background: 'var(--background)', outline: 'none',
                     fontFamily: 'inherit', boxSizing: 'border-box',
                   }} />
               )}
@@ -907,15 +907,15 @@ export default function EditPricePage() {
                 const profit = calcProfitInfo();
                 return (
                   <>
-                    <div style={{ background: '#F8F6FF', borderRadius: 10, padding: '8px 12px', marginTop: 8 }}>
+                    <div style={{ background: 'var(--background)', borderRadius: 10, padding: '8px 12px', marginTop: 8 }}>
                       {priceMode === 'total' ? (
                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#6B7280' }}>
-                          <span>일당 <strong style={{ color: '#A78BFA' }}>{calcInfo.daily.toLocaleString()}원</strong></span>
+                          <span>일당 <strong style={{ color: 'var(--action)' }}>{calcInfo.daily.toLocaleString()}원</strong></span>
                           <span>{calcInfo.days}일 기준</span>
                         </div>
                       ) : (
                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#6B7280' }}>
-                          <span>총 <strong style={{ color: '#A78BFA' }}>{calcInfo.total.toLocaleString()}원</strong></span>
+                          <span>총 <strong style={{ color: 'var(--action)' }}>{calcInfo.total.toLocaleString()}원</strong></span>
                           <span>{calcInfo.days}일 × {calcInfo.daily.toLocaleString()}원</span>
                         </div>
                       )}
@@ -930,8 +930,8 @@ export default function EditPricePage() {
                         {/* 마지노선 행 */}
                         <div style={{
                           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                          padding: '7px 12px', background: '#F8F6FF',
-                          borderBottom: '1px solid #EDE9FE',
+                          padding: '7px 12px', background: 'var(--background)',
+                          borderBottom: '1px solid var(--secondary)',
                         }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                             <Info size={11} color="#9CA3AF" />
@@ -944,7 +944,7 @@ export default function EditPricePage() {
                               </span>
                             ) : (
                               <>
-                                <span style={{ fontSize: 12, fontWeight: 700, color: '#7C3AED' }}>
+                                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--action)' }}>
                                   {profit.breakeven}원/일
                                 </span>
                                 <span style={{ fontSize: 10, color: '#9CA3AF' }}>
@@ -1000,7 +1000,7 @@ export default function EditPricePage() {
                 <button onClick={() => setUseProductName(!useProductName)} style={{
                   display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none',
                   cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 600,
-                  color: useProductName ? '#A78BFA' : '#9CA3AF', padding: 0, marginBottom: 6,
+                  color: useProductName ? 'var(--action)' : '#9CA3AF', padding: 0, marginBottom: 6,
                 }}>
                   {useProductName ? <CheckSquare size={14} /> : <Square size={14} />}
                   <FileText size={12} />
@@ -1012,8 +1012,8 @@ export default function EditPricePage() {
                       onChange={e => setProductNameEdit(e.target.value)}
                       placeholder="상품 안내 문구 입력 (예: ✅ 셀프인증 가능! ✅ 넷플릭스 프리미엄!)"
                       style={{
-                        width: '100%', padding: '10px 12px', borderRadius: 10, border: '1.5px solid #EDE9FE',
-                        fontSize: 13, fontWeight: 600, color: '#1E1B4B', background: '#F8F6FF', outline: 'none',
+                        width: '100%', padding: '10px 12px', borderRadius: 10, border: '1.5px solid var(--secondary)',
+                        fontSize: 13, fontWeight: 600, color: 'var(--foreground)', background: 'var(--background)', outline: 'none',
                         fontFamily: 'inherit', boxSizing: 'border-box',
                       }} />
                     {/* 기존 문구 빠른 선택 */}
@@ -1027,10 +1027,10 @@ export default function EditPricePage() {
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                             {uniqueNames.map((name, i) => (
                               <button key={i} onClick={() => setProductNameEdit(name)} style={{
-                                background: productNameEdit === name ? '#EDE9FE' : '#F9FAFB',
-                                border: `1px solid ${productNameEdit === name ? '#A78BFA' : '#E5E7EB'}`,
+                                background: productNameEdit === name ? 'var(--secondary)' : '#F9FAFB',
+                                border: `1px solid ${productNameEdit === name ? 'var(--action)' : '#E5E7EB'}`,
                                 borderRadius: 8, padding: '6px 10px', cursor: 'pointer',
-                                fontFamily: 'inherit', fontSize: 11, color: '#1E1B4B', textAlign: 'left',
+                                fontFamily: 'inherit', fontSize: 11, color: 'var(--foreground)', textAlign: 'left',
                                 fontWeight: productNameEdit === name ? 700 : 400,
                                 overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                               }}>
@@ -1086,10 +1086,10 @@ export default function EditPricePage() {
 
               {/* 가격 변경 버튼 */}
               <button onClick={handleUpdate} disabled={updating || !canUpdatePrice} style={{
-                flex: 2, background: updating ? '#C4B5FD' : '#A78BFA',
+                flex: 2, background: updating ? 'var(--text-subtle)' : 'var(--action)',
                 border: 'none', borderRadius: 12, padding: 14, fontSize: 15, color: '#fff',
                 fontWeight: 700, cursor: updating ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
-                boxShadow: '0 4px 16px rgba(167,139,250,0.35)',
+                boxShadow: '0 4px 16px rgba(17,17,17,0.35)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
               }}>
                 {updating ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> : <DollarSign size={16} />}

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import CredentialField from '../components/credential-field';
+import ListingPeriodPresets from '../components/listing-period-presets';
 import { KeyRound, PartyPopper, CheckCircle2, KeySquare, Loader2, AlertTriangle, Trophy, Info, PenLine, Check, X, Square, Clock, ArrowLeftRight, Type, Mail, Link } from "lucide-react";
 import type { PartyMaintenanceChecklistStore } from "../../lib/party-maintenance-checklist";
 import { findMaintenanceCredentialForAlias } from "../../lib/write-maintenance-autofill";
@@ -10,7 +11,6 @@ import { buildProfileAssignment, generateProfileNickname, isValidProfileNickname
 import {
   buildYouTubeProductRequest,
   createYouTubeIdempotencyKey,
-  getSeoulEndDateForDuration,
   getSeoulTomorrow,
   getYouTubePostRegistrationStep,
   parseYouTubeRefillPreset,
@@ -522,9 +522,9 @@ export default function WritePage() {
       .map(item => item.error!))];
     return (
       <div style={{ padding: '20px 16px' }}>
-        <div style={{ background: '#fff', borderRadius: 20, padding: 28, textAlign: 'center', boxShadow: '0 4px 20px rgba(167,139,250,0.15)' }}>
-          <PartyPopper size={48} color="#A78BFA" style={{ margin:"0 auto 12px", display:"block" }} />
-          <div style={{ fontSize: 18, fontWeight: 700, color: '#1E1B4B', marginBottom: 6 }}>
+        <div style={{ background: '#fff', borderRadius: 20, padding: 28, textAlign: 'center', boxShadow: '0 4px 20px rgba(17,17,17,0.15)' }}>
+          <PartyPopper size={48} color="var(--action)" style={{ margin:"0 auto 12px", display:"block" }} />
+          <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--foreground)', marginBottom: 6 }}>
             {service === 'youtube' && successItems.length === 0 ? '등록 결과 확인 필요' : '등록 완료!'}
           </div>
           <div style={{ fontSize: 13, color: '#9CA3AF', marginBottom: 20 }}>
@@ -551,7 +551,7 @@ export default function WritePage() {
               <a key={item.productUsid}
                 href={`https://graytag.co.kr/product/detail?productUsid=${item.productUsid}`}
                 target="_blank" rel="noreferrer"
-                style={{ background: '#F8F6FF', borderRadius: 10, padding: '10px 14px', fontSize: 12, color: '#7C3AED', fontWeight: 600, textDecoration: 'none', textAlign: 'left' }}>
+                style={{ background: 'var(--background)', borderRadius: 10, padding: '10px 14px', fontSize: 12, color: 'var(--action)', fontWeight: 600, textDecoration: 'none', textAlign: 'left' }}>
                 #{item.index} 상품 보기 →
               </a>
             ))}
@@ -560,7 +560,7 @@ export default function WritePage() {
             onClick={rateLimitedItems.length > 0 ? () => {
               setRepeat(rateLimitedItems.length); setProgressList([]); setDoneProductUsids([]); setStep('form');
             } : service === 'youtube' && successItems.length === 0 ? () => setStep('form') : reset}
-            style={{ width: '100%', ...btnStyle('#A78BFA', '#fff') }}
+            style={{ width: '100%', ...btnStyle('var(--action)', '#fff') }}
           >
             {rateLimitedItems.length > 0 ? `남은 ${rateLimitedItems.length}개 입력으로 돌아가기`
               : service === 'youtube' && successItems.length === 0 ? '입력 수정하기' : '새 글 작성'}
@@ -635,7 +635,7 @@ export default function WritePage() {
     return (
       <div style={{ padding: '20px 16px 0' }}>
         <div style={{ marginBottom: 16 }}>
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: '#1E1B4B', margin: 0 }}>✍️ 계정 자동 전달</h1>
+          <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--foreground)', margin: 0 }}>✍️ 계정 자동 전달</h1>
           <p style={{ fontSize: 12, color: '#9CA3AF', margin: '4px 0 0' }}>구매자에게 자동으로 계정 정보를 전달해요</p>
         </div>
 
@@ -651,9 +651,9 @@ export default function WritePage() {
 
         {/* 이메일 별칭 선택 */}
         {slAliases.length > 0 && (
-          <div style={{ background: '#fff', borderRadius: 16, padding: 16, border: '1.5px solid #EDE9FE', boxShadow: '0 2px 12px rgba(167,139,250,0.08)', marginBottom: 12 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: '#1E1B4B', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
-              <Link size={14} color="#A78BFA" /> 이메일 연동 (클릭하여 선택)
+          <div style={{ background: '#fff', borderRadius: 16, padding: 16, border: '1.5px solid var(--secondary)', boxShadow: '0 2px 12px rgba(17,17,17,0.08)', marginBottom: 12 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--foreground)', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Link size={14} color="var(--action)" /> 이메일 연동 (클릭하여 선택)
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 180, overflowY: 'auto' }}>
               {slAliases.map(alias => {
@@ -662,13 +662,13 @@ export default function WritePage() {
                 return (
                 <button key={alias.id} onClick={() => handleSelectAlias(alias)} style={{
                   display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
-                  borderRadius: 10, border: `1.5px solid ${selectedAliasId === alias.id ? '#A78BFA' : '#EDE9FE'}`,
-                  background: selectedAliasId === alias.id ? '#F5F3FF' : '#F8F6FF',
+                  borderRadius: 10, border: `1.5px solid ${selectedAliasId === alias.id ? 'var(--action)' : 'var(--secondary)'}`,
+                  background: selectedAliasId === alias.id ? 'var(--muted)' : 'var(--background)',
                   cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', width: '100%',
                 }}>
-                  <Mail size={14} color={selectedAliasId === alias.id ? '#A78BFA' : '#9CA3AF'} />
+                  <Mail size={14} color={selectedAliasId === alias.id ? 'var(--action)' : '#9CA3AF'} />
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: selectedAliasId === alias.id ? '#7C3AED' : '#1E1B4B', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: selectedAliasId === alias.id ? 'var(--action)' : 'var(--foreground)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {alias.email}
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 1 }}>
@@ -679,19 +679,19 @@ export default function WritePage() {
                       }
                     </div>
                   </div>
-                  {selectedAliasId === alias.id && <Check size={14} color="#A78BFA" strokeWidth={3} />}
+                  {selectedAliasId === alias.id && <Check size={14} color="var(--action)" strokeWidth={3} />}
                 </button>
                 );
               })}
             </div>
           </div>
         )}
-        {slLoading && <div style={{ fontSize: 12, color: '#C4B5FD', marginBottom: 12 }}>이메일 목록 로딩 중...</div>}
+        {slLoading && <div style={{ fontSize: 12, color: 'var(--text-subtle)', marginBottom: 12 }}>이메일 목록 로딩 중...</div>}
 
-        <div style={{ background: '#fff', borderRadius: 16, padding: 18, border: '1.5px solid #EDE9FE', boxShadow: '0 2px 12px rgba(167,139,250,0.08)', marginBottom: 14 }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: '#1E1B4B', marginBottom: 14, display:"flex", alignItems:"center", gap:8 }}><KeySquare size={16} color="#A78BFA" /> 계정 정보</div>
+        <div style={{ background: '#fff', borderRadius: 16, padding: 18, border: '1.5px solid var(--secondary)', boxShadow: '0 2px 12px rgba(17,17,17,0.08)', marginBottom: 14 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--foreground)', marginBottom: 14, display:"flex", alignItems:"center", gap:8 }}><KeySquare size={16} color="var(--action)" /> 계정 정보</div>
           {selectedAliasId && (
-            <button onClick={() => applyMaintenanceCredential(selectedAliasId)} style={{ ...btnStyle('#EDE9FE', '#7C3AED'), padding: '9px 12px', fontSize: 12, marginBottom: 10 }}>
+            <button onClick={() => applyMaintenanceCredential(selectedAliasId)} style={{ ...btnStyle('var(--secondary)', 'var(--action)'), padding: '9px 12px', fontSize: 12, marginBottom: 10 }}>
               재정비 DB 자동 불러오기
             </button>
           )}
@@ -703,7 +703,7 @@ export default function WritePage() {
           <label style={labelStyle}>랜덤 프로필명 *</label>
           <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
             <input value={profileNickname} onChange={e => handleProfileNicknameChange(e.target.value)} placeholder="예: 고양이" style={{ ...inputStyle, marginBottom: 0 }} />
-            <button onClick={handleRandomProfileNickname} style={{ ...btnStyle('#F3F0FF', '#7C3AED'), width: 110, padding: '9px 10px', fontSize: 12 }}>
+            <button onClick={handleRandomProfileNickname} style={{ ...btnStyle('var(--muted)', 'var(--action)'), width: 110, padding: '9px 10px', fontSize: 12 }}>
               랜덤 생성
             </button>
           </div>
@@ -728,8 +728,8 @@ export default function WritePage() {
         </div>
 
         <div style={{ display: 'flex', gap: 10 }}>
-          <button onClick={() => setStep('done')} style={{ flex: 1, ...btnStyle('#F3F0FF', '#7C3AED'), fontSize: 13 }}>나중에 설정</button>
-          <button onClick={handleKeepAcct} disabled={submitting} style={{ flex: 2, ...btnStyle(submitting ? '#C4B5FD' : '#A78BFA', '#fff'), opacity: submitting ? 0.8 : 1 }}>
+          <button onClick={() => setStep('done')} style={{ flex: 1, ...btnStyle('var(--muted)', 'var(--action)'), fontSize: 13 }}>나중에 설정</button>
+          <button onClick={handleKeepAcct} disabled={submitting} style={{ flex: 2, ...btnStyle(submitting ? 'var(--text-subtle)' : 'var(--action)', '#fff'), opacity: submitting ? 0.8 : 1 }}>
             {submitting ? `설정 중 (${doneProductUsids.length}개)...` : `${successCount}개 일괄 설정`}
           </button>
         </div>
@@ -747,15 +747,15 @@ export default function WritePage() {
 
     return (
       <div style={{ padding: '20px 16px 0' }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, color: '#1E1B4B', margin: '0 0 16px', display:"flex", alignItems:"center", gap:10 }}><Loader2 size={22} color="#A78BFA" style={{ animation:"spin 1s linear infinite" }} /> 등록 중...</h1>
+        <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--foreground)', margin: '0 0 16px', display:"flex", alignItems:"center", gap:10 }}><Loader2 size={22} color="var(--action)" style={{ animation:"spin 1s linear infinite" }} /> 등록 중...</h1>
 
-        <div style={{ background: '#fff', borderRadius: 16, padding: '16px', marginBottom: 14, border: '1.5px solid #EDE9FE' }}>
+        <div style={{ background: '#fff', borderRadius: 16, padding: '16px', marginBottom: 14, border: '1.5px solid var(--secondary)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#6B7280', marginBottom: 8 }}>
             <span>{done}/{total} 완료</span>
             <span>{pct}%</span>
           </div>
-          <div style={{ background: '#EDE9FE', borderRadius: 8, height: 8, overflow: 'hidden' }}>
-            <div style={{ background: 'linear-gradient(90deg, #A78BFA, #818CF8)', height: '100%', width: `${pct}%`, borderRadius: 8, transition: 'width 0.4s ease' }} />
+          <div style={{ background: 'var(--secondary)', borderRadius: 8, height: 8, overflow: 'hidden' }}>
+            <div style={{ background: 'linear-gradient(90deg, var(--action), var(--action))', height: '100%', width: `${pct}%`, borderRadius: 8, transition: 'width 0.4s ease' }} />
           </div>
           {errors > 0 && <div style={{ fontSize: 11, color: '#EF4444', marginTop: 6, display:'flex', alignItems:'center', gap:4 }}><AlertTriangle size={11} />{errors}개 중단 또는 실패</div>}
         </div>
@@ -765,17 +765,17 @@ export default function WritePage() {
             <div key={item.index} style={{
               background: '#fff', borderRadius: 12, padding: '12px 16px',
               display: 'flex', alignItems: 'center', gap: 12,
-              border: `1.5px solid ${item.status === 'done' ? '#A7F3D0' : item.status === 'error' ? '#FCA5A5' : item.status === 'running' ? '#A78BFA' : '#F3F0FF'}`,
+              border: `1.5px solid ${item.status === 'done' ? '#A7F3D0' : item.status === 'error' ? '#FCA5A5' : item.status === 'running' ? 'var(--action)' : 'var(--muted)'}`,
             }}>
               <div style={{
                 width: 32, height: 32, borderRadius: 10, flexShrink: 0,
                 display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16,
-                background: item.status === 'done' ? '#F0FDF4' : item.status === 'error' ? '#FFF0F0' : item.status === 'running' ? '#EDE9FE' : '#F8F6FF',
+                background: item.status === 'done' ? '#F0FDF4' : item.status === 'error' ? '#FFF0F0' : item.status === 'running' ? 'var(--secondary)' : 'var(--background)',
               }}>
-                {item.status === 'done' ? <Check size={16} color='#059669' strokeWidth={3} /> : item.status === 'error' ? <X size={16} color='#EF4444' strokeWidth={3} /> : item.status === 'running' ? <Loader2 size={16} color='#A78BFA' style={{ animation:'spin 1s linear infinite' }} /> : <Square size={16} color='#C4B5FD' />}
+                {item.status === 'done' ? <Check size={16} color='#059669' strokeWidth={3} /> : item.status === 'error' ? <X size={16} color='#EF4444' strokeWidth={3} /> : item.status === 'running' ? <Loader2 size={16} color='var(--action)' style={{ animation:'spin 1s linear infinite' }} /> : <Square size={16} color='var(--text-subtle)' />}
               </div>
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: '#1E1B4B' }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--foreground)' }}>
                   #{item.index} 상품 {item.status === 'running' ? '등록 중...' : item.status === 'done' ? '등록 완료' : item.status === 'error' ? '실패' : '대기 중'}
                 </div>
                 {item.error && <div style={{ fontSize: 11, color: '#EF4444', marginTop: 2 }}>{item.error}</div>}
@@ -784,7 +784,7 @@ export default function WritePage() {
                 )}
               </div>
               {item.status === 'running' && (
-                <div style={{ width: 18, height: 18, border: '2px solid #EDE9FE', borderTop: '2px solid #A78BFA', borderRadius: '50%', animation: 'spin 0.8s linear infinite', flexShrink: 0 }} />
+                <div style={{ width: 18, height: 18, border: '2px solid var(--secondary)', borderTop: '2px solid var(--action)', borderRadius: '50%', animation: 'spin 0.8s linear infinite', flexShrink: 0 }} />
               )}
             </div>
           ))}
@@ -799,7 +799,7 @@ export default function WritePage() {
   return (
     <div style={{ padding: '20px 16px 0' }}>
       <div style={{ marginBottom: 18 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, color: '#1E1B4B', margin: 0 }}>✍️ 글 작성</h1>
+        <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--foreground)', margin: 0 }}>✍️ 글 작성</h1>
         <p style={{ fontSize: 12, color: '#9CA3AF', margin: '4px 0 0' }}>graytag 파티 판매 글 등록</p>
       </div>
 
@@ -810,7 +810,7 @@ export default function WritePage() {
             <button key={cs.id} onClick={() => setSelectedId(cs.id)} style={{
               flexShrink: 0, padding: '6px 14px', borderRadius: 20, border: 'none', fontFamily: 'inherit',
               fontSize: 12, fontWeight: 600, cursor: 'pointer',
-              background: selectedId === cs.id ? '#A78BFA' : '#fff',
+              background: selectedId === cs.id ? 'var(--action)' : '#fff',
               color: selectedId === cs.id ? '#fff' : '#6B7280',
               boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
             }}>🍪 {cs.label}</button>
@@ -894,44 +894,44 @@ export default function WritePage() {
       <div style={{ ...card, background: '#FAFAFF' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 8 }}>
           <div>
-            <div style={{ fontSize: 13, fontWeight: 900, color: '#1E1B4B' }}>글 기본값 프리셋</div>
+            <div style={{ fontSize: 13, fontWeight: 900, color: 'var(--foreground)' }}>글 기본값 프리셋</div>
             <div style={{ fontSize: 10, color: '#9CA3AF', marginTop: 2 }}>
               {getCurrentPreset().updatedAt ? '이 서비스에 저장된 기본값이 있어요.' : '아직 저장된 기본값이 없어 서비스 기본 문구를 써요.'}
             </div>
           </div>
-          <span style={{ flexShrink: 0, fontSize: 10, color: '#7C3AED', background: '#EDE9FE', borderRadius: 999, padding: '4px 8px', fontWeight: 900 }}>
+          <span style={{ flexShrink: 0, fontSize: 10, color: 'var(--action)', background: 'var(--secondary)', borderRadius: 999, padding: '4px 8px', fontWeight: 900 }}>
             {SERVICES.find(s => s.key === service)?.label}
           </span>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 7 }}>
-          <button onClick={saveCurrentAsPreset} disabled={!title.trim() || !description.trim()} style={{ background: '#A78BFA', color: '#fff', border: 'none', borderRadius: 10, padding: '9px 8px', fontSize: 11, fontWeight: 900, cursor: (!title.trim() || !description.trim()) ? 'not-allowed' : 'pointer', opacity: (!title.trim() || !description.trim()) ? 0.6 : 1, fontFamily: 'inherit' }}>
+          <button onClick={saveCurrentAsPreset} disabled={!title.trim() || !description.trim()} style={{ background: 'var(--action)', color: '#fff', border: 'none', borderRadius: 10, padding: '9px 8px', fontSize: 11, fontWeight: 900, cursor: (!title.trim() || !description.trim()) ? 'not-allowed' : 'pointer', opacity: (!title.trim() || !description.trim()) ? 0.6 : 1, fontFamily: 'inherit' }}>
             현재 제목·설명 기본값으로 저장
           </button>
-          <button onClick={() => applyPresetForService()} style={{ background: '#EDE9FE', color: '#7C3AED', border: 'none', borderRadius: 10, padding: '9px 8px', fontSize: 11, fontWeight: 900, cursor: 'pointer', fontFamily: 'inherit' }}>
+          <button onClick={() => applyPresetForService()} style={{ background: 'var(--secondary)', color: 'var(--action)', border: 'none', borderRadius: 10, padding: '9px 8px', fontSize: 11, fontWeight: 900, cursor: 'pointer', fontFamily: 'inherit' }}>
             기본값 불러오기
           </button>
           <button onClick={resetPresetForService} style={{ gridColumn: '1 / -1', background: '#FFF7ED', color: '#C2410C', border: '1px solid #FED7AA', borderRadius: 10, padding: '8px 8px', fontSize: 11, fontWeight: 900, cursor: 'pointer', fontFamily: 'inherit' }}>
             기본값 초기화
           </button>
         </div>
-        {presetNotice && <div style={{ marginTop: 8, fontSize: 11, color: '#7C3AED', background: '#F5F3FF', borderRadius: 8, padding: '7px 9px' }}>{presetNotice}</div>}
+        {presetNotice && <div style={{ marginTop: 8, fontSize: 11, color: 'var(--action)', background: 'var(--muted)', borderRadius: 8, padding: '7px 9px' }}>{presetNotice}</div>}
       </div>
 
       {/* ② 제목 */}
       <div style={card}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
           <label style={{ ...labelStyle, marginBottom: 0, display: 'flex', alignItems: 'center', gap: 5 }}>
-            <Type size={12} color="#A78BFA" /> 상품 제목 *
+            <Type size={12} color="var(--action)" /> 상품 제목 *
           </label>
           <button onClick={() => setTitle(getCurrentPreset().title)} style={{
-            background: '#EDE9FE', border: 'none', borderRadius: 8, padding: '3px 8px',
-            fontSize: 10, color: '#7C3AED', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+            background: 'var(--secondary)', border: 'none', borderRadius: 8, padding: '3px 8px',
+            fontSize: 10, color: 'var(--action)', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
           }}>기본값</button>
         </div>
         <input type="text" value={title}
           onChange={e => setTitle(e.target.value)}
           placeholder="상품 제목을 입력하세요" style={inputStyle} />
-        <div style={{ fontSize: 10, color: '#C4B5FD', textAlign: 'right', marginTop: -6 }}>{title.length}자</div>
+        <div style={{ fontSize: 10, color: 'var(--text-subtle)', textAlign: 'right', marginTop: -6 }}>{title.length}자</div>
         {service === 'youtube' && (
           <div style={{ marginTop: 8, borderRadius: 8, padding: '8px 10px', background: '#FFF1F1', color: '#B91C1C', fontSize: 11, lineHeight: 1.5 }}>
             최종 등록 제목: <strong>{youtubeFinalTitle}</strong>
@@ -945,16 +945,8 @@ export default function WritePage() {
         <label style={labelStyle}>{service === 'youtube' ? '구독 종료일 *' : '상품 종료일 *'}</label>
         <input type="date" value={endDate} min={getSeoulTomorrow()}
           onChange={e => setEndDate(e.target.value)} style={inputStyle} />
-        {service === 'youtube' && (
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: -6, marginBottom: 14 }}>
-            {[30, 90, 180, 365].map(days => (
-              <button key={days} type="button" onClick={() => setEndDate(getSeoulEndDateForDuration(days))}
-                style={{ background: '#FEE2E2', color: '#B91C1C', border: 'none', borderRadius: 8, padding: '6px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
-                {days === 365 ? '1년' : `${days}일`}
-              </button>
-            ))}
-          </div>
-        )}
+        <ListingPeriodPresets startDate={getSeoulTomorrow()} endDate={endDate} onChange={setEndDate}
+          maxEndDate={sharedOttEnabled && ottService ? sharedOttAccounts.find(account => account.accountEmail === inventoryAccount && account.serviceType === ottService)?.endDate : undefined} />
 
         {/* 가격 모드 토글 */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
@@ -962,8 +954,8 @@ export default function WritePage() {
             {priceMode === 'total' ? '총 판매 가격 (원) *' : '일당 가격 (원) *'}
           </label>
           <button onClick={togglePriceMode} style={{
-            background: '#EDE9FE', border: 'none', borderRadius: 8, padding: '4px 10px',
-            fontSize: 11, color: '#7C3AED', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+            background: 'var(--secondary)', border: 'none', borderRadius: 8, padding: '4px 10px',
+            fontSize: 11, color: 'var(--action)', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
             display: 'flex', alignItems: 'center', gap: 4,
           }}>
             <ArrowLeftRight size={11} />
@@ -989,14 +981,14 @@ export default function WritePage() {
 
         {/* 계산 결과 + 순위 (일당 가격 기준) */}
         {(calcInfo || priceLoading) && (
-          <div style={{ background: '#F8F6FF', borderRadius: 12, padding: '12px 14px', marginTop: -4 }}>
+          <div style={{ background: 'var(--background)', borderRadius: 12, padding: '12px 14px', marginTop: -4 }}>
             {calcInfo && (
               <>
                 {priceMode === 'total' ? (
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: priceInfo ? 8 : 0 }}>
                     <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
                       <span style={{ fontSize: 11, color: '#9CA3AF' }}>일당</span>
-                      <span style={{ fontSize: 20, fontWeight: 700, color: '#A78BFA' }}>{calcInfo.daily.toLocaleString()}원</span>
+                      <span style={{ fontSize: 20, fontWeight: 700, color: 'var(--action)' }}>{calcInfo.daily.toLocaleString()}원</span>
                     </div>
                     <span style={{ fontSize: 11, color: '#9CA3AF' }}>{calcInfo.days}일 기준</span>
                   </div>
@@ -1004,19 +996,19 @@ export default function WritePage() {
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: priceInfo ? 8 : 0 }}>
                     <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
                       <span style={{ fontSize: 11, color: '#9CA3AF' }}>총 금액</span>
-                      <span style={{ fontSize: 20, fontWeight: 700, color: '#A78BFA' }}>{calcInfo.total.toLocaleString()}원</span>
+                      <span style={{ fontSize: 20, fontWeight: 700, color: 'var(--action)' }}>{calcInfo.total.toLocaleString()}원</span>
                     </div>
                     <span style={{ fontSize: 11, color: '#9CA3AF' }}>{calcInfo.days}일 × {calcInfo.daily.toLocaleString()}원</span>
                   </div>
                 )}
               </>
             )}
-            {priceLoading && <div style={{ fontSize: 11, color: '#C4B5FD' }}>순위 계산 중...</div>}
+            {priceLoading && <div style={{ fontSize: 11, color: 'var(--text-subtle)' }}>순위 계산 중...</div>}
             {!priceLoading && priceInfo && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <div style={{
                   padding: '4px 12px', borderRadius: 8, fontSize: 13, fontWeight: 700,
-                  background: priceInfo.rank === 1 ? '#A78BFA' : priceInfo.rank <= 3 ? '#C4B5FD' : priceInfo.rank <= 5 ? '#EDE9FE' : '#F3F4F6',
+                  background: priceInfo.rank === 1 ? 'var(--action)' : priceInfo.rank <= 3 ? 'var(--text-subtle)' : priceInfo.rank <= 5 ? 'var(--secondary)' : '#F3F4F6',
                   color: priceInfo.rank <= 3 ? '#fff' : '#6B7280',
                 }}>
                   {priceInfo.rank}위
@@ -1036,17 +1028,17 @@ export default function WritePage() {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
           <label style={{ ...labelStyle, marginBottom: 0 }}>상품 설명 *</label>
           <button onClick={() => setDescription(getCurrentPreset().description)} style={{
-            background: '#EDE9FE', border: 'none', borderRadius: 8, padding: '3px 8px',
-            fontSize: 10, color: '#7C3AED', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+            background: 'var(--secondary)', border: 'none', borderRadius: 8, padding: '3px 8px',
+            fontSize: 10, color: 'var(--action)', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
           }}>기본값</button>
         </div>
-        <div style={{ fontSize: 11, color: '#C4B5FD', marginBottom: 6 }}>
+        <div style={{ fontSize: 11, color: 'var(--text-subtle)', marginBottom: 6 }}>
           ⚠️ 카톡·전화번호 등 외부 연락처 포함 불가
         </div>
         <textarea value={description} onChange={e => setDescription(e.target.value)}
           placeholder={'예:\n- 본인 프로필만 접속해 주세요.\n- 여러 기기 동시 접속 불가합니다.\n- 인증 요청 시 채팅방 이용해주세요.'}
           style={{ ...inputStyle, height: 120, resize: 'vertical' }} />
-        <div style={{ fontSize: 11, color: youtubeSellingGuideError ? '#DC2626' : '#C4B5FD', textAlign: 'right', marginTop: -6 }}>
+        <div style={{ fontSize: 11, color: youtubeSellingGuideError ? '#DC2626' : 'var(--text-subtle)', textAlign: 'right', marginTop: -6 }}>
           {service === 'youtube'
             ? `${youtubeSellingGuideLength(description)}/300자`
             : `${description.length}자`}
@@ -1066,21 +1058,21 @@ export default function WritePage() {
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <button onClick={() => setRepeat(r => Math.max(1, r-1))} style={{
-            width: 38, height: 38, borderRadius: 10, border: '1.5px solid #EDE9FE',
-            background: '#F8F6FF', fontSize: 20, cursor: 'pointer', fontFamily: 'inherit',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#A78BFA', fontWeight: 700, flexShrink: 0,
+            width: 38, height: 38, borderRadius: 10, border: '1.5px solid var(--secondary)',
+            background: 'var(--background)', fontSize: 20, cursor: 'pointer', fontFamily: 'inherit',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--action)', fontWeight: 700, flexShrink: 0,
           }}>−</button>
 
-          <div style={{ flex: 1, background: '#F8F6FF', borderRadius: 12, border: '1.5px solid #EDE9FE', padding: '10px 0', textAlign: 'center' }}>
-            <span style={{ fontSize: 24, fontWeight: 700, color: '#A78BFA' }}>{repeat}</span>
+          <div style={{ flex: 1, background: 'var(--background)', borderRadius: 12, border: '1.5px solid var(--secondary)', padding: '10px 0', textAlign: 'center' }}>
+            <span style={{ fontSize: 24, fontWeight: 700, color: 'var(--action)' }}>{repeat}</span>
             <span style={{ fontSize: 13, color: '#9CA3AF', marginLeft: 6 }}>개</span>
           </div>
 
           <button disabled={repeat >= youtubeRepeatMax}
             onClick={() => setRepeat(r => Math.min(20, r+1))} style={{
-            width: 38, height: 38, borderRadius: 10, border: '1.5px solid #EDE9FE',
-            background: '#F8F6FF', fontSize: 20, cursor: repeat >= youtubeRepeatMax ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#A78BFA', fontWeight: 700, flexShrink: 0,
+            width: 38, height: 38, borderRadius: 10, border: '1.5px solid var(--secondary)',
+            background: 'var(--background)', fontSize: 20, cursor: repeat >= youtubeRepeatMax ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--action)', fontWeight: 700, flexShrink: 0,
           }}>+</button>
         </div>
 
@@ -1089,14 +1081,14 @@ export default function WritePage() {
             <button key={n} onClick={() => setRepeat(n)} style={{
               padding: '5px 14px', borderRadius: 20, border: 'none', fontFamily: 'inherit',
               fontSize: 12, fontWeight: 600, cursor: 'pointer',
-              background: repeat === n ? '#A78BFA' : '#EDE9FE',
-              color: repeat === n ? '#fff' : '#7C3AED',
+              background: repeat === n ? 'var(--action)' : 'var(--secondary)',
+              color: repeat === n ? '#fff' : 'var(--action)',
             }}>{n}개</button>
           ))}
         </div>
 
         {repeat > 1 && (
-          <div style={{ marginTop: 10, background: '#EDE9FE', borderRadius: 10, padding: '8px 12px', fontSize: 12, color: '#7C3AED' }}>
+          <div style={{ marginTop: 10, background: 'var(--secondary)', borderRadius: 10, padding: '8px 12px', fontSize: 12, color: 'var(--action)' }}>
             💡 총 {repeat}개 글이 순차 등록돼요 (약 {Math.ceil(repeat * 0.8 + 1)}초 소요)
           </div>
         )}
@@ -1110,10 +1102,10 @@ export default function WritePage() {
 
       {/* 등록 버튼 */}
       <button onClick={handleSubmit} disabled={youtubeSubmitDisabled} style={{
-        width: '100%', background: youtubeSubmitDisabled ? '#D1D5DB' : '#A78BFA', border: 'none', borderRadius: 14,
+        width: '100%', background: youtubeSubmitDisabled ? '#D1D5DB' : 'var(--action)', border: 'none', borderRadius: 14,
         padding: 15, fontSize: 15, color: '#fff', fontWeight: 700,
         cursor: youtubeSubmitDisabled ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
-        boxShadow: '0 4px 16px rgba(167,139,250,0.35)',
+        boxShadow: '0 4px 16px rgba(17,17,17,0.35)',
       }}>
         📝 {repeat > 1 ? `${repeat}개 등록하기` : '글 등록하기'}
         {calcInfo && priceMode === 'daily' && ` (${calcInfo.total.toLocaleString()}원)`}
@@ -1129,13 +1121,13 @@ function btnStyle(bg: string, color: string): React.CSSProperties {
 }
 const card: React.CSSProperties = {
   background: '#fff', borderRadius: 16, padding: 16, marginBottom: 12,
-  boxShadow: '0 2px 12px rgba(167,139,250,0.08)', border: '1.5px solid #F3F0FF',
+  boxShadow: '0 2px 12px rgba(17,17,17,0.08)', border: '1.5px solid var(--muted)',
 };
 const labelStyle: React.CSSProperties = {
   display: 'block', fontSize: 12, fontWeight: 700, color: '#6B7280', marginBottom: 6,
 };
 const inputStyle: React.CSSProperties = {
-  width: '100%', padding: '11px 14px', borderRadius: 10, border: '1.5px solid #EDE9FE',
-  fontSize: 13, color: '#1E1B4B', background: '#F8F6FF', outline: 'none',
+  width: '100%', padding: '11px 14px', borderRadius: 10, border: '1.5px solid var(--secondary)',
+  fontSize: 13, color: 'var(--foreground)', background: 'var(--background)', outline: 'none',
   fontFamily: 'inherit', marginBottom: 10, boxSizing: 'border-box',
 };

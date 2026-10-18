@@ -136,15 +136,15 @@ export default function PartyAccessPage() {
   };
 
   if (loading) {
-    return <div style={{ minHeight:'100dvh', display:'grid', placeItems:'center', background:'#F8F6FF', color:'#7C3AED', fontWeight:900 }}><Loader2 size={24} style={{ animation:'spin 1s linear infinite' }} /> 계정 정보 확인 중...</div>;
+    return <div style={{ minHeight:'100dvh', display:'grid', placeItems:'center', background:'var(--background)', color:'var(--action)', fontWeight:900 }}><Loader2 size={24} style={{ animation:'spin 1s linear infinite' }} /> 계정 정보 확인 중...</div>;
   }
 
   if (!payload?.ok) {
     return (
-      <div style={{ minHeight:'100dvh', background:'#F8F6FF', padding:'max(24px, env(safe-area-inset-top)) 18px max(24px, env(safe-area-inset-bottom))', boxSizing:'border-box', display:'grid', placeItems:'center' }}>
-        <div style={{ width:'100%', maxWidth:420, background:'#fff', borderRadius:24, padding:22, boxShadow:'0 16px 50px rgba(124,58,237,0.14)', textAlign:'center', border:'1px solid #EDE9FE' }}>
+      <div style={{ minHeight:'100dvh', background:'var(--background)', padding:'max(24px, env(safe-area-inset-top)) 18px max(24px, env(safe-area-inset-bottom))', boxSizing:'border-box', display:'grid', placeItems:'center' }}>
+        <div style={{ width:'100%', maxWidth:420, background:'#fff', borderRadius:24, padding:22, boxShadow:'0 16px 50px rgba(124,58,237,0.14)', textAlign:'center', border:'1px solid var(--secondary)' }}>
           <Lock size={34} color="#EF4444" />
-          <h1 style={{ fontSize:20, color:'#1E1B4B', margin:'12px 0 6px' }}>계정 정보 접근이 종료됐어요</h1>
+          <h1 style={{ fontSize:20, color:'var(--foreground)', margin:'12px 0 6px' }}>계정 정보 접근이 종료됐어요</h1>
           <p style={{ fontSize:13, color:'#6B7280', lineHeight:1.6, margin:0 }}>이용기간이 끝났거나 판매자가 접근을 막은 링크입니다. 문의가 필요하면 판매자에게 메시지 주세요.</p>
         </div>
       </div>
@@ -213,7 +213,7 @@ export default function PartyAccessPage() {
       no: '01', tone:'#FEE2E2', border:'#FCA5A5', title:'계정 정보 수정 금지', image:'/dashboard/access-notice-assets/complaint-case.jpg', imageLabel:'고소장 실제사례 이미지', text:numberedNetflix ? `계정 이메일·비밀번호·PIN·결제 설정은 바꾸지 마세요. ${GBUTS_ACCOUNT_CHANGE_WARNING}` : '비밀번호·이메일·프로필 잠금·결제 설정은 바꾸지 마세요.', required:AGREEMENT_1, key:'a1' as const,
     },
     {
-      no: '02', tone:'#EEF2FF', border:'#C7D2FE', title:'최신 정보 먼저 확인', image:'/dashboard/access-notice-assets/disney-profiles.jpg', imageLabel:'프로필 수정 화면 예시', text:'로그인이 안 되면 먼저 이 페이지를 새로고침해 확인하세요.', required:AGREEMENT_2, key:'a2' as const,
+      no: '02', tone:'var(--muted)', border:'var(--border)', title:'최신 정보 먼저 확인', image:'/dashboard/access-notice-assets/disney-profiles.jpg', imageLabel:'프로필 수정 화면 예시', text:'로그인이 안 되면 먼저 이 페이지를 새로고침해 확인하세요.', required:AGREEMENT_2, key:'a2' as const,
     },
     {
       no: '03', tone:'#ECFDF5', border:'#A7F3D0', title:'1인 1프로필 사용', text:numberedNetflix ? '1:1 채팅에서 안내받은 번호의 프로필만 사용하세요. 프로필 이름·PIN 변경, 생성·삭제는 금지합니다.' : '배정된 프로필 1개만 쓰고, 현황에 없는 프로필만 삭제하세요.', required:AGREEMENT_3, key:'a3' as const,
@@ -231,21 +231,21 @@ export default function PartyAccessPage() {
   };
 
   return (
-    <div style={{ minHeight:'100dvh', background:'linear-gradient(180deg,#F8F6FF,#FFFFFF)', padding:'max(20px, env(safe-area-inset-top)) 16px max(32px, env(safe-area-inset-bottom))', boxSizing:'border-box' }}>
+    <div style={{ minHeight:'100dvh', background:'linear-gradient(180deg,var(--background),#FFFFFF)', padding:'max(20px, env(safe-area-inset-top)) 16px max(32px, env(safe-area-inset-bottom))', boxSizing:'border-box' }}>
       {showConsent && (
-        <div onCopy={e => e.preventDefault()} onCut={e => e.preventDefault()} onPaste={e => e.preventDefault()} onContextMenu={e => e.preventDefault()} style={{ position:'fixed', inset:0, zIndex:100, background:'linear-gradient(180deg,#F8F6FF,#FFFFFF)', padding:'max(10px, env(safe-area-inset-top)) 10px max(24px, env(safe-area-inset-bottom))', boxSizing:'border-box', display:'flex', alignItems:'flex-start', justifyContent:'center', overflowY:'auto', WebkitOverflowScrolling:'touch', height:'100vh', minHeight:'100dvh', overscrollBehavior:'contain' }}>
-          <div style={{ width:'100%', maxWidth:520, background:'#fff', borderRadius:26, padding:16, marginBottom:18, boxShadow:'0 20px 70px rgba(124,58,237,0.18)', border:'1.5px solid #EDE9FE', textAlign:'left', boxSizing:'border-box', display:'flex', flexDirection:'column', gap:12 }}>
+        <div onCopy={e => e.preventDefault()} onCut={e => e.preventDefault()} onPaste={e => e.preventDefault()} onContextMenu={e => e.preventDefault()} style={{ position:'fixed', inset:0, zIndex:100, background:'linear-gradient(180deg,var(--background),#FFFFFF)', padding:'max(10px, env(safe-area-inset-top)) 10px max(24px, env(safe-area-inset-bottom))', boxSizing:'border-box', display:'flex', alignItems:'flex-start', justifyContent:'center', overflowY:'auto', WebkitOverflowScrolling:'touch', height:'100vh', minHeight:'100dvh', overscrollBehavior:'contain' }}>
+          <div style={{ width:'100%', maxWidth:520, background:'#fff', borderRadius:26, padding:16, marginBottom:18, boxShadow:'0 20px 70px rgba(124,58,237,0.18)', border:'1.5px solid var(--secondary)', textAlign:'left', boxSizing:'border-box', display:'flex', flexDirection:'column', gap:12 }}>
             <div style={{ textAlign:'center' }}>
               <div style={{ fontSize:'clamp(18px, 5vw, 22px)', fontWeight:1000, color:'#EF4444', marginBottom:4 }}>⚠️ 이용 전 필수 동의</div>
               <div style={{ fontSize:12, color:'#6B7280', fontWeight:900 }}>진행 상황: {completedConsentCount}/3 · 복사/붙여넣기 없이 직접 입력해주세요.</div>
               <div style={{ display:'flex', gap:6, marginTop:10 }}>
-                {consentCards.map((card, index) => <button key={card.no} type="button" onClick={() => setConsentStep(index)} disabled={index > completedConsentCount} style={{ flex:1, height:8, border:0, borderRadius:999, background:index < completedConsentCount ? '#10B981' : index === consentStep ? '#7C3AED' : '#E5E7EB', cursor:index <= completedConsentCount ? 'pointer' : 'not-allowed' }} aria-label={`${card.no}번 동의`} />)}
+                {consentCards.map((card, index) => <button key={card.no} type="button" onClick={() => setConsentStep(index)} disabled={index > completedConsentCount} style={{ flex:1, height:8, border:0, borderRadius:999, background:index < completedConsentCount ? '#10B981' : index === consentStep ? 'var(--action)' : '#E5E7EB', cursor:index <= completedConsentCount ? 'pointer' : 'not-allowed' }} aria-label={`${card.no}번 동의`} />)}
               </div>
             </div>
             <section style={{ background:currentConsentCard.tone, border:`1.5px solid ${currentConsentCard.border}`, borderRadius:20, padding:14 }}>
               <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
-                <span style={{ width:34, height:34, borderRadius:12, background:'#fff', color:'#1E1B4B', display:'grid', placeItems:'center', fontSize:13, fontWeight:1000 }}>{currentConsentCard.no}</span>
-                <div style={{ fontSize:16, color:'#1E1B4B', fontWeight:1000 }}>{currentConsentCard.title}</div>
+                <span style={{ width:34, height:34, borderRadius:12, background:'#fff', color:'var(--foreground)', display:'grid', placeItems:'center', fontSize:13, fontWeight:1000 }}>{currentConsentCard.no}</span>
+                <div style={{ fontSize:16, color:'var(--foreground)', fontWeight:1000 }}>{currentConsentCard.title}</div>
               </div>
               {!numberedNetflix && 'image' in currentConsentCard && currentConsentCard.image && (
                 <div style={{ margin:'8px 0 10px', background:'#fff', border:'1px solid rgba(17,24,39,.12)', borderRadius:16, padding:10 }}>
@@ -258,22 +258,22 @@ export default function PartyAccessPage() {
               <div style={{ marginTop:10, background:'#fff', borderRadius:14, border:'1px solid rgba(17,24,39,.1)', padding:10 }}>
                 <div style={{ fontSize:11, color:'#6B7280', fontWeight:1000, marginBottom:6 }}>아래 문장을 복붙 없이 그대로 입력</div>
                 <div style={{ fontSize:12, color:'#111827', lineHeight:1.55, fontWeight:900, marginBottom:8, userSelect:'none', WebkitUserSelect:'none' }}>{currentConsentCard.required}</div>
-                <textarea value={consentInputs[currentConsentCard.key]} onPaste={blockConsentPaste} onCopy={blockConsentPaste} onCut={blockConsentPaste} onDrop={e => e.preventDefault()} onChange={e => setConsentInputs(prev => ({ ...prev, [currentConsentCard.key]: e.target.value }))} onFocus={e => setTimeout(() => e.currentTarget.scrollIntoView({ block:'center', behavior:'smooth' }), 80)} placeholder="직접 입력해주세요. 붙여넣기는 막혀 있어요." rows={4} style={{ width:'100%', padding:'12px 13px', borderRadius:12, border:`1.5px solid ${currentConsentMatches ? '#10B981' : '#CBD5E1'}`, boxSizing:'border-box', fontSize:14, fontWeight:800, color:'#1E1B4B', outline:'none', fontFamily:'inherit', resize:'vertical', scrollMarginBottom:'150px', lineHeight:1.45 }} />
+                <textarea value={consentInputs[currentConsentCard.key]} onPaste={blockConsentPaste} onCopy={blockConsentPaste} onCut={blockConsentPaste} onDrop={e => e.preventDefault()} onChange={e => setConsentInputs(prev => ({ ...prev, [currentConsentCard.key]: e.target.value }))} onFocus={e => setTimeout(() => e.currentTarget.scrollIntoView({ block:'center', behavior:'smooth' }), 80)} placeholder="직접 입력해주세요. 붙여넣기는 막혀 있어요." rows={4} style={{ width:'100%', padding:'12px 13px', borderRadius:12, border:`1.5px solid ${currentConsentMatches ? '#10B981' : '#CBD5E1'}`, boxSizing:'border-box', fontSize:14, fontWeight:800, color:'var(--foreground)', outline:'none', fontFamily:'inherit', resize:'vertical', scrollMarginBottom:'150px', lineHeight:1.45 }} />
               </div>
             </section>
             <div style={{ display:'grid', gridTemplateColumns:consentStep > 0 ? '1fr 2fr' : '1fr', gap:8, position:'sticky', bottom:8 }}>
-              {consentStep > 0 && <button type="button" onClick={() => setConsentStep(Math.max(0, consentStep - 1))} style={{ padding:14, border:'1.5px solid #DDD6FE', borderRadius:16, background:'#fff', color:'#6D28D9', fontSize:15, fontWeight:1000, fontFamily:'inherit' }}>이전</button>}
-              <button onClick={goNextConsent} disabled={!currentConsentMatches} style={{ width:'100%', padding:16, border:'none', borderRadius:16, background:currentConsentMatches ? '#7C3AED' : '#C4B5FD', color:'#fff', fontSize:16, fontWeight:1000, cursor:currentConsentMatches ? 'pointer' : 'not-allowed', fontFamily:'inherit', boxShadow:currentConsentMatches ? '0 12px 24px rgba(124,58,237,.24)' : 'none' }}>{consentStep < 2 ? `동의 완료하고 다음 (${completedConsentCount}/3)` : `3개 내용 모두 동의하고 계정정보 보기 (${completedConsentCount}/3)`}</button>
+              {consentStep > 0 && <button type="button" onClick={() => setConsentStep(Math.max(0, consentStep - 1))} style={{ padding:14, border:'1.5px solid var(--border)', borderRadius:16, background:'#fff', color:'var(--action)', fontSize:15, fontWeight:1000, fontFamily:'inherit' }}>이전</button>}
+              <button onClick={goNextConsent} disabled={!currentConsentMatches} style={{ width:'100%', padding:16, border:'none', borderRadius:16, background:currentConsentMatches ? 'var(--action)' : 'var(--text-subtle)', color:'#fff', fontSize:16, fontWeight:1000, cursor:currentConsentMatches ? 'pointer' : 'not-allowed', fontFamily:'inherit', boxShadow:currentConsentMatches ? '0 12px 24px rgba(124,58,237,.24)' : 'none' }}>{consentStep < 2 ? `동의 완료하고 다음 (${completedConsentCount}/3)` : `3개 내용 모두 동의하고 계정정보 보기 (${completedConsentCount}/3)`}</button>
             </div>
           </div>
         </div>
       )}
       {!showConsent && <div style={{ maxWidth:460, margin:'0 auto' }}>
-        <div style={{ background:'#fff', borderRadius:24, padding:20, boxShadow:'0 16px 50px rgba(124,58,237,0.14)', border:'1px solid #EDE9FE' }}>
+        <div style={{ background:'#fff', borderRadius:24, padding:20, boxShadow:'0 16px 50px rgba(124,58,237,0.14)', border:'1px solid var(--secondary)' }}>
           <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:12 }}>
-            <div style={{ width:42, height:42, borderRadius:14, background:'#F5F3FF', display:'grid', placeItems:'center' }}><ShieldCheck size={22} color="#7C3AED" /></div>
+            <div style={{ width:42, height:42, borderRadius:14, background:'var(--muted)', display:'grid', placeItems:'center' }}><ShieldCheck size={22} color="var(--action)" /></div>
             <div>
-              <div style={{ fontSize:18, fontWeight:900, color:'#1E1B4B' }}>{numberedNetflix ? '아이디 · 비밀번호 · 이메일 PIN' : showEmailAccess ? '최신 ID · PW · PIN' : '최신 ID · PW'}</div>
+              <div style={{ fontSize:18, fontWeight:900, color:'var(--foreground)' }}>{numberedNetflix ? '아이디 · 비밀번호 · 이메일 PIN' : showEmailAccess ? '최신 ID · PW · PIN' : '최신 ID · PW'}</div>
               <div style={{ fontSize:12, color:'#9CA3AF', fontWeight:800 }}>이용기간 중에만 계정 정보를 확인할 수 있어요</div>
             </div>
           </div>
@@ -283,46 +283,46 @@ export default function PartyAccessPage() {
             <div>{isAdminAccess ? '관리자 인증으로 동의 절차를 건너뛰었습니다. 구매자 화면에서는 기존처럼 필수 동의 후 계정 정보가 표시됩니다.' : '계정 정보와 추가회원/자리 설정은 절대 변경하지 마세요. 로그인 안 될 때는 이 페이지를 새로고침해 최신 정보를 먼저 확인해주세요.'}</div>
           </div>
 
-          <div style={{ background:'#F8F6FF', borderRadius:16, padding:12, marginBottom:12 }}>
+          <div style={{ background:'var(--background)', borderRadius:16, padding:12, marginBottom:12 }}>
             <div style={{ fontSize:12, color:'#6B7280', fontWeight:800 }}>{payload.serviceType} · {payload.memberName}</div>
             <div style={{ fontSize:11, color:'#9CA3AF', marginTop:4 }}>{fmtDate(payload.period?.startDateTime)} ~ {fmtDate(payload.period?.endDateTime)}</div>
           </div>
 
           {!numberedNetflix && <section aria-label="파티원 프로필" style={{ background:'linear-gradient(145deg,#111827,#312E81)', borderRadius:22, padding:'20px 14px 18px', marginBottom:14, color:'#fff', textAlign:'center', overflow:'hidden' }}>
             <div style={{ fontSize:22, fontWeight:1000, letterSpacing:'-0.04em' }}>누가 시청할까요?</div>
-            <div style={{ fontSize:11, color:'#C4B5FD', fontWeight:800, marginTop:4 }}>보라색 테두리가 구매자님에게 배정된 프로필이에요</div>
+            <div style={{ fontSize:11, color:'var(--text-subtle)', fontWeight:800, marginTop:4 }}>보라색 테두리가 구매자님에게 배정된 프로필이에요</div>
             <div className="profile-avatar-grid" style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(82px,1fr))', gap:'18px 10px', marginTop:20, alignItems:'start' }}>
               {displayProfiles.map((profile, idx) => {
                 const theme = getProfileAvatarTheme(profile.profileName);
                 return <div key={`${profile.profileName}-${idx}`} style={{ minWidth:0, textAlign:'center' }}>
-                  <div style={{ width:profile.isCurrentMember?86:72, height:profile.isCurrentMember?86:72, maxWidth:'100%', aspectRatio:'1', margin:'0 auto', borderRadius:20, display:'grid', placeItems:'center', background:theme.background, color:theme.foreground, border:profile.isCurrentMember?'4px solid #C4B5FD':'3px solid rgba(255,255,255,.18)', boxShadow:profile.isCurrentMember?'0 0 0 5px rgba(196,181,253,.18),0 14px 30px rgba(0,0,0,.3)':'0 10px 20px rgba(0,0,0,.2)', fontSize:profile.isCurrentMember?34:28, fontWeight:1000 }}>
+                  <div style={{ width:profile.isCurrentMember?86:72, height:profile.isCurrentMember?86:72, maxWidth:'100%', aspectRatio:'1', margin:'0 auto', borderRadius:20, display:'grid', placeItems:'center', background:theme.background, color:theme.foreground, border:profile.isCurrentMember?'4px solid var(--text-subtle)':'3px solid rgba(255,255,255,.18)', boxShadow:profile.isCurrentMember?'0 0 0 5px rgba(196,181,253,.18),0 14px 30px rgba(0,0,0,.3)':'0 10px 20px rgba(0,0,0,.2)', fontSize:profile.isCurrentMember?34:28, fontWeight:1000 }}>
                     {profileInitial(profile.profileName)}
                   </div>
                   <div style={{ fontSize:profile.isCurrentMember?16:13, fontWeight:1000, marginTop:9, overflowWrap:'anywhere' }}>{profile.profileName || '(미확인)'}</div>
-                  <div style={{ minHeight:18, marginTop:4, fontSize:9, color:profile.isCurrentMember?'#DDD6FE':'#9CA3AF', fontWeight:900 }}>{profile.isCurrentMember?'내 프로필':`${fmtDate(profile.endDateTime)}까지`}</div>
+                  <div style={{ minHeight:18, marginTop:4, fontSize:9, color:profile.isCurrentMember?'var(--border)':'#9CA3AF', fontWeight:900 }}>{profile.isCurrentMember?'내 프로필':`${fmtDate(profile.endDateTime)}까지`}</div>
                 </div>;
               })}
             </div>
-            <div style={{ marginTop:16, background:'rgba(255,255,255,.1)', border:'1px solid rgba(255,255,255,.15)', borderRadius:12, padding:'9px 10px', color:'#E0E7FF', fontSize:10, lineHeight:1.5, fontWeight:800 }}>
+            <div style={{ marginTop:16, background:'rgba(255,255,255,.1)', border:'1px solid rgba(255,255,255,.15)', borderRadius:12, padding:'9px 10px', color:'var(--secondary)', fontSize:10, lineHeight:1.5, fontWeight:800 }}>
               프로필이 꽉 찼다면 위 현황에 없는 프로필을 삭제한 뒤, 배정된 이름으로 새로 만들어 사용해주세요.
             </div>
           </section>}
 
           <div style={{ display:'grid', gap:10, marginBottom:10 }}>
             {credentialRows(payload).map((row) => (
-              <div key={row.label} style={{ background:'#FFFFFF', border:'1.5px solid #EDE9FE', borderRadius:16, padding:'12px 14px' }}>
+              <div key={row.label} style={{ background:'#FFFFFF', border:'1.5px solid var(--secondary)', borderRadius:16, padding:'12px 14px' }}>
                 <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}>
-                  <div style={{ fontSize:11, color:'#7C3AED', fontWeight:900, display:'flex', alignItems:'center', gap:5 }}><KeyRound size={12} /> {row.label}</div>
-                  <button onClick={() => copy(row.value)} style={{ border:'none', borderRadius:999, background:'#F5F3FF', color:'#7C3AED', fontSize:11, fontWeight:900, padding:'6px 10px', cursor:'pointer' }}>복사</button>
+                  <div style={{ fontSize:11, color:'var(--action)', fontWeight:900, display:'flex', alignItems:'center', gap:5 }}><KeyRound size={12} /> {row.label}</div>
+                  <button onClick={() => copy(row.value)} style={{ border:'none', borderRadius:999, background:'var(--muted)', color:'var(--action)', fontSize:11, fontWeight:900, padding:'6px 10px', cursor:'pointer' }}>복사</button>
                 </div>
-                <div style={{ fontSize:16, color:'#1E1B4B', fontWeight:900, marginTop:6, wordBreak:'break-all' }}>{row.value || '-'}</div>
+                <div style={{ fontSize:16, color:'var(--foreground)', fontWeight:900, marginTop:6, wordBreak:'break-all' }}>{row.value || '-'}</div>
               </div>
             ))}
           </div>
 
           {numberedNetflix && <GbutsNetflixEmailPanel url={emailAccessUrl} pin={payload.credentials?.pin} />}
           {numberedNetflix && <p style={{ fontSize:12, color:"#991B1B", lineHeight:1.6 }}>프로필 이름·PIN 변경, 프로필 생성·삭제 및 계정 정보 변경은 금지합니다. {GBUTS_ACCOUNT_CHANGE_WARNING}</p>}
-          {showEmailAccess && <button type="button" onClick={() => { setPinCopyStatus('idle'); setEmailDialogOpen(true); }} style={{ width:'100%', border:'none', borderRadius:16, padding:'14px 16px', background:'linear-gradient(135deg,#7C3AED,#4F46E5)', color:'#fff', fontSize:14, fontWeight:1000, display:'flex', alignItems:'center', justifyContent:'center', gap:8, cursor:'pointer', marginBottom:10, boxShadow:'0 10px 24px rgba(124,58,237,.24)' }}><Mail size={17} /> 이메일 확인하러 가기</button>}
+          {showEmailAccess && <button type="button" onClick={() => { setPinCopyStatus('idle'); setEmailDialogOpen(true); }} style={{ width:'100%', border:'none', borderRadius:16, padding:'14px 16px', background:'linear-gradient(135deg,var(--action),var(--action))', color:'#fff', fontSize:14, fontWeight:1000, display:'flex', alignItems:'center', justifyContent:'center', gap:8, cursor:'pointer', marginBottom:10, boxShadow:'0 10px 24px rgba(124,58,237,.24)' }}><Mail size={17} /> 이메일 확인하러 가기</button>}
 
           {isAdminAccess && (
             <div style={{ background:'#FFFBEB', border:'1.5px solid #FDE68A', borderRadius:16, padding:14, marginBottom:10 }}>
@@ -336,11 +336,11 @@ export default function PartyAccessPage() {
               <div style={{ display:'grid', gap:8 }}>
                 <label style={{ display:'grid', gap:4, fontSize:11, color:'#92400E', fontWeight:1000 }}>
                   ID
-                  <input value={editCredentials.id} onChange={e => setEditCredentials(prev => ({ ...prev, id:e.target.value }))} style={{ width:'100%', boxSizing:'border-box', padding:'10px 11px', borderRadius:12, border:'1.5px solid #FCD34D', fontSize:13, fontWeight:800, color:'#1E1B4B', fontFamily:'inherit' }} />
+                  <input value={editCredentials.id} onChange={e => setEditCredentials(prev => ({ ...prev, id:e.target.value }))} style={{ width:'100%', boxSizing:'border-box', padding:'10px 11px', borderRadius:12, border:'1.5px solid #FCD34D', fontSize:13, fontWeight:800, color:'var(--foreground)', fontFamily:'inherit' }} />
                 </label>
                 <label style={{ display:'grid', gap:4, fontSize:11, color:'#92400E', fontWeight:1000 }}>
                   PW
-                  <input value={editCredentials.password} onChange={e => setEditCredentials(prev => ({ ...prev, password:e.target.value }))} style={{ width:'100%', boxSizing:'border-box', padding:'10px 11px', borderRadius:12, border:'1.5px solid #FCD34D', fontSize:13, fontWeight:800, color:'#1E1B4B', fontFamily:'inherit' }} />
+                  <input value={editCredentials.password} onChange={e => setEditCredentials(prev => ({ ...prev, password:e.target.value }))} style={{ width:'100%', boxSizing:'border-box', padding:'10px 11px', borderRadius:12, border:'1.5px solid #FCD34D', fontSize:13, fontWeight:800, color:'var(--foreground)', fontFamily:'inherit' }} />
                 </label>
                 <button type="button" onClick={saveCredentialEdits} disabled={savingCredentials} style={{ border:'none', borderRadius:14, background:savingCredentials ? '#FBBF24' : '#D97706', color:'#fff', fontSize:13, fontWeight:1000, padding:'11px 12px', cursor:savingCredentials ? 'wait' : 'pointer', fontFamily:'inherit' }}>{savingCredentials ? '저장 중...' : 'ID/PW 저장'}</button>
                 {credentialEditMessage && <div style={{ fontSize:11, color:credentialEditMessage.includes('실패') ? '#B91C1C' : '#047857', fontWeight:900, lineHeight:1.45 }}>{credentialEditMessage}</div>}
@@ -358,16 +358,16 @@ export default function PartyAccessPage() {
         <div onClick={() => setEmailDialogOpen(false)} style={{ position:'fixed', inset:0, zIndex:220, background:'rgba(15,23,42,.72)', backdropFilter:'blur(8px)', display:'grid', placeItems:'center', padding:18 }}>
           <div role="dialog" aria-modal="true" aria-labelledby="email-access-title" onClick={event => event.stopPropagation()} style={{ width:'100%', maxWidth:390, borderRadius:26, background:'#fff', padding:20, boxShadow:'0 28px 80px rgba(0,0,0,.35)', boxSizing:'border-box' }}>
             <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:12 }}>
-              <div><div id="email-access-title" style={{ fontSize:19, fontWeight:1000, color:'#1E1B4B' }}>PIN을 먼저 확인해 주세요</div><div style={{ fontSize:11, color:'#6B7280', fontWeight:800, marginTop:4 }}>EMAIL 페이지로 이동하기 전에 복사해두면 편해요.</div></div>
+              <div><div id="email-access-title" style={{ fontSize:19, fontWeight:1000, color:'var(--foreground)' }}>PIN을 먼저 확인해 주세요</div><div style={{ fontSize:11, color:'#6B7280', fontWeight:800, marginTop:4 }}>EMAIL 페이지로 이동하기 전에 복사해두면 편해요.</div></div>
               <button type="button" aria-label="닫기" onClick={() => setEmailDialogOpen(false)} style={{ border:0, background:'#F3F4F6', width:34, height:34, borderRadius:12, display:'grid', placeItems:'center', cursor:'pointer' }}><X size={17} /></button>
             </div>
             <div style={{ margin:'18px 0 14px', borderRadius:20, background:'linear-gradient(145deg,#111827,#312E81)', color:'#fff', textAlign:'center', padding:'22px 12px' }}>
-              <div style={{ fontSize:10, color:'#C4B5FD', fontWeight:1000, letterSpacing:2 }}>EMAIL PIN</div>
+              <div style={{ fontSize:10, color:'var(--text-subtle)', fontWeight:1000, letterSpacing:2 }}>EMAIL PIN</div>
               <div style={{ fontSize:payload.credentials?.pin?34:16, lineHeight:1.25, fontWeight:1000, letterSpacing:payload.credentials?.pin?6:0, marginTop:8, wordBreak:'break-all' }}>{payload.credentials?.pin || '등록된 PIN이 없어요'}</div>
             </div>
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:9 }}>
-              <button type="button" disabled={!payload.credentials?.pin} onClick={async () => { setPinCopyStatus(await copy(payload.credentials?.pin || '') ? 'copied' : 'failed'); }} style={{ border:0, borderRadius:15, padding:'13px 10px', background:payload.credentials?.pin?'#EDE9FE':'#E5E7EB', color:payload.credentials?.pin?'#6D28D9':'#9CA3AF', fontSize:13, fontWeight:1000, display:'flex', alignItems:'center', justifyContent:'center', gap:6, cursor:payload.credentials?.pin?'pointer':'not-allowed' }}><Copy size={15} /> {pinCopyStatus==='copied'?'복사했어요':pinCopyStatus==='failed'?'복사 실패 · 길게 눌러주세요':'PIN 복사'}</button>
- <a href={emailAccessUrl} target="_blank" rel="noreferrer" onClick={() => setEmailDialogOpen(false)} style={{ borderRadius:15, padding:'13px 10px', background:'#7C3AED', color:'#fff', fontSize:13, fontWeight:1000, display:'flex', alignItems:'center', justifyContent:'center', gap:6, textDecoration:'none' }}>바로가기 <ExternalLink size={15} /></a>
+              <button type="button" disabled={!payload.credentials?.pin} onClick={async () => { setPinCopyStatus(await copy(payload.credentials?.pin || '') ? 'copied' : 'failed'); }} style={{ border:0, borderRadius:15, padding:'13px 10px', background:payload.credentials?.pin?'var(--secondary)':'#E5E7EB', color:payload.credentials?.pin?'var(--action)':'#9CA3AF', fontSize:13, fontWeight:1000, display:'flex', alignItems:'center', justifyContent:'center', gap:6, cursor:payload.credentials?.pin?'pointer':'not-allowed' }}><Copy size={15} /> {pinCopyStatus==='copied'?'복사했어요':pinCopyStatus==='failed'?'복사 실패 · 길게 눌러주세요':'PIN 복사'}</button>
+ <a href={emailAccessUrl} target="_blank" rel="noreferrer" onClick={() => setEmailDialogOpen(false)} style={{ borderRadius:15, padding:'13px 10px', background:'var(--action)', color:'#fff', fontSize:13, fontWeight:1000, display:'flex', alignItems:'center', justifyContent:'center', gap:6, textDecoration:'none' }}>바로가기 <ExternalLink size={15} /></a>
             </div>
           </div>
         </div>

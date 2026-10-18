@@ -76,7 +76,7 @@ interface EvManagement {
 }
 
 const CARD = '#FFFFFF', INK = '#191622', MUTED = '#716D80', LINE = '#E6E2DA',
-  GREEN = '#10B981', RED = '#EF4444', VIOLET = '#7C3AED';
+  GREEN = '#10B981', RED = '#EF4444', VIOLET = 'var(--action)';
 
 function fmtDate(iso: string | null): string {
   if (!iso) return '-';
@@ -297,7 +297,7 @@ export default function EveryviewPage() {
               const active = wForm.serviceCode === code;
               return (
                 <button key={code} onClick={() => setWForm(f => ({ ...f, serviceCode: code }))}
-                  style={{ padding: '6px 12px', borderRadius: 999, border: `1px solid ${active ? VIOLET : LINE}`, background: active ? '#F5F3FF' : '#fff', color: active ? VIOLET : MUTED, fontWeight: active ? 800 : 600, fontSize: 11, cursor: 'pointer' }}>
+                  style={{ padding: '6px 12px', borderRadius: 999, border: `1px solid ${active ? VIOLET : LINE}`, background: active ? 'var(--muted)' : '#fff', color: active ? VIOLET : MUTED, fontWeight: active ? 800 : 600, fontSize: 11, cursor: 'pointer' }}>
                   {label}
                 </button>
               );
@@ -314,7 +314,7 @@ export default function EveryviewPage() {
           <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
             {([['ACCOUNT', '아이디/비번'], ['INVITE', '초대'], ['OTHER', '기타']] as const).map(([v, label]) => (
               <button key={v} onClick={() => setWForm(f => ({ ...f, shareType: v }))}
-                style={{ flex: 1, padding: '8px 0', borderRadius: 8, border: `1px solid ${wForm.shareType === v ? VIOLET : LINE}`, background: wForm.shareType === v ? '#F5F3FF' : '#fff', color: wForm.shareType === v ? VIOLET : MUTED, fontWeight: 800, fontSize: 11, cursor: 'pointer' }}>
+                style={{ flex: 1, padding: '8px 0', borderRadius: 8, border: `1px solid ${wForm.shareType === v ? VIOLET : LINE}`, background: wForm.shareType === v ? 'var(--muted)' : '#fff', color: wForm.shareType === v ? VIOLET : MUTED, fontWeight: 800, fontSize: 11, cursor: 'pointer' }}>
                 {label}
               </button>
             ))}
@@ -336,11 +336,11 @@ export default function EveryviewPage() {
           <div style={{ fontSize: 12, fontWeight: 700, margin: '14px 0 6px' }}>요금</div>
           <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
             <button onClick={() => setWForm(f => ({ ...f, paymentType: 'PERIOD' }))}
-              style={{ flex: 1, padding: '8px 0', borderRadius: 8, border: `1px solid ${wForm.paymentType === 'PERIOD' ? VIOLET : LINE}`, background: wForm.paymentType === 'PERIOD' ? '#F5F3FF' : '#fff', color: wForm.paymentType === 'PERIOD' ? VIOLET : MUTED, fontWeight: 800, fontSize: 11, cursor: 'pointer' }}>
+              style={{ flex: 1, padding: '8px 0', borderRadius: 8, border: `1px solid ${wForm.paymentType === 'PERIOD' ? VIOLET : LINE}`, background: wForm.paymentType === 'PERIOD' ? 'var(--muted)' : '#fff', color: wForm.paymentType === 'PERIOD' ? VIOLET : MUTED, fontWeight: 800, fontSize: 11, cursor: 'pointer' }}>
               기간 공유
             </button>
             <button onClick={() => setWForm(f => ({ ...f, paymentType: 'RECURRING' }))}
-              style={{ flex: 1, padding: '8px 0', borderRadius: 8, border: `1px solid ${wForm.paymentType === 'RECURRING' ? VIOLET : LINE}`, background: wForm.paymentType === 'RECURRING' ? '#F5F3FF' : '#fff', color: wForm.paymentType === 'RECURRING' ? VIOLET : MUTED, fontWeight: 800, fontSize: 11, cursor: 'pointer' }}>
+              style={{ flex: 1, padding: '8px 0', borderRadius: 8, border: `1px solid ${wForm.paymentType === 'RECURRING' ? VIOLET : LINE}`, background: wForm.paymentType === 'RECURRING' ? 'var(--muted)' : '#fff', color: wForm.paymentType === 'RECURRING' ? VIOLET : MUTED, fontWeight: 800, fontSize: 11, cursor: 'pointer' }}>
               정기 결제 (월 단위)
             </button>
           </div>
@@ -380,7 +380,7 @@ export default function EveryviewPage() {
             style={{ width: '100%', boxSizing: 'border-box', border: `1px solid ${LINE}`, borderRadius: 8, padding: 9, fontSize: 12, resize: 'vertical' }} />
 
           <button onClick={submitCreateParty} disabled={creating || !wForm.recruitTitle.trim()}
-            style={{ marginTop: 14, width: '100%', background: creating || !wForm.recruitTitle.trim() ? '#C4B5FD' : VIOLET, color: '#fff', border: 'none', borderRadius: 10, padding: '12px 0', fontWeight: 800, fontSize: 13, cursor: creating ? 'wait' : 'pointer' }}>
+            style={{ marginTop: 14, width: '100%', background: creating || !wForm.recruitTitle.trim() ? 'var(--text-subtle)' : VIOLET, color: '#fff', border: 'none', borderRadius: 10, padding: '12px 0', fontWeight: 800, fontSize: 13, cursor: creating ? 'wait' : 'pointer' }}>
             {creating ? '등록 중…' : '🚀 개설하기'}
           </button>
         </div>
@@ -435,7 +435,7 @@ export default function EveryviewPage() {
                         <div style={{ flex: 1 }}>
                           <div style={{ fontSize: 14, fontWeight: 800, color: INK }}>
                             파티 #{partyIdStr}
-                            <span style={{ marginLeft: 7, fontSize: 9, padding: '2px 6px', borderRadius: 999, background: acct.partyType === 'general' ? '#E0F2FE' : '#F5F3FF', color: acct.partyType === 'general' ? '#0369A1' : VIOLET }}>
+                            <span style={{ marginLeft: 7, fontSize: 9, padding: '2px 6px', borderRadius: 999, background: acct.partyType === 'general' ? '#E0F2FE' : 'var(--muted)', color: acct.partyType === 'general' ? '#0369A1' : VIOLET }}>
                               {acct.partyType === 'general' ? '에브리뷰 관리형' : '자유파티'}
                             </span>
                           </div>
@@ -566,7 +566,7 @@ export default function EveryviewPage() {
                                 })
                                 .catch(e => alert(e.message));
                             }}
-                            style={{ marginTop: 10, width: '100%', background: '#F5F3FF', color: VIOLET, border: `1px solid #DDD6FE`, borderRadius: 10, padding: '9px 0', fontWeight: 800, fontSize: 12, cursor: 'pointer' }}>
+                            style={{ marginTop: 10, width: '100%', background: 'var(--muted)', color: VIOLET, border: `1px solid var(--border)`, borderRadius: 10, padding: '9px 0', fontWeight: 800, fontSize: 12, cursor: 'pointer' }}>
                             🔑 로그인 정보 변경
                           </button>}
                         </div>

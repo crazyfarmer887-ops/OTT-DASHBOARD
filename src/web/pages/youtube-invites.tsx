@@ -85,10 +85,10 @@ const ACTION_REASONS: Record<YouTubeInvitationAction, string> = {
   reconcile: 'operator requested provider reconciliation',
   resume: 'operator resumed failed invitation',
 };
-const panel: CSSProperties = { background: '#fff', border: '1px solid #EDE9FE', borderRadius: 16, padding: 16, boxShadow: '0 5px 20px rgba(76,29,149,.05)' };
-const button: CSSProperties = { minHeight: 40, border: '1px solid #DDD6FE', borderRadius: 10, background: '#fff', color: '#5B21B6', fontWeight: 800, cursor: 'pointer', padding: '8px 12px', fontFamily: 'inherit' };
-const primaryButton: CSSProperties = { ...button, background: '#7C3AED', color: '#fff', borderColor: '#7C3AED' };
-const input: CSSProperties = { width: '100%', minHeight: 42, border: '1px solid #DDD6FE', borderRadius: 10, padding: '9px 11px', fontFamily: 'inherit', background: '#fff', minWidth: 0 };
+const panel: CSSProperties = { background: '#fff', border: '1px solid var(--secondary)', borderRadius: 16, padding: 16, boxShadow: '0 5px 20px rgba(76,29,149,.05)' };
+const button: CSSProperties = { minHeight: 40, border: '1px solid var(--border)', borderRadius: 10, background: '#fff', color: 'var(--action)', fontWeight: 800, cursor: 'pointer', padding: '8px 12px', fontFamily: 'inherit' };
+const primaryButton: CSSProperties = { ...button, background: 'var(--action)', color: '#fff', borderColor: 'var(--action)' };
+const input: CSSProperties = { width: '100%', minHeight: 42, border: '1px solid var(--border)', borderRadius: 10, padding: '9px 11px', fontFamily: 'inherit', background: '#fff', minWidth: 0 };
 
 export function actionForYouTubeInvitationStatus(status: YouTubeInvitationStatus): YouTubeInvitationAction | null {
   if (status === 'waiting_for_buyer_email') return 'email-candidate';
@@ -197,7 +197,7 @@ function statusTone(status: YouTubeInvitationStatus): CSSProperties {
   if (status === 'active' || status === 'ended') return { color: '#047857', background: '#ECFDF5' };
   if (status === 'failed') return { color: '#B91C1C', background: '#FEF2F2' };
   if (status.includes('pending') || status.includes('waiting')) return { color: '#B45309', background: '#FFFBEB' };
-  return { color: '#5B21B6', background: '#F3F0FF' };
+  return { color: 'var(--action)', background: 'var(--muted)' };
 }
 
 function Identifier({ label, value }: { label: string; value: string }) {
@@ -266,7 +266,7 @@ function ActionPanel({ invitation, enabled, confirmedEmail, onEmailConfirmed, on
 
   if (!action) return null;
   const disabled = !enabled || busy;
-  return <div style={{ marginTop: 14, borderTop: '1px solid #F3F0FF', paddingTop: 14 }}>
+  return <div style={{ marginTop: 14, borderTop: '1px solid var(--muted)', paddingTop: 14 }}>
     {action === 'email-candidate' && <form onSubmit={(event) => {
       event.preventDefault();
       const submitted = message;
@@ -290,7 +290,7 @@ function ActionPanel({ invitation, enabled, confirmedEmail, onEmailConfirmed, on
     </form>}
     {action === 'mark-invite-sent' && <div>
       {confirmedEmail
-        ? <div style={{ marginBottom: 9, padding: 10, borderRadius: 10, background: '#F8F6FF', color: '#4C1D95', fontSize: 12, overflowWrap: 'anywhere' }}><strong>수동 Google 초대 대상 이메일</strong><br />{confirmedEmail}</div>
+        ? <div style={{ marginBottom: 9, padding: 10, borderRadius: 10, background: 'var(--background)', color: '#4C1D95', fontSize: 12, overflowWrap: 'anywhere' }}><strong>수동 Google 초대 대상 이메일</strong><br />{confirmedEmail}</div>
         : <div role="alert" style={{ marginBottom: 9, padding: 10, borderRadius: 10, background: '#FFFBEB', color: '#92400E', fontSize: 12, lineHeight: 1.5 }}>이 탭에 전체 이메일이 남아 있지 않습니다. 이전 단계로 되돌아가 이메일을 다시 확인해 주세요.</div>}
       <p style={{ margin: '0 0 9px', fontSize: 13, lineHeight: 1.55, color: '#4B5563' }}>Google에서 표시된 이메일을 가족 그룹에 <strong>직접 초대</strong>한 뒤 기록하세요. 이 화면은 Google 초대를 자동화하지 않습니다.</p>
       <button type="button" onClick={() => void mutate(action, {})} style={{ ...primaryButton, width: '100%', opacity: disabled || !confirmedEmail ? .55 : 1 }} disabled={disabled || !confirmedEmail}>{busy ? '기록 중...' : '수동 초대 발송 완료 기록'}</button>
@@ -314,13 +314,13 @@ function InvitationCard({ invitation, groupLabel, enabled, confirmedEmail, onEma
   return <article style={panel}>
     <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
       <div style={{ minWidth: 0 }}>
-        <div style={{ fontWeight: 900, color: '#1E1B4B', overflowWrap: 'anywhere' }}>{invitation.buyerName}</div>
+        <div style={{ fontWeight: 900, color: 'var(--foreground)', overflowWrap: 'anywhere' }}>{invitation.buyerName}</div>
         <div style={{ marginTop: 3, fontSize: 13, color: '#6B7280' }}>{invitation.buyerEmailMasked || '이메일 미확인'}</div>
       </div>
       <span style={{ ...statusTone(invitation.status), flexShrink: 0, borderRadius: 999, padding: '5px 8px', fontSize: 11, fontWeight: 900 }}>{STATUS_LABELS[invitation.status]}</span>
     </div>
-    <div style={{ marginTop: 12, padding: 11, borderRadius: 11, background: '#F8F6FF', display: 'grid', gap: 8 }}>
-      <div style={{ fontSize: 13, fontWeight: 800, color: '#5B21B6' }}>{groupLabel}</div>
+    <div style={{ marginTop: 12, padding: 11, borderRadius: 11, background: 'var(--background)', display: 'grid', gap: 8 }}>
+      <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--action)' }}>{groupLabel}</div>
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', gap: 10 }}>
         <Identifier label="거래 ID" value={invitation.dealDisplayId} />
         <Identifier label="상품 ID" value={invitation.productDisplayId} />
@@ -331,10 +331,10 @@ function InvitationCard({ invitation, groupLabel, enabled, confirmedEmail, onEma
       <dt style={{ color: '#9CA3AF' }}>이용 종료</dt><dd style={{ margin: 0, color: '#4B5563' }}>{formatDate(invitation.endDateTime)}</dd>
     </dl>
     <details style={{ marginTop: 12 }}>
-      <summary style={{ cursor: 'pointer', color: '#6D28D9', fontSize: 12, fontWeight: 800 }}>감사 이력 {invitation.history.length}건</summary>
+      <summary style={{ cursor: 'pointer', color: 'var(--action)', fontSize: 12, fontWeight: 800 }}>감사 이력 {invitation.history.length}건</summary>
       <div style={{ marginTop: 8, display: 'grid', gap: 7 }}>
         {invitation.history.length === 0 && <div style={{ fontSize: 12, color: '#9CA3AF' }}>기록 없음</div>}
-        {[...invitation.history].reverse().map((entry, index) => <div key={`${entry.at}-${index}`} style={{ borderLeft: '2px solid #DDD6FE', paddingLeft: 9, fontSize: 11, lineHeight: 1.5, color: '#6B7280' }}>
+        {[...invitation.history].reverse().map((entry, index) => <div key={`${entry.at}-${index}`} style={{ borderLeft: '2px solid var(--border)', paddingLeft: 9, fontSize: 11, lineHeight: 1.5, color: '#6B7280' }}>
           <strong style={{ color: '#4C1D95' }}>{entry.from ? STATUS_LABELS[entry.from] : '생성'} → {STATUS_LABELS[entry.to]}</strong><br />
           {formatDate(entry.at)}{entry.reason ? ` · ${entry.reason}` : ''}
         </div>)}
@@ -407,9 +407,9 @@ export default function YouTubeInvitesPage() {
   }, []);
 
   return <main style={{ padding: '14px 14px 90px', display: 'grid', gap: 14, overflowX: 'hidden' }}>
-    <header style={{ ...panel, background: 'linear-gradient(135deg,#4C1D95,#7C3AED)', color: '#fff' }}>
+    <header style={{ ...panel, background: 'linear-gradient(135deg,#4C1D95,var(--action))', color: '#fff' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
-        <div style={{ minWidth: 0 }}><h1 style={{ margin: 0, fontSize: 20, overflowWrap: 'anywhere' }}>유튜브 초대 운영</h1><p style={{ margin: '6px 0 0', fontSize: 12, lineHeight: 1.55, color: '#EDE9FE' }}>구매자 이메일 확인부터 수동 Google 초대, 전달 완료 상태까지 관리합니다.</p></div>
+        <div style={{ minWidth: 0 }}><h1 style={{ margin: 0, fontSize: 20, overflowWrap: 'anywhere' }}>유튜브 초대 운영</h1><p style={{ margin: '6px 0 0', fontSize: 12, lineHeight: 1.55, color: 'var(--secondary)' }}>구매자 이메일 확인부터 수동 Google 초대, 전달 완료 상태까지 관리합니다.</p></div>
         <button type="button" onClick={() => void refresh()} disabled={refreshing} aria-label="새로고침" style={{ ...button, flexShrink: 0, minHeight: 38, background: 'rgba(255,255,255,.14)', color: '#fff', borderColor: 'rgba(255,255,255,.3)', opacity: refreshing ? .6 : 1 }}><RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} /></button>
       </div>
       <label style={{ display: 'flex', alignItems: 'center', gap: 7, marginTop: 13, fontSize: 12, cursor: 'pointer' }}><input type="checkbox" checked={polling} onChange={(event) => setPolling(event.target.checked)} /> 화면이 보일 때 30초마다 GET 새로고침</label>
@@ -420,7 +420,7 @@ export default function YouTubeInvitesPage() {
 
     <section style={panel} aria-label="구매자 이메일 요청 안내">
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', color: '#4C1D95', fontWeight: 900 }}><Clipboard size={17} /> 이메일 요청 문구</div>
-      <p style={{ margin: '9px 0', padding: 10, borderRadius: 10, background: '#F8F6FF', color: '#4B5563', fontSize: 13, lineHeight: 1.55, overflowWrap: 'anywhere' }}>{YOUTUBE_INVITE_EMAIL_REQUEST_MESSAGE}</p>
+      <p style={{ margin: '9px 0', padding: 10, borderRadius: 10, background: 'var(--background)', color: '#4B5563', fontSize: 13, lineHeight: 1.55, overflowWrap: 'anywhere' }}>{YOUTUBE_INVITE_EMAIL_REQUEST_MESSAGE}</p>
       <button type="button" onClick={() => void copyRequest()} style={{ ...button, width: '100%' }}>문구 복사</button>
       {copyFeedback && <div role="status" style={{ marginTop: 7, fontSize: 11, color: '#6B7280' }}>{copyFeedback}</div>}
       <div style={{ marginTop: 9, fontSize: 11, color: '#92400E' }}>요청은 구매자 채팅으로 직접 보내고, Google 가족 초대도 Google에서 수동으로 진행하세요.</div>
@@ -440,8 +440,8 @@ export default function YouTubeInvitesPage() {
       <div style={{ fontSize: 12, color: '#6B7280' }}>표시 중 {filtered.length}건 / 전체 {data?.invitations.length || 0}건</div>
     </section>
 
-    {loading && <div style={{ ...panel, textAlign: 'center', color: '#6D28D9', padding: 30 }}><Loader2 size={22} className="animate-spin" style={{ margin: '0 auto 8px' }} />불러오는 중...</div>}
-    {!loading && !error && filtered.length === 0 && <div style={{ ...panel, textAlign: 'center', color: '#6B7280', padding: 30 }}><Users size={24} style={{ margin: '0 auto 8px', color: '#A78BFA' }} />조건에 맞는 초대 작업이 없습니다.</div>}
+    {loading && <div style={{ ...panel, textAlign: 'center', color: 'var(--action)', padding: 30 }}><Loader2 size={22} className="animate-spin" style={{ margin: '0 auto 8px' }} />불러오는 중...</div>}
+    {!loading && !error && filtered.length === 0 && <div style={{ ...panel, textAlign: 'center', color: '#6B7280', padding: 30 }}><Users size={24} style={{ margin: '0 auto 8px', color: 'var(--action)' }} />조건에 맞는 초대 작업이 없습니다.</div>}
     <section style={{ display: 'grid', gap: 12 }} aria-label="유튜브 초대 작업 목록">
       {filtered.map((invitation) => <InvitationCard key={invitation.id} invitation={invitation} groupLabel={groupsById.get(invitation.familyGroupId)?.label || '알 수 없는 가족 그룹'} enabled={enabled} confirmedEmail={confirmedEmails[invitation.id]} onEmailConfirmed={rememberConfirmedEmail} onInviteSent={forgetConfirmedEmail} onRefresh={refresh} />)}
     </section>

@@ -22,7 +22,7 @@ export class ErrorBoundary extends Component<Props, State> {
       <div style={{ padding: 24, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: 300, gap: 16 }}>
         <AlertTriangle size={40} color="#EF4444" />
         <div style={{ textAlign: "center" }}>
-          <div style={{ fontSize: 16, fontWeight: 700, color: "#1E1B4B", marginBottom: 6 }}>화면 오류 발생</div>
+          <div style={{ fontSize: 16, fontWeight: 700, color: "var(--foreground)", marginBottom: 6 }}>화면 오류 발생</div>
           <div style={{ fontSize: 12, color: "#9CA3AF", marginBottom: 2 }}>
             {this.state.error?.message || "알 수 없는 오류"}
           </div>
@@ -34,7 +34,7 @@ export class ErrorBoundary extends Component<Props, State> {
         </div>
         <button
           onClick={() => this.setState({ hasError: false, error: null, errorInfo: null })}
-          style={{ display: "flex", alignItems: "center", gap: 6, background: "#A78BFA", color: "#fff", border: "none", borderRadius: 12, padding: "9px 18px", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
+          style={{ display: "flex", alignItems: "center", gap: 6, background: "var(--action)", color: "#fff", border: "none", borderRadius: 12, padding: "9px 18px", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
         >
           <RefreshCw size={14} /> 다시 시도
         </button>

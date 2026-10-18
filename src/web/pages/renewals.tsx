@@ -85,10 +85,10 @@ const REVIEW_ACTION_LABELS: Record<ReviewAction, string> = {
   review_confirm: '후기 확인', reject: '반려', coupon_approve: '쿠폰 승인', mark_issued: '수동 지급 완료',
 };
 
-const panel: React.CSSProperties = { background: '#fff', border: '1px solid #EDE9FE', borderRadius: 16, padding: 16, boxShadow: '0 5px 20px rgba(76,29,149,.05)' };
-const button: React.CSSProperties = { minHeight: 40, border: '1px solid #DDD6FE', borderRadius: 10, background: '#fff', color: '#5B21B6', fontWeight: 800, cursor: 'pointer', padding: '8px 12px', fontFamily: 'inherit' };
-const primaryButton: React.CSSProperties = { ...button, background: '#7C3AED', color: '#fff', borderColor: '#7C3AED' };
-const inputStyle: React.CSSProperties = { minHeight: 40, border: '1px solid #DDD6FE', borderRadius: 10, padding: '8px 10px', fontFamily: 'inherit', minWidth: 0, background: '#fff' };
+const panel: React.CSSProperties = { background: '#fff', border: '1px solid var(--secondary)', borderRadius: 16, padding: 16, boxShadow: '0 5px 20px rgba(76,29,149,.05)' };
+const button: React.CSSProperties = { minHeight: 40, border: '1px solid var(--border)', borderRadius: 10, background: '#fff', color: 'var(--action)', fontWeight: 800, cursor: 'pointer', padding: '8px 12px', fontFamily: 'inherit' };
+const primaryButton: React.CSSProperties = { ...button, background: 'var(--action)', color: '#fff', borderColor: 'var(--action)' };
+const inputStyle: React.CSSProperties = { minHeight: 40, border: '1px solid var(--border)', borderRadius: 10, padding: '8px 10px', fontFamily: 'inherit', minWidth: 0, background: '#fff' };
 
 function responseError(payload: any, fallback: string): string {
   return String(payload?.message || payload?.error || fallback).slice(0, 180);
@@ -327,8 +327,8 @@ export default function RenewalsPage() {
     <main className="renewals-page">
       <header className="renewals-header">
         <div style={{ minWidth: 0 }}>
-          <p style={{ color: '#7C3AED', fontSize: 12, fontWeight: 900, margin: 0 }}>관리자 전용</p>
-          <h1 style={{ margin: '4px 0', color: '#1E1B4B', fontSize: 24 }}>연장 관리</h1>
+          <p style={{ color: 'var(--action)', fontSize: 12, fontWeight: 900, margin: 0 }}>관리자 전용</p>
+          <h1 style={{ margin: '4px 0', color: 'var(--foreground)', fontSize: 24 }}>연장 관리</h1>
           <p style={{ margin: 0, color: '#6B7280', fontSize: 13 }}>후보 확인부터 후기 쿠폰의 수동 지급 확인까지 추적합니다.</p>
         </div>
         <button type="button" style={button} onClick={() => void load()} disabled={loading} aria-label="연장 관리 데이터 다시 불러오기">

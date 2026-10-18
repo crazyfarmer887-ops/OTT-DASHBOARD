@@ -5,14 +5,15 @@ import { makeDefaultProductTitle } from '../../lib/write-default-template';
 
 import { makeGbutsOttDescription } from '../../lib/gbuts-ott-templates';
 import GbutsSpotifySalesPage from './gbuts-spotify-sales';
+import ListingPeriodPresets from '../components/listing-period-presets';
 
 type Account = { key: string; serviceType: string; accountEmail: string; total: number; graytag: number; manual: number; gbuts: number; claims: number; available: number; overbooked: boolean; endDate: string; suggestedDailyPrice: number | null };
 type Listing = { id: string; postSeq?: number; serviceType: string; accountEmail: string; capacity: number; dailyPrice: number; endDate: string; state: string; error?: string };
 type Order = { key: string; name: string; listingId: string; profileName?: string; profileNumber?: number; profileReleasedAt?: string; endDate: string; delivery: string; status: string; cancelStatus: string | null; accessUrl?: string; error?: string };
 type Data = { enabled: boolean; accounts: Account[]; listings: Listing[]; orders: Order[]; unlinked: { seq: number; serviceType: string; status: string; memberCount: number; memberLimit: number; endDate: string }[]; unlinkedCheckError?: string | null; lastSuccess: string | null; lastError: string | null; inventory?: { status: string; updatedAt: string } | null };
-const styles = { card: { background: '#fff', border: '1px solid #EDE9FE', borderRadius: 16, padding: 16, marginBottom: 14 },
-  input: { display: 'block', width: '100%', padding: 10, border: '1px solid #DDD6FE', borderRadius: 9, marginTop: 5, boxSizing: 'border-box' as const, fontFamily: 'inherit' },
-  button: { border: 0, borderRadius: 10, padding: '11px 14px', background: '#7C3AED', color: '#fff', fontWeight: 800, cursor: 'pointer' } };
+const styles = { card: { background: '#fff', border: '1px solid var(--secondary)', borderRadius: 16, padding: 16, marginBottom: 14 },
+  input: { display: 'block', width: '100%', padding: 10, border: '1px solid var(--border)', borderRadius: 9, marginTop: 5, boxSizing: 'border-box' as const, fontFamily: 'inherit' },
+  button: { border: 0, borderRadius: 10, padding: '11px 14px', background: 'var(--action)', color: '#fff', fontWeight: 800, cursor: 'pointer' } };
 const labels: Record<string, string> = { submitting: '등록 확인 중', registered: '판매 연결됨', uncertain: '등록 결과 확인 필요', failed: '등록 실패', closed: '모집 종료', ready: '자동 전달 대기', attempted: '발송 확인 중', confirmed: '전달 완료', blocked: '전달 보류' };
 export default function GbutsSalesPage({ view = 'sales' }: { view?: 'sales' | 'orders' }) {
   const search = useSearch();
@@ -125,21 +126,21 @@ function GbutsOttSalesPage({ view }: { view: 'sales' | 'orders' }) {
     } catch (e) { setMessage(e instanceof Error ? e.message : '기존 판매글 연결 실패'); }
     finally { setBusy(false); }
   };
-  return <main style={{ maxWidth: 950, margin: 'auto', padding: 20, color: '#1E1B4B' }}>
+  return <main style={{ maxWidth: 950, margin: 'auto', padding: 20, color: 'var(--foreground)' }}>
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}><h1 style={{ fontSize: 23 }}><ShoppingBag size={22} /> {view === 'orders' ? '벗츠 주문·전달 관리' : '벗츠 OTT 판매글 작성'}</h1>
       <button style={styles.button} disabled={loading || busy} onClick={load}><RefreshCw size={15} /> {loading ? '확인 중' : '새로고침'}</button></div>
     <p style={{ fontSize: 13, lineHeight: 1.6 }}>넷플릭스·디즈니+·티빙·웨이브의 계정과 남은 자리를 그레이태그와 함께 관리합니다. 벗츠에서 판매할 자리를 정하면 결제한 구매자의 1:1 채팅으로 전용 계정 확인 링크가 전달됩니다.</p>
     {loadError && <p role="alert" style={{ ...styles.card, color: '#B91C1C' }}>{loadError}</p>}
-    {message && <p role="status" style={{ ...styles.card, color: '#6D28D9' }}>{message}</p>}
+    {message && <p role="status" style={{ ...styles.card, color: 'var(--action)' }}>{message}</p>}
     {data?.lastError && <p style={{ ...styles.card, color: '#B91C1C' }}>{data.lastError}</p>}
     {data?.unlinkedCheckError && <p role="alert" style={{ ...styles.card, color: '#B91C1C' }}>{data.unlinkedCheckError}</p>}
     <div style={styles.card}><strong>{data ? (data.enabled ? '자동 전달 실행 중 · 약 5초마다 확인' : '자동 전달 중지 상태') : '판매 연결 확인 중'}</strong>
       <p style={{ fontSize: 12 }}>최근 확인: {data?.lastSuccess ? new Date(data.lastSuccess).toLocaleString('ko-KR') : '연결된 판매글의 주문을 기다리고 있습니다.'}</p>
       <button style={styles.button} onClick={() => navigate('/spotify-invites')}>벗츠 판매자 연결 관리</button></div>
     {!!data?.unlinked.length && <div style={{ ...styles.card, color: '#B91C1C' }}><p style={{ marginTop: 0 }}>아래 기존 판매글은 계정 정보가 연결되지 않아 자동 주문 감시 대상이 아닙니다. 각 글의 실제 사용 계정을 한 번 연결하면 해당 구매자 주문도 자동 전달됩니다.</p>
-      {data.unlinked.map(x => <div key={x.seq} style={{ padding: '12px 0', borderTop: '1px solid #F3F0FF' }}>
+      {data.unlinked.map(x => <div key={x.seq} style={{ padding: '12px 0', borderTop: '1px solid var(--muted)' }}>
         <p style={{ margin: '0 0 8px' }}><a href={`https://gbuts.com/seller/subscriptions/${x.seq}`} target="_blank" rel="noreferrer">판매글 {x.seq} 확인 <ExternalLink size={12} /></a> · {x.serviceType} · {x.status === 'ON_SALE' ? '모집 중' : x.status} · {x.memberCount}/{x.memberLimit}명 · {x.endDate}까지</p>
-        <label style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}><span style={{ color: '#1E1B4B' }}>실제 사용 계정</span>
+        <label style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}><span style={{ color: 'var(--foreground)' }}>실제 사용 계정</span>
           {view === 'sales' ? <>
             <select aria-label={`판매글 ${x.seq} 계정 연결`} style={{ ...styles.input, width: 'auto', minWidth: 220, marginTop: 0 }} value={legacyAccounts[x.seq] || ''} onChange={e => setLegacyAccounts(current => ({ ...current, [x.seq]: e.target.value }))}>
               <option value="">계정을 선택하세요</option>{data.accounts.filter(a => a.serviceType === x.serviceType).map(a => <option key={a.key} value={a.accountEmail}>{a.accountEmail} · 남은 {a.available}자리</option>)}
@@ -158,6 +159,8 @@ function GbutsOttSalesPage({ view }: { view: 'sales' | 'orders' }) {
       {data && !data.accounts.some(x => x.available > 0 && (!requestedService || x.serviceType === requestedService)) && <p style={{ color: '#B45309', fontSize: 13 }}>현재 판매 가능한 자리가 없습니다. 기존 계정의 결제·이용 기간과 공동 재고를 확인해 주세요.</p>}
       {account?.serviceType === '넷플릭스' && <p style={{ fontSize:12, lineHeight:1.6 }}>넷플릭스 프로필 이름을 1, 2, 3, 4, 5로 미리 만들어주세요. 구매자에게 빈 프로필 번호를 순서대로 안내하며, 환불 완료·이용 종료된 번호는 재사용합니다.</p>}
       {account && <p style={{ fontSize: 12 }}>전체 {account.total}자리 · 그레이태그 {account.graytag} · 수동 {account.manual} · 벗츠 {account.gbuts} · 등록 확인 중 {account.claims} · 남은 {account.available}자리</p>}
+      <ListingPeriodPresets startDate={today} endDate={endDate} maxEndDate={account?.endDate} disabled={busy || !account}
+        onChange={value => { setEndDate(value); requestId.current = crypto.randomUUID(); }} />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginTop: 15 }}>
         <label>이용 종료일<input aria-label="이용 종료일" type="date" style={styles.input} max={account?.endDate} value={endDate} onChange={e => { setEndDate(e.target.value); requestId.current = crypto.randomUUID(); }} /></label>
         <label>하루 요금 (원)<input aria-label="하루 요금" type="number" min="1" style={styles.input} value={price} onChange={e => { setPrice(e.target.value); requestId.current = crypto.randomUUID(); }} /></label>
@@ -170,7 +173,7 @@ function GbutsOttSalesPage({ view }: { view: 'sales' | 'orders' }) {
       <button style={styles.button} aria-describedby={registrationIssue ? 'gbuts-registration-reason' : undefined} disabled={busy || !!registrationIssue} onClick={publish}>{busy ? '처리 중' : '벗츠 판매글 등록'}</button>
     </section>}
     <section style={styles.card}><h2 style={{ fontSize: 17 }}>연결된 판매글</h2>{!data?.listings.length && <p>아직 연결된 판매글이 없습니다.</p>}
-      {data?.listings.map(x => <div key={x.id} style={{ borderTop: '1px solid #EDE9FE', padding: '13px 0' }}><strong>{x.serviceType} · {labels[x.state] || x.state}</strong>
+      {data?.listings.map(x => <div key={x.id} style={{ borderTop: '1px solid var(--secondary)', padding: '13px 0' }}><strong>{x.serviceType} · {labels[x.state] || x.state}</strong>
         <p style={{ fontSize: 12 }}>{x.accountEmail} · {x.capacity}명 · {x.dailyPrice}원/일 · {x.endDate}까지</p>
         {x.postSeq && <a href={`https://gbuts.com/seller/subscriptions/${x.postSeq}`} target="_blank" rel="noreferrer">판매글 보기 <ExternalLink size={12} /></a>}
         {x.state === 'registered' && <button disabled={busy} style={{ ...styles.button, marginLeft: 12, background: '#64748B' }} onClick={() => close(x)}>모집 종료</button>}

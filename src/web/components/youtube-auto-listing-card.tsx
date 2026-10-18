@@ -57,7 +57,7 @@ export default function YouTubeAutoListingCard() {
     {status?.lastCheck && <p style={{ margin: '5px 0' }}>잔여 슬롯 {status.lastCheck.available ?? '확인 불가'}개 · 판매 중 {status.lastCheck.onSale ?? '확인 불가'}개 · {reasonText[status.lastCheck.reason] || status.lastCheck.reason}</p>}
     {status?.batch && <p style={{ margin: '5px 0' }}>{status.batch.label} 등록 중 · {status.batch.completed}/5개 완료</p>}
     {status?.enabled && <form onSubmit={(event) => { event.preventDefault(); void mutate('/api/youtube/auto-listings/queue', 'POST', { managerEmail: email }); }} style={{ display:'flex', gap: 6, marginTop: 8 }}>
-      <input type="email" required value={email} onChange={(event) => setEmail(event.target.value)} placeholder="다음 호기 관리자 Google 이메일" style={{ flex: 1, minWidth: 0, padding: 8, border: '1px solid #ddd6fe', borderRadius: 8 }} />
+      <input type="email" required value={email} onChange={(event) => setEmail(event.target.value)} placeholder="다음 호기 관리자 Google 이메일" style={{ flex: 1, minWidth: 0, padding: 8, border: '1px solid var(--border)', borderRadius: 8 }} />
       <button type="submit" disabled={busy}>대기 등록</button>
     </form>}
     {status?.queue.map((item) => <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginTop: 5 }}>

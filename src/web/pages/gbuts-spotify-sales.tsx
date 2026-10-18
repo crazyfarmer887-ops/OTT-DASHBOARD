@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation } from 'wouter';
+import { ArrowUpRight, RefreshCw, Trash2, Users } from 'lucide-react';
+import ListingPeriodPresets from '../components/listing-period-presets';
+import { LISTING_PERIODS, listingPeriodEnd } from '../lib/listing-period';
 import type { SpotifyListing, SpotifyListingInput } from '../../lib/gbuts-spotify-listings';
 
 type Data = { enabled: boolean; template: SpotifyListingInput & { sourcePostSeq: number }; listings: SpotifyListing[] };
-const card = { background: '#fff', border: '1px solid #EDE9FE', borderRadius: 16, padding: 18, marginBottom: 16 };
-const field = { display: 'block', width: '100%', boxSizing: 'border-box' as const, padding: 11, marginTop: 6, border: '1px solid #DDD6FE', borderRadius: 9, font: 'inherit' };
-const button = { padding: '12px 16px', border: 0, borderRadius: 10, background: '#7C3AED', color: '#fff', fontWeight: 800, cursor: 'pointer' };
 export default function GbutsSpotifySalesPage() {
   const [, navigate] = useLocation();
   const [data, setData] = useState<Data | null>(null);
@@ -58,41 +58,76 @@ export default function GbutsSpotifySalesPage() {
     } catch (e) { setMessage(''); setError(e instanceof Error ? e.message : '판매글 삭제 실패'); }
     finally { setBusy(false); }
   };
-  return <main style={{ maxWidth: 950, margin: 'auto', padding: 20, color: '#1E1B4B' }}>
-    <h1 style={{ fontSize: 23 }}>벗츠 스포티파이 판매글 작성</h1>
-    <p style={{ fontSize: 13, lineHeight: 1.7 }}>이전에 판매한 스포티파이 글의 내용을 불러옵니다. 구매자가 결제하면 기존 1:1 안내와 노션 Registered / Invited 처리로 연결됩니다.</p>
-    <p style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}><button style={button} onClick={() => navigate('/spotify-invites')}>초대·판매자 연결 관리</button>
-      <button style={button} disabled={busy} onClick={() => { setError(''); void load(!form).catch(e => setError(e.message)); }}>다시 불러오기</button></p>
-    {error && <p role="alert" style={{ ...card, color: '#B91C1C' }}>{error}</p>}
-    {message && <p role="status" style={card}>{message}</p>}
-    {!form && <p>이전 판매글을 불러오는 중입니다.</p>}
-    {data && !data.enabled && <p role="alert">스포티파이 자동 안내 연결을 확인해주세요.</p>}
-    {form && <form onSubmit={publish} style={card}>
-      <p style={{ fontSize: 12 }}>기준 판매글: <a href={`https://gbuts.com/seller/subscriptions/${data?.template.sourcePostSeq}`} target="_blank" rel="noreferrer">이전 스포티파이 판매글</a></p>
-      <fieldset disabled={busy} style={{ border: 0, padding: 0, margin: 0, minWidth: 0, display: 'grid', gap: 16 }}>
-        <label>제목<input aria-label="제목" required maxLength={100} style={field} value={form.title} onChange={e => change('title', e.target.value)} /></label>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
-          <label>이용 시작일<input aria-label="이용 시작일" type="date" required style={field} value={form.startDate} onChange={e => change('startDate', e.target.value)} /></label>
-          <label>이용 종료일<input aria-label="이용 종료일" type="date" required style={field} value={form.endDate} onChange={e => change('endDate', e.target.value)} /></label>
-          <label>하루 요금 (원)<input aria-label="하루 요금" type="number" min={1} max={100000} required style={field} value={form.dailyPrice} onChange={e => change('dailyPrice', Number(e.target.value))} /></label>
-          <label>모집 인원<input aria-label="모집 인원" type="number" min={1} max={5} required style={field} value={form.capacity} onChange={e => change('capacity', Number(e.target.value))} /></label>
-        </div>
-        <label>판매 내용<textarea aria-label="판매 내용" required maxLength={5000} style={{ ...field, minHeight: 300 }} value={form.description} onChange={e => change('description', e.target.value)} /></label>
-        <label>구매 전 안내<textarea aria-label="구매 전 안내" maxLength={5000} style={{ ...field, minHeight: 140 }} value={form.noticeBeforeOrder || ''} onChange={e => change('noticeBeforeOrder', e.target.value || null)} /></label>
-        <label>구매 후 안내 (선택)<textarea aria-label="구매 후 안내" maxLength={5000} style={{ ...field, minHeight: 80 }} value={form.noticeAfterOrder || ''} onChange={e => change('noticeAfterOrder', e.target.value || null)} /></label>
-        <p style={{ margin: 0, fontSize: 12 }}>등록하면 벗츠에 판매글이 공개됩니다. 결제 후 안내는 기존 자동 메시지로 발송됩니다.</p>
-        <button type="submit" style={button} disabled={busy || !data?.enabled}>{busy ? '등록 결과 확인 중' : '스포티파이 판매글 등록'}</button>
-      </fieldset>
-    </form>}
-    {!!data?.listings.length && <section style={card}><h2 style={{ fontSize: 18 }}>등록한 스포티파이 판매글</h2>
-      {[...data.listings].reverse().map(listing => <div key={listing.id} style={{ borderTop: '1px solid #EDE9FE', padding: '12px 0' }}>
-        <strong>{listing.title}</strong><p>{listing.dailyPrice}원/일 · {listing.capacity}명 · {listing.endDate}까지</p>
-        <p>{listing.state === 'registered' ? '등록 확인 완료 · 구매자 자동 안내 연결됨' : '등록 결과 확인 필요'}</p>
-        {listing.postSeq && <a href={`https://gbuts.com/seller/subscriptions/${listing.postSeq}`} target="_blank" rel="noreferrer">벗츠 판매글 보기</a>}
-        {listing.state === 'registered' && <button style={{ ...button, marginLeft: 12, background: '#B91C1C' }} disabled={busy} onClick={() => void remove(listing)}>삭제</button>}
-        {listing.state !== 'registered' && <button style={button} disabled={busy} onClick={() => void reconcile(listing.id)}>등록 결과 확인</button>}
-        {listing.error && <p style={{ color: '#B91C1C' }}>{listing.error}</p>}
-      </div>)}
-    </section>}
+  const changeStartDate = (value: string) => {
+    setForm(current => {
+      if (!current) return current;
+      const active = LISTING_PERIODS.find(period => listingPeriodEnd(current.startDate, period.months) === current.endDate);
+      return { ...current, startDate: value, endDate: active ? listingPeriodEnd(value, active.months) || current.endDate : current.endDate };
+    });
+    requestId.current = crypto.randomUUID();
+  };
+  const days = form ? Math.round((Date.parse(form.endDate) - Date.parse(form.startDate)) / 86400000) + 1 : 0;
+  return <main className="spotify-sales-page">
+    <header className="ops-page-heading">
+      <div><p className="ops-eyebrow">SALES / SPOTIFY</p><h1>스포티파이 판매</h1><p>판매 조건을 정하고, 초대와 구매자 안내까지 한 곳에서 관리하세요.</p></div>
+      <div className="ops-heading-actions">
+        <button className="ops-button ops-button-secondary" onClick={() => navigate('/spotify-invites')}><Users size={14} />초대·연결 관리</button>
+        <button className="ops-button ops-button-secondary" disabled={busy} onClick={() => { setError(''); void load(!form).catch(e => setError(e.message)); }}><RefreshCw size={14} />새로고침</button>
+      </div>
+    </header>
+    {error && <p role="alert" className="ops-notice ops-notice-error">{error}</p>}
+    {message && <p role="status" className="ops-notice">{message}</p>}
+    <div className="ops-summary-grid">
+      <div className="ops-summary-card"><span>하루 판매 요금</span><strong>{form ? form.dailyPrice.toLocaleString() : '—'}<small>원 / 일</small></strong></div>
+      <div className="ops-summary-card"><span>모집 인원</span><strong>{form?.capacity ?? '—'}<small>명</small></strong></div>
+      <div className="ops-summary-card"><span>구매자 자동 안내</span><strong className="ops-summary-text">{!data ? '확인 중' : data.enabled ? '연결됨' : '연결 확인 필요'}</strong></div>
+    </div>
+    {data && !data.enabled && <p role="alert" className="ops-notice ops-notice-error">스포티파이 자동 안내 연결을 확인해주세요.</p>}
+    <div className="spotify-sales-layout">
+      <section className="ops-panel">
+        <div className="ops-panel-heading"><h2>새 판매글</h2>{data && <a href={`https://gbuts.com/seller/subscriptions/${data.template.sourcePostSeq}`} target="_blank" rel="noreferrer">이전 판매글 보기 ↗</a>}</div>
+        {!form ? <p className="ops-empty">이전 판매글의 내용을 불러오고 있습니다.</p> : <form onSubmit={publish}>
+          <fieldset disabled={busy} className="ops-form-body">
+            <label className="ops-field">판매글 제목<input aria-label="제목" required maxLength={100} value={form.title} onChange={e => change('title', e.target.value)} /></label>
+            <div><p className="ops-period-label">이용 기간</p>
+              <ListingPeriodPresets startDate={form.startDate} endDate={form.endDate} disabled={busy} onChange={value => change('endDate', value)} />
+              <div className="ops-field-grid">
+                <label className="ops-field">시작일<input aria-label="이용 시작일" type="date" required value={form.startDate} onChange={e => changeStartDate(e.target.value)} /></label>
+                <label className="ops-field">종료일<input aria-label="이용 종료일" type="date" required value={form.endDate} onChange={e => change('endDate', e.target.value)} /></label>
+              </div>
+            </div>
+            <div className="ops-field-grid">
+              <label className="ops-field">하루 요금 (원)<input aria-label="하루 요금" type="number" min={1} max={100000} required value={form.dailyPrice} onChange={e => change('dailyPrice', Number(e.target.value))} /></label>
+              <label className="ops-field">모집 인원<input aria-label="모집 인원" type="number" min={1} max={5} required value={form.capacity} onChange={e => change('capacity', Number(e.target.value))} /></label>
+            </div>
+            <label className="ops-field">판매 내용<textarea aria-label="판매 내용" required maxLength={5000} value={form.description} onChange={e => change('description', e.target.value)} /></label>
+            <details className="ops-form-details"><summary>구매 전·후 안내 문구</summary>
+              <label className="ops-field">구매 전 안내<textarea aria-label="구매 전 안내" maxLength={5000} value={form.noticeBeforeOrder || ''} onChange={e => change('noticeBeforeOrder', e.target.value || null)} /></label>
+              <label className="ops-field">구매 후 안내 (선택)<textarea aria-label="구매 후 안내" maxLength={5000} value={form.noticeAfterOrder || ''} onChange={e => change('noticeAfterOrder', e.target.value || null)} /></label>
+            </details>
+            <div className="ops-form-footer"><p>{Number.isFinite(days) && days > 0 ? `${days}일 이용 · ` : ''}초대형 상품으로 공개됩니다. 구매 후 기존 1:1 자동 안내가 적용됩니다.</p>
+              <button type="submit" className="ops-button ops-button-wide" disabled={busy || !data?.enabled}>{busy ? '등록 결과 확인 중' : '스포티파이 판매글 등록'}<ArrowUpRight size={15} /></button>
+            </div>
+          </fieldset>
+        </form>}
+      </section>
+      <aside>
+        <section className="ops-panel"><div className="ops-panel-heading"><h2>등록한 판매글</h2><span className="ops-count">{data?.listings.length ?? 0}</span></div>
+          {!data?.listings.length && <p className="ops-empty">등록한 판매글이 여기에 표시됩니다.</p>}
+          {[...(data?.listings || [])].reverse().map(listing => <article key={listing.id} className="ops-listing">
+            <h3>{listing.title}</h3><span className="ops-status">{listing.state === 'registered' ? '자동 안내 연결됨' : '등록 결과 확인 필요'}</span>
+            <div className="ops-listing-meta"><span>{listing.dailyPrice.toLocaleString()}원/일</span><span>{listing.capacity}명 모집</span></div>
+            <p className="ops-listing-period">{listing.endDate}까지</p>
+            <div className="ops-listing-actions">
+              {listing.postSeq && <a href={`https://gbuts.com/seller/subscriptions/${listing.postSeq}`} target="_blank" rel="noreferrer">벗츠 판매글<ArrowUpRight size={13} /></a>}
+              {listing.state === 'registered' ? <button className="ops-button ops-button-danger" disabled={busy} onClick={() => void remove(listing)}><Trash2 size={13} />삭제</button>
+                : <button className="ops-button ops-button-secondary" disabled={busy} onClick={() => void reconcile(listing.id)}>등록 결과 확인</button>}
+            </div>
+            {listing.error && <p className="ops-listing-error">{listing.error}</p>}
+          </article>)}
+        </section>
+        <div className="ops-help"><strong>구매 후에는 이렇게 진행돼요</strong><ol><li>구매자에게 1:1 이용 방법을 안내합니다.</li><li>계정 정보나 새 계정 발급 요청을 노션에 기록합니다.</li><li>Registered / Invited 체크에 따라 결과를 전달합니다.</li></ol></div>
+      </aside>
+    </div>
   </main>;
 }

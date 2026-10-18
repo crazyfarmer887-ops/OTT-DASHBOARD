@@ -10,13 +10,13 @@ import {
 export default function AdminTokenControl({ dockBottom = false }: { dockBottom?: boolean }) {
   const [token, setToken] = useState("");
   const [hasToken, setHasToken] = useState(false);
-  const [message, setMessage] = useState("잠김 · 관리자 보호 기능 사용 시 토큰을 저장하세요.");
+  const [message, setMessage] = useState("관리자 인증이 필요할 때 토큰을 저장할 수 있습니다.");
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
     const saved = getAdminToken();
     setHasToken(Boolean(saved));
-    setOpen(!saved);
+    setOpen(false);
 
     const onAuthFailure = (event: Event) => {
       const detail = (event as CustomEvent<AdminAuthFailureDetail>).detail;
@@ -64,14 +64,14 @@ export default function AdminTokenControl({ dockBottom = false }: { dockBottom?:
           style={{
             border: "1px solid #d1d5db",
             borderRadius: 999,
-            background: hasToken ? "#ecfdf5" : "#fff7ed",
-            color: hasToken ? "#047857" : "#c2410c",
+            background: hasToken ? "#ecfdf5" : "#fff",
+            color: hasToken ? "#047857" : "#777",
             padding: "6px 10px",
             boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
           }}
           title="AIO 관리자 토큰은 서버/HTML에 노출되지 않고 현재 브라우저 localStorage에만 저장됩니다."
         >
-          {hasToken ? "인증됨 · 관리자" : "잠김 · 토큰 필요"}
+          {hasToken ? "인증됨 · 관리자" : "관리자 설정"}
         </button>
       ) : (
         <div

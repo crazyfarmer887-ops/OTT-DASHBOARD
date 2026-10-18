@@ -30,25 +30,26 @@
 }
 
 :root {
-  --radius: 1rem;
-  --background: #F8F6FF;
-  --foreground: #1E1B4B;
-  --card: #FFFFFF;
-  --card-foreground: #1E1B4B;
-  --popover: #FFFFFF;
-  --popover-foreground: #1E1B4B;
-  --primary: #A78BFA;
-  --primary-foreground: #FFFFFF;
-  --secondary: #EDE9FE;
-  --secondary-foreground: #1E1B4B;
-  --muted: #F3F0FF;
-  --muted-foreground: #6B7280;
-  --accent: #EDE9FE;
-  --accent-foreground: #1E1B4B;
-  --destructive: #FCA5A5;
-  --border: #E9E4FF;
-  --input: #EDE9FE;
-  --ring: #A78BFA;
+  --radius: .75rem;
+  --background: #fafafa;
+  --foreground: #191919;
+  --action: #171717;
+  --card: #fff;
+  --card-foreground: #191919;
+  --popover: #fff;
+  --popover-foreground: #191919;
+  --primary: #171717;
+  --primary-foreground: #fff;
+  --secondary: #f0f0f0;
+  --secondary-foreground: #191919;
+  --muted: #f5f5f5;
+  --muted-foreground: #777;
+  --accent: #f0f0f0;
+  --accent-foreground: #191919;
+  --destructive: #dc2626;
+  --border: #e5e5e5;
+  --input: #e5e5e5;
+  --ring: #171717;
   --success: #059669;
   --success-bg: #ECFDF5;
   --warning: #D97706;
@@ -57,11 +58,11 @@
   --danger-bg: #FEF2F2;
   --info: #2563EB;
   --info-bg: #EFF6FF;
-  --surface: #F8F6FF;
-  --surface-raised: #FFFFFF;
-  --text-muted: #6B7280;
-  --text-subtle: #9CA3AF;
-  --shadow-card: 0 2px 14px rgba(30,27,75,0.08);
+  --surface: #fafafa;
+  --surface-raised: #fff;
+  --text-muted: #777;
+  --text-subtle: #999;
+  --shadow-card: 0 1px 3px rgba(17,17,17,.035);
 }
 
 * {
@@ -92,14 +93,14 @@ body {
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 .credential-field { min-width:0; margin:10px 0 14px; }
-.credential-field > label { display:block; margin-bottom:6px; font-size:14px; font-weight:800; color:#1E1B4B; }
+.credential-field > label { display:block; margin-bottom:6px; font-size:14px; font-weight:800; color:var(--foreground); }
 .credential-field-row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; min-width:0; }
-.credential-field-row input { flex:1 1 160px; width:100%; min-width:0; max-width:100%; box-sizing:border-box; border:1px solid #DDD6FE; border-radius:10px; padding:12px; font:inherit; font-size:16px; color:#1E1B4B; background:#fff; min-height:46px; }
+.credential-field-row input { flex:1 1 160px; width:100%; min-width:0; max-width:100%; box-sizing:border-box; border:1px solid var(--border); border-radius:10px; padding:12px; font:inherit; font-size:16px; color:var(--foreground); background:#fff; min-height:46px; }
 .credential-field-actions { display:flex; flex-wrap:wrap; gap:6px; }
-.credential-field-actions button { display:inline-flex; align-items:center; justify-content:center; gap:5px; min-height:44px; padding:10px 12px; border:1px solid #DDD6FE; border-radius:10px; background:#F5F3FF; color:#6D28D9; font:inherit; font-size:13px; font-weight:800; cursor:pointer; }
+.credential-field-actions button { display:inline-flex; align-items:center; justify-content:center; gap:5px; min-height:44px; padding:10px 12px; border:1px solid var(--border); border-radius:10px; background:var(--muted); color:var(--action); font:inherit; font-size:13px; font-weight:800; cursor:pointer; }
 .credential-field-actions button:disabled { opacity:.45; cursor:default; }
-.credential-field-actions button:focus-visible, .credential-field-row input:focus-visible { outline:2px solid #7C3AED; outline-offset:2px; }
-.credential-field-status { display:block; margin-top:6px; font-size:12px; color:#5B21B6; }
+.credential-field-actions button:focus-visible, .credential-field-row input:focus-visible { outline:2px solid var(--action); outline-offset:2px; }
+.credential-field-status { display:block; margin-top:6px; font-size:12px; color:var(--action); }
 
 /* 채팅 페이지 풀스크린 — max-width 해제 */
 #root.chat-fullscreen {
@@ -258,9 +259,9 @@ body {
   min-width: 0;
   overflow: hidden;
   background: var(--surface-raised);
-  border: 1px solid #DDD6FE;
+  border: 1px solid var(--border);
   border-radius: 16px;
-  box-shadow: 0 4px 16px rgba(30, 27, 75, 0.07);
+  box-shadow: 0 4px 16px rgba(17,17,17,0.07);
 }
 
 .management-account-header {
@@ -302,14 +303,14 @@ body {
   margin: 4px 14px 12px;
   padding: 1px;
   overflow: hidden;
-  background: #EDE9FE;
+  background: var(--secondary);
   border-radius: 12px;
 }
 
 .management-account-metrics > div {
   min-width: 0;
   padding: 9px 10px;
-  background: #F8F6FF;
+  background: var(--background);
 }
 
 .management-account-metrics dt {
@@ -341,10 +342,10 @@ body {
   gap: 5px;
   min-width: 0;
   padding: 8px;
-  border: 1px solid #DDD6FE;
+  border: 1px solid var(--border);
   border-radius: 10px;
-  background: #F8F6FF;
-  color: #4F46E5;
+  background: var(--background);
+  color: var(--action);
   font-family: inherit;
   font-size: 11px;
   font-weight: 800;
@@ -354,8 +355,8 @@ body {
 
 .management-account-actions .management-primary-action {
   grid-column: span 2;
-  background: #4F46E5;
-  border-color: #4F46E5;
+  background: var(--action);
+  border-color: var(--action);
   color: #fff;
 }
 
@@ -376,8 +377,8 @@ body {
   min-width: 0;
   padding: 12px 14px 14px;
   overflow: hidden;
-  border-top: 1px solid #EDE9FE;
-  background: #F8F6FF;
+  border-top: 1px solid var(--secondary);
+  background: var(--background);
 }
 
 .management-account-details input,
@@ -440,7 +441,7 @@ body {
 .youtube-family-group-card .is-disabled { background: #E5E7EB; color: #6B7280; }
 .youtube-expiry-status { background: #F3F4F6; color: #6B7280; }
 .youtube-registered-product-links { display: grid; gap: 5px; margin: 0 14px 8px; }
-.youtube-registered-product-links a { display: flex; align-items: center; gap: 4px; min-width: 0; padding: 6px 8px; border-radius: 8px; background: #F3F4F6; color: #4F46E5; font-size: 10px; font-weight: 800; overflow-wrap: anywhere; }
+.youtube-registered-product-links a { display: flex; align-items: center; gap: 4px; min-width: 0; padding: 6px 8px; border-radius: 8px; background: #F3F4F6; color: var(--action); font-size: 10px; font-weight: 800; overflow-wrap: anywhere; }
 .youtube-registration-statuses { display: flex; gap: 5px; margin: 0 14px 8px; flex-wrap: wrap; }
 .youtube-registration-statuses span { border-radius: 999px; padding: 2px 6px; background: #FFF7ED; color: #9A3412; font-size: 9px; font-weight: 900; }
 .management-account-actions.youtube-family-group-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -448,7 +449,7 @@ body {
 .youtube-family-member-list { display: grid; gap: 8px; padding: 12px 14px 14px; border-top: 1px solid #FEE2E2; background: #FFF7F7; }
 .youtube-family-member { min-width: 0; padding: 9px 10px; border: 1px solid #FEE2E2; border-radius: 10px; background: #fff; overflow-wrap: anywhere; }
 .youtube-family-member > div { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.youtube-family-member > div strong { color: #1E1B4B; font-size: 12px; }
+.youtube-family-member > div strong { color: var(--foreground); font-size: 12px; }
 .youtube-family-member > div span { color: #B91C1C; font-size: 9px; font-weight: 900; }
 .youtube-family-member dl { display: grid; gap: 5px; margin: 8px 0 0; }
 .youtube-family-member dl > div { display: grid; grid-template-columns: 80px minmax(0, 1fr); gap: 6px; }
@@ -541,7 +542,7 @@ body {
 }
 
 /* 연장 관리 */
-.renewals-page { width: min(1180px, calc(100% - 28px)); margin: 0 auto; padding: 24px 0 80px; color: #1E1B4B; }
+.renewals-page { width: min(1180px, calc(100% - 28px)); margin: 0 auto; padding: 24px 0 80px; color: var(--foreground); }
 .renewals-header, .renewal-panel-heading, .renewal-selection-actions, .renewal-row-actions, .renewal-review-links { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .renewals-header, .renewal-panel-heading { justify-content: space-between; }
 .renewals-header button, .renewal-selection-actions button, .renewal-row-actions button, .renewal-mobile-card button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
@@ -551,25 +552,25 @@ body {
 .renewal-summary span { color: #6B7280; font-size: 12px; font-weight: 800; }
 .renewal-summary strong { font-size: 25px; }
 .renewal-section-tabs, .renewal-category-tabs { display: flex; gap: 6px; overflow-x: auto; padding: 3px; margin: 12px 0; }
-.renewal-section-tabs button, .renewal-category-tabs button { white-space: nowrap; border: 1px solid #EDE9FE; border-radius: 10px; background: #fff; padding: 9px 13px; color: #6B7280; font-weight: 800; cursor: pointer; }
-.renewal-section-tabs button[aria-selected="true"], .renewal-category-tabs button[aria-selected="true"] { background: #7C3AED; border-color: #7C3AED; color: #fff; }
+.renewal-section-tabs button, .renewal-category-tabs button { white-space: nowrap; border: 1px solid var(--secondary); border-radius: 10px; background: #fff; padding: 9px 13px; color: #6B7280; font-weight: 800; cursor: pointer; }
+.renewal-section-tabs button[aria-selected="true"], .renewal-category-tabs button[aria-selected="true"] { background: var(--action); border-color: var(--action); color: #fff; }
 .renewal-panel-heading h2 { margin: 0; font-size: 18px; }
 .renewal-panel-heading p { margin: 4px 0 0; color: #6B7280; font-size: 12px; }
 .renewal-live-state { display: inline-flex; align-items: center; gap: 5px; border-radius: 999px; padding: 7px 10px; background: #ECFDF5; color: #047857; font-size: 11px; font-weight: 900; }
 .renewal-live-state.blocked { background: #FFF7ED; color: #C2410C; }
 .renewal-filters, .renewal-review-inputs { display: grid; grid-template-columns: minmax(0, 2fr) minmax(180px, 1fr); gap: 10px; margin: 12px 0; }
 .renewal-filters label, .renewal-review-inputs label, .renewal-modal > label { display: grid; gap: 5px; color: #6B7280; font-size: 11px; font-weight: 900; }
-.renewal-review-inputs textarea { min-height: 72px; resize: vertical; border: 1px solid #DDD6FE; border-radius: 10px; padding: 9px 10px; font-family: inherit; }
-.renewal-selection-actions { padding: 10px 0; border-block: 1px solid #F3F0FF; }
+.renewal-review-inputs textarea { min-height: 72px; resize: vertical; border: 1px solid var(--border); border-radius: 10px; padding: 9px 10px; font-family: inherit; }
+.renewal-selection-actions { padding: 10px 0; border-block: 1px solid var(--muted); }
 .renewal-selection-actions > span { color: #6B7280; font-size: 12px; font-weight: 800; margin-right: auto; }
 .renewal-table-wrap { overflow-x: auto; margin-top: 12px; }
 .renewal-table { width: 100%; min-width: 870px; border-collapse: collapse; font-size: 12px; }
 .renewal-table th { color: #6B7280; text-align: left; background: #FAF8FF; }
-.renewal-table th, .renewal-table td { padding: 10px 8px; border-bottom: 1px solid #F3F0FF; vertical-align: top; }
+.renewal-table th, .renewal-table td { padding: 10px 8px; border-bottom: 1px solid var(--muted); vertical-align: top; }
 .renewal-table small, .renewal-table td > b { display: block; margin-top: 3px; }
 .renewal-table small { color: #6B7280; }
 .renewal-mobile-list { display: none; }
-.renewal-mobile-card, .renewal-review-card { border: 1px solid #EDE9FE; border-radius: 13px; padding: 12px; background: #fff; }
+.renewal-mobile-card, .renewal-review-card { border: 1px solid var(--secondary); border-radius: 13px; padding: 12px; background: #fff; }
 .renewal-mobile-select, .renewal-review-card-head { display: flex; align-items: center; gap: 7px; justify-content: space-between; }
 .renewal-mobile-card dl, .renewal-review-card dl, .renewal-modal dl { display: grid; gap: 6px; margin: 10px 0; }
 .renewal-mobile-card dl > div, .renewal-review-card dl > div, .renewal-modal dl > div { display: grid; grid-template-columns: 90px minmax(0, 1fr); gap: 8px; }
@@ -585,17 +586,17 @@ body {
 .renewal-alert.warning { color: #B45309; background: #FFF7ED; }
 .renewal-alert button { margin-left: auto; border: 0; background: transparent; color: inherit; text-decoration: underline; cursor: pointer; }
 .renewal-loading, .renewal-empty { padding: 28px; text-align: center; color: #6B7280; }
-.renewal-refreshing { color: #6D28D9; background: #F5F3FF; border-radius: 10px; padding: 7px 10px; font-size: 11px; margin-bottom: 8px; }
-.renewal-results { margin-top: 12px; border: 1px solid #DDD6FE; border-radius: 12px; padding: 10px; }
+.renewal-refreshing { color: var(--action); background: var(--muted); border-radius: 10px; padding: 7px 10px; font-size: 11px; margin-bottom: 8px; }
+.renewal-results { margin-top: 12px; border: 1px solid var(--border); border-radius: 12px; padding: 10px; }
 .renewal-results h3 { margin: 0 0 8px; font-size: 14px; }
-.renewal-results > div { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 5px 0; border-top: 1px solid #F3F0FF; }
+.renewal-results > div { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 5px 0; border-top: 1px solid var(--muted); }
 .renewal-results code { overflow-wrap: anywhere; font-size: 10px; }
 .renewal-review-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
 .renewal-review-card { min-width: 0; }
-.renewal-review-links a { display: inline-flex; gap: 4px; align-items: center; color: #6D28D9; font-size: 11px; font-weight: 800; }
+.renewal-review-links a { display: inline-flex; gap: 4px; align-items: center; color: var(--action); font-size: 11px; font-weight: 800; }
 .renewal-review-note { padding: 8px; background: #FAF8FF; border-radius: 8px; color: #4B5563; font-size: 11px; overflow-wrap: anywhere; }
-.renewal-review-card details { margin-top: 10px; border-top: 1px solid #F3F0FF; padding-top: 8px; }
-.renewal-review-card summary { cursor: pointer; color: #6D28D9; font-size: 11px; font-weight: 900; }
+.renewal-review-card details { margin-top: 10px; border-top: 1px solid var(--muted); padding-top: 8px; }
+.renewal-review-card summary { cursor: pointer; color: var(--action); font-size: 11px; font-weight: 900; }
 .renewal-audit-timeline { padding-left: 20px; }
 .renewal-audit-timeline li { margin: 8px 0; }
 .renewal-audit-timeline span, .renewal-audit-timeline small { display: block; color: #6B7280; font-size: 10px; overflow-wrap: anywhere; }
@@ -629,16 +630,16 @@ body {
 .quick-account-generator-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
 .quick-account-generator-head h2 { display: flex; align-items: center; gap: 7px; margin: 0; color: #111827; font-size: 16px; letter-spacing: -.2px; }
 .quick-account-generator-head p { margin: 4px 0 0; color: #6B7280; font-size: 11px; line-height: 1.45; }
-.quick-account-generator-head > span { flex-shrink: 0; padding: 4px 8px; border-radius: 999px; background: #EEF2FF; color: #4338CA; font-size: 10px; font-weight: 900; }
+.quick-account-generator-head > span { flex-shrink: 0; padding: 4px 8px; border-radius: 999px; background: var(--muted); color: var(--action); font-size: 10px; font-weight: 900; }
 .quick-account-generator-form { display: grid; grid-template-columns: minmax(150px,.75fr) minmax(180px,1fr) auto; gap: 8px; align-items: end; }
 .quick-account-generator-form label { display: grid; gap: 5px; color: #6B7280; font-size: 10px; font-weight: 900; }
 .quick-account-generator-form label small { color: #9CA3AF; font-weight: 700; }
 .quick-account-generator-form select, .quick-account-generator-form input { min-width: 0; min-height: 42px; box-sizing: border-box; border: 1px solid #D1D5DB; border-radius: 10px; padding: 9px 10px; background: #fff; color: #111827; font-family: inherit; font-size: 13px; font-weight: 700; outline: none; }
 .quick-account-generator-form select:focus, .quick-account-generator-form input:focus { border-color: #6366F1; box-shadow: 0 0 0 3px rgba(99,102,241,.12); }
-.quick-account-generator-form > button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 42px; border: 0; border-radius: 10px; padding: 9px 15px; background: #4F46E5; color: #fff; font-family: inherit; font-size: 12px; font-weight: 900; cursor: pointer; }
+.quick-account-generator-form > button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 42px; border: 0; border-radius: 10px; padding: 9px 15px; background: var(--action); color: #fff; font-family: inherit; font-size: 12px; font-weight: 900; cursor: pointer; }
 .quick-account-generator-form > button:disabled { cursor: not-allowed; opacity: .5; }
 .quick-account-generator-hint { margin-top: 7px; color: #9CA3AF; font-size: 10px; }
-.quick-account-generator-status, .quick-account-generator-result { margin-top: 9px; border-radius: 9px; padding: 8px 10px; background: #EEF2FF; color: #4338CA; font-size: 11px; font-weight: 800; }
+.quick-account-generator-status, .quick-account-generator-result { margin-top: 9px; border-radius: 9px; padding: 8px 10px; background: var(--muted); color: var(--action); font-size: 11px; font-weight: 800; }
 .quick-account-generator-result { background: #ECFDF5; color: #047857; }
 .quick-account-generator-result.is-error { background: #FEF2F2; color: #B91C1C; }
 .quick-account-modal-backdrop { position: fixed; inset: 0; z-index: 650; display: grid; place-items: center; padding: 18px; background: rgba(17,24,39,.54); backdrop-filter: blur(4px); }
@@ -651,7 +652,7 @@ body {
 .quick-account-steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 18px 0 14px; }
 .quick-account-steps span { display: flex; align-items: center; justify-content: center; gap: 4px; padding: 7px 4px; border-radius: 8px; background: #F3F4F6; color: #9CA3AF; font-size: 11px; font-weight: 800; }
 .quick-account-steps .is-done { background: #ECFDF5; color: #047857; }
-.quick-account-steps .is-current { background: #EEF2FF; color: #4338CA; }
+.quick-account-steps .is-current { background: var(--muted); color: var(--action); }
 .quick-account-service { margin-bottom: 8px; color: #6B7280; font-size: 12px; font-weight: 900; }
 .quick-account-credential-list { display: grid; gap: 7px; }
 .quick-account-credential { display: flex; align-items: center; gap: 10px; padding: 10px 11px; border: 1px solid #E5E7EB; border-radius: 10px; background: #FAFAFA; }
@@ -659,13 +660,13 @@ body {
 .quick-account-credential span { display: block; color: #9CA3AF; font-size: 10px; font-weight: 800; }
 .quick-account-credential strong { display: block; margin-top: 3px; overflow-wrap: anywhere; font: 600 13px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace; color: #111827; }
 .quick-account-credential button, .quick-account-copy-all, .quick-account-primary-actions button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 40px; border-radius: 10px; font-family: inherit; font-weight: 900; cursor: pointer; }
-.quick-account-credential button { border: 0; padding: 7px 9px; background: #EEF2FF; color: #4338CA; font-size: 11px; }
-.quick-account-copy-all { width: 100%; margin-top: 10px; border: 1px solid #C7D2FE; background: #EEF2FF; color: #3730A3; font-size: 12px; }
+.quick-account-credential button { border: 0; padding: 7px 9px; background: var(--muted); color: var(--action); font-size: 11px; }
+.quick-account-copy-all { width: 100%; margin-top: 10px; border: 1px solid var(--border); background: var(--muted); color: var(--action); font-size: 12px; }
 .quick-account-payment-error { margin-top: 10px; border-radius: 9px; padding: 8px 10px; background: #FEF2F2; color: #B91C1C; font-size: 11px; font-weight: 800; }
 .quick-account-primary-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 16px; }
 .quick-account-primary-actions button { border: 1px solid #D1D5DB; background: #fff; color: #374151; font-size: 12px; }
 .quick-account-primary-actions button.is-complete { border-color: #A7F3D0; background: #ECFDF5; color: #047857; }
-.quick-account-primary-actions button.is-primary { border-color: #4F46E5; background: #4F46E5; color: #fff; }
+.quick-account-primary-actions button.is-primary { border-color: var(--action); background: var(--action); color: #fff; }
 .quick-account-primary-actions button:disabled { cursor: not-allowed; opacity: .48; }
 .quick-account-help { margin: 9px 0 0; color: #9CA3AF; font-size: 10px; text-align: center; }
 @media (max-width: 520px) {

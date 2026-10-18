@@ -18,7 +18,7 @@ interface ChatMessage {
 }
 
 const STATUS_COLORS: Record<string, string> = {
-  Using: '#A78BFA', UsingNearExpiration: '#F59E0B', Delivered: '#3B82F6',
+  Using: 'var(--action)', UsingNearExpiration: '#F59E0B', Delivered: '#3B82F6',
   Delivering: '#06B6D4', OnSale: '#10B981', NormalFinished: '#9CA3AF',
 };
 
@@ -506,14 +506,14 @@ export default function ChatPage() {
   const renderArPanel = () => {
     const arSummary = summarizeAutoReplyJobs(arJobs);
     return (
-    <div style={{background:"#F5F3FF", borderBottom:"1px solid #DDD6FE", padding:"14px 18px"}}>
+    <div style={{background:"var(--muted)", borderBottom:"1px solid var(--border)", padding:"14px 18px"}}>
       <div style={{display:"flex",alignItems:"center",gap:8}}>
-        <Settings size={14} color="#7C3AED"/>
-        <span style={{fontWeight:700,color:"#1E1B4B",fontSize:13,flex:1}}>자동응답</span>
+        <Settings size={14} color="var(--action)"/>
+        <span style={{fontWeight:700,color:"var(--foreground)",fontSize:13,flex:1}}>자동응답</span>
         <button onClick={toggleAr} style={{border:"none",cursor:"pointer",display:"flex",alignItems:"center",gap:4,
-          color:arEnabled?"#7C3AED":"#9CA3AF",fontSize:12,fontWeight:700,padding:"2px 6px",borderRadius:6,
-          background:arEnabled?"#EDE9FE":"#F3F4F6"} as any}>
-          {arEnabled?<ToggleRight size={18} color="#7C3AED"/>:<ToggleLeft size={18} color="#9CA3AF"/>}
+          color:arEnabled?"var(--action)":"#9CA3AF",fontSize:12,fontWeight:700,padding:"2px 6px",borderRadius:6,
+          background:arEnabled?"var(--secondary)":"#F3F4F6"} as any}>
+          {arEnabled?<ToggleRight size={18} color="var(--action)"/>:<ToggleLeft size={18} color="#9CA3AF"/>}
           {arEnabled?"ON":"OFF"}
         </button>
         <button onClick={()=>setArPanel(p=>!p)} style={{background:"none",border:"none",cursor:"pointer",color:"#9CA3AF",fontSize:11,padding:"2px 4px"}}>
@@ -526,32 +526,32 @@ export default function ChatPage() {
             <span style={{color:"#6B7280",minWidth:42}}>딜레이</span>
             <input type="range" min={0} max={600} step={10} value={arDelay}
               onChange={e=>setArDelay(Number(e.target.value))}
-              onMouseUp={()=>saveArDelay(arDelay)} style={{flex:1,accentColor:"#7C3AED"}}/>
-            <span style={{color:"#7C3AED",fontWeight:700,minWidth:38,textAlign:"right"}}>{arDelay===0?"즉시":arDelay+"초"}</span>
+              onMouseUp={()=>saveArDelay(arDelay)} style={{flex:1,accentColor:"var(--action)"}}/>
+            <span style={{color:"var(--action)",fontWeight:700,minWidth:38,textAlign:"right"}}>{arDelay===0?"즉시":arDelay+"초"}</span>
           </div>
           <div style={{fontSize:12}}>
             <div style={{display:"flex",justifyContent:"space-between",marginBottom:6,alignItems:"center"}}>
               <span style={{color:"#6B7280",fontWeight:600}}>시스템 프롬프트</span>
-              <button onClick={()=>setArPromptOpen(p=>!p)} style={{background:"none",border:"none",cursor:"pointer",color:"#7C3AED",fontSize:11}}>{arPromptOpen?"접기":"편집 ▾"}</button>
+              <button onClick={()=>setArPromptOpen(p=>!p)} style={{background:"none",border:"none",cursor:"pointer",color:"var(--action)",fontSize:11}}>{arPromptOpen?"접기":"편집 ▾"}</button>
             </div>
             {arPromptOpen&&<>
               <textarea value={arPrompt} onChange={e=>setArPrompt(e.target.value)}
-                style={{width:"100%",height:120,fontSize:11,padding:8,border:"1px solid #DDD6FE",borderRadius:8,resize:"vertical",boxSizing:"border-box" as any,fontFamily:"monospace",lineHeight:1.5}}/>
+                style={{width:"100%",height:120,fontSize:11,padding:8,border:"1px solid var(--border)",borderRadius:8,resize:"vertical",boxSizing:"border-box" as any,fontFamily:"monospace",lineHeight:1.5}}/>
               <button onClick={saveArPrompt} disabled={arSaving}
-                style={{marginTop:6,background:arSaving?"#DDD6FE":"#7C3AED",color:"#fff",border:"none",borderRadius:8,padding:"6px 16px",fontSize:12,cursor:"pointer",fontWeight:600}}>
+                style={{marginTop:6,background:arSaving?"var(--border)":"var(--action)",color:"#fff",border:"none",borderRadius:8,padding:"6px 16px",fontSize:12,cursor:"pointer",fontWeight:600}}>
                 {arSaving?"저장 중...":"저장"}
               </button>
             </>}
           </div>
-          <div style={{background:"#fff",border:"1px solid #DDD6FE",borderRadius:10,padding:"10px 12px"}}>
+          <div style={{background:"#fff",border:"1px solid var(--border)",borderRadius:10,padding:"10px 12px"}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
-              <span style={{fontSize:12,fontWeight:700,color:"#1E1B4B"}}>자동응답 큐</span>
-              <button onClick={loadAutoReplyLog} disabled={arLogLoading} style={{background:"#EDE9FE",border:"none",borderRadius:7,padding:"4px 8px",fontSize:11,fontWeight:700,color:"#7C3AED",cursor:"pointer"}}>
+              <span style={{fontSize:12,fontWeight:700,color:"var(--foreground)"}}>자동응답 큐</span>
+              <button onClick={loadAutoReplyLog} disabled={arLogLoading} style={{background:"var(--secondary)",border:"none",borderRadius:7,padding:"4px 8px",fontSize:11,fontWeight:700,color:"var(--action)",cursor:"pointer"}}>
                 {arLogLoading?"새로고침 중":"새로고침"}
               </button>
             </div>
             <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6,marginBottom:8}}>
-              <div style={{background:"#F5F3FF",borderRadius:8,padding:6,textAlign:"center"}}><div style={{fontSize:15,fontWeight:800,color:"#7C3AED"}}>{arSummary.drafted}</div><div style={{fontSize:10,color:"#6B7280"}}>초안</div></div>
+              <div style={{background:"var(--muted)",borderRadius:8,padding:6,textAlign:"center"}}><div style={{fontSize:15,fontWeight:800,color:"var(--action)"}}>{arSummary.drafted}</div><div style={{fontSize:10,color:"#6B7280"}}>초안</div></div>
               <div style={{background:"#FFF7ED",borderRadius:8,padding:6,textAlign:"center"}}><div style={{fontSize:15,fontWeight:800,color:"#C2410C"}}>{arSummary.blocked}</div><div style={{fontSize:10,color:"#6B7280"}}>확인</div></div>
               <div style={{background:"#ECFDF5",borderRadius:8,padding:6,textAlign:"center"}}><div style={{fontSize:15,fontWeight:800,color:"#047857"}}>{arSummary.sent}</div><div style={{fontSize:10,color:"#6B7280"}}>발송</div></div>
               <div style={{background:"#FEF2F2",borderRadius:8,padding:6,textAlign:"center"}}><div style={{fontSize:15,fontWeight:800,color:"#B91C1C"}}>{arSummary.error}</div><div style={{fontSize:10,color:"#6B7280"}}>오류</div></div>
@@ -560,22 +560,22 @@ export default function ChatPage() {
               <div style={{fontSize:11,color:"#9CA3AF",padding:"8px 0",textAlign:"center"}}>자동응답 작업 없음</div>
             ) : arJobs.slice(0,5).map(job=>{
               const tone=autoReplyStatusTone(job.status);
-              return <div key={job.id} style={{borderTop:"1px solid #F3F0FF",padding:"8px 0"}}>
+              return <div key={job.id} style={{borderTop:"1px solid var(--muted)",padding:"8px 0"}}>
                 <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
                   <span style={{fontSize:10,fontWeight:800,borderRadius:999,padding:"2px 6px",background:tone.background,color:tone.color}}>{autoReplyStatusLabel(job.status)}</span>
-                  <span style={{fontSize:11,fontWeight:700,color:"#1E1B4B",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{job.buyerName||'구매자'} · {job.productType||'기타'}</span>
+                  <span style={{fontSize:11,fontWeight:700,color:"var(--foreground)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{job.buyerName||'구매자'} · {job.productType||'기타'}</span>
                 </div>
                 <div style={{fontSize:11,color:"#6B7280",lineHeight:1.45,wordBreak:"break-word"}}>문의: {(job.buyerMessage||'').slice(0,80)}</div>
-                {job.draftReply&&<div style={{fontSize:11,color:"#7C3AED",lineHeight:1.45,wordBreak:"break-word",marginTop:3}}>초안: {job.draftReply.slice(0,100)}</div>}
-                {job.draftReply&&<button onClick={()=>{ const room=rooms.find(r=>r.chatRoomUuid===job.chatRoomUuid); if(room) selectRoom(room); setSendText(job.draftReply||''); }} style={{marginTop:6,background:"#7C3AED",color:"#fff",border:"none",borderRadius:7,padding:"5px 8px",fontSize:11,fontWeight:700,cursor:"pointer"}}>초안 입력</button>}
+                {job.draftReply&&<div style={{fontSize:11,color:"var(--action)",lineHeight:1.45,wordBreak:"break-word",marginTop:3}}>초안: {job.draftReply.slice(0,100)}</div>}
+                {job.draftReply&&<button onClick={()=>{ const room=rooms.find(r=>r.chatRoomUuid===job.chatRoomUuid); if(room) selectRoom(room); setSendText(job.draftReply||''); }} style={{marginTop:6,background:"var(--action)",color:"#fff",border:"none",borderRadius:7,padding:"5px 8px",fontSize:11,fontWeight:700,cursor:"pointer"}}>초안 입력</button>}
                 {job.blockReason&&<div style={{fontSize:10,color:"#9CA3AF",marginTop:3}}>사유: {job.blockReason}</div>}
               </div>;
             })}
           </div>
           {arLogs.length>0&&(
-            <div style={{background:"#1E1B4B",borderRadius:8,padding:"8px 10px"}}>
-              <div style={{fontSize:10,color:"#7C3AED",marginBottom:4,fontWeight:600}}>최근 로그</div>
-              {arLogs.map((l,i)=><div key={i} style={{fontSize:10,color:"#C4B5FD",fontFamily:"monospace",lineHeight:1.5,wordBreak:"break-all"}}>{l.slice(0,100)}</div>)}
+            <div style={{background:"var(--foreground)",borderRadius:8,padding:"8px 10px"}}>
+              <div style={{fontSize:10,color:"var(--action)",marginBottom:4,fontWeight:600}}>최근 로그</div>
+              {arLogs.map((l,i)=><div key={i} style={{fontSize:10,color:"var(--text-subtle)",fontFamily:"monospace",lineHeight:1.5,wordBreak:"break-all"}}>{l.slice(0,100)}</div>)}
             </div>
           )}
         </div>
@@ -588,7 +588,7 @@ export default function ChatPage() {
     <div style={{background:"#FFF7ED",borderBottom:"1px solid #FED7AA",padding:"14px 18px"}}>
       <div style={{display:"flex",alignItems:"center",gap:8}}>
         <Bell size={14} color="#EA580C"/>
-        <span style={{fontWeight:700,color:"#1E1B4B",fontSize:13,flex:1}}>파티원 공지</span>
+        <span style={{fontWeight:700,color:"var(--foreground)",fontSize:13,flex:1}}>파티원 공지</span>
         <button onClick={()=>{setNoticePanel(p=>!p); if(!noticePanel)loadAccounts();}}
           style={{background:"none",border:"none",cursor:"pointer",color:"#9CA3AF",fontSize:11,padding:"2px 4px"}}>
           {noticePanel?"접기 ▴":"발송 ▾"}
@@ -597,7 +597,7 @@ export default function ChatPage() {
       {noticePanel&&(
         <div style={{marginTop:12,display:"flex",flexDirection:"column",gap:8}}>
           <select value={noticeEmail} onChange={e=>setNoticeEmail(e.target.value)}
-            style={{fontSize:12,padding:"7px 10px",border:"1.5px solid #FED7AA",borderRadius:8,background:"#fff",color:"#1E1B4B"}}>
+            style={{fontSize:12,padding:"7px 10px",border:"1.5px solid #FED7AA",borderRadius:8,background:"#fff",color:"var(--foreground)"}}>
             <option value="">계정 선택...</option>
             {accountList.map(e=><option key={e} value={e}>{e}</option>)}
           </select>
@@ -631,22 +631,22 @@ export default function ChatPage() {
     const organizationEntry = roomOrganization.rooms[room.chatRoomUuid];
     const organizationSaving = organizationSavingRooms[room.chatRoomUuid] === true;
     return (
-    <div key={room.dealUsid} style={{display:'flex',alignItems:'stretch',borderBottom:'1px solid #F8F6FF',background:selectedRoom?.dealUsid===room.dealUsid?'#EDE9FE':room.lenderChatUnread?'#F5F3FF':'transparent'}}>
+    <div key={room.dealUsid} style={{display:'flex',alignItems:'stretch',borderBottom:'1px solid var(--background)',background:selectedRoom?.dealUsid===room.dealUsid?'var(--secondary)':room.lenderChatUnread?'var(--muted)':'transparent'}}>
       <button onClick={()=>selectRoom(room)}
         style={{flex:1,minWidth:0,padding:"12px 8px 12px "+(nested?"44px":"16px"),display:"flex",alignItems:"center",gap:12,
           background:'transparent',border:"none",cursor:"pointer",fontFamily:"inherit",transition:"background 0.15s"}}>
-        <div style={{width:38,height:38,borderRadius:10,flexShrink:0,overflow:"hidden",background:"#EDE9FE",position:"relative"}}>
+        <div style={{width:38,height:38,borderRadius:10,flexShrink:0,overflow:"hidden",background:"var(--secondary)",position:"relative"}}>
           {room.borrowerThumbnail&&<img src={room.borrowerThumbnail} alt="" loading="lazy" decoding="async" style={{width:"100%",height:"100%",objectFit:"cover"}}
             onError={(e)=>{(e.target as HTMLImageElement).style.display="none";}}/>}
           <div style={{position:"absolute",bottom:0,right:0,width:10,height:10,borderRadius:"50%",
             background:STATUS_COLORS[room.dealStatus]||"#9CA3AF",border:"2px solid #fff"}}/>
         </div>
         <div style={{flex:1,minWidth:0,textAlign:"left"}}>
-          <div style={{fontSize:13,fontWeight:room.lenderChatUnread?700:500,color:"#1E1B4B",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{room.borrowerName}</div>
+          <div style={{fontSize:13,fontWeight:room.lenderChatUnread?700:500,color:"var(--foreground)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{room.borrowerName}</div>
           <div style={{fontSize:11,color:"#9CA3AF",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginTop:2}}>
             {room.lastMessage?stripHtml(room.lastMessage).slice(0,32):"메시지 없음"}
           </div>
-          {chatSortMode==='latest'&&<div style={{fontSize:10,color:'#C4B5FD',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',marginTop:2}}>{room.productType} · {room.keepAcct || '(직접전달)'}</div>}
+          {chatSortMode==='latest'&&<div style={{fontSize:10,color:'var(--text-subtle)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',marginTop:2}}>{room.productType} · {room.keepAcct || '(직접전달)'}</div>}
         </div>
         <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4,flexShrink:0}}>
           <div style={{fontSize:10,color:"#9CA3AF"}}>{formatTime(room.lastMessageTime||'')}</div>
@@ -660,12 +660,12 @@ export default function ChatPage() {
         title={organizationEntry?.pinned ? '고정 해제' : '고정'}
         disabled={organizationSaving}
         onClick={() => updateRoomOrganization(room, { pinned: !organizationEntry?.pinned })}
-        style={{width:36,display:'grid',placeItems:'center',background:'transparent',border:'none',cursor:organizationSaving?'wait':'pointer',flexShrink:0,color:organizationEntry?.pinned?'#7C3AED':'#C4B5FD'}}
+        style={{width:36,display:'grid',placeItems:'center',background:'transparent',border:'none',cursor:organizationSaving?'wait':'pointer',flexShrink:0,color:organizationEntry?.pinned?'var(--action)':'var(--text-subtle)'}}
       >
-        <Pin size={14} fill={organizationEntry?.pinned ? '#7C3AED' : 'none'}/>
+        <Pin size={14} fill={organizationEntry?.pinned ? 'var(--action)' : 'none'}/>
       </button>
       <a href={buildGraytagChatUrl(room.chatRoomUuid)} target="_blank" rel="noreferrer" aria-label={`${room.borrowerName} 그레이태그 채팅방 바로가기`} title="그레이태그 채팅방 바로가기"
-        style={{width:42,display:'grid',placeItems:'center',color:'#7C3AED',textDecoration:'none',background:'rgba(255,255,255,.55)',flexShrink:0}}>
+        style={{width:42,display:'grid',placeItems:'center',color:'var(--action)',textDecoration:'none',background:'rgba(255,255,255,.55)',flexShrink:0}}>
         <ExternalLink size={15}/>
       </a>
       <div style={{width:92,padding:'7px 7px 7px 0',display:'flex',flexDirection:'column',justifyContent:'center',gap:5,flexShrink:0}}>
@@ -686,7 +686,7 @@ export default function ChatPage() {
           value={organizationEntry?.categoryId || ''}
           disabled={organizationSaving}
           onChange={(event) => updateRoomOrganization(room, { categoryId: event.target.value || null })}
-          style={{width:'100%',minHeight:44,border:'1px solid #DDD6FE',borderRadius:7,background:'#fff',color:'#6B7280',fontSize:10,padding:'0 3px',cursor:organizationSaving?'wait':'pointer'}}
+          style={{width:'100%',minHeight:44,border:'1px solid var(--border)',borderRadius:7,background:'#fff',color:'#6B7280',fontSize:10,padding:'0 3px',cursor:organizationSaving?'wait':'pointer'}}
         >
           <option value="">미분류로 이동</option>
           {roomOrganization.categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}
@@ -700,30 +700,30 @@ export default function ChatPage() {
 
   const renderSidebar = () => (
     <div style={{display:"flex",flexDirection:"column",background:"#FDFBFF",flex:1}}>
-      <div style={{padding:"16px 18px",borderBottom:"1px solid #EDE9FE",flexShrink:0}}>
-        <h2 style={{fontSize:15,fontWeight:700,color:"#1E1B4B",margin:0}}>채팅</h2>
+      <div style={{padding:"16px 18px",borderBottom:"1px solid var(--secondary)",flexShrink:0}}>
+        <h2 style={{fontSize:15,fontWeight:700,color:"var(--foreground)",margin:0}}>채팅</h2>
         <p style={{fontSize:11,color:"#9CA3AF",margin:"4px 0 0"}}>
           {rooms.length}개 · 미읽 {rooms.filter(r=>r.lenderChatUnread).length}개
         </p>
-        {isMobile&&<p style={{fontSize:10,color:'#A78BFA',margin:'4px 0 0',fontWeight:700}}>모바일 모드 · 방을 누르면 대화 화면으로 이동</p>}
+        {isMobile&&<p style={{fontSize:10,color:'var(--action)',margin:'4px 0 0',fontWeight:700}}>모바일 모드 · 방을 누르면 대화 화면으로 이동</p>}
       </div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,padding:"10px 14px 0",flexShrink:0}}>
         <button onClick={()=>setChatSortMode('latest')}
-          style={{fontSize:12,fontWeight:800,padding:"8px 0",borderRadius:9,background:chatSortMode==='latest'?"#7C3AED":"#F3F4F6",border:"none",cursor:"pointer",color:chatSortMode==='latest'?"#fff":"#6B7280"}}>
+          style={{fontSize:12,fontWeight:800,padding:"8px 0",borderRadius:9,background:chatSortMode==='latest'?"var(--action)":"#F3F4F6",border:"none",cursor:"pointer",color:chatSortMode==='latest'?"#fff":"#6B7280"}}>
           구매자 메시지 최신순
         </button>
         <button onClick={()=>setChatSortMode('account')}
-          style={{fontSize:12,fontWeight:800,padding:"8px 0",borderRadius:9,background:chatSortMode==='account'?"#7C3AED":"#F3F4F6",border:"none",cursor:"pointer",color:chatSortMode==='account'?"#fff":"#6B7280"}}>
+          style={{fontSize:12,fontWeight:800,padding:"8px 0",borderRadius:9,background:chatSortMode==='account'?"var(--action)":"#F3F4F6",border:"none",cursor:"pointer",color:chatSortMode==='account'?"#fff":"#6B7280"}}>
           계정별 정리
         </button>
       </div>
-      <div style={{padding:'10px 14px 0',borderBottom:'1px solid #EDE9FE',flexShrink:0}}>
+      <div style={{padding:'10px 14px 0',borderBottom:'1px solid var(--secondary)',flexShrink:0}}>
         <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:8}}>
-          <Folder size={14} color="#7C3AED"/>
-          <span style={{fontSize:12,fontWeight:800,color:'#1E1B4B',flex:1}}>폴더</span>
-          {organizationLoading&&<Loader2 size={13} color="#7C3AED" style={{animation:'spin 1s linear infinite'}}/>}
+          <Folder size={14} color="var(--action)"/>
+          <span style={{fontSize:12,fontWeight:800,color:'var(--foreground)',flex:1}}>폴더</span>
+          {organizationLoading&&<Loader2 size={13} color="var(--action)" style={{animation:'spin 1s linear infinite'}}/>}
           <button type="button" onClick={createRoomCategory} title="새 폴더" aria-label="새 폴더"
-            style={{border:'none',borderRadius:7,background:'#EDE9FE',color:'#7C3AED',padding:'5px 8px',display:'flex',alignItems:'center',gap:4,fontSize:11,fontWeight:800,cursor:'pointer'}}>
+            style={{border:'none',borderRadius:7,background:'var(--secondary)',color:'var(--action)',padding:'5px 8px',display:'flex',alignItems:'center',gap:4,fontSize:11,fontWeight:800,cursor:'pointer'}}>
             <FolderPlus size={13}/> 새 폴더
           </button>
         </div>
@@ -735,24 +735,24 @@ export default function ChatPage() {
             ['unassigned', `미분류 ${organizationCounts.unassigned}`],
           ] as Array<[ChatRoomOrganizationView, string]>).map(([view,label]) => (
             <button key={view} type="button" aria-pressed={organizationView===view} onClick={()=>setOrganizationView(view)}
-              style={{border:'none',borderRadius:999,padding:'6px 10px',whiteSpace:'nowrap',cursor:'pointer',fontSize:11,fontWeight:800,background:organizationView===view?'#7C3AED':'#F3F4F6',color:organizationView===view?'#fff':'#6B7280'}}>{label}</button>
+              style={{border:'none',borderRadius:999,padding:'6px 10px',whiteSpace:'nowrap',cursor:'pointer',fontSize:11,fontWeight:800,background:organizationView===view?'var(--action)':'#F3F4F6',color:organizationView===view?'#fff':'#6B7280'}}>{label}</button>
           ))}
           {serviceFolders.map(folder => {
             const view: ChatRoomOrganizationView = `service:${folder.service}`;
             return <button key={view} type="button" aria-pressed={organizationView===view} title={`${folder.service} 자동 폴더`} onClick={()=>setOrganizationView(view)}
-              style={{border:'none',borderRadius:999,padding:'6px 10px',whiteSpace:'nowrap',cursor:'pointer',fontSize:11,fontWeight:800,background:organizationView===view?'#7C3AED':'#F3F4F6',color:organizationView===view?'#fff':'#6B7280'}}>
+              style={{border:'none',borderRadius:999,padding:'6px 10px',whiteSpace:'nowrap',cursor:'pointer',fontSize:11,fontWeight:800,background:organizationView===view?'var(--action)':'#F3F4F6',color:organizationView===view?'#fff':'#6B7280'}}>
               {folder.service} {folder.count}
             </button>;
           })}
           {roomOrganization.categories.map(category => {
             const view: ChatRoomOrganizationView = `category:${category.id}`;
-            return <div key={category.id} style={{display:'flex',alignItems:'center',borderRadius:999,background:organizationView===view?'#7C3AED':'#F3F4F6',overflow:'hidden',flexShrink:0}}>
+            return <div key={category.id} style={{display:'flex',alignItems:'center',borderRadius:999,background:organizationView===view?'var(--action)':'#F3F4F6',overflow:'hidden',flexShrink:0}}>
               <button type="button" aria-pressed={organizationView===view} onClick={()=>setOrganizationView(view)}
                 style={{border:'none',padding:'6px 7px 6px 10px',whiteSpace:'nowrap',cursor:'pointer',fontSize:11,fontWeight:800,background:'transparent',color:organizationView===view?'#fff':'#6B7280'}}>
                 {category.name} {organizationCounts.byCategory[category.id] || 0}
               </button>
               <button type="button" title={`${category.name} 이름 변경`} aria-label={`${category.name} 이름 변경`} onClick={()=>renameRoomCategory(category.id, category.name)}
-                style={{minWidth:44,minHeight:44,border:'none',padding:0,cursor:'pointer',display:'grid',placeItems:'center',background:'transparent',color:organizationView===view?'#EDE9FE':'#9CA3AF'}}><Pencil size={12}/></button>
+                style={{minWidth:44,minHeight:44,border:'none',padding:0,cursor:'pointer',display:'grid',placeItems:'center',background:'transparent',color:organizationView===view?'var(--secondary)':'#9CA3AF'}}><Pencil size={12}/></button>
               <button type="button" title={`${category.name} 폴더 삭제`} aria-label={`${category.name} 폴더 삭제`} onClick={()=>deleteRoomCategory(category.id, category.name)}
                 style={{minWidth:44,minHeight:44,border:'none',padding:0,cursor:'pointer',display:'grid',placeItems:'center',background:'transparent',color:organizationView===view?'#FECACA':'#9CA3AF'}}><Trash2 size={12}/></button>
             </div>;
@@ -760,7 +760,7 @@ export default function ChatPage() {
         </div>
         {organizationError&&<div role="alert" style={{fontSize:10,color:'#B91C1C',paddingBottom:8}}>{organizationError}</div>}
       </div>
-      <div style={{display:"flex",gap:8,padding:"10px 14px",borderBottom:"1px solid #EDE9FE",flexShrink:0}}>
+      <div style={{display:"flex",gap:8,padding:"10px 14px",borderBottom:"1px solid var(--secondary)",flexShrink:0}}>
         <button onClick={()=>setUnreadOnly(v=>!v)}
           style={{flex:1,fontSize:12,fontWeight:700,padding:"7px 0",borderRadius:8,background:unreadOnly?"#FEF3C7":"#F3F4F6",border:"none",cursor:"pointer",color:unreadOnly?"#B45309":"#6B7280"}}>
           안읽음만 보기
@@ -780,18 +780,18 @@ export default function ChatPage() {
           }));
           setTimeout(()=>loadRooms({ force: true, quiet: true }),1800);
         }} disabled={loading||rooms.filter(r=>r.lenderChatUnread).length===0}
-          style={{flex:1,fontSize:12,fontWeight:600,padding:"7px 0",borderRadius:8,background:"#EDE9FE",border:"none",cursor:"pointer",color:"#7C3AED",
+          style={{flex:1,fontSize:12,fontWeight:600,padding:"7px 0",borderRadius:8,background:"var(--secondary)",border:"none",cursor:"pointer",color:"var(--action)",
             opacity:rooms.filter(r=>r.lenderChatUnread).length===0?0.4:1}}>
           모두 읽기
         </button>
         <button onClick={() => loadRooms({ force: true })} disabled={loading}
-          style={{flex:1,fontSize:12,fontWeight:600,padding:"7px 0",borderRadius:8,background:"#EDE9FE",border:"none",cursor:"pointer",color:"#7C3AED"}}>
+          style={{flex:1,fontSize:12,fontWeight:600,padding:"7px 0",borderRadius:8,background:"var(--secondary)",border:"none",cursor:"pointer",color:"var(--action)"}}>
           {loading?<Loader2 size={12} style={{animation:"spin 1s linear infinite"}}/>:"새로고침"}
         </button>
       </div>
       {selectedRoomOutsideFilter && (
-        <div aria-label="현재 선택된 필터 밖 채팅방" style={{borderBottom:'2px solid #C4B5FD',background:'#FAF5FF'}}>
-          <div role="status" style={{padding:'7px 14px',fontSize:10,fontWeight:900,color:'#6D28D9'}}>현재 선택 · 필터 밖</div>
+        <div aria-label="현재 선택된 필터 밖 채팅방" style={{borderBottom:'2px solid var(--text-subtle)',background:'#FAF5FF'}}>
+          <div role="status" style={{padding:'7px 14px',fontSize:10,fontWeight:900,color:'var(--action)'}}>현재 선택 · 필터 밖</div>
           {renderRoomButton(selectedRoomOutsideFilter, false)}
         </div>
       )}
@@ -806,7 +806,7 @@ export default function ChatPage() {
           <div key={svc}>
             <button onClick={()=>setExpandedCategories(p=>({...p,[svc]:!expanded}))}
               style={{width:"100%",padding:"10px 16px",display:"flex",alignItems:"center",gap:8,background:"none",border:"none",cursor:"pointer",
-                borderBottom:"1px solid #EDE9FE",fontSize:13,fontWeight:700,color:"#7C3AED",fontFamily:"inherit"}}>
+                borderBottom:"1px solid var(--secondary)",fontSize:13,fontWeight:700,color:"var(--action)",fontFamily:"inherit"}}>
               <ChevronDown size={14} style={{transform:expanded?"rotate(0)":"rotate(-90deg)",transition:"transform 0.2s",flexShrink:0}}/>
               <span style={{flex:1,textAlign:"left"}}>{svc}</span>
               {unread>0&&<span style={{background:"#EF4444",color:"#fff",borderRadius:12,padding:"2px 7px",fontSize:10,fontWeight:700}}>{unread}</span>}
@@ -822,11 +822,11 @@ export default function ChatPage() {
                   {showSubHeader&&(
                     <button onClick={()=>setExpandedCategories(p=>({...p,[acctKey]:!acctExpanded}))}
                       style={{width:"100%",padding:"6px 16px 6px 32px",display:"flex",alignItems:"center",gap:6,
-                        background:"#F8F6FF",border:"none",cursor:"pointer",
-                        borderBottom:"1px solid #EDE9FE",fontSize:11,fontWeight:600,color:"#9CA3AF",fontFamily:"inherit"}}>
-                      <ChevronDown size={11} style={{transform:acctExpanded?"rotate(0)":"rotate(-90deg)",transition:"transform 0.2s",flexShrink:0,color:"#C4B5FD"}}/>
+                        background:"var(--background)",border:"none",cursor:"pointer",
+                        borderBottom:"1px solid var(--secondary)",fontSize:11,fontWeight:600,color:"#9CA3AF",fontFamily:"inherit"}}>
+                      <ChevronDown size={11} style={{transform:acctExpanded?"rotate(0)":"rotate(-90deg)",transition:"transform 0.2s",flexShrink:0,color:"var(--text-subtle)"}}/>
                       <span style={{flex:1,textAlign:"left",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{acct}</span>
-                      <span style={{color:"#C4B5FD",fontSize:10,flexShrink:0}}>{acctRooms.length}명</span>
+                      <span style={{color:"var(--text-subtle)",fontSize:10,flexShrink:0}}>{acctRooms.length}명</span>
                       {acctUnread>0&&<span style={{background:"#FCA5A5",color:"#fff",borderRadius:10,padding:"1px 5px",fontSize:9,fontWeight:700,flexShrink:0}}>{acctUnread}</span>}
                     </button>
                   )}
@@ -839,7 +839,7 @@ export default function ChatPage() {
       })}
       {visibleRooms.length===0&&!loading&&(
         <div style={{textAlign:"center",padding:"48px 20px",color:"#9CA3AF",fontSize:13}}>
-          <MessageCircle size={28} color="#C4B5FD" style={{margin:"0 auto 10px"}}/>
+          <MessageCircle size={28} color="var(--text-subtle)" style={{margin:"0 auto 10px"}}/>
           {rooms.length===0?'채팅방 없음':'조건에 맞는 채팅방 없음'}
         </div>
       )}
@@ -857,16 +857,16 @@ export default function ChatPage() {
     return (
       <div style={{flex:1,height:"100%",display:"flex",flexDirection:"column",minWidth:0}}>
         {/* 헤더 */}
-        <div style={{padding:isMobile?"10px 12px":"14px 20px",borderBottom:"1px solid #F3F0FF",display:"flex",alignItems:"center",gap:12,flexWrap:isMobile?'wrap':'nowrap',flexShrink:0,background:"#fff"}}>
-          <button onClick={()=>setSelectedRoom(null)} style={{background:"none",border:"none",cursor:"pointer",padding:4,borderRadius:6,color:"#7C3AED",display:"flex",alignItems:"center",gap:2,fontSize:12,fontWeight:800}}>
+        <div style={{padding:isMobile?"10px 12px":"14px 20px",borderBottom:"1px solid var(--muted)",display:"flex",alignItems:"center",gap:12,flexWrap:isMobile?'wrap':'nowrap',flexShrink:0,background:"#fff"}}>
+          <button onClick={()=>setSelectedRoom(null)} style={{background:"none",border:"none",cursor:"pointer",padding:4,borderRadius:6,color:"var(--action)",display:"flex",alignItems:"center",gap:2,fontSize:12,fontWeight:800}}>
             <ChevronLeft size={22}/> {isMobile&&"목록"}
           </button>
-          <div style={{width:40,height:40,borderRadius:10,overflow:"hidden",background:"#EDE9FE",flexShrink:0}}>
+          <div style={{width:40,height:40,borderRadius:10,overflow:"hidden",background:"var(--secondary)",flexShrink:0}}>
             {selectedRoom.borrowerThumbnail&&<img src={selectedRoom.borrowerThumbnail} alt="" loading="lazy" decoding="async" style={{width:"100%",height:"100%",objectFit:"cover"}}
               onError={(e)=>{(e.target as HTMLImageElement).style.display="none";}}/>}
           </div>
           <div style={{flex:1,minWidth:0}}>
-            <div style={{fontSize:17,fontWeight:700,color:"#1E1B4B"}}>{selectedRoom.borrowerName}</div>
+            <div style={{fontSize:17,fontWeight:700,color:"var(--foreground)"}}>{selectedRoom.borrowerName}</div>
             <div style={{fontSize:11,color:"#9CA3AF",marginTop:2}}>{selectedRoom.productType} · {selectedRoom.statusName} · {selectedRoom.keepAcct}</div>
           </div>
           <div data-chat-header-actions style={{width:isMobile?'100%':'auto',display:'flex',alignItems:'center',justifyContent:'flex-end',gap:8,marginLeft:isMobile?'auto':0,minWidth:0,flexShrink:0}}>
@@ -878,23 +878,23 @@ export default function ChatPage() {
               aria-expanded={headerFolderMenuOpen}
               disabled={selectedRoomOrganizationSaving}
               onClick={() => setHeaderFolderMenuOpen(open => !open)}
-              style={{minHeight:44,maxWidth:isMobile?104:150,border:'1px solid #DDD6FE',borderRadius:8,padding:'0 10px',background:'#F5F3FF',color:'#6D28D9',display:'inline-flex',alignItems:'center',gap:5,cursor:selectedRoomOrganizationSaving?'wait':'pointer',fontSize:11,fontWeight:800,fontFamily:'inherit',opacity:selectedRoomOrganizationSaving?0.65:1}}
+              style={{minHeight:44,maxWidth:isMobile?104:150,border:'1px solid var(--border)',borderRadius:8,padding:'0 10px',background:'var(--muted)',color:'var(--action)',display:'inline-flex',alignItems:'center',gap:5,cursor:selectedRoomOrganizationSaving?'wait':'pointer',fontSize:11,fontWeight:800,fontFamily:'inherit',opacity:selectedRoomOrganizationSaving?0.65:1}}
             >
               {selectedRoomOrganizationSaving?<Loader2 size={13} style={{animation:'spin 1s linear infinite',flexShrink:0}}/>:<Folder size={13} style={{flexShrink:0}}/>}
               <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{selectedRoomFolderLabel}</span>
               <ChevronDown size={12} style={{flexShrink:0,transform:headerFolderMenuOpen?'rotate(180deg)':'none'}}/>
             </button>
             {headerFolderMenuOpen&&(
-              <div role="menu" aria-label="폴더 선택" style={{position:'absolute',right:0,top:'calc(100% + 6px)',zIndex:30,minWidth:180,maxWidth:260,maxHeight:300,overflowY:'auto',padding:6,border:'1px solid #DDD6FE',borderRadius:10,background:'#fff',boxShadow:'0 12px 30px rgba(76,29,149,.18)'}}>
+              <div role="menu" aria-label="폴더 선택" style={{position:'absolute',right:0,top:'calc(100% + 6px)',zIndex:30,minWidth:180,maxWidth:260,maxHeight:300,overflowY:'auto',padding:6,border:'1px solid var(--border)',borderRadius:10,background:'#fff',boxShadow:'0 12px 30px rgba(76,29,149,.18)'}}>
                 <button type="button" role="menuitemradio" aria-checked={!selectedRoomOrganizationEntry?.categoryId}
                   onClick={() => { setHeaderFolderMenuOpen(false); void updateRoomOrganization(selectedRoom, { categoryId: null }); }}
-                  style={{width:'100%',minHeight:44,border:'none',borderRadius:7,padding:'8px 10px',background:!selectedRoomOrganizationEntry?.categoryId?'#EDE9FE':'transparent',color:'#4C1D95',display:'flex',alignItems:'center',gap:8,cursor:'pointer',fontSize:12,fontWeight:700,textAlign:'left'}}>
+                  style={{width:'100%',minHeight:44,border:'none',borderRadius:7,padding:'8px 10px',background:!selectedRoomOrganizationEntry?.categoryId?'var(--secondary)':'transparent',color:'#4C1D95',display:'flex',alignItems:'center',gap:8,cursor:'pointer',fontSize:12,fontWeight:700,textAlign:'left'}}>
                   <CheckCircle2 size={14} style={{opacity:!selectedRoomOrganizationEntry?.categoryId?1:0}}/> 미분류
                 </button>
                 {roomOrganization.categories.map(category => (
                   <button key={category.id} type="button" role="menuitemradio" aria-checked={selectedRoomOrganizationEntry?.categoryId === category.id}
                     onClick={() => { setHeaderFolderMenuOpen(false); void updateRoomOrganization(selectedRoom, { categoryId: category.id }); }}
-                    style={{width:'100%',minHeight:44,border:'none',borderRadius:7,padding:'8px 10px',background:selectedRoomOrganizationEntry?.categoryId===category.id?'#EDE9FE':'transparent',color:'#4C1D95',display:'flex',alignItems:'center',gap:8,cursor:'pointer',fontSize:12,fontWeight:700,textAlign:'left'}}>
+                    style={{width:'100%',minHeight:44,border:'none',borderRadius:7,padding:'8px 10px',background:selectedRoomOrganizationEntry?.categoryId===category.id?'var(--secondary)':'transparent',color:'#4C1D95',display:'flex',alignItems:'center',gap:8,cursor:'pointer',fontSize:12,fontWeight:700,textAlign:'left'}}>
                     <CheckCircle2 size={14} style={{opacity:selectedRoomOrganizationEntry?.categoryId===category.id?1:0}}/> {category.name}
                   </button>
                 ))}
@@ -907,7 +907,7 @@ export default function ChatPage() {
           </a>
           {selectedRoom.lenderChatUnread&&<button onClick={()=>markRoomRead(selectedRoom)} style={{background:"#FEF3C7",border:"none",borderRadius:8,padding:"6px 10px",cursor:"pointer",fontSize:12,color:"#B45309",fontWeight:800,fontFamily:"inherit"}}>읽음 처리</button>}
           <button onClick={()=>loadMessages(selectedRoom.chatRoomUuid,1)}
-            style={{background:"#EDE9FE",border:"none",borderRadius:8,padding:"6px 10px",cursor:"pointer",display:"flex",alignItems:"center",gap:4,fontSize:12,color:"#7C3AED",fontWeight:600,fontFamily:"inherit",minHeight:44}}>
+            style={{background:"var(--secondary)",border:"none",borderRadius:8,padding:"6px 10px",cursor:"pointer",display:"flex",alignItems:"center",gap:4,fontSize:12,color:"var(--action)",fontWeight:600,fontFamily:"inherit",minHeight:44}}>
             <RefreshCw size={13}/> {!isMobile&&"새로고침"}
           </button>
           </div>
@@ -917,21 +917,21 @@ export default function ChatPage() {
         <div style={{flex:1,overflowY:"auto",padding:"16px 20px",display:"flex",flexDirection:"column",gap:8,background:"#FAFAFA"}}>
           {hasMore&&(
             <button onClick={loadMore} disabled={msgLoading}
-              style={{alignSelf:"center",background:"#F3F0FF",border:"none",borderRadius:10,padding:"8px 18px",
-                fontSize:12,color:"#7C3AED",fontWeight:600,cursor:"pointer",fontFamily:"inherit",marginBottom:8,display:"flex",alignItems:"center",gap:4}}>
+              style={{alignSelf:"center",background:"var(--muted)",border:"none",borderRadius:10,padding:"8px 18px",
+                fontSize:12,color:"var(--action)",fontWeight:600,cursor:"pointer",fontFamily:"inherit",marginBottom:8,display:"flex",alignItems:"center",gap:4}}>
               {msgLoading?<Loader2 size={12} style={{animation:"spin 1s linear infinite"}}/>:<ArrowDown size={12}/>}
               이전 메시지 더 보기
             </button>
           )}
           {msgLoading&&messages.length===0&&(
-            <div style={{textAlign:"center",padding:"30px",color:"#A78BFA"}}>
+            <div style={{textAlign:"center",padding:"30px",color:"var(--action)"}}>
               <Loader2 size={24} style={{animation:"spin 1s linear infinite",margin:"0 auto"}}/>
             </div>
           )}
           {messages.map((msg,i)=>{
             if(msg.isInfo){
               return(
-                <div key={i} style={{alignSelf:"center",background:"#F3F0FF",borderRadius:12,padding:"10px 16px",maxWidth:"80%",textAlign:"center"}}>
+                <div key={i} style={{alignSelf:"center",background:"var(--muted)",borderRadius:12,padding:"10px 16px",maxWidth:"80%",textAlign:"center"}}>
                   <div style={{fontSize:12,color:"#6B7280",lineHeight:1.6}} dangerouslySetInnerHTML={{__html:msg.message}}/>
                   <div style={{fontSize:10,color:"#9CA3AF",marginTop:4}}>{msg.registeredDateTime}</div>
                 </div>
@@ -941,17 +941,17 @@ export default function ChatPage() {
             return(
               <div key={i} style={{alignSelf:isMe?"flex-end":"flex-start",maxWidth:isMobile?"88%":"60%",display:"flex",flexDirection:"column",gap:4}}>
                 <div style={{
-                  background:isMe?"#7C3AED":"#fff",
-                  color:isMe?"#fff":"#1E1B4B",
+                  background:isMe?"var(--action)":"#fff",
+                  color:isMe?"#fff":"var(--foreground)",
                   borderRadius:isMe?"18px 18px 4px 18px":"18px 18px 18px 4px",
                   padding:"12px 16px",
                   boxShadow:isMe?"0 2px 8px rgba(124,58,237,0.2)":"0 1px 4px rgba(0,0,0,0.07)",
-                  border:isMe?"none":"1px solid #EDE9FE",
+                  border:isMe?"none":"1px solid var(--secondary)",
                   fontSize:14,lineHeight:1.7,whiteSpace:"pre-wrap",wordBreak:"break-word",
                 }} dangerouslySetInnerHTML={{__html:msg.message}}/>
                 <div style={{fontSize:10,color:"#9CA3AF",textAlign:isMe?"right":"left",display:"flex",gap:4,justifyContent:isMe?"flex-end":"flex-start",paddingInline:"4px"}}>
                   {msg.registeredDateTime}
-                  {isMe&&!msg.isRead&&<span style={{color:"#A78BFA",fontWeight:600}}>·미읽</span>}
+                  {isMe&&!msg.isRead&&<span style={{color:"var(--action)",fontWeight:600}}>·미읽</span>}
                 </div>
               </div>
             );
@@ -960,12 +960,12 @@ export default function ChatPage() {
         </div>
 
         {/* 입력 영역 */}
-        <div style={{padding:isMobile?"10px 12px calc(12px + env(safe-area-inset-bottom))":"12px 20px 16px",borderTop:"1px solid #EDE9FE",display:"flex",flexDirection:"column",gap:8,flexShrink:0,background:"#fff"}}>
+        <div style={{padding:isMobile?"10px 12px calc(12px + env(safe-area-inset-bottom))":"12px 20px 16px",borderTop:"1px solid var(--secondary)",display:"flex",flexDirection:"column",gap:8,flexShrink:0,background:"#fff"}}>
           <button onClick={handleAiReply} disabled={aiLoading||messages.length===0}
             style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,width:"100%",padding:"10px 0",borderRadius:12,
-              background:aiLoading?"#EDE9FE":"linear-gradient(135deg,#818CF8,#A78BFA)",
+              background:aiLoading?"var(--secondary)":"linear-gradient(135deg,var(--action),var(--action))",
               border:"none",cursor:aiLoading?"not-allowed":"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,color:"#fff",
-              boxShadow:"0 2px 10px rgba(167,139,250,0.3)",opacity:messages.length===0?0.5:1}}>
+              boxShadow:"0 2px 10px rgba(17,17,17,0.3)",opacity:messages.length===0?0.5:1}}>
             {aiLoading?<Loader2 size={15} style={{animation:"spin 1s linear infinite"}}/>:<Sparkles size={15}/>}
             {aiLoading?"AI 답변 생성 중...":"🤖 AI 답변 생성"}
           </button>
@@ -976,16 +976,16 @@ export default function ChatPage() {
               onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();handleSend();}}}
               placeholder="메시지 입력... (Shift+Enter 줄바꿈)"
               rows={sendText.split('\n').length>2?3:2}
-              style={{flex:1,padding:"14px 18px",borderRadius:14,border:"1.5px solid #DDD6FE",
-                fontSize:15,color:"#1E1B4B",background:"#F8F6FF",outline:"none",fontFamily:"inherit",
+              style={{flex:1,padding:"14px 18px",borderRadius:14,border:"1.5px solid var(--border)",
+                fontSize:15,color:"var(--foreground)",background:"var(--background)",outline:"none",fontFamily:"inherit",
                 resize:"none",lineHeight:1.5,minHeight:52,maxHeight:140,
                 boxSizing:"border-box" as any}}
             />
             <button onClick={handleSend} disabled={!sendText.trim()||sending}
-              style={{background:sendText.trim()?"#7C3AED":"#DDD6FE",border:"none",borderRadius:14,
+              style={{background:sendText.trim()?"var(--action)":"var(--border)",border:"none",borderRadius:14,
                 padding:"0 20px",cursor:sendText.trim()?"pointer":"not-allowed",flexShrink:0,
                 display:"flex",alignItems:"center",height:52,transition:"background 0.2s"}}>
-              {sending?<Loader2 size={18} color="#fff" style={{animation:"spin 1s linear infinite"}}/>:<Send size={18} color={sendText.trim()?"#fff":"#A78BFA"}/>}
+              {sending?<Loader2 size={18} color="#fff" style={{animation:"spin 1s linear infinite"}}/>:<Send size={18} color={sendText.trim()?"#fff":"var(--action)"}/>}
             </button>
           </div>
         </div>
@@ -997,7 +997,7 @@ export default function ChatPage() {
 
   const mobileChatHidden = isMobile && selectedRoom;
   const sidebar = (
-    <div style={{width:isMobile?"100%":sidebarWidth,minWidth:isMobile?"100%":300,maxWidth:isMobile?"100%":640,borderRight:isMobile?"none":"1px solid #EDE9FE",
+    <div style={{width:isMobile?"100%":sidebarWidth,minWidth:isMobile?"100%":300,maxWidth:isMobile?"100%":640,borderRight:isMobile?"none":"1px solid var(--secondary)",
       display:mobileChatHidden?"none":"flex",flexDirection:"column",background:"#FDFBFF",flexShrink:0,position:"relative"}}>
       <div style={{overflowY:"auto",flexShrink:0}}>
         {renderArPanel()}
@@ -1019,7 +1019,7 @@ export default function ChatPage() {
         ? renderChat()
         : <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",color:"#9CA3AF",background:"#FAFAFA"}}>
             <div style={{textAlign:"center"}}>
-              <MessageCircle size={56} color="#DDD6FE" style={{margin:"0 auto 16px"}}/>
+              <MessageCircle size={56} color="var(--border)" style={{margin:"0 auto 16px"}}/>
               <div style={{fontSize:15,color:"#9CA3AF"}}>채팅방을 선택해주세요</div>
             </div>
           </div>

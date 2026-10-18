@@ -298,24 +298,24 @@ export default function RealtimeChatNotifier() {
   return (
     <div style={{ position: 'fixed', right: 16, bottom: isChat ? 88 : 18, zIndex: 850, fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, sans-serif' }}>
       {toast && !open && (
-        <div role="status" aria-live="polite" style={{ position: 'absolute', right: 0, bottom: 58, width: 'min(340px, calc(100vw - 32px))', background: '#fff', border: '1.5px solid #C4B5FD', borderRadius: 16, padding: 13, boxShadow: '0 18px 48px rgba(76,29,149,0.22)', color: '#1E1B4B' }}>
+        <div role="status" aria-live="polite" style={{ position: 'absolute', right: 0, bottom: 58, width: 'min(340px, calc(100vw - 32px))', background: '#fff', border: '1.5px solid var(--text-subtle)', borderRadius: 16, padding: 13, boxShadow: '0 18px 48px rgba(76,29,149,0.22)', color: 'var(--foreground)' }}>
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 9 }}>
-            <div style={{ width: 34, height: 34, borderRadius: 11, background: '#EDE9FE', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
-              <BellRing size={17} color="#7C3AED" />
+            <div style={{ width: 34, height: 34, borderRadius: 11, background: 'var(--secondary)', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+              <BellRing size={17} color="var(--action)" />
             </div>
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontSize: 12, fontWeight: 900 }}>새 문의 · {toast.buyerName}</div>
-              <div style={{ fontSize: 10, color: '#7C3AED', marginTop: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{toast.serviceType} · {toast.accountLabel} · {formatNotificationTime(toast.messageAt)}</div>
+              <div style={{ fontSize: 10, color: 'var(--action)', marginTop: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{toast.serviceType} · {toast.accountLabel} · {formatNotificationTime(toast.messageAt)}</div>
             </div>
             <button type="button" onClick={() => setToast(null)} aria-label="알림 닫기" style={{ border: 0, background: 'transparent', color: '#9CA3AF', cursor: 'pointer', padding: 2 }}><X size={15} /></button>
           </div>
           <div style={{ fontSize: 12, color: '#4B5563', lineHeight: 1.45, marginTop: 9, wordBreak: 'break-word' }}>{toast.message}</div>
-          <button type="button" onClick={() => openChat(toast)} style={{ marginTop: 10, width: '100%', border: 0, borderRadius: 10, background: '#7C3AED', color: '#fff', padding: '8px 10px', fontSize: 11, fontWeight: 900, cursor: 'pointer' }}>채팅방 바로가기</button>
+          <button type="button" onClick={() => openChat(toast)} style={{ marginTop: 10, width: '100%', border: 0, borderRadius: 10, background: 'var(--action)', color: '#fff', padding: '8px 10px', fontSize: 11, fontWeight: 900, cursor: 'pointer' }}>채팅방 바로가기</button>
         </div>
       )}
 
       {open && (
-        <div style={{ position: 'absolute', right: 0, bottom: 58, width: 'min(340px, calc(100vw - 32px))', background: '#fff', border: '1px solid #DDD6FE', borderRadius: 16, padding: 14, boxShadow: '0 18px 48px rgba(30,27,75,0.2)', color: '#1E1B4B' }}>
+        <div style={{ position: 'absolute', right: 0, bottom: 58, width: 'min(340px, calc(100vw - 32px))', background: '#fff', border: '1px solid var(--border)', borderRadius: 16, padding: 14, boxShadow: '0 18px 48px rgba(17,17,17,0.2)', color: 'var(--foreground)' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
             <div style={{ fontSize: 14, fontWeight: 900 }}>실시간 채팅 알림</div>
             <button type="button" onClick={() => setOpen(false)} aria-label="알림 설정 닫기" style={{ border: 0, background: 'transparent', cursor: 'pointer', color: '#9CA3AF' }}><X size={16} /></button>
@@ -326,10 +326,10 @@ export default function RealtimeChatNotifier() {
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 7, marginTop: 12 }}>
-            <button type="button" onClick={toggleEnabled} aria-pressed={enabled} style={{ border: `1px solid ${enabled ? '#A78BFA' : '#D1D5DB'}`, borderRadius: 10, background: enabled ? '#F3F0FF' : '#F9FAFB', color: enabled ? '#6D28D9' : '#6B7280', padding: '8px 7px', fontSize: 10, fontWeight: 900, cursor: 'pointer' }}>
+            <button type="button" onClick={toggleEnabled} aria-pressed={enabled} style={{ border: `1px solid ${enabled ? 'var(--action)' : '#D1D5DB'}`, borderRadius: 10, background: enabled ? 'var(--muted)' : '#F9FAFB', color: enabled ? 'var(--action)' : '#6B7280', padding: '8px 7px', fontSize: 10, fontWeight: 900, cursor: 'pointer' }}>
               {enabled ? '실시간 수신 ON' : '실시간 수신 OFF'}
             </button>
-            <button type="button" onClick={() => void toggleSound()} aria-pressed={soundEnabled} style={{ border: `1px solid ${soundEnabled ? '#A78BFA' : '#D1D5DB'}`, borderRadius: 10, background: soundEnabled ? '#F3F0FF' : '#F9FAFB', color: soundEnabled ? '#6D28D9' : '#6B7280', padding: '8px 7px', fontSize: 10, fontWeight: 900, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+            <button type="button" onClick={() => void toggleSound()} aria-pressed={soundEnabled} style={{ border: `1px solid ${soundEnabled ? 'var(--action)' : '#D1D5DB'}`, borderRadius: 10, background: soundEnabled ? 'var(--muted)' : '#F9FAFB', color: soundEnabled ? 'var(--action)' : '#6B7280', padding: '8px 7px', fontSize: 10, fontWeight: 900, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
               {soundEnabled ? <Volume2 size={13} /> : <VolumeX size={13} />}{soundEnabled ? '소리 ON' : '소리 켜기'}
             </button>
           </div>
@@ -344,15 +344,15 @@ export default function RealtimeChatNotifier() {
               <div style={{ fontSize: 10, color: '#9CA3AF', padding: '5px 0' }}>새로 도착한 문의가 없어요.</div>
             ) : recent.slice(0, 3).map((notification) => (
               <button key={notification.id} type="button" onClick={() => openChat(notification)} style={{ width: '100%', border: 0, borderRadius: 9, background: '#FAFAFF', padding: '7px 8px', marginBottom: 5, textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit' }}>
-                <div style={{ fontSize: 10, fontWeight: 900, color: '#1E1B4B', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{notification.buyerName} · {notification.serviceType}</div>
-                <div style={{ fontSize: 10, color: '#7C3AED', marginTop: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{notification.message}</div>
+                <div style={{ fontSize: 10, fontWeight: 900, color: 'var(--foreground)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{notification.buyerName} · {notification.serviceType}</div>
+                <div style={{ fontSize: 10, color: 'var(--action)', marginTop: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{notification.message}</div>
               </button>
             ))}
           </div>
         </div>
       )}
 
-      <button type="button" onClick={() => { setOpen((current) => !current); setUnseenCount(0); }} aria-label="실시간 채팅 알림 열기" title={statusCopy.label} style={{ position: 'relative', width: 46, height: 46, borderRadius: '50%', border: '1px solid #C4B5FD', background: '#7C3AED', color: '#fff', display: 'grid', placeItems: 'center', cursor: 'pointer', boxShadow: '0 8px 24px rgba(124,58,237,0.3)' }}>
+      <button type="button" onClick={() => { setOpen((current) => !current); setUnseenCount(0); }} aria-label="실시간 채팅 알림 열기" title={statusCopy.label} style={{ position: 'relative', width: 46, height: 46, borderRadius: '50%', border: '1px solid var(--text-subtle)', background: 'var(--action)', color: '#fff', display: 'grid', placeItems: 'center', cursor: 'pointer', boxShadow: '0 8px 24px rgba(124,58,237,0.3)' }}>
         <Bell size={20} />
         <span aria-hidden="true" style={{ position: 'absolute', right: 3, bottom: 3, width: 9, height: 9, borderRadius: '50%', background: statusCopy.color, border: '2px solid #fff' }} />
         {unseenCount > 0 && <span style={{ position: 'absolute', right: -4, top: -5, minWidth: 18, height: 18, borderRadius: 999, background: '#EF4444', color: '#fff', fontSize: 9, fontWeight: 900, display: 'grid', placeItems: 'center', padding: '0 3px', border: '2px solid #fff' }}>{Math.min(unseenCount, 99)}</span>}

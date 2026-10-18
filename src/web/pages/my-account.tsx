@@ -38,11 +38,11 @@ const save = (cs: CookieSet[]) => localStorage.setItem(STORAGE_KEY, JSON.stringi
 
 const STATUS_MAP: Record<string, { label: string; color: string; bg: string }> = {
   OnSale:                   { label: '판매 중',   color: '#059669', bg: '#ECFDF5' },
-  Using:                    { label: '이용 중',   color: '#7C3AED', bg: '#F5F3FF' },
+  Using:                    { label: '이용 중',   color: 'var(--action)', bg: 'var(--muted)' },
   UsingNearExpiration:      { label: '만료 임박',  color: '#D97706', bg: '#FFFBEB' },
   Delivered:                { label: '전달 완료',  color: '#2563EB', bg: '#EFF6FF' },
   Delivering:               { label: '전달 중',   color: '#0891B2', bg: '#ECFEFF' },
-  Reserved:                 { label: '예약됨',    color: '#6366F1', bg: '#EEF2FF' },
+  Reserved:                 { label: '예약됨',    color: '#6366F1', bg: 'var(--muted)' },
   LendingAcceptanceWaiting: { label: '수락 대기',  color: '#D97706', bg: '#FFFBEB' },
   NormalFinished:           { label: '완료',      color: '#6B7280', bg: '#F3F4F6' },
   CancelByNoShow:           { label: '취소됨',    color: '#EF4444', bg: '#FFF0F0' },
@@ -167,21 +167,21 @@ export default function MyAccountPage() {
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Users size={18} color="#A78BFA" />
-              <span style={{ fontSize: 16, fontWeight: 700, color: '#1E1B4B' }}>파티 정보</span>
+              <Users size={18} color="var(--action)" />
+              <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--foreground)' }}>파티 정보</span>
             </div>
             <button onClick={() => setShowPopupFor(null)} style={{
-              background: '#F3F0FF', border: 'none', borderRadius: 8,
+              background: 'var(--muted)', border: 'none', borderRadius: 8,
               padding: '6px 10px', cursor: 'pointer', fontFamily: 'inherit',
             }}>
-              <X size={16} color="#7C3AED" />
+              <X size={16} color="var(--action)" />
             </button>
           </div>
 
           <div style={{ fontSize: 12, color: '#9CA3AF', marginBottom: 12 }}>{email}</div>
 
           {pd?.loading && (
-            <div style={{ textAlign: 'center', padding: '30px 0', color: '#A78BFA' }}>
+            <div style={{ textAlign: 'center', padding: '30px 0', color: 'var(--action)' }}>
               <Loader2 size={24} style={{ animation: 'spin 1s linear infinite', margin: '0 auto 8px', display: 'block' }} />
               <div style={{ fontSize: 13 }}>파티 정보 로딩 중...</div>
             </div>
@@ -222,7 +222,7 @@ export default function MyAccountPage() {
                   const totalDays = earliest && latest ? Math.ceil((new Date(latest).getTime() - new Date(earliest).getTime()) / (1000*60*60*24)) : 0;
 
                   return (
-                    <div key={ai} style={{ background: '#F8F6FF', borderRadius: 14, padding: 14 }}>
+                    <div key={ai} style={{ background: 'var(--background)', borderRadius: 14, padding: 14 }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                           {(() => {
@@ -230,21 +230,21 @@ export default function MyAccountPage() {
                             return cat ? (
                               <>
                                 <img src={cat.logo} alt={cat.label} style={{ width: 22, height: 22, objectFit: 'contain', borderRadius: 5, background: cat.bg, padding: 2, flexShrink: 0 }} onError={(e) => { (e.target as HTMLImageElement).style.display='none'; }} />
-                                <span style={{ fontSize: 13, fontWeight: 700, color: '#1E1B4B' }}>{cat.label}</span>
+                                <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--foreground)' }}>{cat.label}</span>
                               </>
                             ) : (
-                              <span style={{ fontSize: 13, fontWeight: 700, color: '#1E1B4B' }}>{acct.serviceType}</span>
+                              <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--foreground)' }}>{acct.serviceType}</span>
                             );
                           })()}
                         </div>
-                        <div style={{ fontSize: 12, fontWeight: 600, color: '#A78BFA' }}>{fmtMoney(acct.totalIncome)}</div>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--action)' }}>{fmtMoney(acct.totalIncome)}</div>
                       </div>
 
                       <div style={{ fontSize: 11, color: '#6B7280', marginBottom: 8 }}>{acct.email}</div>
 
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 10 }}>
                         <div style={{ background: '#fff', borderRadius: 10, padding: '8px', textAlign: 'center' }}>
-                          <div style={{ fontSize: 16, fontWeight: 700, color: '#A78BFA' }}>{filledSlots}/{totalSlots}</div>
+                          <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--action)' }}>{filledSlots}/{totalSlots}</div>
                           <div style={{ fontSize: 10, color: '#9CA3AF' }}>사용/전체</div>
                         </div>
                         <div style={{ background: '#fff', borderRadius: 10, padding: '8px', textAlign: 'center' }}>
@@ -252,16 +252,16 @@ export default function MyAccountPage() {
                           <div style={{ fontSize: 10, color: '#9CA3AF' }}>잔여 자리</div>
                         </div>
                         <div style={{ background: '#fff', borderRadius: 10, padding: '8px', textAlign: 'center' }}>
-                          <div style={{ fontSize: 16, fontWeight: 700, color: maxRemain <= 7 ? '#D97706' : '#1E1B4B' }}>{maxRemain}일</div>
+                          <div style={{ fontSize: 16, fontWeight: 700, color: maxRemain <= 7 ? '#D97706' : 'var(--foreground)' }}>{maxRemain}일</div>
                           <div style={{ fontSize: 10, color: '#9CA3AF' }}>최대 잔여</div>
                         </div>
                       </div>
 
                       {earliest && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10, background: '#fff', borderRadius: 8, padding: '7px 10px' }}>
-                          <Calendar size={12} color="#A78BFA" />
+                          <Calendar size={12} color="var(--action)" />
                           <span style={{ fontSize: 11, color: '#6B7280' }}>파티 기간:</span>
-                          <span style={{ fontSize: 11, fontWeight: 600, color: '#1E1B4B' }}>
+                          <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--foreground)' }}>
                             {fmtDate(earliest)} ~ {fmtDate(latest)}
                             {totalDays > 0 && ` (${totalDays}일)`}
                           </span>
@@ -277,29 +277,29 @@ export default function MyAccountPage() {
                       )}
 
                       {acct.members.length > 0 && (
-                        <div style={{ borderTop: '1px solid #EDE9FE', paddingTop: 8 }}>
+                        <div style={{ borderTop: '1px solid var(--secondary)', paddingTop: 8 }}>
                           <div style={{ fontSize: 11, fontWeight: 600, color: '#6B7280', marginBottom: 6 }}>파티원 ({acct.members.length}명)</div>
                           {acct.members.map((m, mi) => {
                             const b = badge(m.status, m.statusName);
                             return (
                               <div key={m.dealUsid} style={{
                                 display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0',
-                                borderBottom: mi < acct.members.length - 1 ? '1px solid #F3F0FF' : 'none',
+                                borderBottom: mi < acct.members.length - 1 ? '1px solid var(--muted)' : 'none',
                               }}>
                                 <div style={{
                                   width: 22, height: 22, borderRadius: 6, flexShrink: 0,
-                                  background: ['Using', 'UsingNearExpiration'].includes(m.status) ? '#A78BFA' : '#E9E4FF',
+                                  background: ['Using', 'UsingNearExpiration'].includes(m.status) ? 'var(--action)' : 'var(--border)',
                                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                                   fontSize: 10, fontWeight: 700, color: ['Using', 'UsingNearExpiration'].includes(m.status) ? '#fff' : '#9CA3AF',
                                 }}>{mi + 1}</div>
                                 <div style={{ flex: 1, minWidth: 0 }}>
                                   <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                                    <span style={{ fontSize: 12, fontWeight: 600, color: '#1E1B4B' }}>{m.name || '(미확인)'}</span>
+                                    <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--foreground)' }}>{m.name || '(미확인)'}</span>
                                     <span style={{ fontSize: 9, fontWeight: 600, color: b.color, background: b.bg, borderRadius: 4, padding: '1px 5px' }}>{b.label}</span>
                                   </div>
                                   {m.remainderDays > 0 && <div style={{ fontSize: 10, color: '#9CA3AF', marginTop: 1 }}>{m.remainderDays}일 남음</div>}
                                 </div>
-                                <div style={{ fontSize: 12, fontWeight: 700, color: '#A78BFA', flexShrink: 0 }}>{m.price}</div>
+                                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--action)', flexShrink: 0 }}>{m.price}</div>
                               </div>
                             );
                           })}
@@ -324,14 +324,14 @@ export default function MyAccountPage() {
     const tab = tabs[id] || 'lender';
     const deals = tab === 'borrower' ? r?.data?.borrowerDeals : r?.data?.lenderDeals;
     return (
-      <div key={id} style={{ background:'#fff', borderRadius:16, boxShadow:'0 2px 12px rgba(167,139,250,0.08)', border:`1.5px solid ${isAuto ? '#A78BFA' : r?.data ? '#A78BFA' : '#F3F0FF'}`, overflow:'hidden' }}>
+      <div key={id} style={{ background:'#fff', borderRadius:16, boxShadow:'0 2px 12px rgba(17,17,17,0.08)', border:`1.5px solid ${isAuto ? 'var(--action)' : r?.data ? 'var(--action)' : 'var(--muted)'}`, overflow:'hidden' }}>
         <div style={{ padding:'14px 16px', display:'flex', alignItems:'center', gap:12 }}>
-          <div style={{ width:40, height:40, borderRadius:12, background: isAuto ? 'linear-gradient(135deg, #A78BFA, #6D28D9)' : '#EDE9FE', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-            {isAuto ? <Zap size={20} color="#fff" strokeWidth={2} /> : <Cookie size={20} color="#A78BFA" strokeWidth={2} />}
+          <div style={{ width:40, height:40, borderRadius:12, background: isAuto ? 'linear-gradient(135deg, var(--action), var(--action))' : 'var(--secondary)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+            {isAuto ? <Zap size={20} color="#fff" strokeWidth={2} /> : <Cookie size={20} color="var(--action)" strokeWidth={2} />}
           </div>
           <div style={{ flex:1, minWidth:0 }}>
             <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-              <div style={{ fontSize:14, fontWeight:700, color:'#1E1B4B' }}>{label}</div>
+              <div style={{ fontSize:14, fontWeight:700, color:'var(--foreground)' }}>{label}</div>
               {isAuto && (
                 <span style={{ fontSize:9, fontWeight:700, color:'#fff', background: autoSession.valid ? '#059669' : '#D97706', borderRadius:4, padding:'1px 6px' }}>
                   {autoSession.loading ? '확인 중' : autoSession.valid ? '활성' : '만료'}
@@ -343,7 +343,7 @@ export default function MyAccountPage() {
             </div>
           </div>
           <div style={{ display:'flex', gap:6, flexShrink:0 }}>
-            <button onClick={() => query(cs, id)} disabled={r?.loading || (isAuto && !autoSession.valid && !autoSession.loading)} style={{ background:'#EDE9FE', border:'none', borderRadius:8, padding:'6px 12px', fontSize:12, color:'#7C3AED', cursor:r?.loading?'not-allowed':'pointer', fontWeight:600, fontFamily:'inherit', display:'flex', alignItems:'center', gap:5, opacity:r?.loading?0.6:1 }}>
+            <button onClick={() => query(cs, id)} disabled={r?.loading || (isAuto && !autoSession.valid && !autoSession.loading)} style={{ background:'var(--secondary)', border:'none', borderRadius:8, padding:'6px 12px', fontSize:12, color:'var(--action)', cursor:r?.loading?'not-allowed':'pointer', fontWeight:600, fontFamily:'inherit', display:'flex', alignItems:'center', gap:5, opacity:r?.loading?0.6:1 }}>
               {r?.loading ? <Loader2 size={13} style={{ animation:'spin 1s linear infinite' }} /> : <Search size={13} />}
               {r?.loading ? '조회중' : '조회'}
             </button>
@@ -356,9 +356,9 @@ export default function MyAccountPage() {
         </div>
 
         {r && (
-          <div style={{ borderTop:'1px solid #F3F0FF' }}>
+          <div style={{ borderTop:'1px solid var(--muted)' }}>
             {r.loading && (
-              <div style={{ padding:16, textAlign:'center', color:'#A78BFA', fontSize:13, display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
+              <div style={{ padding:16, textAlign:'center', color:'var(--action)', fontSize:13, display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
                 <Loader2 size={16} style={{ animation:'spin 1s linear infinite' }} /> 파티 거래 조회 중...
               </div>
             )}
@@ -373,7 +373,7 @@ export default function MyAccountPage() {
                     <div style={{ fontSize:11, color:'#9CA3AF', marginTop:6 }}>세션 키퍼가 자동 갱신할 때까지 잠시 기다려주세요.</div>
                   )}
                   {r.code === 'COOKIE_EXPIRED' && !isAuto && (
-                    <a href="https://graytag.co.kr/login" target="_blank" rel="noreferrer" style={{ display:'inline-flex', alignItems:'center', gap:4, marginTop:8, fontSize:12, color:'#7C3AED', fontWeight:600 }}>
+                    <a href="https://graytag.co.kr/login" target="_blank" rel="noreferrer" style={{ display:'inline-flex', alignItems:'center', gap:4, marginTop:8, fontSize:12, color:'var(--action)', fontWeight:600 }}>
                       graytag.co.kr 로그인 <ExternalLink size={11} />
                     </a>
                   )}
@@ -384,7 +384,7 @@ export default function MyAccountPage() {
               <div style={{ padding:'12px 16px' }}>
                 <div style={{ display:'flex', gap:8, marginBottom:12 }}>
                   {(['lender','borrower'] as const).map(t => (
-                    <button key={t} onClick={() => setTabs(v=>({...v,[id]:t}))} style={{ flex:1, padding:'8px', borderRadius:10, border:'none', fontFamily:'inherit', fontSize:12, fontWeight:600, cursor:'pointer', background: tab===t ? '#A78BFA' : '#F3F0FF', color: tab===t ? '#fff' : '#6B7280' }}>
+                    <button key={t} onClick={() => setTabs(v=>({...v,[id]:t}))} style={{ flex:1, padding:'8px', borderRadius:10, border:'none', fontFamily:'inherit', fontSize:12, fontWeight:600, cursor:'pointer', background: tab===t ? 'var(--action)' : 'var(--muted)', color: tab===t ? '#fff' : '#6B7280' }}>
                       {t==='lender' ? `판매한 파티 (${r.data!.totalLender})` : `구매한 파티 (${r.data!.totalBorrower})`}
                     </button>
                   ))}
@@ -394,14 +394,14 @@ export default function MyAccountPage() {
                   <button
                     onClick={() => loadPartyInfo(cs, id, label)}
                     style={{
-                      width: '100%', background: '#F8F6FF', border: '1.5px solid #EDE9FE',
+                      width: '100%', background: 'var(--background)', border: '1.5px solid var(--secondary)',
                       borderRadius: 10, padding: '10px', marginBottom: 12, cursor: 'pointer',
                       fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                     }}
                   >
-                    <Users size={14} color="#A78BFA" />
-                    <span style={{ fontSize: 12, fontWeight: 600, color: '#7C3AED' }}>파티원 · 파티 정보 보기</span>
-                    <ChevronRight size={14} color="#A78BFA" />
+                    <Users size={14} color="var(--action)" />
+                    <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--action)' }}>파티원 · 파티 정보 보기</span>
+                    <ChevronRight size={14} color="var(--action)" />
                   </button>
                 )}
 
@@ -412,10 +412,10 @@ export default function MyAccountPage() {
                     {deals.map((d: Deal) => {
                       const b = badge(d.dealStatus, d.dealStatusName);
                       return (
-                        <div key={d.dealUsid} style={{ background:'#F8F6FF', borderRadius:12, padding:'12px 14px' }}>
+                        <div key={d.dealUsid} style={{ background:'var(--background)', borderRadius:12, padding:'12px 14px' }}>
                           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:8 }}>
                             <div style={{ flex:1, minWidth:0 }}>
-                              <div style={{ fontSize:13, fontWeight:700, color:'#1E1B4B' }}>{d.productType}</div>
+                              <div style={{ fontSize:13, fontWeight:700, color:'var(--foreground)' }}>{d.productType}</div>
                               {d.productName && <div style={{ fontSize:11, color:'#6B7280', marginTop:2, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{d.productName}</div>}
                               <div style={{ fontSize:11, color:'#9CA3AF', marginTop:4 }}>
                                 {tab==='lender' ? '파티원' : '파티장'}: {d.counterpartName||'미확인'}
@@ -424,10 +424,10 @@ export default function MyAccountPage() {
                             </div>
                             <div style={{ textAlign:'right', flexShrink:0 }}>
                               <span style={{ display:'inline-block', fontSize:11, fontWeight:600, color:b.color, background:b.bg, borderRadius:6, padding:'3px 8px', marginBottom:4 }}>{b.label}</span>
-                              <div style={{ fontSize:14, fontWeight:700, color:'#A78BFA' }}>{d.price}</div>
+                              <div style={{ fontSize:14, fontWeight:700, color:'var(--action)' }}>{d.price}</div>
                             </div>
                           </div>
-                          {d.endDateTime && <div style={{ fontSize:11, color:'#C4B5FD', marginTop:6 }}>만료: {new Date(d.endDateTime).toLocaleDateString('ko-KR',{year:'numeric',month:'long',day:'numeric'})}</div>}
+                          {d.endDateTime && <div style={{ fontSize:11, color:'var(--text-subtle)', marginTop:6 }}>만료: {new Date(d.endDateTime).toLocaleDateString('ko-KR',{year:'numeric',month:'long',day:'numeric'})}</div>}
                         </div>
                       );
                     })}
@@ -446,21 +446,21 @@ export default function MyAccountPage() {
       {/* 헤더 */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
         <div>
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: '#1E1B4B', margin: 0 }}>내 계정</h1>
+          <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--foreground)', margin: 0 }}>내 계정</h1>
           <p style={{ fontSize: 12, color: '#9CA3AF', margin: '4px 0 0' }}>쿠키 기반 파티 거래 조회</p>
         </div>
-        <button onClick={() => setShowAdd(v => !v)} style={{ background: showAdd ? '#EDE9FE' : '#A78BFA', border: 'none', borderRadius: 12, padding: '8px 14px', fontSize: 13, color: showAdd ? '#7C3AED' : '#fff', cursor: 'pointer', fontWeight: 600, fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6 }}>
+        <button onClick={() => setShowAdd(v => !v)} style={{ background: showAdd ? 'var(--secondary)' : 'var(--action)', border: 'none', borderRadius: 12, padding: '8px 14px', fontSize: 13, color: showAdd ? 'var(--action)' : '#fff', cursor: 'pointer', fontWeight: 600, fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6 }}>
           {showAdd ? <X size={14} /> : <Plus size={14} />} {showAdd ? '닫기' : '추가'}
         </button>
       </div>
 
       {/* 추가 폼 */}
       {showAdd && (
-        <div style={{ background: '#fff', borderRadius: 20, padding: 20, boxShadow: '0 4px 20px rgba(167,139,250,0.15)', border: '1.5px solid #EDE9FE', marginBottom: 16 }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: '#1E1B4B', marginBottom: 14 }}>계정 추가</div>
+        <div style={{ background: '#fff', borderRadius: 20, padding: 20, boxShadow: '0 4px 20px rgba(17,17,17,0.15)', border: '1.5px solid var(--secondary)', marginBottom: 16 }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--foreground)', marginBottom: 14 }}>계정 추가</div>
           <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
             {(['json','manual'] as const).map(m => (
-              <button key={m} onClick={() => setInputMode(m)} style={{ flex:1, padding:8, borderRadius:10, border:'none', fontFamily:'inherit', fontSize:12, fontWeight:600, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:6, background: inputMode===m ? '#A78BFA' : '#F3F0FF', color: inputMode===m ? '#fff' : '#6B7280' }}>
+              <button key={m} onClick={() => setInputMode(m)} style={{ flex:1, padding:8, borderRadius:10, border:'none', fontFamily:'inherit', fontSize:12, fontWeight:600, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:6, background: inputMode===m ? 'var(--action)' : 'var(--muted)', color: inputMode===m ? '#fff' : '#6B7280' }}>
                 {m === 'json' ? <><ClipboardList size={13} /> JSON 붙여넣기</> : <><Pencil size={13} /> 직접 입력</>}
               </button>
             ))}
@@ -469,7 +469,7 @@ export default function MyAccountPage() {
           {inputMode === 'json' ? (
             <>
               <textarea placeholder={'EditThisCookie JSON 붙여넣기\n[{"name":"JSESSIONID","value":"..."},...]'} value={jsonInput} onChange={e => setJsonInput(e.target.value)} style={{ ...inp, height:110, resize:'vertical', fontFamily:'monospace', fontSize:11 }} />
-              <button onClick={parseJson} style={{ width:'100%', background:'#EDE9FE', border:'none', borderRadius:10, padding:'10px', fontSize:13, color:'#7C3AED', fontWeight:600, cursor:'pointer', fontFamily:'inherit', marginBottom:8, display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
+              <button onClick={parseJson} style={{ width:'100%', background:'var(--secondary)', border:'none', borderRadius:10, padding:'10px', fontSize:13, color:'var(--action)', fontWeight:600, cursor:'pointer', fontFamily:'inherit', marginBottom:8, display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
                 <Search size={14} /> JSON 파싱하기
               </button>
               {form.JSESSIONID && (
@@ -487,7 +487,7 @@ export default function MyAccountPage() {
               <input placeholder="AWSALBCORS (선택)" value={form.AWSALBCORS} onChange={e => setForm(f=>({...f,AWSALBCORS:e.target.value}))} style={inp} />
             </>
           )}
-          <button onClick={addCookie} disabled={!form.JSESSIONID.trim()} style={{ width:'100%', padding:13, borderRadius:12, border:'none', background: form.JSESSIONID ? '#A78BFA' : '#E9E4FF', color: form.JSESSIONID ? '#fff' : '#9CA3AF', fontWeight:700, fontSize:14, cursor: form.JSESSIONID ? 'pointer' : 'not-allowed', fontFamily:'inherit' }}>
+          <button onClick={addCookie} disabled={!form.JSESSIONID.trim()} style={{ width:'100%', padding:13, borderRadius:12, border:'none', background: form.JSESSIONID ? 'var(--action)' : 'var(--border)', color: form.JSESSIONID ? '#fff' : '#9CA3AF', fontWeight:700, fontSize:14, cursor: form.JSESSIONID ? 'pointer' : 'not-allowed', fontFamily:'inherit' }}>
             계정 저장
           </button>
         </div>
@@ -510,4 +510,4 @@ export default function MyAccountPage() {
   );
 }
 
-const inp: React.CSSProperties = { width:'100%', padding:'11px 14px', borderRadius:10, border:'1.5px solid #EDE9FE', fontSize:13, color:'#1E1B4B', background:'#F8F6FF', outline:'none', fontFamily:'inherit', marginBottom:8, boxSizing:'border-box' };
+const inp: React.CSSProperties = { width:'100%', padding:'11px 14px', borderRadius:10, border:'1.5px solid var(--secondary)', fontSize:13, color:'var(--foreground)', background:'var(--background)', outline:'none', fontFamily:'inherit', marginBottom:8, boxSizing:'border-box' };

@@ -155,12 +155,12 @@ function DailyInflowChart({ data, manuals }: { data: ManageData; manuals: Manual
       {/* 헤더 */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 15, fontWeight: 700, color: '#1E1B4B' }}>📈 일별 파티 유입</span>
+          <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--foreground)' }}>📈 일별 파티 유입</span>
         </div>
         <div style={{ display: 'flex', gap: 6 }}>
           {([14, 30] as const).map(r => (
             <button key={r} onClick={() => setRange(r)}
-              style={{ padding: '4px 10px', borderRadius: 8, border: 'none', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', background: range === r ? '#1E1B4B' : '#F3F4F6', color: range === r ? '#fff' : '#9CA3AF' }}>
+              style={{ padding: '4px 10px', borderRadius: 8, border: 'none', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', background: range === r ? 'var(--foreground)' : '#F3F4F6', color: range === r ? '#fff' : '#9CA3AF' }}>
               {r}일
             </button>
           ))}
@@ -169,42 +169,42 @@ function DailyInflowChart({ data, manuals }: { data: ManageData; manuals: Manual
 
       {/* 요약 수치 */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 14 }}>
-        <div style={{ flex: 1, background: '#F5F3FF', borderRadius: 12, padding: '10px 14px' }}>
-          <div style={{ fontSize: 10, color: '#7C3AED', fontWeight: 600, marginBottom: 2 }}>오늘 유입</div>
-          <div style={{ fontSize: 22, fontWeight: 800, color: '#1E1B4B', lineHeight: 1 }}>{todayCount}<span style={{ fontSize: 12, color: '#9CA3AF', fontWeight: 400 }}>명</span></div>
+        <div style={{ flex: 1, background: 'var(--muted)', borderRadius: 12, padding: '10px 14px' }}>
+          <div style={{ fontSize: 10, color: 'var(--action)', fontWeight: 600, marginBottom: 2 }}>오늘 유입</div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--foreground)', lineHeight: 1 }}>{todayCount}<span style={{ fontSize: 12, color: '#9CA3AF', fontWeight: 400 }}>명</span></div>
         </div>
         <div style={{ flex: 1, background: '#F0FDF4', borderRadius: 12, padding: '10px 14px' }}>
           <div style={{ fontSize: 10, color: '#059669', fontWeight: 600, marginBottom: 2 }}>{range}일 합계</div>
-          <div style={{ fontSize: 22, fontWeight: 800, color: '#1E1B4B', lineHeight: 1 }}>{totalInflow}<span style={{ fontSize: 12, color: '#9CA3AF', fontWeight: 400 }}>명</span></div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--foreground)', lineHeight: 1 }}>{totalInflow}<span style={{ fontSize: 12, color: '#9CA3AF', fontWeight: 400 }}>명</span></div>
         </div>
         <div style={{ flex: 1, background: '#FFF7ED', borderRadius: 12, padding: '10px 14px' }}>
           <div style={{ fontSize: 10, color: '#D97706', fontWeight: 600, marginBottom: 2 }}>일 평균</div>
-          <div style={{ fontSize: 22, fontWeight: 800, color: '#1E1B4B', lineHeight: 1 }}>{(totalInflow / range).toFixed(1)}<span style={{ fontSize: 12, color: '#9CA3AF', fontWeight: 400 }}>명</span></div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--foreground)', lineHeight: 1 }}>{(totalInflow / range).toFixed(1)}<span style={{ fontSize: 12, color: '#9CA3AF', fontWeight: 400 }}>명</span></div>
         </div>
       </div>
 
       {/* 막대 그래프 */}
-      <div style={{ background: '#fff', borderRadius: 16, padding: '16px 12px 8px', border: '1.5px solid #EDE9FE', overflowX: 'auto' }}>
+      <div style={{ background: '#fff', borderRadius: 16, padding: '16px 12px 8px', border: '1.5px solid var(--secondary)', overflowX: 'auto' }}>
         <div style={{ display: 'flex', alignItems: 'flex-end', gap: `${GAP}px`, minWidth: rows.length * (BAR_W + GAP), height: BAR_H + 32 }}>
           {rows.map((row, i) => {
             const barH = row.count > 0 ? Math.max(4, Math.round((row.count / maxCount) * BAR_H)) : 0;
             const isToday = i === rows.length - 1;
             const isWeekend = new Date(row.date).getDay() === 0 || new Date(row.date).getDay() === 6;
-            const fallbackBarColor = isToday ? '#7C3AED' : row.count >= maxCount ? '#059669' : row.count > 0 ? '#A78BFA' : '#E5E7EB';
+            const fallbackBarColor = isToday ? 'var(--action)' : row.count >= maxCount ? '#059669' : row.count > 0 ? 'var(--action)' : '#E5E7EB';
             const segments = Object.entries(row.byService).filter(([, count]) => count > 0);
 
             return (
               <div key={row.date} title={segments.map(([svc, count]) => `${svc} ${count}명`).join(' · ')} onClick={() => row.count > 0 && setSelectedDate(row.date === selectedDate ? null : row.date)} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: BAR_W, flexShrink: 0, cursor: row.count > 0 ? 'pointer' : 'default' }}>
                 {/* 숫자 */}
                 {row.count > 0 && (
-                  <div style={{ fontSize: 9, fontWeight: 700, color: isToday ? '#7C3AED' : '#6B7280', marginBottom: 2, lineHeight: 1 }}>
+                  <div style={{ fontSize: 9, fontWeight: 700, color: isToday ? 'var(--action)' : '#6B7280', marginBottom: 2, lineHeight: 1 }}>
                     {row.count}
                   </div>
                 )}
                 {/* 빈 공간 (숫자 없는 경우 정렬용) */}
                 {row.count === 0 && <div style={{ height: 13 }} />}
                 {/* 서비스별 누적 막대 */}
-                <div style={{ width: '100%', height: barH || 3, borderRadius: '3px 3px 0 0', overflow: 'hidden', background: row.count > 0 ? '#EDE9FE' : fallbackBarColor, display: 'flex', flexDirection: 'column-reverse', transition: 'height 0.3s ease', minHeight: 3 }}>
+                <div style={{ width: '100%', height: barH || 3, borderRadius: '3px 3px 0 0', overflow: 'hidden', background: row.count > 0 ? 'var(--secondary)' : fallbackBarColor, display: 'flex', flexDirection: 'column-reverse', transition: 'height 0.3s ease', minHeight: 3 }}>
                   {segments.length > 0 ? segments.map(([svc, count]) => (
                     <div key={svc} style={{ width: '100%', height: `${Math.max(8, (count / row.count) * 100)}%`, background: SVC_COLORS[svc] || '#9CA3AF' }} />
                   )) : null}
@@ -213,7 +213,7 @@ function DailyInflowChart({ data, manuals }: { data: ManageData; manuals: Manual
                 <div style={{ width: '100%', height: 1, background: '#E5E7EB' }} />
                 {/* 날짜 라벨 */}
                 {(range === 14 || i % 3 === 0) && (
-                  <div style={{ fontSize: 8, color: isToday ? '#7C3AED' : isWeekend ? '#EF4444' : '#9CA3AF', marginTop: 3, fontWeight: isToday ? 700 : 400, whiteSpace: 'nowrap' }}>
+                  <div style={{ fontSize: 8, color: isToday ? 'var(--action)' : isWeekend ? '#EF4444' : '#9CA3AF', marginTop: 3, fontWeight: isToday ? 700 : 400, whiteSpace: 'nowrap' }}>
                     {row.label}
                   </div>
                 )}
@@ -241,17 +241,17 @@ function DailyInflowChart({ data, manuals }: { data: ManageData; manuals: Manual
         if (!displayRow || displayRow.members.length === 0) return null;
         const isToday = displayDate === new Date().toISOString().split('T')[0];
         return (
-          <div style={{ marginTop: 12, background: '#fff', borderRadius: 16, border: '1.5px solid #EDE9FE', padding: '14px' }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: '#7C3AED', marginBottom: 10 }}>
+          <div style={{ marginTop: 12, background: '#fff', borderRadius: 16, border: '1.5px solid var(--secondary)', padding: '14px' }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--action)', marginBottom: 10 }}>
               {isToday ? '오늘' : displayRow.label} 유입 {displayRow.count}명
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {displayRow.members.map((m, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', background: '#F5F3FF', borderRadius: 10 }}>
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', background: 'var(--muted)', borderRadius: 10 }}>
                   <div style={{ width: 8, height: 8, borderRadius: 4, background: SVC_COLORS[m.serviceType] || '#9CA3AF', flexShrink: 0 }} />
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <span style={{ fontSize: 12, fontWeight: 700, color: '#1E1B4B' }}>{m.name || '(이름없음)'}</span>
-                    <span style={{ fontSize: 10, color: '#7C3AED', marginLeft: 6, fontWeight: 600 }}>{m.serviceType}</span>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--foreground)' }}>{m.name || '(이름없음)'}</span>
+                    <span style={{ fontSize: 10, color: 'var(--action)', marginLeft: 6, fontWeight: 600 }}>{m.serviceType}</span>
                     {m.source === 'manual' && <span style={{ fontSize: 9, color: '#059669', marginLeft: 5, fontWeight: 800, background: '#ECFDF5', borderRadius: 999, padding: '1px 5px' }}>수동</span>}
                     {(m.status === 'DeliveredAndCheckPrepaid' || m.statusName?.includes('계정확인중') || m.statusName?.includes('계정 확인중')) && <span style={{ fontSize: 9, color: '#2563EB', marginLeft: 5, fontWeight: 900, background: '#EFF6FF', borderRadius: 999, padding: '1px 5px' }}>계정 확인중</span>}
                   </div>
@@ -336,19 +336,19 @@ function PartyFeedbackPanel({ manageData }: { manageData: ManageData }) {
     <div style={{ marginTop: 20, marginBottom: 4 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Zap size={16} color="#7C3AED" strokeWidth={2.5} />
-          <span style={{ fontSize: 15, fontWeight: 700, color: '#1E1B4B' }}>{"파티 피드백"}</span>
+          <Zap size={16} color="var(--action)" strokeWidth={2.5} />
+          <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--foreground)' }}>{"파티 피드백"}</span>
           {todoItems.length > 0 && (
             <span style={{ fontSize: 11, fontWeight: 700, background: '#EF4444', color: '#fff', borderRadius: 20, padding: '1px 7px' }}>{todoItems.length}</span>
           )}
         </div>
         <div style={{ display: 'flex', gap: 6 }}>
           <button onClick={() => setShowSettings(v => !v)}
-            style={{ background: showSettings ? '#EDE9FE' : '#F3F4F6', border: 'none', borderRadius: 8, padding: '5px 8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#7C3AED', fontWeight: 600, fontFamily: 'inherit' }}>
+            style={{ background: showSettings ? 'var(--secondary)' : '#F3F4F6', border: 'none', borderRadius: 8, padding: '5px 8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--action)', fontWeight: 600, fontFamily: 'inherit' }}>
             <Settings size={12} />{"설정"}
           </button>
           <button onClick={generate} disabled={loading}
-            style={{ background: '#EDE9FE', border: 'none', borderRadius: 8, padding: '5px 8px', cursor: loading ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#7C3AED', fontWeight: 600, fontFamily: 'inherit', opacity: loading ? 0.6 : 1 }}>
+            style={{ background: 'var(--secondary)', border: 'none', borderRadius: 8, padding: '5px 8px', cursor: loading ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--action)', fontWeight: 600, fontFamily: 'inherit', opacity: loading ? 0.6 : 1 }}>
             {loading ? <Loader2 size={11} style={{ animation: 'spin 1s linear infinite' }} /> : <RefreshCw size={11} />}
             {"새로고침"}
           </button>
@@ -356,15 +356,15 @@ function PartyFeedbackPanel({ manageData }: { manageData: ManageData }) {
       </div>
 
       {showSettings && (
-        <div style={{ background: '#F8F6FF', border: '1.5px solid #EDE9FE', borderRadius: 14, padding: '14px 16px', marginBottom: 12 }}>
+        <div style={{ background: 'var(--background)', border: '1.5px solid var(--secondary)', borderRadius: 14, padding: '14px 16px', marginBottom: 12 }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: '#6B7280', marginBottom: 6 }}>{"미채움 결제 위험 알림 설정"}</div>
           <div style={{ fontSize: 12, color: '#9CA3AF', marginBottom: 10 }}>{"결제일 기준 며칠 전부터 알림 (0 = 항상 감지)"}</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <input type="range" min={0} max={30} value={warningDays} onChange={e => setWarningDays(Number(e.target.value))}
-              style={{ flex: 1, accentColor: '#7C3AED' }} />
-            <span style={{ fontSize: 14, fontWeight: 700, color: '#7C3AED', minWidth: 60 }}>{warningDays === 0 ? '항상' : `${warningDays}일 전`}</span>
+              style={{ flex: 1, accentColor: 'var(--action)' }} />
+            <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--action)', minWidth: 60 }}>{warningDays === 0 ? '항상' : `${warningDays}일 전`}</span>
             <button onClick={() => saveSettings(warningDays)} disabled={savingSettings}
-              style={{ background: '#7C3AED', color: '#fff', border: 'none', borderRadius: 8, padding: '6px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+              style={{ background: 'var(--action)', color: '#fff', border: 'none', borderRadius: 8, padding: '6px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
               {savingSettings ? '저장 중' : '저장'}
             </button>
           </div>
@@ -374,14 +374,14 @@ function PartyFeedbackPanel({ manageData }: { manageData: ManageData }) {
       <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
         {(['todo', 'done'] as const).map(t => (
           <button key={t} onClick={() => setTab(t)}
-            style={{ flex: 1, padding: '8px 0', borderRadius: 10, border: 'none', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, cursor: 'pointer', background: tab === t ? '#1E1B4B' : '#F3F4F6', color: tab === t ? '#fff' : '#9CA3AF' }}>
+            style={{ flex: 1, padding: '8px 0', borderRadius: 10, border: 'none', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, cursor: 'pointer', background: tab === t ? 'var(--foreground)' : '#F3F4F6', color: tab === t ? '#fff' : '#9CA3AF' }}>
             {t === 'todo' ? `TODO (${todoItems.length})` : `DONE (${doneItems.length})`}
           </button>
         ))}
       </div>
 
       {loading && items.length === 0 && (
-        <div style={{ textAlign: 'center', padding: '24px 0', color: '#C4B5FD', fontSize: 12 }}>
+        <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--text-subtle)', fontSize: 12 }}>
           <Loader2 size={18} style={{ animation: 'spin 1s linear infinite', display: 'block', margin: '0 auto 6px' }} />{"분석 중..."}
         </div>
       )}
@@ -401,7 +401,7 @@ function PartyFeedbackPanel({ manageData }: { manageData: ManageData }) {
                   <span style={{ fontSize: 10, fontWeight: 700, color: item.done ? '#9CA3AF' : st.accent, background: item.done ? '#F3F4F6' : st.border, borderRadius: 6, padding: '2px 7px', marginBottom: 6, display: 'inline-block' }}>
                     {item.done ? '✓ ' : ''}{st.label}
                   </span>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: item.done ? '#9CA3AF' : '#1E1B4B', marginBottom: 4, lineHeight: 1.3 }}>{item.title}</div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: item.done ? '#9CA3AF' : 'var(--foreground)', marginBottom: 4, lineHeight: 1.3 }}>{item.title}</div>
                   <div style={{ fontSize: 11, color: item.done ? '#9CA3AF' : '#6B7280', lineHeight: 1.5 }}>{item.detail}</div>
                 </div>
                 <button onClick={() => toggle(item.id)} style={{ flexShrink: 0, border: 'none', borderRadius: 10, padding: '7px 10px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 11, fontWeight: 700, background: item.done ? '#E5E7EB' : st.accent, color: item.done ? '#6B7280' : '#fff', display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
@@ -418,8 +418,8 @@ function PartyFeedbackPanel({ manageData }: { manageData: ManageData }) {
 }
 
 function ChoiceButton({ label, active, onClick, tone = 'purple' }: { label: string; active: boolean; onClick: () => void; tone?: 'purple' | 'green' | 'red' }) {
-  const activeBg = tone === 'green' ? '#DCFCE7' : tone === 'red' ? '#FEE2E2' : '#EDE9FE';
-  const activeColor = tone === 'green' ? '#047857' : tone === 'red' ? '#DC2626' : '#7C3AED';
+  const activeBg = tone === 'green' ? '#DCFCE7' : tone === 'red' ? '#FEE2E2' : 'var(--secondary)';
+  const activeColor = tone === 'green' ? '#047857' : tone === 'red' ? '#DC2626' : 'var(--action)';
   return (
     <button onClick={onClick} style={{ border: 'none', borderRadius: 8, padding: '5px 9px', background: active ? activeBg : '#F3F4F6', color: active ? activeColor : '#9CA3AF', fontSize: 10, fontWeight: 900, cursor: 'pointer', fontFamily: 'inherit' }}>
       {label}
@@ -495,9 +495,9 @@ function PartyMaintenancePanel({ items, regeneratingPinKey, sendingNoticeKey, on
                 <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
                   <div style={{ minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: 12, fontWeight: 900, color: '#1E1B4B' }}>{target.serviceType}</span>
+                      <span style={{ fontSize: 12, fontWeight: 900, color: 'var(--foreground)' }}>{target.serviceType}</span>
                       <span style={{ fontSize: 10, fontWeight: 800, color: target.reason === 'no-current-users' ? '#C2410C' : '#92400E', background: target.reason === 'no-current-users' ? '#FFEDD5' : '#FEF3C7', borderRadius: 999, padding: '2px 7px' }}>{target.reasonLabel}</span>
-                      <span style={{ fontSize: 10, fontWeight: 900, color: '#7C3AED', background: '#F5F3FF', borderRadius: 999, padding: '2px 7px' }}>{item.progress.done}/{item.progress.total}</span>
+                      <span style={{ fontSize: 10, fontWeight: 900, color: 'var(--action)', background: 'var(--muted)', borderRadius: 999, padding: '2px 7px' }}>{item.progress.done}/{item.progress.total}</span>
                     </div>
                     <div style={{ fontSize: 11, color: '#6B7280', marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {target.accountEmail} · 최근 파티원 {target.lastMemberName}
@@ -511,9 +511,9 @@ function PartyMaintenancePanel({ items, regeneratingPinKey, sendingNoticeKey, on
                   </div>
                 </div>
 
-                <div style={{ marginTop: 9, background: '#FAFAFF', border: '1px solid #EDE9FE', borderRadius: 12, padding: '9px 10px' }}>
+                <div style={{ marginTop: 9, background: '#FAFAFF', border: '1px solid var(--secondary)', borderRadius: 12, padding: '9px 10px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                    <div style={{ fontSize: 11, color: '#1E1B4B', fontWeight: 900 }}>해당 계정으로 또 다시 파티 모집을 진행할건가?</div>
+                    <div style={{ fontSize: 11, color: 'var(--foreground)', fontWeight: 900 }}>해당 계정으로 또 다시 파티 모집을 진행할건가?</div>
                     <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
                       <ChoiceButton label="Y" active={item.recruitAgain === true} onClick={() => onUpdate(item.key, { recruitAgain: true })} tone="green" />
                       <ChoiceButton label="N" active={item.recruitAgain === false} onClick={() => onUpdate(item.key, { recruitAgain: false })} tone="red" />
@@ -530,10 +530,10 @@ function PartyMaintenancePanel({ items, regeneratingPinKey, sendingNoticeKey, on
                       )}
                       <ChecklistRow label="기존 파티원 프로필을 제거했는가" value={item.profileRemoved} onChange={(value) => onUpdate(item.key, { profileRemoved: value })} />
                       <ChecklistRow label="모든 기기에서 로그아웃했는가" value={item.devicesLoggedOut} onChange={(value) => onUpdate(item.key, { devicesLoggedOut: value })} />
-                      <div style={{ background: '#EEF2FF', border: '1px solid #C7D2FE', borderRadius: 9, padding: '7px 8px' }}>
+                      <div style={{ background: 'var(--muted)', border: '1px solid var(--border)', borderRadius: 9, padding: '7px 8px' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                          <span style={{ fontSize: 10, color: '#4338CA', fontWeight: 900 }}>비밀번호 변경 준비</span>
-                          <button onClick={() => onUpdate(item.key, { passwordChanged: true, changedPassword: generateMaintenancePassword() })} style={{ border: 'none', borderRadius: 8, padding: '6px 9px', background: '#4F46E5', color: '#fff', fontSize: 10, fontWeight: 900, cursor: 'pointer', fontFamily: 'inherit' }}>
+                          <span style={{ fontSize: 10, color: 'var(--action)', fontWeight: 900 }}>비밀번호 변경 준비</span>
+                          <button onClick={() => onUpdate(item.key, { passwordChanged: true, changedPassword: generateMaintenancePassword() })} style={{ border: 'none', borderRadius: 8, padding: '6px 9px', background: 'var(--action)', color: '#fff', fontSize: 10, fontWeight: 900, cursor: 'pointer', fontFamily: 'inherit' }}>
                             랜덤 12자리 비밀번호 생성
                           </button>
                         </div>
@@ -598,7 +598,7 @@ function PartyMaintenancePanel({ items, regeneratingPinKey, sendingNoticeKey, on
                     <div style={{ fontSize: 9, color: '#9CA3AF', fontWeight: 800 }}>이용중</div>
                     <div style={{ fontSize: 12, color: '#111827', fontWeight: 900 }}>{target.usingCount}/{target.totalSlots}</div>
                   </div>
-                  <button onClick={onGoManage} style={{ border: 'none', borderRadius: 9, padding: '6px 7px', background: '#EDE9FE', color: '#7C3AED', fontSize: 10, fontWeight: 900, cursor: 'pointer', fontFamily: 'inherit' }}>계정 관리</button>
+                  <button onClick={onGoManage} style={{ border: 'none', borderRadius: 9, padding: '6px 7px', background: 'var(--secondary)', color: 'var(--action)', fontSize: 10, fontWeight: 900, cursor: 'pointer', fontFamily: 'inherit' }}>계정 관리</button>
                   <button onClick={onGoWrite} style={{ border: 'none', borderRadius: 9, padding: '6px 7px', background: '#DCFCE7', color: '#047857', fontSize: 10, fontWeight: 900, cursor: 'pointer', fontFamily: 'inherit' }}>모집 글</button>
                 </div>
               </div>
@@ -614,7 +614,7 @@ function PartyMaintenancePanel({ items, regeneratingPinKey, sendingNoticeKey, on
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                   <div style={{ minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: 12, fontWeight: 900, color: '#1E1B4B' }}>{target.serviceType}</span>
+                      <span style={{ fontSize: 12, fontWeight: 900, color: 'var(--foreground)' }}>{target.serviceType}</span>
                       <span style={{ fontSize: 10, fontWeight: 900, color: '#047857', background: '#DCFCE7', borderRadius: 999, padding: '2px 7px' }}>재시작 완료</span>
                     </div>
                     <div style={{ fontSize: 11, color: '#6B7280', marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -638,9 +638,9 @@ function ChatAlertsPanel({ alerts, unreadCount, loading, updatedAt, fromCache, r
     <Card tone={unreadCount > 0 ? 'warning' : 'info'} style={{ marginBottom: 16 }}>
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:10, marginBottom:10 }}>
         <div style={{ display:'flex', alignItems:'center', gap:8, minWidth:0 }}>
-          <Bell size={16} color={unreadCount > 0 ? '#F59E0B' : '#7C3AED'} />
+          <Bell size={16} color={unreadCount > 0 ? '#F59E0B' : 'var(--action)'} />
           <div style={{ minWidth:0 }}>
-            <div style={{ fontSize:14, fontWeight:900, color:'#1E1B4B' }}>실시간 채팅 알림</div>
+            <div style={{ fontSize:14, fontWeight:900, color:'var(--foreground)' }}>실시간 채팅 알림</div>
             <div style={{ fontSize:10, color:'#9CA3AF', marginTop:2 }}>
               {unreadCount > 0 ? `안 읽은 구매자 문의 ${unreadCount}개` : '안 읽은 문의 없음'} · 최신 메시지 10개 · {updatedAt ? `${updatedAt} 갱신` : '확인 중'}
             </div>
@@ -651,7 +651,7 @@ function ChatAlertsPanel({ alerts, unreadCount, loading, updatedAt, fromCache, r
             </div>
           </div>
         </div>
-        <button onClick={onOpenChat} style={{ border:'none', borderRadius:999, padding:'6px 10px', background:'#EDE9FE', color:'#7C3AED', fontSize:11, fontWeight:800, cursor:'pointer', display:'flex', alignItems:'center', gap:5, flexShrink:0 }}>
+        <button onClick={onOpenChat} style={{ border:'none', borderRadius:999, padding:'6px 10px', background:'var(--secondary)', color:'var(--action)', fontSize:11, fontWeight:800, cursor:'pointer', display:'flex', alignItems:'center', gap:5, flexShrink:0 }}>
           <MessageCircle size={13} /> 채팅 열기
         </button>
       </div>
@@ -666,9 +666,9 @@ function ChatAlertsPanel({ alerts, unreadCount, loading, updatedAt, fromCache, r
       ) : (
         <div style={{ display:'flex', flexDirection:'column', gap:7 }}>
           {displayAlerts.map(alert => (
-            <div key={alert.id} style={{ background: alert.unread ? '#FFFBEB' : '#FAFAFF', border:`1px solid ${alert.unread ? '#FDE68A' : '#EDE9FE'}`, borderRadius:12, padding:'9px 10px' }}>
+            <div key={alert.id} style={{ background: alert.unread ? '#FFFBEB' : '#FAFAFF', border:`1px solid ${alert.unread ? '#FDE68A' : 'var(--secondary)'}`, borderRadius:12, padding:'9px 10px' }}>
               <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}>
-                <div style={{ fontSize:11, fontWeight:900, color:'#1E1B4B', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{alert.buyerName} · {alert.serviceType}</div>
+                <div style={{ fontSize:11, fontWeight:900, color:'var(--foreground)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{alert.buyerName} · {alert.serviceType}</div>
                 <span style={{ fontSize:9, fontWeight:900, color:alert.missingMessage?'#B45309':alert.unread?'#B45309':'#6B7280', background:alert.missingMessage?'#FEF3C7':alert.unread?'#FEF3C7':'#F3F4F6', borderRadius:999, padding:'2px 6px', flexShrink:0 }}>{alert.missingMessage?'내용 확인 필요':alert.unread?'안읽음':'읽음'}</span>
               </div>
               <div style={{ fontSize:10, color:'#9CA3AF', marginTop:4, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>계정 {alert.accountLabel} · 메시지 도착 {alert.timeLabel}</div>
@@ -696,7 +696,7 @@ function OperationsCenterPanel({ state, loading, onOpenChat, onOpenManage, onRef
           <div style={{ fontSize: 14, fontWeight: 900, color: 'var(--foreground)' }}>운영센터</div>
           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 3 }}>프로필 정리 · 수동 고객 · 카카오톡 응대 큐</div>
         </div>
-        <button onClick={onRefresh} disabled={loading} style={{ border: 'none', borderRadius: 999, background: '#F3F0FF', color: '#7C3AED', padding: '7px 10px', fontSize: 11, fontWeight: 900, cursor: loading ? 'not-allowed' : 'pointer' }}>
+        <button onClick={onRefresh} disabled={loading} style={{ border: 'none', borderRadius: 999, background: 'var(--muted)', color: 'var(--action)', padding: '7px 10px', fontSize: 11, fontWeight: 900, cursor: loading ? 'not-allowed' : 'pointer' }}>
           {loading ? '조회중' : '새로고침'}
         </button>
       </div>
@@ -704,10 +704,10 @@ function OperationsCenterPanel({ state, loading, onOpenChat, onOpenManage, onRef
         {[
           ['조치', summary?.actionRequired ?? 0, toneColor],
           ['프로필', summary?.profileIssues ?? 0, '#EF4444'],
-          ['응대', summary?.replyQueueOpen ?? 0, '#7C3AED'],
+          ['응대', summary?.replyQueueOpen ?? 0, 'var(--action)'],
           ['카카오톡', summary?.kakaoOpen ?? 0, '#2563EB'],
         ].map(([label, value, color]) => (
-          <div key={String(label)} style={{ background: '#FAFAFF', border: '1px solid #EEF2FF', borderRadius: 12, padding: '8px 4px', textAlign: 'center' }}>
+          <div key={String(label)} style={{ background: '#FAFAFF', border: '1px solid var(--muted)', borderRadius: 12, padding: '8px 4px', textAlign: 'center' }}>
             <div style={{ fontSize: 17, fontWeight: 950, color: String(color) }}>{String(value)}</div>
             <div style={{ fontSize: 9, color: '#9CA3AF', marginTop: 2 }}>{String(label)}</div>
           </div>
@@ -720,8 +720,8 @@ function OperationsCenterPanel({ state, loading, onOpenChat, onOpenManage, onRef
       ))}
       {queueItems.length > 0 && <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
         {queueItems.map(item => (
-          <div key={item.id} style={{ background: '#F8F6FF', borderRadius: 10, padding: '8px 9px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 11, fontWeight: 900, color: '#1E1B4B' }}>
+          <div key={item.id} style={{ background: 'var(--background)', borderRadius: 10, padding: '8px 9px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 11, fontWeight: 900, color: 'var(--foreground)' }}>
               <span>{item.source} · {item.buyerName || '고객'}</span><span>{item.priority === 'high' ? '긴급' : item.status}</span>
             </div>
             <div style={{ fontSize: 10, color: '#6B7280', marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.serviceType || '서비스'} · {item.message || '메모 없음'}</div>
@@ -729,8 +729,8 @@ function OperationsCenterPanel({ state, loading, onOpenChat, onOpenManage, onRef
         ))}
       </div>}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 10 }}>
-        <button onClick={onOpenChat} style={{ border: 'none', borderRadius: 12, padding: '9px 10px', fontSize: 12, fontWeight: 900, background: '#7C3AED', color: '#fff', cursor: 'pointer' }}>채팅/초안 확인</button>
-        <button onClick={onOpenManage} style={{ border: 'none', borderRadius: 12, padding: '9px 10px', fontSize: 12, fontWeight: 900, background: '#EDE9FE', color: '#6D28D9', cursor: 'pointer' }}>계정·프로필 정리</button>
+        <button onClick={onOpenChat} style={{ border: 'none', borderRadius: 12, padding: '9px 10px', fontSize: 12, fontWeight: 900, background: 'var(--action)', color: '#fff', cursor: 'pointer' }}>채팅/초안 확인</button>
+        <button onClick={onOpenManage} style={{ border: 'none', borderRadius: 12, padding: '9px 10px', fontSize: 12, fontWeight: 900, background: 'var(--secondary)', color: 'var(--action)', cursor: 'pointer' }}>계정·프로필 정리</button>
       </div>
     </Card>
   );
@@ -991,27 +991,27 @@ export default function HomePage() {
       {/* 헤더 */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
         <div>
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: '#1E1B4B', margin: 0 }}>{"파티 대시보드"}</h1>
+          <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--foreground)', margin: 0 }}>{"파티 대시보드"}</h1>
           {data?.updatedAt && (
             <p style={{ fontSize: 12, color: '#9CA3AF', margin: '4px 0 0' }}>{formatTime(data.updatedAt)}{"최신화"}</p>
           )}
         </div>
         <button onClick={() => { void fetchData({ forceRefresh: true }); fetchSellerStatus(); fetchSafeMode(); fetchChatAlerts(); fetchPartyMaintenanceChecklists(); fetchOperationsCenter(); }} disabled={loading}
-          style={{ background: '#EDE9FE', border: 'none', borderRadius: 12, padding: '8px 12px', cursor: loading ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#7C3AED', fontWeight: 600, fontFamily: 'inherit', opacity: loading ? 0.7 : 1 }}>
+          style={{ background: 'var(--secondary)', border: 'none', borderRadius: 12, padding: '8px 12px', cursor: loading ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--action)', fontWeight: 600, fontFamily: 'inherit', opacity: loading ? 0.7 : 1 }}>
           {loading ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <RefreshCw size={14} strokeWidth={2.5} />}
           {loading ? '조회중' : '새로고침'}
         </button>
       </div>
 
-      <Card style={{ marginBottom: 18, background: '#F8F6FF', border: '1.5px solid #EDE9FE' }}>
+      <Card style={{ marginBottom: 18, background: 'var(--background)', border: '1.5px solid var(--secondary)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
           <div>
-            <div style={{ fontSize: 14, fontWeight: 900, color: '#1E1B4B' }}>계정 관리</div>
-            <div style={{ fontSize: 11, color: '#7C3AED', marginTop: 3, lineHeight: 1.45 }}>
+            <div style={{ fontSize: 14, fontWeight: 900, color: 'var(--foreground)' }}>계정 관리</div>
+            <div style={{ fontSize: 11, color: 'var(--action)', marginTop: 3, lineHeight: 1.45 }}>
               홈 초기 로딩을 빠르게 하기 위해 계정 관리는 별도 화면에서 필요할 때만 불러와요.
             </div>
           </div>
-          <button onClick={() => navigate('/manage')} style={{ border: 'none', borderRadius: 12, padding: '9px 12px', background: '#7C3AED', color: '#fff', fontSize: 12, fontWeight: 900, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0 }}>
+          <button onClick={() => navigate('/manage')} style={{ border: 'none', borderRadius: 12, padding: '9px 12px', background: 'var(--action)', color: '#fff', fontSize: 12, fontWeight: 900, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0 }}>
             계정 관리 열기
           </button>
         </div>
@@ -1047,11 +1047,11 @@ export default function HomePage() {
         </div>
       )}
 
-      <div style={{ background: '#fff', borderRadius: 18, padding: 14, marginBottom: 16, boxShadow: '0 2px 14px rgba(30,27,75,0.08)', border: '1px solid #F3F4F6' }}>
+      <div style={{ background: '#fff', borderRadius: 18, padding: 14, marginBottom: 16, boxShadow: '0 2px 14px rgba(17,17,17,0.08)', border: '1px solid #F3F4F6' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 10 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
             <CheckCircle2 size={16} color={sellerStatus?.ok ? '#059669' : '#F59E0B'} />
-            <span style={{ fontSize: 13, fontWeight: 800, color: '#1E1B4B' }}>통합 상태판</span>
+            <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--foreground)' }}>통합 상태판</span>
           </div>
           <span style={{ fontSize: 10, color: '#9CA3AF' }}>{sellerStatus ? formatShortTime(sellerStatus.generatedAt) : '조회중'}</span>
         </div>
@@ -1059,7 +1059,7 @@ export default function HomePage() {
           <>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
               {statusCards.map(card => (
-                <div key={card.label} style={{ background: '#FAFAFF', border: '1px solid #EEF2FF', borderRadius: 12, padding: '10px 11px' }}>
+                <div key={card.label} style={{ background: '#FAFAFF', border: '1px solid var(--muted)', borderRadius: 12, padding: '10px 11px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
                     <span style={{ fontSize: 11, fontWeight: 700, color: '#4B5563' }}>{card.label}</span>
                     <span style={statusBadgeStyle(card.ok)}>{card.value}</span>
@@ -1085,7 +1085,7 @@ export default function HomePage() {
 
       {loading && !data && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <div style={{ background: '#EDE9FE', borderRadius: 20, height: 130, opacity: 0.5 }} />
+          <div style={{ background: 'var(--secondary)', borderRadius: 20, height: 130, opacity: 0.5 }} />
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             {[1, 2, 3, 4].map(i => <div key={i} style={{ background: '#fff', borderRadius: 16, height: 140, opacity: 0.4 }} />)}
           </div>
@@ -1172,7 +1172,7 @@ export default function HomePage() {
 
           {/* 수익 컴포넌트 */}
           <section style={{ marginBottom: 20 }}>
-            <div style={{ background: '#FFFFFF', border: '1px solid #EDE9FE', boxShadow: '0 10px 30px rgba(124,58,237,0.10)', borderRadius: 24, padding: '22px 18px', textAlign: 'center', marginBottom: 18 }}>
+            <div style={{ background: '#FFFFFF', border: '1px solid var(--secondary)', boxShadow: '0 10px 30px rgba(124,58,237,0.10)', borderRadius: 24, padding: '22px 18px', textAlign: 'center', marginBottom: 18 }}>
               <p style={{ fontSize: 13, color: '#9CA3AF', fontWeight: 900, margin: 0 }}>오늘 일 순수익</p>
               <p style={{ fontSize: 42, fontWeight: 950, letterSpacing: -1.5, lineHeight: 1, color: dailyNetProfit >= 0 ? '#059669' : '#DC2626', margin: '12px 0 8px' }}>{signedWon(dailyNetProfit)}</p>
               <p style={{ fontSize: 12, color: '#9CA3AF', margin: 0, fontWeight: 700 }}>매일 고정비 차감 후 실제 손에 쥐는 금액</p>
@@ -1191,7 +1191,7 @@ export default function HomePage() {
                 ))}
               </div>
 
-              <div style={{ marginTop: 16, background: '#F5F3FF', color: '#7C3AED', borderRadius: 12, padding: '12px 10px', fontSize: 14, fontWeight: 950 }}>
+              <div style={{ marginTop: 16, background: 'var(--muted)', color: 'var(--action)', borderRadius: 12, padding: '12px 10px', fontSize: 14, fontWeight: 950 }}>
                 30일 환산 ≈ {signedWon(monthlyConversion)}/월
               </div>
               <div style={{ marginTop: 12, background: '#ECFDF5', borderRadius: 12, padding: '12px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#047857', fontSize: 13, fontWeight: 950 }}>
@@ -1202,14 +1202,14 @@ export default function HomePage() {
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 12 }}>
               {['전체 기간', `${currentMonthLabel} 실발생`, '30일 환산'].map((label) => (
-                <div key={label} style={{ background: label === '전체 기간' ? '#7C3AED' : '#F5F3FF', color: label === '전체 기간' ? '#FFFFFF' : '#6B7280', borderRadius: 16, padding: '13px 8px', textAlign: 'center', fontSize: 13, fontWeight: 950 }}>
+                <div key={label} style={{ background: label === '전체 기간' ? 'var(--action)' : 'var(--muted)', color: label === '전체 기간' ? '#FFFFFF' : '#6B7280', borderRadius: 16, padding: '13px 8px', textAlign: 'center', fontSize: 13, fontWeight: 950 }}>
                   {label}
                 </div>
               ))}
             </div>
 
             <div style={{ border: '1px solid #E5E7EB', borderRadius: 14, background: '#FAFAFF', padding: '12px 14px', color: '#6B7280', fontSize: 12, fontWeight: 800, marginBottom: 18 }}>
-              <span style={{ color: '#7C3AED', fontWeight: 950 }}>ⓘ 전체 기간</span>{' '}
+              <span style={{ color: 'var(--action)', fontWeight: 950 }}>ⓘ 전체 기간</span>{' '}
               전체 기간의 총 손익. 수입은 계약 전액, 구독료는 기간 내 월 횟수만큼.
             </div>
 
@@ -1258,7 +1258,7 @@ export default function HomePage() {
           />
 
           {/* 서비스별 카드 */}
-          <h2 style={{ fontSize: 15, fontWeight: 700, color: '#1E1B4B', margin: '0 0 12px' }}>{"서비스별 현황"}</h2>
+          <h2 style={{ fontSize: 15, fontWeight: 700, color: 'var(--foreground)', margin: '0 0 12px' }}>{"서비스별 현황"}</h2>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
             {stats.map(st => {
               const cat = findCategory(st.serviceType);
@@ -1270,7 +1270,7 @@ export default function HomePage() {
               const vacancy = st.maxSlots - st.usingMembers;
               const isGood = pct >= 50;
               return (
-                <div key={st.serviceType} style={{ background: '#fff', borderRadius: 16, padding: '14px', boxShadow: '0 2px 12px rgba(167,139,250,0.10)', border: `1.5px solid ${bg}`, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div key={st.serviceType} style={{ background: '#fff', borderRadius: 16, padding: '14px', boxShadow: '0 2px 12px rgba(17,17,17,0.10)', border: `1.5px solid ${bg}`, display: 'flex', flexDirection: 'column', gap: 6 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'space-between', width: '100%' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                       {logo && <img src={logo} alt={st.serviceType} style={{ width: 24, height: 24, objectFit: 'contain', borderRadius: 6, flexShrink: 0 }} onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />}
@@ -1281,7 +1281,7 @@ export default function HomePage() {
                     <span style={{ fontSize: 10, color: '#9CA3AF' }}>{st.accountCount}{"계정"}</span>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
-                    <span style={{ fontSize: 28, fontWeight: 800, color: '#1E1B4B', lineHeight: 1 }}>{st.usingMembers}</span>
+                    <span style={{ fontSize: 28, fontWeight: 800, color: 'var(--foreground)', lineHeight: 1 }}>{st.usingMembers}</span>
                     <span style={{ fontSize: 13, color: '#9CA3AF', fontWeight: 500 }}>{"/"}{st.maxSlots}{"명"}</span>
                     {vacancy > 0 && <span style={{ fontSize: 10, color: '#EF4444', fontWeight: 600, marginLeft: 'auto' }}>{"빈 "}{vacancy}</span>}
                   </div>
@@ -1307,16 +1307,16 @@ export default function HomePage() {
           <div style={{ marginTop: 24, display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 8 }}>
             {[
               { path: '/profit', icon: <Wallet size={20} color="#059669" strokeWidth={2} />, bg: '#ECFDF5', title: '수익 상세 분석', desc: '구독료 · 수수료 · 달력 · 정산' },
-              { path: '/my', icon: <User size={20} color="#A78BFA" strokeWidth={2} />, bg: '#EDE9FE', title: '내 계정 파티원 조회', desc: '쿠키 기반 계정 연결' },
+              { path: '/my', icon: <User size={20} color="var(--action)" strokeWidth={2} />, bg: 'var(--secondary)', title: '내 계정 파티원 조회', desc: '쿠키 기반 계정 연결' },
             ].map(item => (
               <button key={item.path} onClick={() => navigate(item.path)}
-                style={{ width: '100%', background: '#fff', border: '1.5px solid #EDE9FE', borderRadius: 16, padding: '14px 20px', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', fontFamily: 'inherit', boxShadow: '0 2px 8px rgba(167,139,250,0.08)' }}>
+                style={{ width: '100%', background: '#fff', border: '1.5px solid var(--secondary)', borderRadius: 16, padding: '14px 20px', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', fontFamily: 'inherit', boxShadow: '0 2px 8px rgba(17,17,17,0.08)' }}>
                 <div style={{ width: 40, height: 40, borderRadius: 12, background: item.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{item.icon}</div>
                 <div style={{ textAlign: 'left' }}>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: '#1E1B4B' }}>{item.title}</div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--foreground)' }}>{item.title}</div>
                   <div style={{ fontSize: 12, color: '#9CA3AF', marginTop: 2 }}>{item.desc}</div>
                 </div>
-                <ChevronRight size={18} color="#A78BFA" style={{ marginLeft: 'auto' }} />
+                <ChevronRight size={18} color="var(--action)" style={{ marginLeft: 'auto' }} />
               </button>
             ))}
           </div>
@@ -1325,14 +1325,14 @@ export default function HomePage() {
           <PartyFeedbackPanel manageData={data} />
 
           {/* 월간 캘린더 + 구독설정 */}
-          <div style={{ marginTop: 8, borderTop: '2px solid #EDE9FE', paddingTop: 4 }}>
-            <Suspense fallback={<div style={{ padding: 12, fontSize: 12, color: '#7C3AED', fontWeight: 800 }}>월간 캘린더 불러오는 중...</div>}>
+          <div style={{ marginTop: 8, borderTop: '2px solid var(--secondary)', paddingTop: 4 }}>
+            <Suspense fallback={<div style={{ padding: 12, fontSize: 12, color: 'var(--action)', fontWeight: 800 }}>월간 캘린더 불러오는 중...</div>}>
               <MonthlyCalendarWidget data={data} />
             </Suspense>
           </div>
 
           {/* 일별 파티 유입 그래프 */}
-          <div style={{ marginTop: 8, borderTop: '2px solid #EDE9FE', paddingTop: 4 }}>
+          <div style={{ marginTop: 8, borderTop: '2px solid var(--secondary)', paddingTop: 4 }}>
             <DailyInflowChart data={data} manuals={manuals} />
           </div>
         </>

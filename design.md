@@ -1,45 +1,25 @@
-# Design Guidelines — Graytag 파티 대시보드
+# Dashboard design guidelines
 
-## Color Palette (Pastel)
-- Background: #F8F6FF (연한 라벤더 화이트)
-- Primary: #A78BFA (라벤더 퍼플)
-- Primary Light: #EDE9FE (연라벤더)
-- Accent Mint: #6EE7B7 (민트)
-- Accent Peach: #FCA5A5 (피치)
-- Accent Sky: #93C5FD (스카이블루)
-- Accent Yellow: #FDE68A (페일 옐로우)
-- Card BG: #FFFFFF
-- Text Primary: #1E1B4B
-- Text Secondary: #6B7280
-- Border: #E9E4FF
+The existing finance dashboard is the visual reference. The user requested the same clean style throughout the operations UI on 2026-10-18.
 
-## Service Colors
-- 넷플릭스: #E50914 (red)
-- 디즈니+: #1A3E8C (navy)
-- 유튜브: #FF0000 (red)
-- 왓챠: #FF153C (pink-red)
-- 웨이브: #006BE9 (blue)
-- 라프텔: #6B4FBB (purple)
-- 티빙: #FF153C (red)
-- 쿠팡플레이: #E8343B (red)
-- AppleOne: #555555 (dark gray)
-- 프라임비디오: #00A8E0 (blue)
+## Shared visual language
 
-## Typography
-- Font: Pretendard (fallback: -apple-system, sans-serif)
-- Heading: 700 weight
-- Body: 400/500 weight
+- White panels on #fafafa; dark text #191919; primary actions #171717.
+- Subtle #e5e5e5 borders, restrained shadows, 8–12px corner radii.
+- Pretendard/system sans-serif, calm typography, clear heading/body/helper hierarchy.
+- Shared colors use CSS variables defined in src/web/styles.css; operations layout and reusable patterns live in src/web/operations.css.
+- Preserve meaningful success/warning/error colors and service identity colors. Avoid purple/pastel surfaces or decorative gradients for dashboard chrome.
 
 ## Layout
-- Mobile-first, max-width 480px centered on desktop
-- Bottom navigation bar (4 tabs: 홈, 가격추적, 내계정, 설정)
-- Card radius: 16px
-- Soft shadows: 0 2px 12px rgba(167,139,250,0.10)
-- Spacing: 16px horizontal padding
 
-## Components
-- Cards: white bg, 16px radius, soft shadow, pastel accent top border
-- Badges: pill-shaped, pastel bg
-- Bottom nav: white bg, active = primary purple, inactive = gray
-- Price tags: bold, primary color
-- Top10 list: ranked with colored number badges
+- Desktop: fixed 232px navigation sidebar, 74px top bar, wide responsive content with a 1440px cap.
+- Below 960px: workspace switcher stays in the top bar; navigation becomes a drawer with Escape/focus support.
+- Mobile: 16px content gutters, stacked panels, readable inputs, no horizontal page overflow.
+- Administrative routes share the same navigation and neutral design tokens. Chat keeps its focused layout; buyer access pages and standalone finance retain their own navigation.
+
+## Selling forms
+
+- Distinguish form fields, optional guidance, submission and existing listings.
+- Spotify uses a form with a companion listing panel; the list stacks beneath the form on mobile.
+- 1달 / 3달 / 6개월 / 1년 buttons use inclusive calendar dates and stay consistent with manual date editing. Account expiry disables unavailable periods.
+- Registration, deletion, buyer isolation and automation behavior must be preserved during presentation changes.

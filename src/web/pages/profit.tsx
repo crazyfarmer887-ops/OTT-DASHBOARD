@@ -130,12 +130,12 @@ const getSubscriptionCost = (svcType: string): number => {
 
 // ─── 파티원 상태 뱃지 ────────────────────────────────────────────
 const STATUS_BADGE: Record<string, { label: string; color: string; bg: string }> = {
-  Using:                       { label:'이용 중',   color:'#7C3AED', bg:'#F5F3FF' },
+  Using:                       { label:'이용 중',   color:'var(--action)', bg:'var(--muted)' },
   UsingNearExpiration:         { label:'만료 임박',  color:'#D97706', bg:'#FFFBEB' },
   OnSale:                      { label:'판매 중',   color:'#059669', bg:'#ECFDF5' },
   Delivered:                   { label:'전달 완료',  color:'#2563EB', bg:'#EFF6FF' },
   Delivering:                  { label:'전달 중',   color:'#0891B2', bg:'#ECFEFF' },
-  Reserved:                    { label:'예약됨',    color:'#6366F1', bg:'#EEF2FF' },
+  Reserved:                    { label:'예약됨',    color:'#6366F1', bg:'var(--muted)' },
   LendingAcceptanceWaiting:    { label:'수락 대기',  color:'#D97706', bg:'#FFFBEB' },
   NormalFinished:              { label:'완료',      color:'#6B7280', bg:'#F3F4F6' },
   FinishedByBorrowerRequest:   { label:'중도 종료',  color:'#9CA3AF', bg:'#F9FAFB' },
@@ -657,7 +657,7 @@ export default function ProfitPage() {
       label: '전체 기간',
       badge: '전체 기간',
       desc: '파티 계약 전체 기간의 총 손익. 수입은 계약 전액, 구독료는 기간 내 월 횟수만큼.',
-      color: '#7C3AED',
+      color: 'var(--action)',
     },
     thismonth: {
       label: `${now.getMonth() + 1}월 실발생`,
@@ -679,7 +679,7 @@ export default function ProfitPage() {
       {/* 헤더 */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
         <div>
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: '#1E1B4B', margin: 0 }}>수익 계산</h1>
+          <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--foreground)', margin: 0 }}>수익 계산</h1>
           <p style={{ fontSize: 12, color: '#9CA3AF', margin: '4px 0 0' }}>
             {data?.updatedAt
               ? `${new Date(data.updatedAt).getHours().toString().padStart(2, '0')}:${new Date(data.updatedAt).getMinutes().toString().padStart(2, '0')} 기준`
@@ -687,7 +687,7 @@ export default function ProfitPage() {
           </p>
         </div>
         <button onClick={() => doFetch()} disabled={loading} style={{
-          background: '#A78BFA', border: 'none', borderRadius: 12, padding: '8px 14px',
+          background: 'var(--action)', border: 'none', borderRadius: 12, padding: '8px 14px',
           fontSize: 13, color: '#fff', cursor: loading ? 'not-allowed' : 'pointer',
           fontWeight: 600, fontFamily: 'inherit', opacity: loading ? 0.7 : 1,
           display: 'flex', alignItems: 'center', gap: 6,
@@ -704,7 +704,7 @@ export default function ProfitPage() {
             <button key={cs.id} onClick={() => setSelectedId(cs.id)} style={{
               flexShrink: 0, padding: '6px 14px', borderRadius: 20, border: 'none',
               fontFamily: 'inherit', fontSize: 12, fontWeight: 600, cursor: 'pointer',
-              background: selectedId === cs.id ? '#A78BFA' : '#fff',
+              background: selectedId === cs.id ? 'var(--action)' : '#fff',
               color: selectedId === cs.id ? '#fff' : '#6B7280',
               boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
             }}>{cs.label}</button>
@@ -714,9 +714,9 @@ export default function ProfitPage() {
 
       {/* 초기 안내 */}
       {!data && !loading && !error && (
-        <div style={{ background: '#EDE9FE', borderRadius: 16, padding: 20, textAlign: 'center' }}>
-          <Wallet size={32} color="#C4B5FD" style={{ margin: '0 auto 10px' }} />
-          <div style={{ fontSize: 14, fontWeight: 600, color: '#7C3AED' }}>조회 버튼을 눌러주세요</div>
+        <div style={{ background: 'var(--secondary)', borderRadius: 16, padding: 20, textAlign: 'center' }}>
+          <Wallet size={32} color="var(--text-subtle)" style={{ margin: '0 auto 10px' }} />
+          <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--action)' }}>조회 버튼을 눌러주세요</div>
           <div style={{ fontSize: 12, color: '#9CA3AF', marginTop: 4 }}>월 순수익 · 수입/지출 분석</div>
         </div>
       )}
@@ -728,7 +728,7 @@ export default function ProfitPage() {
           </div>
           <div style={{ fontSize: 12, color: '#6B7280' }}>{error}</div>
           {error.includes('만료') && (
-            <a href="https://graytag.co.kr/login" target="_blank" rel="noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 8, fontSize: 12, color: '#7C3AED', fontWeight: 600 }}>
+            <a href="https://graytag.co.kr/login" target="_blank" rel="noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 8, fontSize: 12, color: 'var(--action)', fontWeight: 600 }}>
               graytag.co.kr 로그인 <ExternalLink size={11} />
             </a>
           )}
@@ -746,8 +746,8 @@ export default function ProfitPage() {
           {/* ─── 일 순수익 카드 (최상단) ─── */}
           <div style={{
             background: '#fff', borderRadius: 20, padding: '20px',
-            marginBottom: 14, boxShadow: '0 2px 16px rgba(167,139,250,0.12)',
-            border: '2px solid #EDE9FE',
+            marginBottom: 14, boxShadow: '0 2px 16px rgba(17,17,17,0.12)',
+            border: '2px solid var(--secondary)',
           }}>
             <div style={{ textAlign: 'center', marginBottom: 14 }}>
               <div style={{ fontSize: 12, color: '#9CA3AF', marginBottom: 4 }}>오늘 일 순수익</div>
@@ -775,7 +775,7 @@ export default function ProfitPage() {
               </div>
 
             </div>
-            <div style={{ marginTop: 10, background: '#F8F6FF', borderRadius: 8, padding: '6px 10px', textAlign: 'center', fontSize: 11, color: '#7C3AED', fontWeight: 600 }}>
+            <div style={{ marginTop: 10, background: 'var(--background)', borderRadius: 8, padding: '6px 10px', textAlign: 'center', fontSize: 11, color: 'var(--action)', fontWeight: 600 }}>
               30일 환산 ≈ {totalDailyNet >= 0 ? '+' : ''}{(totalDailyNet * 30).toLocaleString()}원/월
             </div>
             {totalRealizedIncome > 0 && (
@@ -806,7 +806,7 @@ export default function ProfitPage() {
               <button key={m} onClick={() => setCalcMode(m)} style={{
                 flex: 1, padding: '8px 4px', borderRadius: 10, border: 'none',
                 fontFamily: 'inherit', fontSize: 11, fontWeight: 600, cursor: 'pointer',
-                background: calcMode === m ? MODE_META[m].color : '#F3F0FF',
+                background: calcMode === m ? MODE_META[m].color : 'var(--muted)',
                 color: calcMode === m ? '#fff' : '#6B7280',
                 transition: 'all 0.15s',
               }}>
@@ -817,7 +817,7 @@ export default function ProfitPage() {
 
           {/* 계산 방식 설명 */}
           <div style={{
-            background: '#F8F6FF', borderRadius: 10, padding: '8px 12px', marginBottom: 12,
+            background: 'var(--background)', borderRadius: 10, padding: '8px 12px', marginBottom: 12,
             display: 'flex', alignItems: 'flex-start', gap: 7,
             border: `1px solid ${meta.color}22`,
           }}>
@@ -888,7 +888,7 @@ export default function ProfitPage() {
           </div>
 
           {/* ─── 서비스별 상세 ─── */}
-          <div style={{ fontSize: 15, fontWeight: 700, color: '#1E1B4B', marginBottom: 10 }}>서비스별 손익</div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--foreground)', marginBottom: 10 }}>서비스별 손익</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
             {profits.map(svc => {
               const sc = svcColor(svc.serviceType);
@@ -897,14 +897,14 @@ export default function ProfitPage() {
               return (
                 <div key={svc.serviceType} style={{
                   background: '#fff', borderRadius: 16, overflow: 'hidden',
-                  boxShadow: '0 2px 12px rgba(167,139,250,0.08)', border: `1.5px solid ${sc.bg}`,
+                  boxShadow: '0 2px 12px rgba(17,17,17,0.08)', border: `1.5px solid ${sc.bg}`,
                 }}>
-                  <button onClick={() => setOpenSvc(openSvc === svc.serviceType ? null : svc.serviceType)} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', borderBottom: '1px solid #F3F0FF', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
+                  <button onClick={() => setOpenSvc(openSvc === svc.serviceType ? null : svc.serviceType)} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', borderBottom: '1px solid var(--muted)', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
                     <div style={{ width: 40, height: 40, borderRadius: 12, background: sc.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                       {logo && <img src={logo} alt={svc.serviceType} style={{ width: 26, height: 26, objectFit: 'contain' }} onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />}
                     </div>
                     <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 15, fontWeight: 700, color: '#1E1B4B' }}>{svc.serviceType}</div>
+                      <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--foreground)' }}>{svc.serviceType}</div>
                       <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 1 }}>계정 {svc.accountCount}개 · 평균 {svc.avgPartyDays}일</div>
                     </div>
                     <div style={{ textAlign: 'right' }}>
@@ -916,7 +916,7 @@ export default function ProfitPage() {
                         {meta.badge} 순수익
                       </div>
                     </div>
-                    {openSvc === svc.serviceType ? <ChevronDown size={16} color="#A78BFA" /> : <ChevronRight size={16} color="#A78BFA" />}
+                    {openSvc === svc.serviceType ? <ChevronDown size={16} color="var(--action)" /> : <ChevronRight size={16} color="var(--action)" />}
                   </button>
                   <div style={{ padding: '10px 16px 14px' }}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -946,15 +946,15 @@ export default function ProfitPage() {
                           </span>
                         </div>
                       ))}
-                      <div style={{ borderTop: '1px dashed #E9E4FF', paddingTop: 6, marginTop: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontSize: 12, fontWeight: 700, color: '#1E1B4B' }}>소계 ({meta.badge})</span>
+                      <div style={{ borderTop: '1px dashed var(--border)', paddingTop: 6, marginTop: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--foreground)' }}>소계 ({meta.badge})</span>
                         <span style={{ fontSize: 14, fontWeight: 700, color: isPositive ? '#059669' : '#EF4444' }}>{fmtMoney(svc.netProfit)}</span>
                       </div>
                     </div>
                   </div>
                   {/* ── 계정 & 파티원 드릴다운 ── */}
                   {openSvc === svc.serviceType && (
-                    <div style={{ borderTop: '1px solid #F3F0FF', padding: '8px 12px 12px' }}>
+                    <div style={{ borderTop: '1px solid var(--muted)', padding: '8px 12px 12px' }}>
                       {svc.accounts.map(acct => {
                         const acctKey = `profit__${acct.email}__${svc.serviceType}`;
                         const isAcctOpen = openAcct === acctKey;
@@ -975,7 +975,7 @@ export default function ProfitPage() {
                           mm.endDate >= today
                         );
                         return (
-                          <div key={acctKey} style={{ marginBottom: 8, background: '#F8F6FF', borderRadius: 12, overflow: 'hidden' }}>
+                          <div key={acctKey} style={{ marginBottom: 8, background: 'var(--background)', borderRadius: 12, overflow: 'hidden' }}>
                             <button onClick={() => setOpenAcct(isAcctOpen ? null : acctKey)} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
                               {/* 슬롯 게이지 */}
                               <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, minWidth: 36 }}>
@@ -985,7 +985,7 @@ export default function ProfitPage() {
                                       width: i < totalUsing ? 7 : 6,
                                       height: i < totalUsing ? 18 : 14,
                                       borderRadius: 3,
-                                      background: i < acct.usingCount ? '#A78BFA' : i < totalUsing ? '#34D399' : i < acct.activeCount ? '#C4B5FD' : '#E9E4FF',
+                                      background: i < acct.usingCount ? 'var(--action)' : i < totalUsing ? '#34D399' : i < acct.activeCount ? 'var(--text-subtle)' : 'var(--border)',
                                       alignSelf: 'flex-end'
                                     }} />
                                   ))}
@@ -995,7 +995,7 @@ export default function ProfitPage() {
                               <div style={{ flex: 1, textAlign: 'left', minWidth: 0 }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                                   <Mail size={12} color="#9CA3AF" />
-                                  <span style={{ fontSize: 13, fontWeight: 700, color: '#1E1B4B' }}>{alias}</span>
+                                  <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--foreground)' }}>{alias}</span>
                                   {manualCount > 0 && (
                                     <span style={{ fontSize: 9, background: '#D1FAE5', color: '#059669', borderRadius: 4, padding: '1px 5px', fontWeight: 700 }}>+{manualCount}수동</span>
                                   )}
@@ -1006,12 +1006,12 @@ export default function ProfitPage() {
                                 </div>
                               </div>
                               <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                                <div style={{ fontSize: 13, fontWeight: 700, color: '#A78BFA' }}>{fmtMoneyPlain(acct.totalIncome)}</div>
+                                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--action)' }}>{fmtMoneyPlain(acct.totalIncome)}</div>
                               </div>
-                              {isAcctOpen ? <ChevronDown size={13} color="#C4B5FD" /> : <ChevronRight size={13} color="#C4B5FD" />}
+                              {isAcctOpen ? <ChevronDown size={13} color="var(--text-subtle)" /> : <ChevronRight size={13} color="var(--text-subtle)" />}
                             </button>
                             {isAcctOpen && (
-                              <div style={{ borderTop: '1px solid #EDE9FE', padding: '8px 14px' }}>
+                              <div style={{ borderTop: '1px solid var(--secondary)', padding: '8px 14px' }}>
                                 {activeMembers.length === 0 && activeManuals.length === 0 ? (
                                   <div style={{ fontSize: 12, color: '#9CA3AF', textAlign: 'center', padding: '8px 0' }}>활성 파티원 없음</div>
                                 ) : (
@@ -1021,11 +1021,11 @@ export default function ProfitPage() {
                                       const isUsing = USING_SET.has(m.status);
                                       const daily = calcDailyRate(m);
                                       return (
-                                        <div key={m.dealUsid} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '9px 0', borderBottom: '1px solid #F3F0FF' }}>
-                                          <div style={{ width: 26, height: 26, borderRadius: 8, flexShrink: 0, background: isUsing ? '#A78BFA' : '#C4B5FD', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, marginTop: 2, color: '#fff' }}>{idx + 1}</div>
+                                        <div key={m.dealUsid} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '9px 0', borderBottom: '1px solid var(--muted)' }}>
+                                          <div style={{ width: 26, height: 26, borderRadius: 8, flexShrink: 0, background: isUsing ? 'var(--action)' : 'var(--text-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, marginTop: 2, color: '#fff' }}>{idx + 1}</div>
                                           <div style={{ flex: 1, minWidth: 0 }}>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                                              <span style={{ fontSize: 13, fontWeight: 700, color: '#1E1B4B' }}>{m.name || '(미확인)'}</span>
+                                              <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--foreground)' }}>{m.name || '(미확인)'}</span>
                                               <span style={{ fontSize: 10, fontWeight: 600, color: b.color, background: b.bg, borderRadius: 6, padding: '2px 7px' }}>{b.label}</span>
                                             </div>
                                             {(m.startDateTime || m.endDateTime) && (
@@ -1041,12 +1041,12 @@ export default function ProfitPage() {
                                             {isUsing && m.progressRatio && m.progressRatio !== '0%' && (
                                               <div style={{ marginTop: 5 }}>
                                                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#9CA3AF', marginBottom: 2 }}><span>진행률</span><span>{m.progressRatio}</span></div>
-                                                <div style={{ background: '#E9E4FF', borderRadius: 4, height: 4 }}><div style={{ background: '#A78BFA', borderRadius: 4, height: '100%', width: m.progressRatio, maxWidth: '100%' }} /></div>
+                                                <div style={{ background: 'var(--border)', borderRadius: 4, height: 4 }}><div style={{ background: 'var(--action)', borderRadius: 4, height: '100%', width: m.progressRatio, maxWidth: '100%' }} /></div>
                                               </div>
                                             )}
                                           </div>
                                           <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                                            <div style={{ fontSize: 13, fontWeight: 700, color: '#A78BFA' }}>{m.price}</div>
+                                            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--action)' }}>{m.price}</div>
                                             {m.realizedSum > 0 && <div style={{ fontSize: 10, color: '#059669', marginTop: 2 }}>정산 {m.realizedSum.toLocaleString()}원</div>}
                                           </div>
                                         </div>
@@ -1054,18 +1054,18 @@ export default function ProfitPage() {
                                     })}
                                     {/* 수동 파티원 */}
                                     {activeManuals.map((mm, idx) => (
-                                      <div key={mm.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '9px 0', borderBottom: idx < activeManuals.length - 1 ? '1px solid #F3F0FF' : 'none' }}>
+                                      <div key={mm.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '9px 0', borderBottom: idx < activeManuals.length - 1 ? '1px solid var(--muted)' : 'none' }}>
                                         <div style={{ width: 26, height: 26, borderRadius: 8, flexShrink: 0, background: '#34D399', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, marginTop: 2, color: '#fff' }}>{activeMembers.length + idx + 1}</div>
                                         <div style={{ flex: 1, minWidth: 0 }}>
                                           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                                            <span style={{ fontSize: 13, fontWeight: 700, color: '#1E1B4B' }}>{mm.memberName}</span>
+                                            <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--foreground)' }}>{mm.memberName}</span>
                                             <span style={{ fontSize: 10, fontWeight: 600, color: '#059669', background: '#D1FAE5', borderRadius: 6, padding: '2px 7px' }}>수동</span>
                                             {mm.source && <span style={{ fontSize: 10, color: '#9CA3AF' }}>{mm.source}</span>}
                                           </div>
                                           <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 2 }}>
                                             {mm.startDate} ~ {mm.endDate}
                                           </div>
-                                          {mm.memo && <div style={{ fontSize: 10, color: '#A78BFA', marginTop: 1 }}>{mm.memo}</div>}
+                                          {mm.memo && <div style={{ fontSize: 10, color: 'var(--action)', marginTop: 1 }}>{mm.memo}</div>}
                                         </div>
                                         <div style={{ textAlign: 'right', flexShrink: 0 }}>
                                           <div style={{ fontSize: 13, fontWeight: 700, color: '#059669' }}>{mm.price.toLocaleString()}원</div>
@@ -1090,21 +1090,21 @@ export default function ProfitPage() {
           </div>
 
           {/* ─── 달력 ─── */}
-          <div style={{ fontSize: 15, fontWeight: 700, color: '#1E1B4B', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
-            <Calendar size={16} color="#A78BFA" /> 월간 결제/수입 캘린더
+          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--foreground)', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Calendar size={16} color="var(--action)" /> 월간 결제/수입 캘린더
           </div>
-          <div style={{ background: '#fff', borderRadius: 16, overflow: 'hidden', boxShadow: '0 2px 12px rgba(167,139,250,0.08)', border: '1.5px solid #EDE9FE', marginBottom: 14 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid #F3F0FF' }}>
-              <button onClick={prevMonth} style={{ background: '#F3F0FF', border: 'none', borderRadius: 8, padding: 6, cursor: 'pointer', display: 'flex' }}>
-                <ChevronLeft size={16} color="#7C3AED" />
+          <div style={{ background: '#fff', borderRadius: 16, overflow: 'hidden', boxShadow: '0 2px 12px rgba(17,17,17,0.08)', border: '1.5px solid var(--secondary)', marginBottom: 14 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid var(--muted)' }}>
+              <button onClick={prevMonth} style={{ background: 'var(--muted)', border: 'none', borderRadius: 8, padding: 6, cursor: 'pointer', display: 'flex' }}>
+                <ChevronLeft size={16} color="var(--action)" />
               </button>
-              <span style={{ fontSize: 14, fontWeight: 700, color: '#1E1B4B' }}>{monthLabel}</span>
-              <button onClick={nextMonth} style={{ background: '#F3F0FF', border: 'none', borderRadius: 8, padding: 6, cursor: 'pointer', display: 'flex' }}>
-                <ChevronRight size={16} color="#7C3AED" />
+              <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--foreground)' }}>{monthLabel}</span>
+              <button onClick={nextMonth} style={{ background: 'var(--muted)', border: 'none', borderRadius: 8, padding: 6, cursor: 'pointer', display: 'flex' }}>
+                <ChevronRight size={16} color="var(--action)" />
               </button>
             </div>
             {calEvents.length > 0 && (
-              <div style={{ display: 'flex', gap: 8, padding: '8px 16px', borderBottom: '1px solid #F3F0FF' }}>
+              <div style={{ display: 'flex', gap: 8, padding: '8px 16px', borderBottom: '1px solid var(--muted)' }}>
                 <div style={{ flex: 1, background: '#ECFDF5', borderRadius: 8, padding: '6px 10px', textAlign: 'center' }}>
                   <div style={{ fontSize: 10, color: '#6B7280' }}>수입</div>
                   <div style={{ fontSize: 13, fontWeight: 700, color: '#059669' }}>+{monthTotalIncome.toLocaleString()}</div>
@@ -1133,12 +1133,12 @@ export default function ProfitPage() {
                 const isToday = day === now.getDate() && calMonth === now.getMonth() && calYear === now.getFullYear();
                 return (
                   <button key={day} onClick={() => setSelectedDay(isSel ? null : day)} style={{
-                    background: isSel ? '#A78BFA' : isToday ? '#F3F0FF' : 'none',
+                    background: isSel ? 'var(--action)' : isToday ? 'var(--muted)' : 'none',
                     border: 'none', borderRadius: 10, padding: '6px 2px',
                     cursor: de.length > 0 ? 'pointer' : 'default',
                     fontFamily: 'inherit', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, minHeight: 42,
                   }}>
-                    <span style={{ fontSize: 12, fontWeight: isToday || isSel ? 700 : 400, color: isSel ? '#fff' : isToday ? '#7C3AED' : '#1E1B4B' }}>
+                    <span style={{ fontSize: 12, fontWeight: isToday || isSel ? 700 : 400, color: isSel ? '#fff' : isToday ? 'var(--action)' : 'var(--foreground)' }}>
                       {day}
                     </span>
                     {de.length > 0 && (() => {
@@ -1167,9 +1167,9 @@ export default function ProfitPage() {
 
           {/* 선택된 날짜 상세 */}
           {selectedDay && dayEvents.length > 0 && (
-            <div style={{ background: '#fff', borderRadius: 16, padding: '14px 16px', marginBottom: 14, boxShadow: '0 2px 12px rgba(167,139,250,0.08)', border: '1.5px solid #EDE9FE' }}>
+            <div style={{ background: '#fff', borderRadius: 16, padding: '14px 16px', marginBottom: 14, boxShadow: '0 2px 12px rgba(17,17,17,0.08)', border: '1.5px solid var(--secondary)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                <span style={{ fontSize: 14, fontWeight: 700, color: '#1E1B4B' }}>{calMonth + 1}월 {selectedDay}일</span>
+                <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--foreground)' }}>{calMonth + 1}월 {selectedDay}일</span>
                 <div style={{ display: 'flex', gap: 8 }}>
                   {dayIncome > 0 && <span style={{ fontSize: 11, fontWeight: 600, color: '#059669', background: '#ECFDF5', borderRadius: 6, padding: '2px 8px' }}>+{dayIncome.toLocaleString()}</span>}
                   {dayExpense > 0 && <span style={{ fontSize: 11, fontWeight: 600, color: '#EF4444', background: '#FFF0F0', borderRadius: 6, padding: '2px 8px' }}>-{dayExpense.toLocaleString()}</span>}
@@ -1180,10 +1180,10 @@ export default function ProfitPage() {
                   const isExp = group.type === 'expense';
                   const isIncomeGroup = group.type === 'income' && group.events.length > 0;
                   return (
-                    <details key={group.groupKey || i} open={!isIncomeGroup || group.events.length <= 1} style={{ background: '#F8F6FF', borderRadius: 10, padding: '8px 12px' }}>
+                    <details key={group.groupKey || i} open={!isIncomeGroup || group.events.length <= 1} style={{ background: 'var(--background)', borderRadius: 10, padding: '8px 12px' }}>
                       <summary style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: isIncomeGroup ? 'pointer' : 'default', listStyle: 'none' }}>
                         <div style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: isExp ? '#EF4444' : '#059669' }} />
-                        <div style={{ flex: 1, fontSize: 12, color: '#1E1B4B' }}>
+                        <div style={{ flex: 1, fontSize: 12, color: 'var(--foreground)' }}>
                           {isIncomeGroup ? `${group.accountLabel} (${group.serviceType}) · ${group.memberCount}명 일할 수입` : group.accountLabel}
                         </div>
                         <div style={{ fontSize: 12, fontWeight: 700, color: isExp ? '#EF4444' : '#059669' }}>
@@ -1207,36 +1207,36 @@ export default function ProfitPage() {
             </div>
           )}
           {selectedDay && dayEvents.length === 0 && (
-            <div style={{ background: '#fff', borderRadius: 16, padding: '20px 16px', marginBottom: 14, textAlign: 'center', color: '#9CA3AF', fontSize: 13, boxShadow: '0 2px 12px rgba(167,139,250,0.08)', border: '1.5px solid #EDE9FE' }}>
+            <div style={{ background: '#fff', borderRadius: 16, padding: '20px 16px', marginBottom: 14, textAlign: 'center', color: '#9CA3AF', fontSize: 13, boxShadow: '0 2px 12px rgba(17,17,17,0.08)', border: '1.5px solid var(--secondary)' }}>
               {calMonth + 1}월 {selectedDay}일에는 예정된 결제/수입이 없어요
             </div>
           )}
 
           {/* ─── 유지 계정 결제일 설정 ─── */}
           {profits.length > 0 && (
-            <div style={{ background: '#fff', borderRadius: 16, overflow: 'hidden', boxShadow: '0 2px 12px rgba(167,139,250,0.08)', border: '1.5px solid #EDE9FE', marginBottom: 14 }}>
+            <div style={{ background: '#fff', borderRadius: 16, overflow: 'hidden', boxShadow: '0 2px 12px rgba(17,17,17,0.08)', border: '1.5px solid var(--secondary)', marginBottom: 14 }}>
               <button
                 onClick={() => setShowSubSettings(v => !v)}
                 style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '13px 16px', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}
               >
-                <Settings size={16} color="#A78BFA" />
-                <span style={{ fontSize: 14, fontWeight: 700, color: '#1E1B4B', flex: 1, textAlign: 'left' }}>구독 설정</span>
+                <Settings size={16} color="var(--action)" />
+                <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--foreground)', flex: 1, textAlign: 'left' }}>구독 설정</span>
                 {aliasLoading && <Loader2 size={13} color="#9CA3AF" style={{ animation: 'spin 1s linear infinite' }} />}
                 {!aliasLoading && Object.keys(aliasMap).length > 0 && (
                   <span style={{ fontSize: 11, background: '#ECFDF5', color: '#059669', borderRadius: 6, padding: '2px 8px', fontWeight: 600 }}>SL연동</span>
                 )}
 
-                {showSubSettings ? <ChevronDown size={15} color="#A78BFA" /> : <ChevronRight size={15} color="#A78BFA" />}
+                {showSubSettings ? <ChevronDown size={15} color="var(--action)" /> : <ChevronRight size={15} color="var(--action)" />}
               </button>
 
               {showSubSettings && (
-                <div style={{ borderTop: '1px solid #F3F0FF', padding: '12px 16px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div style={{ borderTop: '1px solid var(--muted)', padding: '12px 16px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
 
                   {/* 안내 텍스트 */}
                   <div style={{ fontSize: 11, color: '#9CA3AF', lineHeight: 1.6 }}>
                     각 파티 이메일의 구독 시작일(캘린더 지출 기준일)을 설정해요.<br />
                     <span style={{ color: '#059669', fontWeight: 600 }}>● SL</span> = SimpleLogin 계정 생성일 자동 적용 &nbsp;
-                    <span style={{ color: '#7C3AED', fontWeight: 600 }}>● 직접</span> = 커스텀 설정
+                    <span style={{ color: 'var(--action)', fontWeight: 600 }}>● 직접</span> = 커스텀 설정
                   </div>
 
                   {/* ── 파티별 구독일 + 총 지출 ── */}
@@ -1262,7 +1262,7 @@ export default function ProfitPage() {
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 2px' }}>
                             {logoHeader && <img src={logoHeader} alt="" style={{ width: 16, height: 16, borderRadius: 3, objectFit: 'contain' }} />}
                             <span style={{ fontSize: 12, fontWeight: 700, color: svcClrHeader }}>{svc.serviceType}</span>
-                            <span style={{ fontSize: 10, color: '#C4B5FD' }}>{svc.accounts.length}개 계정</span>
+                            <span style={{ fontSize: 10, color: 'var(--text-subtle)' }}>{svc.accounts.length}개 계정</span>
                           </div>
                           {sortedAccts.map(acct => {
                     const aliasDay = aliasMap[acct.email];
@@ -1277,7 +1277,7 @@ export default function ProfitPage() {
                     })();
                     const effectiveDay = customDay || aliasDay || rawFallback || 1;
                     const source = customDay ? '직접' : aliasDay ? 'SL' : '자동';
-                    const srcColor = customDay ? '#7C3AED' : aliasDay ? '#059669' : '#9CA3AF';
+                    const srcColor = customDay ? 'var(--action)' : aliasDay ? '#059669' : '#9CA3AF';
                     const isEditing = editingSubStart === acct.email;
 
                     // 총 구독 지출 계산: earliestStart ~ latestEnd 기간 동안 effectiveDay에 결제 발생 횟수
@@ -1315,20 +1315,20 @@ export default function ProfitPage() {
 
                     const logo = svcLogo(svc.serviceType);
                     return (
-                      <div key={acct.email} style={{ background: '#F8F6FF', borderRadius: 12, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      <div key={acct.email} style={{ background: 'var(--background)', borderRadius: 12, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
                         {/* 이메일 + 서비스 */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                           {logo && <img src={logo} alt="" style={{ width: 18, height: 18, borderRadius: 4, objectFit: 'contain' }} />}
                           <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: 12, fontWeight: 700, color: '#1E1B4B', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--foreground)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                               {emailAlias(acct.email)}
-                              {emailAlias(acct.email) !== acct.email && <span style={{ fontSize: 9, color: '#C4B5FD', marginLeft: 4, fontWeight: 400 }}>{acct.email.length > 20 ? acct.email.slice(0,20)+'…' : acct.email}</span>}
+                              {emailAlias(acct.email) !== acct.email && <span style={{ fontSize: 9, color: 'var(--text-subtle)', marginLeft: 4, fontWeight: 400 }}>{acct.email.length > 20 ? acct.email.slice(0,20)+'…' : acct.email}</span>}
                             </div>
                             <div style={{ fontSize: 10, color: '#9CA3AF', marginTop: 1, display: 'flex', alignItems: 'center', gap: 4 }}>
                               <span style={{ color: srcColor, fontWeight: 600 }}>● {source}</span>
                               {aliasDay && !customDay && <span>SL 가입일: {aliasDay}일</span>}
                               {customDay && <span>커스텀: {customDay}일</span>}
-                              {periodStr && <span style={{ color: '#C4B5FD' }}>· {periodStr}</span>}
+                              {periodStr && <span style={{ color: 'var(--text-subtle)' }}>· {periodStr}</span>}
                             </div>
                           </div>
                           {/* 총 지출 요약 */}
@@ -1350,7 +1350,7 @@ export default function ProfitPage() {
                                 value={subStartInput}
                                 onChange={e => setSubStartInput(e.target.value)}
                                 autoFocus
-                                style={{ width: 50, padding: '4px 6px', borderRadius: 7, border: '1.5px solid #A78BFA', fontSize: 13, textAlign: 'center', fontFamily: 'inherit', color: '#1E1B4B' }}
+                                style={{ width: 50, padding: '4px 6px', borderRadius: 7, border: '1.5px solid var(--action)', fontSize: 13, textAlign: 'center', fontFamily: 'inherit', color: 'var(--foreground)' }}
                                 onKeyDown={e => {
                                   if (e.key === 'Enter') {
                                     const v = Math.max(1, Math.min(28, parseInt(subStartInput) || 1));
@@ -1366,18 +1366,18 @@ export default function ProfitPage() {
                                 const v = Math.max(1, Math.min(28, parseInt(subStartInput) || 1));
                                 updateSubStart(acct.email, v);
                                 setEditingSubStart(null);
-                              }} style={{ background: '#A78BFA', border: 'none', borderRadius: 6, padding: '4px 7px', cursor: 'pointer', display: 'flex' }}>
+                              }} style={{ background: 'var(--action)', border: 'none', borderRadius: 6, padding: '4px 7px', cursor: 'pointer', display: 'flex' }}>
                                 <Check size={12} color="#fff" strokeWidth={3} />
                               </button>
-                              <button onClick={() => setEditingSubStart(null)} style={{ background: '#F3F0FF', border: 'none', borderRadius: 6, padding: '4px 7px', cursor: 'pointer', display: 'flex' }}>
+                              <button onClick={() => setEditingSubStart(null)} style={{ background: 'var(--muted)', border: 'none', borderRadius: 6, padding: '4px 7px', cursor: 'pointer', display: 'flex' }}>
                                 <X size={12} color="#9CA3AF" />
                               </button>
                             </div>
                           ) : (
                             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                              <span style={{ fontSize: 14, fontWeight: 700, color: '#A78BFA' }}>{effectiveDay}일</span>
-                              <button onClick={() => { setEditingSubStart(acct.email); setSubStartInput(String(effectiveDay)); }} style={{ background: '#EDE9FE', border: 'none', borderRadius: 6, padding: '4px 6px', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
-                                <Pencil size={11} color="#7C3AED" />
+                              <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--action)' }}>{effectiveDay}일</span>
+                              <button onClick={() => { setEditingSubStart(acct.email); setSubStartInput(String(effectiveDay)); }} style={{ background: 'var(--secondary)', border: 'none', borderRadius: 6, padding: '4px 6px', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+                                <Pencil size={11} color="var(--action)" />
                               </button>
                               {customDay && (
                                 <button onClick={() => {
@@ -1425,13 +1425,13 @@ export default function ProfitPage() {
             </div>
           )}
           {/* 계산 기준 안내 */}
-          <div style={{ background: '#F8F6FF', borderRadius: 12, padding: '10px 14px', marginBottom: 20, fontSize: 11, color: '#9CA3AF', lineHeight: 1.7 }}>
-            <div style={{ fontWeight: 600, color: '#7C3AED', marginBottom: 4 }}>계산 기준</div>
+          <div style={{ background: 'var(--background)', borderRadius: 12, padding: '10px 14px', marginBottom: 20, fontSize: 11, color: '#9CA3AF', lineHeight: 1.7 }}>
+            <div style={{ fontWeight: 600, color: 'var(--action)', marginBottom: 4 }}>계산 기준</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-              <div><span style={{ color: '#7C3AED', fontWeight: 600 }}>현재 스냅샷</span> — 파티 전체 기간의 총 손익. 구독료는 기간 내 월 수만큼 차감.</div>
+              <div><span style={{ color: 'var(--action)', fontWeight: 600 }}>현재 스냅샷</span> — 파티 전체 기간의 총 손익. 구독료는 기간 내 월 수만큼 차감.</div>
               <div><span style={{ color: '#059669', fontWeight: 600 }}>{now.getMonth() + 1}월 실발생</span> — 이번 달 이용일수 × 일할 수입 - 현재 유지 계정 구독료 1회</div>
               <div><span style={{ color: '#2563EB', fontWeight: 600 }}>기존 파티 그대로 30일 연장</span> — 현재 이용 중인 구성원·가격의 30일 수입 - 해당 계정 구독료 1회 (판매 중 슬롯·미판매 계정 제외)</div>
-              <div style={{ borderTop: '1px solid #EDE9FE', paddingTop: 4, marginTop: 2 }}>
+              <div style={{ borderTop: '1px solid var(--secondary)', paddingTop: 4, marginTop: 2 }}>
                 수입: 전체 이용기간 총액을 이용일별로 나눈 일할 수입<br />
                 수수료: 수입의 10% (정산 시 차감)<br />
                 구독료: 넷플 17,000/월 · 디즈니+ 18,000/월 · 웨이브+티빙 번들 19,000/월 (매월 고정)<br />
@@ -1513,23 +1513,23 @@ export function MonthlyCalendarWidget({ data }: { data: ManageData }) {
 
   return (
     <div style={{ padding: '12px 0 0' }}>
-      <div style={{ fontSize: 15, fontWeight: 700, color: '#1E1B4B', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
-        <Calendar size={16} color="#A78BFA" /> 월간 결제/수입 캘린더
+      <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--foreground)', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+        <Calendar size={16} color="var(--action)" /> 월간 결제/수입 캘린더
       </div>
 
       {/* 달력 */}
-      <div style={{ background: '#fff', borderRadius: 16, overflow: 'hidden', boxShadow: '0 2px 12px rgba(167,139,250,0.08)', border: '1.5px solid #EDE9FE', marginBottom: 14 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid #F3F0FF' }}>
-          <button onClick={prevMonth} style={{ background: '#F3F0FF', border: 'none', borderRadius: 8, padding: 6, cursor: 'pointer', display: 'flex' }}>
-            <ChevronLeft size={16} color="#7C3AED" />
+      <div style={{ background: '#fff', borderRadius: 16, overflow: 'hidden', boxShadow: '0 2px 12px rgba(17,17,17,0.08)', border: '1.5px solid var(--secondary)', marginBottom: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid var(--muted)' }}>
+          <button onClick={prevMonth} style={{ background: 'var(--muted)', border: 'none', borderRadius: 8, padding: 6, cursor: 'pointer', display: 'flex' }}>
+            <ChevronLeft size={16} color="var(--action)" />
           </button>
-          <span style={{ fontSize: 14, fontWeight: 700, color: '#1E1B4B' }}>{monthLabel}</span>
-          <button onClick={nextMonth} style={{ background: '#F3F0FF', border: 'none', borderRadius: 8, padding: 6, cursor: 'pointer', display: 'flex' }}>
-            <ChevronRight size={16} color="#7C3AED" />
+          <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--foreground)' }}>{monthLabel}</span>
+          <button onClick={nextMonth} style={{ background: 'var(--muted)', border: 'none', borderRadius: 8, padding: 6, cursor: 'pointer', display: 'flex' }}>
+            <ChevronRight size={16} color="var(--action)" />
           </button>
         </div>
         {calEvents.length > 0 && (
-          <div style={{ display: 'flex', gap: 8, padding: '8px 16px', borderBottom: '1px solid #F3F0FF' }}>
+          <div style={{ display: 'flex', gap: 8, padding: '8px 16px', borderBottom: '1px solid var(--muted)' }}>
             <div style={{ flex: 1, background: '#ECFDF5', borderRadius: 8, padding: '6px 10px', textAlign: 'center' }}>
               <div style={{ fontSize: 10, color: '#6B7280' }}>수입</div>
               <div style={{ fontSize: 13, fontWeight: 700, color: '#059669' }}>+{monthTotalIncome.toLocaleString()}</div>
@@ -1558,12 +1558,12 @@ export function MonthlyCalendarWidget({ data }: { data: ManageData }) {
             const isToday = day === now.getDate() && calMonth === now.getMonth() && calYear === now.getFullYear();
             return (
               <button key={day} onClick={() => setSelectedDay(isSel ? null : day)} style={{
-                background: isSel ? '#A78BFA' : isToday ? '#F3F0FF' : 'none',
+                background: isSel ? 'var(--action)' : isToday ? 'var(--muted)' : 'none',
                 border: 'none', borderRadius: 10, padding: '6px 2px',
                 cursor: de.length > 0 ? 'pointer' : 'default',
                 fontFamily: 'inherit', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, minHeight: 42,
               }}>
-                <span style={{ fontSize: 12, fontWeight: isToday || isSel ? 700 : 400, color: isSel ? '#fff' : isToday ? '#7C3AED' : '#1E1B4B' }}>{day}</span>
+                <span style={{ fontSize: 12, fontWeight: isToday || isSel ? 700 : 400, color: isSel ? '#fff' : isToday ? 'var(--action)' : 'var(--foreground)' }}>{day}</span>
                 {de.length > 0 && (() => {
                   const dInc = de.filter(e => e.type !== 'expense').reduce((s,e) => s+e.amount, 0);
                   const dExp = de.filter(e => e.type === 'expense').reduce((s,e) => s+e.amount, 0);
@@ -1590,9 +1590,9 @@ export function MonthlyCalendarWidget({ data }: { data: ManageData }) {
 
       {/* 선택된 날짜 상세 */}
       {selectedDay && dayEvents.length > 0 && (
-        <div style={{ background: '#fff', borderRadius: 16, padding: '14px 16px', marginBottom: 14, boxShadow: '0 2px 12px rgba(167,139,250,0.08)', border: '1.5px solid #EDE9FE' }}>
+        <div style={{ background: '#fff', borderRadius: 16, padding: '14px 16px', marginBottom: 14, boxShadow: '0 2px 12px rgba(17,17,17,0.08)', border: '1.5px solid var(--secondary)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-            <span style={{ fontSize: 14, fontWeight: 700, color: '#1E1B4B' }}>{calMonth + 1}월 {selectedDay}일</span>
+            <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--foreground)' }}>{calMonth + 1}월 {selectedDay}일</span>
             <div style={{ display: 'flex', gap: 8 }}>
               {dayIncome > 0 && <span style={{ fontSize: 11, fontWeight: 600, color: '#059669', background: '#ECFDF5', borderRadius: 6, padding: '2px 8px' }}>+{dayIncome.toLocaleString()}</span>}
               {dayExpense > 0 && <span style={{ fontSize: 11, fontWeight: 600, color: '#EF4444', background: '#FFF0F0', borderRadius: 6, padding: '2px 8px' }}>-{dayExpense.toLocaleString()}</span>}
@@ -1603,10 +1603,10 @@ export function MonthlyCalendarWidget({ data }: { data: ManageData }) {
               const isExp = group.type === 'expense';
               const isIncomeGroup = group.type === 'income' && group.events.length > 0;
               return (
-                <details key={group.groupKey || i} open={!isIncomeGroup || group.events.length <= 1} style={{ background: '#F8F6FF', borderRadius: 10, padding: '8px 12px' }}>
+                <details key={group.groupKey || i} open={!isIncomeGroup || group.events.length <= 1} style={{ background: 'var(--background)', borderRadius: 10, padding: '8px 12px' }}>
                   <summary style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: isIncomeGroup ? 'pointer' : 'default', listStyle: 'none' }}>
                     <div style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: isExp ? '#EF4444' : '#059669' }} />
-                    <div style={{ flex: 1, fontSize: 12, color: '#1E1B4B' }}>
+                    <div style={{ flex: 1, fontSize: 12, color: 'var(--foreground)' }}>
                       {isIncomeGroup ? `${group.accountLabel} (${group.serviceType}) · ${group.memberCount}명 일할 수입` : group.accountLabel}
                     </div>
                     <div style={{ fontSize: 12, fontWeight: 700, color: isExp ? '#EF4444' : '#059669' }}>
@@ -1630,33 +1630,33 @@ export function MonthlyCalendarWidget({ data }: { data: ManageData }) {
         </div>
       )}
       {selectedDay && dayEvents.length === 0 && (
-        <div style={{ background: '#fff', borderRadius: 16, padding: '20px 16px', marginBottom: 14, textAlign: 'center', color: '#9CA3AF', fontSize: 13, boxShadow: '0 2px 12px rgba(167,139,250,0.08)', border: '1.5px solid #EDE9FE' }}>
+        <div style={{ background: '#fff', borderRadius: 16, padding: '20px 16px', marginBottom: 14, textAlign: 'center', color: '#9CA3AF', fontSize: 13, boxShadow: '0 2px 12px rgba(17,17,17,0.08)', border: '1.5px solid var(--secondary)' }}>
           {calMonth + 1}월 {selectedDay}일에는 예정된 결제/수입이 없어요
         </div>
       )}
 
       {/* 구독 설정 */}
       {profits.length > 0 && (
-        <div style={{ background: '#fff', borderRadius: 16, overflow: 'hidden', boxShadow: '0 2px 12px rgba(167,139,250,0.08)', border: '1.5px solid #EDE9FE', marginBottom: 14 }}>
+        <div style={{ background: '#fff', borderRadius: 16, overflow: 'hidden', boxShadow: '0 2px 12px rgba(17,17,17,0.08)', border: '1.5px solid var(--secondary)', marginBottom: 14 }}>
           <button
             onClick={() => setShowSubSettings(v => !v)}
             style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '13px 16px', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}
           >
-            <Settings size={16} color="#A78BFA" />
-            <span style={{ fontSize: 14, fontWeight: 700, color: '#1E1B4B', flex: 1, textAlign: 'left' }}>구독 설정</span>
+            <Settings size={16} color="var(--action)" />
+            <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--foreground)', flex: 1, textAlign: 'left' }}>구독 설정</span>
             {aliasLoading && <Loader2 size={13} color="#9CA3AF" style={{ animation: 'spin 1s linear infinite' }} />}
             {!aliasLoading && Object.keys(aliasMap).length > 0 && (
               <span style={{ fontSize: 11, background: '#ECFDF5', color: '#059669', borderRadius: 6, padding: '2px 8px', fontWeight: 600 }}>SL연동</span>
             )}
-            {showSubSettings ? <ChevronDown size={15} color="#A78BFA" /> : <ChevronRight size={15} color="#A78BFA" />}
+            {showSubSettings ? <ChevronDown size={15} color="var(--action)" /> : <ChevronRight size={15} color="var(--action)" />}
           </button>
 
           {showSubSettings && (
-            <div style={{ borderTop: '1px solid #F3F0FF', padding: '12px 16px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ borderTop: '1px solid var(--muted)', padding: '12px 16px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
               <div style={{ fontSize: 11, color: '#9CA3AF', lineHeight: 1.6 }}>
                 각 파티 이메일의 구독 시작일(캘린더 지출 기준일)을 설정해요.<br />
                 <span style={{ color: '#059669', fontWeight: 600 }}>● SL</span> = SimpleLogin 계정 생성일 자동 적용 &nbsp;
-                <span style={{ color: '#7C3AED', fontWeight: 600 }}>● 직접</span> = 커스텀 설정
+                <span style={{ color: 'var(--action)', fontWeight: 600 }}>● 직접</span> = 커스텀 설정
               </div>
 
               {profits.map(svc => {
@@ -1681,7 +1681,7 @@ export function MonthlyCalendarWidget({ data }: { data: ManageData }) {
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 2px' }}>
                         {logoHeader && <img src={logoHeader} alt="" style={{ width: 16, height: 16, borderRadius: 3, objectFit: 'contain' }} />}
                         <span style={{ fontSize: 12, fontWeight: 700, color: svcClrHeader }}>{svc.serviceType}</span>
-                        <span style={{ fontSize: 10, color: '#C4B5FD' }}>{svc.accounts.length}개 계정</span>
+                        <span style={{ fontSize: 10, color: 'var(--text-subtle)' }}>{svc.accounts.length}개 계정</span>
                       </div>
                       {sortedAccts.map(acct => {
                   const aliasDay = aliasMap[acct.email];
@@ -1696,7 +1696,7 @@ export function MonthlyCalendarWidget({ data }: { data: ManageData }) {
                   })();
                   const effectiveDay = customDay || aliasDay || rawFallback || 1;
                   const source = customDay ? '직접' : aliasDay ? 'SL' : '자동';
-                  const srcColor = customDay ? '#7C3AED' : aliasDay ? '#059669' : '#9CA3AF';
+                  const srcColor = customDay ? 'var(--action)' : aliasDay ? '#059669' : '#9CA3AF';
                   const isEditing = editingSubStart === acct.email;
 
                   let latestEnd: Date | null = null;
@@ -1727,19 +1727,19 @@ export function MonthlyCalendarWidget({ data }: { data: ManageData }) {
                   const logo = svcLogo(svc.serviceType);
 
                   return (
-                    <div key={acct.email} style={{ background: '#F8F6FF', borderRadius: 12, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <div key={acct.email} style={{ background: 'var(--background)', borderRadius: 12, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         {logo && <img src={logo} alt="" style={{ width: 18, height: 18, borderRadius: 4, objectFit: 'contain' }} />}
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 12, fontWeight: 700, color: '#1E1B4B', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--foreground)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {emailAlias(acct.email)}
-                            {emailAlias(acct.email) !== acct.email && <span style={{ fontSize: 9, color: '#C4B5FD', marginLeft: 4, fontWeight: 400 }}>{acct.email.length > 20 ? acct.email.slice(0,20)+'…' : acct.email}</span>}
+                            {emailAlias(acct.email) !== acct.email && <span style={{ fontSize: 9, color: 'var(--text-subtle)', marginLeft: 4, fontWeight: 400 }}>{acct.email.length > 20 ? acct.email.slice(0,20)+'…' : acct.email}</span>}
                           </div>
                           <div style={{ fontSize: 10, color: '#9CA3AF', marginTop: 1, display: 'flex', alignItems: 'center', gap: 4 }}>
                             <span style={{ color: srcColor, fontWeight: 600 }}>● {source}</span>
                             {aliasDay && !customDay && <span>SL 가입일: {aliasDay}일</span>}
                             {customDay && <span>커스텀: {customDay}일</span>}
-                            {periodStr && <span style={{ color: '#C4B5FD' }}>· {periodStr}</span>}
+                            {periodStr && <span style={{ color: 'var(--text-subtle)' }}>· {periodStr}</span>}
                           </div>
                         </div>
                         {payCount > 0 && (
@@ -1755,25 +1755,25 @@ export function MonthlyCalendarWidget({ data }: { data: ManageData }) {
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                             <input type="number" min={1} max={28} value={subStartInput}
                               onChange={e => setSubStartInput(e.target.value)} autoFocus
-                              style={{ width: 50, padding: '4px 6px', borderRadius: 7, border: '1.5px solid #A78BFA', fontSize: 13, textAlign: 'center', fontFamily: 'inherit', color: '#1E1B4B' }}
+                              style={{ width: 50, padding: '4px 6px', borderRadius: 7, border: '1.5px solid var(--action)', fontSize: 13, textAlign: 'center', fontFamily: 'inherit', color: 'var(--foreground)' }}
                               onKeyDown={e => {
                                 if (e.key === 'Enter') { const v = Math.max(1, Math.min(28, parseInt(subStartInput)||1)); updateSubStart(acct.email, v); setEditingSubStart(null); }
                                 else if (e.key === 'Escape') setEditingSubStart(null);
                               }}
                             />
                             <span style={{ fontSize: 11, color: '#9CA3AF' }}>일</span>
-                            <button onClick={() => { const v = Math.max(1, Math.min(28, parseInt(subStartInput)||1)); updateSubStart(acct.email, v); setEditingSubStart(null); }} style={{ background: '#A78BFA', border: 'none', borderRadius: 6, padding: '4px 7px', cursor: 'pointer', display: 'flex' }}>
+                            <button onClick={() => { const v = Math.max(1, Math.min(28, parseInt(subStartInput)||1)); updateSubStart(acct.email, v); setEditingSubStart(null); }} style={{ background: 'var(--action)', border: 'none', borderRadius: 6, padding: '4px 7px', cursor: 'pointer', display: 'flex' }}>
                               <Check size={12} color="#fff" strokeWidth={3} />
                             </button>
-                            <button onClick={() => setEditingSubStart(null)} style={{ background: '#F3F0FF', border: 'none', borderRadius: 6, padding: '4px 7px', cursor: 'pointer', display: 'flex' }}>
+                            <button onClick={() => setEditingSubStart(null)} style={{ background: 'var(--muted)', border: 'none', borderRadius: 6, padding: '4px 7px', cursor: 'pointer', display: 'flex' }}>
                               <X size={12} color="#9CA3AF" />
                             </button>
                           </div>
                         ) : (
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <span style={{ fontSize: 14, fontWeight: 700, color: '#A78BFA' }}>{effectiveDay}일</span>
-                            <button onClick={() => { setEditingSubStart(acct.email); setSubStartInput(String(effectiveDay)); }} style={{ background: '#EDE9FE', border: 'none', borderRadius: 6, padding: '4px 6px', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
-                              <Pencil size={11} color="#7C3AED" />
+                            <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--action)' }}>{effectiveDay}일</span>
+                            <button onClick={() => { setEditingSubStart(acct.email); setSubStartInput(String(effectiveDay)); }} style={{ background: 'var(--secondary)', border: 'none', borderRadius: 6, padding: '4px 6px', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+                              <Pencil size={11} color="var(--action)" />
                             </button>
                             {customDay && (
                               <button onClick={() => { const next = { ...subStarts }; delete next[acct.email]; setSubStarts(next); saveSubStarts(next); }} style={{ background: '#FFF0F0', border: 'none', borderRadius: 6, padding: '4px 6px', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>

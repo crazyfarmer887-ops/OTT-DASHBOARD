@@ -6,9 +6,9 @@ import CredentialField from '../components/credential-field';
 import { copyTextToClipboard } from '../lib/clipboard';
 
 const styles = {
-  card: { background: '#fff', border: '1px solid #EDE9FE', borderRadius: 16, padding: 18, marginBottom: 16 },
-  input: { display: 'block', width: '100%', maxWidth: '100%', minWidth: 0, boxSizing: 'border-box' as const, padding: 11, border: '1px solid #DDD6FE', borderRadius: 9, margin: '6px 0 14px', fontFamily: 'inherit', fontSize: 16 },
-  button: { border: 0, borderRadius: 10, minHeight: 44, padding: '11px 14px', background: '#7C3AED', color: '#fff', fontWeight: 800, cursor: 'pointer' },
+  card: { background: '#fff', border: '1px solid var(--secondary)', borderRadius: 16, padding: 18, marginBottom: 16 },
+  input: { display: 'block', width: '100%', maxWidth: '100%', minWidth: 0, boxSizing: 'border-box' as const, padding: 11, border: '1px solid var(--border)', borderRadius: 9, margin: '6px 0 14px', fontFamily: 'inherit', fontSize: 16 },
+  button: { border: 0, borderRadius: 10, minHeight: 44, padding: '11px 14px', background: 'var(--action)', color: '#fff', fontWeight: 800, cursor: 'pointer' },
 };
 async function requestAccount(url: string, method: string, body: unknown): Promise<GeneratedAccount> {
   const response = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -89,7 +89,7 @@ export default function GbutsAccountsPage() {
     } catch (error) { setMessage(error instanceof Error ? error.message : '계정 추가 실패'); }
     finally { setBusy(false); }
   };
-  return <main style={{ maxWidth: 850, padding: 20, margin: 'auto', color: '#1E1B4B' }}>
+  return <main style={{ maxWidth: 850, padding: 20, margin: 'auto', color: 'var(--foreground)' }}>
     <h1 style={{ fontSize: 24 }}>벗츠 계정 관리</h1>
     <p style={{ fontSize: 13, lineHeight: 1.7 }}>계정 추가 → 가입·결제 확인 → 판매글 작성. 등록한 계정은 그레이태그와 재고를 함께 관리합니다.</p>
     <section style={styles.card}>
@@ -97,8 +97,8 @@ export default function GbutsAccountsPage() {
       <form onSubmit={submit}><fieldset disabled={busy} style={{ border: 0, padding: 0, margin: 0 }}>
         <label>서비스<select style={styles.input} value={service} onChange={e => setService(e.target.value)}>{REGISTERABLE_OTT_SERVICES.map(value => <option key={value}>{value}</option>)}</select></label>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
-          <button type="button" aria-pressed={mode === 'register'} style={{ ...styles.button, background: mode === 'register' ? '#7C3AED' : '#64748B' }} onClick={() => setMode('register')}>보유 계정 등록</button>
-          <button type="button" aria-pressed={mode === 'generate'} style={{ ...styles.button, background: mode === 'generate' ? '#7C3AED' : '#64748B' }} onClick={() => setMode('generate')}>새 이메일·비밀번호 생성</button>
+          <button type="button" aria-pressed={mode === 'register'} style={{ ...styles.button, background: mode === 'register' ? 'var(--action)' : '#64748B' }} onClick={() => setMode('register')}>보유 계정 등록</button>
+          <button type="button" aria-pressed={mode === 'generate'} style={{ ...styles.button, background: mode === 'generate' ? 'var(--action)' : '#64748B' }} onClick={() => setMode('generate')}>새 이메일·비밀번호 생성</button>
         </div>
         {mode === 'register' ? <>
           <label>{service === '티빙+웨이브' ? '웨이브 이메일' : '로그인 ID / 이메일'}<input autoComplete="off" style={styles.input} required value={email} onChange={e => setEmail(e.target.value)} placeholder="OTT 로그인에 쓰는 ID" /></label>

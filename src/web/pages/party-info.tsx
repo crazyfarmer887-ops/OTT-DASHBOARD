@@ -176,12 +176,12 @@ export default function PartyInfoPage() {
       {/* 헤더 */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
         <div>
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: "#1E1B4B", margin: 0 }}>파티 정보</h1>
+          <h1 style={{ fontSize: 22, fontWeight: 700, color: "var(--foreground)", margin: 0 }}>파티 정보</h1>
           <p style={{ fontSize: 12, color: "#9CA3AF", margin: "4px 0 0" }}>
             {updatedAt ? `${new Date(updatedAt).getHours().toString().padStart(2,"0")}:${new Date(updatedAt).getMinutes().toString().padStart(2,"0")} 기준` : "서비스별 파티 게시글 현황"}
           </p>
         </div>
-        <button onClick={() => doFetch()} disabled={loading} style={{ background: "#A78BFA", border: "none", borderRadius: 12, padding: "8px 14px", fontSize: 13, color: "#fff", cursor: loading ? "not-allowed" : "pointer", fontWeight: 600, fontFamily: "inherit", opacity: loading ? 0.7 : 1, display: "flex", alignItems: "center", gap: 6 }}>
+        <button onClick={() => doFetch()} disabled={loading} style={{ background: "var(--action)", border: "none", borderRadius: 12, padding: "8px 14px", fontSize: 13, color: "#fff", cursor: loading ? "not-allowed" : "pointer", fontWeight: 600, fontFamily: "inherit", opacity: loading ? 0.7 : 1, display: "flex", alignItems: "center", gap: 6 }}>
           {loading ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> : <RefreshCw size={14} />}
           {loading ? "조회중" : "조회"}
         </button>
@@ -191,7 +191,7 @@ export default function PartyInfoPage() {
       {cookies.length > 1 && (
         <div className="no-scrollbar" style={{ display: "flex", gap: 8, marginBottom: 12, overflowX: "auto" }}>
           {cookies.map(cs => (
-            <button key={cs.id} onClick={() => setSelectedId(cs.id)} style={{ flexShrink: 0, padding: "6px 14px", borderRadius: 20, border: "none", fontFamily: "inherit", fontSize: 12, fontWeight: 600, cursor: "pointer", background: selectedId === cs.id ? "#A78BFA" : "#fff", color: selectedId === cs.id ? "#fff" : "#6B7280", boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
+            <button key={cs.id} onClick={() => setSelectedId(cs.id)} style={{ flexShrink: 0, padding: "6px 14px", borderRadius: 20, border: "none", fontFamily: "inherit", fontSize: 12, fontWeight: 600, cursor: "pointer", background: selectedId === cs.id ? "var(--action)" : "#fff", color: selectedId === cs.id ? "#fff" : "#6B7280", boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
               {cs.label}
             </button>
           ))}
@@ -210,9 +210,9 @@ export default function PartyInfoPage() {
 
       {/* 초기 안내 */}
       {!categories.length && !loading && !error && (
-        <div style={{ background: "#EDE9FE", borderRadius: 16, padding: 20, textAlign: "center" }}>
-          <Calendar size={32} color="#C4B5FD" style={{ margin: "0 auto 10px" }} />
-          <div style={{ fontSize: 14, fontWeight: 600, color: "#7C3AED" }}>조회 버튼을 눌러주세요</div>
+        <div style={{ background: "var(--secondary)", borderRadius: 16, padding: 20, textAlign: "center" }}>
+          <Calendar size={32} color="var(--text-subtle)" style={{ margin: "0 auto 10px" }} />
+          <div style={{ fontSize: 14, fontWeight: 600, color: "var(--action)" }}>조회 버튼을 눌러주세요</div>
           <div style={{ fontSize: 12, color: "#9CA3AF", marginTop: 4 }}>서비스별 파티 게시글 현황을 확인해요</div>
         </div>
       )}
@@ -226,7 +226,7 @@ export default function PartyInfoPage() {
 
       {/* 요약 배너 */}
       {categories.length > 0 && !loading && (
-        <div style={{ background: "linear-gradient(135deg, #A78BFA 0%, #818CF8 100%)", borderRadius: 20, padding: "14px 18px", marginBottom: 14, color: "#fff" }}>
+        <div style={{ background: "linear-gradient(135deg, var(--action) 0%, var(--action) 100%)", borderRadius: 20, padding: "14px 18px", marginBottom: 14, color: "#fff" }}>
           <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 8 }}>판매 중인 파티</div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 6, textAlign: "center" }}>
             <div style={{ background: "rgba(255,255,255,0.15)", borderRadius: 10, padding: "8px 4px" }}>
@@ -251,7 +251,7 @@ export default function PartyInfoPage() {
           {categories.map(cat => {
             const isOpen = openCat === cat.key;
             return (
-              <div key={cat.key} style={{ background: "#fff", borderRadius: 16, overflow: "hidden", boxShadow: "0 2px 12px rgba(167,139,250,0.08)", border: `1.5px solid ${isOpen ? "#A78BFA" : "#F3F0FF"}` }}>
+              <div key={cat.key} style={{ background: "#fff", borderRadius: 16, overflow: "hidden", boxShadow: "0 2px 12px rgba(17,17,17,0.08)", border: `1.5px solid ${isOpen ? "var(--action)" : "var(--muted)"}` }}>
                 {/* 카테고리 헤더 */}
                 <button onClick={() => setOpenCat(isOpen ? null : cat.key)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "14px 16px", background: "none", border: "none", cursor: "pointer", fontFamily: "inherit" }}>
                   <div style={{ width: 44, height: 44, borderRadius: 12, background: cat.bg, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
@@ -260,7 +260,7 @@ export default function PartyInfoPage() {
                     ) : <span style={{ fontSize: 22 }}>{cat.emoji}</span>}
                   </div>
                   <div style={{ flex: 1, textAlign: "left" }}>
-                    <div style={{ fontSize: 15, fontWeight: 700, color: "#1E1B4B" }}>{cat.label}</div>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: "var(--foreground)" }}>{cat.label}</div>
                     <div style={{ display: "flex", gap: 8, marginTop: 3, flexWrap: "wrap" }}>
                       <span style={{ fontSize: 11, color: "#9CA3AF" }}>
                         <span style={{ fontWeight: 700, color: cat.color }}>{cat.totalProducts}건</span> 모집 중
@@ -272,17 +272,17 @@ export default function PartyInfoPage() {
                       )}
                       {cat.avgDailyPrice > 0 && (
                         <span style={{ fontSize: 11, color: "#9CA3AF" }}>
-                          평균 일당 <span style={{ fontWeight: 700, color: "#A78BFA" }}>{cat.avgDailyPrice.toLocaleString()}원</span>
+                          평균 일당 <span style={{ fontWeight: 700, color: "var(--action)" }}>{cat.avgDailyPrice.toLocaleString()}원</span>
                         </span>
                       )}
                     </div>
                   </div>
-                  {isOpen ? <ChevronDown size={16} color="#A78BFA" /> : <ChevronRight size={16} color="#A78BFA" />}
+                  {isOpen ? <ChevronDown size={16} color="var(--action)" /> : <ChevronRight size={16} color="var(--action)" />}
                 </button>
 
                 {/* 게시글 목록 */}
                 {isOpen && (
-                  <div style={{ borderTop: "1px solid #F3F0FF", padding: "8px 12px 12px" }}>
+                  <div style={{ borderTop: "1px solid var(--muted)", padding: "8px 12px 12px" }}>
                     {cat.products.length === 0 ? (
                       <div style={{ fontSize: 12, color: "#9CA3AF", textAlign: "center", padding: "12px 0" }}>판매 중인 파티 없음</div>
                     ) : cat.products.map(prod => {
@@ -292,13 +292,13 @@ export default function PartyInfoPage() {
                       const isExpiringSoon = remainDays <= 7 && remainDays > 0;
                       const isExpired = remainDays <= 0;
                       return (
-                        <div key={prod.productUsid} style={{ marginBottom: 8, background: isExpired ? "#FFF5F5" : isExpiringSoon ? "#FFFBEB" : "#F8F6FF", borderRadius: 12, overflow: "hidden", border: `1px solid ${isExpired ? "#FCA5A5" : isExpiringSoon ? "#FDE68A" : "#EDE9FE"}` }}>
+                        <div key={prod.productUsid} style={{ marginBottom: 8, background: isExpired ? "#FFF5F5" : isExpiringSoon ? "#FFFBEB" : "var(--background)", borderRadius: 12, overflow: "hidden", border: `1px solid ${isExpired ? "#FCA5A5" : isExpiringSoon ? "#FDE68A" : "var(--secondary)"}` }}>
                           <button onClick={() => setOpenProduct(isProductOpen ? null : prod.productUsid)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", background: "none", border: "none", cursor: "pointer", fontFamily: "inherit" }}>
                             <div style={{ flex: 1, textAlign: "left", minWidth: 0 }}>
-                              <div style={{ fontSize: 12, fontWeight: 700, color: "#1E1B4B", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{prod.productName}</div>
+                              <div style={{ fontSize: 12, fontWeight: 700, color: "var(--foreground)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{prod.productName}</div>
                               <div style={{ display: "flex", gap: 6, marginTop: 4, flexWrap: "wrap", alignItems: "center" }}>
                                 <span style={{ fontSize: 11, color: "#6B7280" }}>
-                                  <span style={{ fontWeight: 700, color: "#A78BFA" }}>{fmtMoney(prod.purePrice)}</span>
+                                  <span style={{ fontWeight: 700, color: "var(--action)" }}>{fmtMoney(prod.purePrice)}</span>
                                 </span>
                                 {daily > 0 && <span style={{ fontSize: 10, color: "#9CA3AF" }}>{daily.toLocaleString()}원/일</span>}
                                 <span style={{ fontSize: 10, fontWeight: 600, color: isExpired ? "#EF4444" : isExpiringSoon ? "#D97706" : "#059669", background: isExpired ? "#FFF0F0" : isExpiringSoon ? "#FFFBEB" : "#ECFDF5", borderRadius: 6, padding: "1px 7px", display: "flex", alignItems: "center", gap: 3 }}>
@@ -313,16 +313,16 @@ export default function PartyInfoPage() {
                             <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4, flexShrink: 0 }}>
                               <a href={`https://graytag.co.kr/product/detail?productUsid=${prod.productUsid}`} target="_blank" rel="noreferrer"
                                 onClick={e => e.stopPropagation()}
-                                style={{ fontSize: 10, color: "#7C3AED", display: "flex", alignItems: "center", gap: 2, textDecoration: "none", background: "#EDE9FE", borderRadius: 6, padding: "3px 7px" }}>
+                                style={{ fontSize: 10, color: "var(--action)", display: "flex", alignItems: "center", gap: 2, textDecoration: "none", background: "var(--secondary)", borderRadius: 6, padding: "3px 7px" }}>
                                 <ExternalLink size={9} /> 보기
                               </a>
-                              {isProductOpen ? <ChevronDown size={13} color="#C4B5FD" /> : <ChevronRight size={13} color="#C4B5FD" />}
+                              {isProductOpen ? <ChevronDown size={13} color="var(--text-subtle)" /> : <ChevronRight size={13} color="var(--text-subtle)" />}
                             </div>
                           </button>
 
                           {/* 상세 정보 */}
                           {isProductOpen && (
-                            <div style={{ borderTop: "1px solid #EDE9FE", padding: "10px 14px", display: "flex", flexDirection: "column", gap: 6 }}>
+                            <div style={{ borderTop: "1px solid var(--secondary)", padding: "10px 14px", display: "flex", flexDirection: "column", gap: 6 }}>
                               <InfoRow label="계정 (이메일)" value={prod.keepAcct} />
                               <InfoRow label="비밀번호" value={prod.keepPasswd || "-"} mono />
                               <InfoRow label="종료일" value={fmtDate(prod.endDateTime)} />
@@ -330,7 +330,7 @@ export default function PartyInfoPage() {
                               {prod.keepMemo && (
                                 <div>
                                   <div style={{ fontSize: 10, fontWeight: 700, color: "#9CA3AF", marginBottom: 4 }}>계정 전달 메모</div>
-                                  <div style={{ fontSize: 11, color: "#1E1B4B", background: "#fff", borderRadius: 8, padding: "8px 10px", whiteSpace: "pre-wrap", border: "1px solid #EDE9FE", lineHeight: 1.5 }}>
+                                  <div style={{ fontSize: 11, color: "var(--foreground)", background: "#fff", borderRadius: 8, padding: "8px 10px", whiteSpace: "pre-wrap", border: "1px solid var(--secondary)", lineHeight: 1.5 }}>
                                     {prod.keepMemo}
                                   </div>
                                 </div>
@@ -358,7 +358,7 @@ function InfoRow({ label, value, mono }: { label: string; value: string; mono?: 
   return (
     <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
       <span style={{ fontSize: 10, fontWeight: 700, color: "#9CA3AF", minWidth: 80, flexShrink: 0 }}>{label}</span>
-      <span style={{ fontSize: 11, color: "#1E1B4B", fontFamily: mono ? "monospace" : "inherit", wordBreak: "break-all" }}>{value}</span>
+      <span style={{ fontSize: 11, color: "var(--foreground)", fontFamily: mono ? "monospace" : "inherit", wordBreak: "break-all" }}>{value}</span>
     </div>
   );
 }

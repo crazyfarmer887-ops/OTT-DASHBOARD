@@ -6,17 +6,17 @@ type Account = { id: string; label: string; enabled: boolean; connectedAt: strin
   snapshots: Record<string, LinkidSnapshot>; lastSuccess?: string; lastError?: string; retryAfter?: number;
   pendingAlerts: number; profileErrors?: Record<string, string> };
 type Overview = { enabled: boolean; accounts: Account[]; syncing: boolean; intervalSeconds: number };
-const card = { background: '#fff', border: '1px solid #EDE9FE', borderRadius: 16, padding: 18 };
-const button = { border: 0, borderRadius: 10, background: '#7C3AED', color: '#fff', padding: '10px 14px', fontFamily: 'inherit', fontWeight: 800, cursor: 'pointer' };
-const secondary = { ...button, background: '#F3F0FF', color: '#6D28D9' };
-const field = { width: '100%', padding: 11, border: '1px solid #DDD6FE', borderRadius: 9, font: 'inherit', boxSizing: 'border-box' as const };
+const card = { background: '#fff', border: '1px solid var(--secondary)', borderRadius: 16, padding: 18 };
+const button = { border: 0, borderRadius: 10, background: 'var(--action)', color: '#fff', padding: '10px 14px', fontFamily: 'inherit', fontWeight: 800, cursor: 'pointer' };
+const secondary = { ...button, background: 'var(--muted)', color: 'var(--action)' };
+const field = { width: '100%', padding: 11, border: '1px solid var(--border)', borderRadius: 9, font: 'inherit', boxSizing: 'border-box' as const };
 function displayedEndDate(exclusive: string): string {
   const date = Date.parse(`${exclusive.slice(0, 10)}T00:00:00Z`);
   return Number.isFinite(date) ? new Date(date - 86400000).toISOString().slice(0, 10) : exclusive;
 }
 function date(value?: string): string { return value ? new Date(value).toLocaleString('ko-KR') : '아직 확인 전'; }
 function PartyLink({ partyId, children }: { partyId: number; children: ReactNode }) {
-  return <a href={`https://linkid.pw/myparty/${partyId}`} target="_blank" rel="noreferrer" style={{ color: '#6D28D9' }}>{children} <ExternalLink size={12} /></a>;
+  return <a href={`https://linkid.pw/myparty/${partyId}`} target="_blank" rel="noreferrer" style={{ color: 'var(--action)' }}>{children} <ExternalLink size={12} /></a>;
 }
 export default function LinkidPage() {
   const [data, setData] = useState<Overview | null>(null);
@@ -51,7 +51,7 @@ export default function LinkidPage() {
     } catch (e) { setError(e instanceof Error ? e.message : '요청 실패'); }
     finally { setBusy(false); }
   };
-  return <main style={{ maxWidth: 1060, margin: 'auto', padding: 20, color: '#1E1B4B' }}>
+  return <main style={{ maxWidth: 1060, margin: 'auto', padding: 20, color: 'var(--foreground)' }}>
     <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
       <h1 style={{ fontSize: 24 }}>링키드 판매·채팅</h1>
       <button style={button} disabled={busy || data?.syncing || !account} onClick={() => mutate('/sync', { accountId: account?.id })}>
@@ -86,7 +86,7 @@ export default function LinkidPage() {
       <section aria-label="링키드 서브 프로필" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, marginBottom: 18 }}>
         {account.profiles.map(p => {
           const s = account.snapshots[String(p.index)];
-          return <button key={p.index} aria-pressed={p.index === profile?.index} onClick={() => { setProfileIndex(p.index); setSelectedRoom(''); }} style={{ ...card, cursor: 'pointer', textAlign: 'left', font: 'inherit', borderColor: p.index === profile?.index ? '#7C3AED' : '#EDE9FE', background: p.index === profile?.index ? '#F5F3FF' : '#fff' }}>
+          return <button key={p.index} aria-pressed={p.index === profile?.index} onClick={() => { setProfileIndex(p.index); setSelectedRoom(''); }} style={{ ...card, cursor: 'pointer', textAlign: 'left', font: 'inherit', borderColor: p.index === profile?.index ? 'var(--action)' : 'var(--secondary)', background: p.index === profile?.index ? 'var(--muted)' : '#fff' }}>
             <strong style={{ display: 'block', fontSize: 14 }}>{p.index}. {p.name}</strong>
             <p style={{ fontSize: 12 }}>판매 파티 {s?.parties.filter(x => x.owner).length ?? '—'} · 채팅방 {s?.rooms.length ?? '—'}</p>
             <span style={{ fontSize: 11, color: '#6B7280' }}>보유 머니 {p.money.toLocaleString()}원</span>
@@ -101,13 +101,13 @@ export default function LinkidPage() {
         <section style={{ ...card, marginBottom: 18 }} aria-label="링키드 파티 현황">
           <h3 style={{ marginTop: 0 }}>파티 현황</h3>
           {!snapshot.parties.length && <p>현재 이용 중인 파티가 없습니다.</p>}
-          {snapshot.parties.map(p => <article key={p.id} style={{ padding: '14px 0', borderTop: '1px solid #EDE9FE', fontSize: 13 }}>
+          {snapshot.parties.map(p => <article key={p.id} style={{ padding: '14px 0', borderTop: '1px solid var(--secondary)', fontSize: 13 }}>
             <strong>{p.service}</strong> · {p.owner ? '판매 파티장' : '이용 파티원'} · 파티 #{p.id}
             <p>{p.startDate} ~ {displayedEndDate(p.endDate)} · 구성원 {p.members}/{p.capacity}명 (파티장 포함)</p>
             <p>파티원: {p.participants.filter(x => x.uid !== profile?.uid).map(x => x.name).join(', ') || '아직 없음'}</p>
             <PartyLink partyId={p.id}>파티 관리·모집</PartyLink>
           </article>)}
-          <a href="https://linkid.pw/party" target="_blank" rel="noreferrer" style={{ color: '#6D28D9', fontSize: 13 }}>링키드에서 새 판매 파티 개설 <ExternalLink size={12} /></a>
+          <a href="https://linkid.pw/party" target="_blank" rel="noreferrer" style={{ color: 'var(--action)', fontSize: 13 }}>링키드에서 새 판매 파티 개설 <ExternalLink size={12} /></a>
         </section>
         <section style={{ ...card, marginBottom: 18 }} aria-label="링키드 1대1 채팅">
           <h3 style={{ marginTop: 0 }}><MessageCircle size={16} /> 1:1 채팅</h3>
@@ -118,7 +118,7 @@ export default function LinkidPage() {
           {room && <div style={{ marginTop: 16 }}>
             <PartyLink partyId={room.partyId}>링키드에서 채팅 답장</PartyLink>
             <p style={{ fontSize: 11, color: '#6B7280' }}>파티 화면의 ‘채팅’에서 {room.name}님을 선택해주세요. 최근 대화 최대 100개를 표시합니다.</p>
-            {[...room.messages].reverse().map(m => <div key={m.id} style={{ margin: '8px 0', padding: 12, borderRadius: 10, background: m.writer === profile?.uid ? '#F3F0FF' : '#F9FAFB', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', fontSize: 13 }}>
+            {[...room.messages].reverse().map(m => <div key={m.id} style={{ margin: '8px 0', padding: 12, borderRadius: 10, background: m.writer === profile?.uid ? 'var(--muted)' : '#F9FAFB', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', fontSize: 13 }}>
               <strong>{m.writer === profile?.uid ? '나' : m.writer <= 0 ? '시스템' : room.name}</strong><small style={{ display: 'block', color: '#6B7280', margin: '5px 0' }}>{m.date}</small>{m.text}
             </div>)}
           </div>}
@@ -126,7 +126,7 @@ export default function LinkidPage() {
         <section style={card} aria-label="링키드 알림">
           <h3 style={{ marginTop: 0 }}><Bell size={16} /> 링키드 알림</h3>
           {!snapshot.notices.length && <p style={{ fontSize: 13 }}>도착한 알림이 없습니다.</p>}
-          {snapshot.notices.slice(0, 100).map(n => <div key={n.id} style={{ padding: '12px 0', borderTop: '1px solid #EDE9FE', fontSize: 13 }}>
+          {snapshot.notices.slice(0, 100).map(n => <div key={n.id} style={{ padding: '12px 0', borderTop: '1px solid var(--secondary)', fontSize: 13 }}>
             <strong>{n.title}</strong><p style={{ color: '#6B7280', fontSize: 12 }}>{n.date}</p>{n.partyId > 0 && <PartyLink partyId={n.partyId}>해당 파티 보기</PartyLink>}
           </div>)}
         </section>
