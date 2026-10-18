@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { registerGbutsOttRoutes, reserveGraytagOttPlace } from '../src/api/gbuts-ott';
 import { readGbutsOttStore } from '../src/lib/gbuts-ott-store';
+import { writeSpotifyListings } from '../src/lib/gbuts-spotify-listings';
 import { fixtureManagement } from './fixtures/gbuts-ott';
 let directory = ''; const env = { ...process.env };
 beforeEach(() => {
@@ -13,7 +14,7 @@ beforeEach(() => {
   process.env.GBUTS_OTT_STORE_PATH = join(directory, 'store.json'); process.env.GBUTS_SESSION_PATH = join(directory, 'session.json');
   process.env.GBUTS_API_TOKEN = 'test-token'; process.env.GBUTS_OTT_SYNC_ENABLED = 'true';
 });
-afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); rmSync(directory, { recursive: true, force: true });
+afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); rmSync(directory, { recursive: true, force: true });
   for (const key of ['GBUTS_OTT_STORE_PATH', 'GBUTS_SESSION_PATH', 'GBUTS_API_TOKEN', 'GBUTS_OTT_SYNC_ENABLED']) {
     if (env[key] === undefined) delete process.env[key]; else process.env[key] = env[key];
   }
@@ -45,6 +46,16 @@ function fixture() {
   return { app, deps, transport, posts, body, publish, set members(value: any[]) { members = value; }, set creationResponse(value: any) { creationResponse = value; } };
 }
 describe('shared inventory publication', () => {
+  it('omits deleted Spotify recruitment from the sales overview while retaining its local record', async () => {
+    const f = fixture(); vi.stubEnv('GBUTS_SPOTIFY_LISTINGS_PATH', join(directory, 'spotify.json'));
+    f.posts.push({ seq: 880, category1: { seq: 20 }, memberLimit: 5, memberCount: 2, status: 'CLOSED', subscriptionEndsAt: '2027-10-01', price: 140, priceType: 'DAY' });
+    writeSpotifyListings({ version: 1, listings: { spotify: { id: 'spotify', requestHash: 'hash', title: 'Spotify', description: '안내',
+      noticeBeforeOrder: null, noticeAfterOrder: null, startDate: '2026-10-05', endDate: '2027-10-01', dailyPrice: 140, capacity: 5,
+      countries: ['KR'], beforePostSeqs: [], postSeq: 880, state: 'registered', createdAt: '2026-10-05T00:00:00Z', deletedAt: '2026-10-05T01:00:00Z' } } });
+    const result = await (await f.app.request('/gbuts/sales/overview')).json();
+    expect(result.listings).toEqual([]);
+    expect(result.services.find((x: any) => x.serviceType === '스포티파이')).toMatchObject({ listings: 0, recruiting: 0 });
+  });
   it('loads the GButs service overview and orders without waiting for GrayTag inventory', async () => {
     const f = fixture();
     f.posts.push({ seq: 15557, category1: { seq: 20 }, memberLimit: 5, memberCount: 5, status: 'CLOSED', subscriptionEndsAt: '2027-10-01', price: 140, priceType: 'DAY' });

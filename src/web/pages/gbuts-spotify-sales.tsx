@@ -45,6 +45,19 @@ export default function GbutsSpotifySalesPage() {
       setMessage('판매글 등록을 확인했습니다. 구매자 자동 안내 대상에 포함됐습니다.'); await load();
     } catch (e) { setError(e instanceof Error ? e.message : '등록 확인 실패'); } finally { setBusy(false); }
   };
+  const remove = async (listing: SpotifyListing) => {
+    if (busy || !window.confirm('이 판매글의 모집을 마감하고 대시보드 목록에서 삭제할까요? 이미 결제한 구매자의 노션 처리와 자동 안내는 계속됩니다.')) return;
+    setBusy(true); setError(''); setMessage('벗츠 모집 마감 상태를 확인하고 있습니다.');
+    try {
+      const response = await fetch(`/api/gbuts/spotify/listings/${encodeURIComponent(listing.id)}`, { method: 'DELETE' });
+      const result = await response.json();
+      if (!response.ok || !result.ok) throw new Error(result.error || '판매글 삭제 실패');
+      requestId.current = crypto.randomUUID();
+      setMessage('모집을 마감하고 대시보드 목록에서 삭제했습니다. 기존 구매자 자동 안내는 계속됩니다.');
+      await load().catch(() => setError('삭제는 완료됐습니다. 목록을 다시 불러와주세요.'));
+    } catch (e) { setMessage(''); setError(e instanceof Error ? e.message : '판매글 삭제 실패'); }
+    finally { setBusy(false); }
+  };
   return <main style={{ maxWidth: 950, margin: 'auto', padding: 20, color: '#1E1B4B' }}>
     <h1 style={{ fontSize: 23 }}>벗츠 스포티파이 판매글 작성</h1>
     <p style={{ fontSize: 13, lineHeight: 1.7 }}>이전에 판매한 스포티파이 글의 내용을 불러옵니다. 구매자가 결제하면 기존 1:1 안내와 노션 Registered / Invited 처리로 연결됩니다.</p>
@@ -76,6 +89,7 @@ export default function GbutsSpotifySalesPage() {
         <strong>{listing.title}</strong><p>{listing.dailyPrice}원/일 · {listing.capacity}명 · {listing.endDate}까지</p>
         <p>{listing.state === 'registered' ? '등록 확인 완료 · 구매자 자동 안내 연결됨' : '등록 결과 확인 필요'}</p>
         {listing.postSeq && <a href={`https://gbuts.com/seller/subscriptions/${listing.postSeq}`} target="_blank" rel="noreferrer">벗츠 판매글 보기</a>}
+        {listing.state === 'registered' && <button style={{ ...button, marginLeft: 12, background: '#B91C1C' }} disabled={busy} onClick={() => void remove(listing)}>삭제</button>}
         {listing.state !== 'registered' && <button style={button} disabled={busy} onClick={() => void reconcile(listing.id)}>등록 결과 확인</button>}
         {listing.error && <p style={{ color: '#B91C1C' }}>{listing.error}</p>}
       </div>)}

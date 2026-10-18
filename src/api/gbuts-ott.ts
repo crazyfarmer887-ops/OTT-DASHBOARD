@@ -8,6 +8,7 @@ import { readGbutsOttStore, withGbutsOttInventory, writeGbutsOttStore } from '..
 import type { GbutsOttRuntimeDependencies } from '../scheduler/gbuts-ott-sync';
 import { buildGbutsSalesOverview } from '../lib/gbuts-sales-overview';
 import { availableNetflixProfiles } from '../lib/gbuts-netflix-profiles';
+import { deletedSpotifyPostSeqs } from '../lib/gbuts-spotify-listings';
 export function gbutsOttClient() {
   const token = loadGbutsSession()?.token || process.env.GBUTS_API_TOKEN?.trim();
   if (!token) throw new Error('벗츠 판매자 계정을 먼저 연결해주세요.');
@@ -71,7 +72,8 @@ export function registerGbutsOttRoutes(app: Hono, deps: GbutsOttRuntimeDependenc
     try {
       const store = readGbutsOttStore();
       const posts = await gbutsOttClient().listPosts();
-      return c.json({ ok: true, ...buildGbutsSalesOverview(posts, store), enabled: process.env.GBUTS_OTT_SYNC_ENABLED === 'true' });
+      const deleted = new Set(deletedSpotifyPostSeqs());
+      return c.json({ ok: true, ...buildGbutsSalesOverview(posts.filter(post => !deleted.has(post.seq)), store), enabled: process.env.GBUTS_OTT_SYNC_ENABLED === 'true' });
     } catch (e) { return c.json({ ok: false, error: e instanceof Error ? e.message : '벗츠 판매 현황 조회 실패' }, 503); }
   });
   app.get('/gbuts/ott/orders', async c => {

@@ -11,6 +11,7 @@ export interface SpotifyListingInput {
 export interface SpotifyListing extends SpotifyListingInput {
   id: string; requestHash: string; countries: string[]; createdAt: string;
   state: 'submitting' | 'uncertain' | 'registered'; beforePostSeqs: number[]; postSeq?: number; error?: string;
+  deletedAt?: string;
 }
 export interface SpotifyListingStore { version: 1; listings: Record<string, SpotifyListing> }
 const path = () => process.env.GBUTS_SPOTIFY_LISTINGS_PATH || '/home/ubuntu/.hermes/hermes-agent/graytag-aio-manager-0606/data/gbuts-spotify-listings.json';
@@ -23,7 +24,9 @@ export function readSpotifyListings(): SpotifyListingStore {
     if (!row || row.id !== id || !['submitting', 'uncertain', 'registered'].includes(row.state)
       || !Array.isArray(row.beforePostSeqs) || !Array.isArray(row.countries)
       || (row.postSeq !== undefined && (!Number.isSafeInteger(row.postSeq) || row.postSeq < 1))
-      || (row.state === 'registered' && !row.postSeq)) throw new Error('스포티파이 판매글 기록이 올바르지 않습니다.');
+      || (row.state === 'registered' && !row.postSeq)
+      || (row.deletedAt !== undefined && (row.state !== 'registered' || !Number.isFinite(Date.parse(row.deletedAt)))))
+      throw new Error('스포티파이 판매글 기록이 올바르지 않습니다.');
   }
   return store;
 }
@@ -32,6 +35,9 @@ export function spotifyPostSeqs(): number[] {
   const legacy = Number(process.env.GBUTS_SPOTIFY_POST_SEQ || LEGACY_SPOTIFY_POST_SEQ);
   if (!Number.isSafeInteger(legacy) || legacy < 1) throw new Error('기존 스포티파이 판매글 번호를 확인해주세요.');
   return [...new Set([legacy, ...Object.values(readSpotifyListings().listings).filter(x => x.state === 'registered').map(x => x.postSeq!)])];
+}
+export function deletedSpotifyPostSeqs(): number[] {
+  return Object.values(readSpotifyListings().listings).filter(x => x.deletedAt).map(x => x.postSeq!);
 }
 export function spotifyText(value: unknown): string {
   if (typeof value === 'string') {

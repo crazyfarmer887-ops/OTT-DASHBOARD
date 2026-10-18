@@ -29,3 +29,28 @@ it('opens Spotify registration in the sales dashboard with the original wording 
   expect(host.textContent).toContain('17000 등록 완료');
   expect(transport.mock.calls.some(([url]) => url === '/api/gbuts/ott')).toBe(false);
 });
+it('deletes only after confirmation and removes the closed listing from the displayed list', async () => {
+  const template = { sourcePostSeq: 15557, title: '등록 양식', description: '판매 안내',
+    noticeBeforeOrder: null, noticeAfterOrder: null, startDate: '2098-10-18', endDate: '2099-10-17', dailyPrice: 140, capacity: 5 };
+  let deleted = false;
+  const transport = vi.fn(async (_url: string, init?: RequestInit) => {
+    if (init?.method === 'DELETE') deleted = true;
+    return { ok: true, json: async () => init?.method === 'DELETE' ? { ok: true }
+      : { ok: true, enabled: true, template, listings: deleted ? [] : [{ ...template, id: 'registered-id', postSeq: 17000, state: 'registered', title: '삭제할 판매글' }] } };
+  });
+  const confirm = vi.fn(() => false); vi.stubGlobal('confirm', confirm); vi.stubGlobal('fetch', transport);
+  window.history.replaceState(null, '', '/gbuts-sales?service=' + encodeURIComponent('스포티파이'));
+  const host = document.createElement('div'); document.body.append(host); const root = createRoot(host);
+  dispose = () => { root.unmount(); host.remove(); };
+  await act(async () => root.render(<Router><GbutsSalesPage /></Router>));
+  const remove = () => [...host.querySelectorAll('button')].find(button => button.textContent === '삭제')!;
+  await act(async () => remove().click());
+  expect(transport.mock.calls.some(([, init]) => init?.method === 'DELETE')).toBe(false);
+  confirm.mockReturnValue(true);
+  await act(async () => remove().click());
+  expect(transport.mock.calls.filter(([, init]) => init?.method === 'DELETE')).toEqual([
+    ['/api/gbuts/spotify/listings/registered-id', { method: 'DELETE' }],
+  ]);
+  expect(host.textContent).not.toContain('삭제할 판매글');
+  expect(host.textContent).toContain('기존 구매자 자동 안내는 계속됩니다');
+});

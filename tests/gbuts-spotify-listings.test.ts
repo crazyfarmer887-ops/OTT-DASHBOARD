@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { registerGbutsSpotifyListingRoutes } from '../src/api/gbuts-spotify-listings';
 import { createGbutsOttSellerClient } from '../src/lib/gbuts-ott-client';
-import { readSpotifyListings, spotifyPostSeqs } from '../src/lib/gbuts-spotify-listings';
+import { deletedSpotifyPostSeqs, readSpotifyListings, spotifyPostSeqs } from '../src/lib/gbuts-spotify-listings';
 
 let directory = ''; const env = { ...process.env };
 beforeEach(() => {
@@ -27,11 +27,17 @@ function fixture() {
     title: JSON.stringify({ ko: '[스포티파이] 기존 제목', en: '' }), description: '기존 판매 내용\n① 내 계정 등록\n② 새 계정 발급',
     noticeBeforeOrder: '기존 구매 전 안내', noticeAfterOrder: null, memberLimit: 5, memberCount: 5,
     status: 'CLOSED', price: 140, priceType: 'DAY', subscriptionStartsAt: '2026-10-02 00:00:00', subscriptionEndsAt: '2027-10-01 00:00:00' };
-  const posts: any[] = [source]; const writes: any[] = []; let outcome = 'success';
+  const posts: any[] = [source]; const writes: any[] = []; let outcome = 'success'; let closeOutcome = 'success'; let closes = 0;
   const transport = vi.fn(async (url: any, options?: RequestInit) => {
     const parsed = new URL(String(url)); const path = parsed.pathname; let response;
     if (path.endsWith('/list')) response = parsed.searchParams.get('page') === '1' ? posts : [];
     else if (path.endsWith('/view')) response = posts.find(x => x.seq === Number(path.split('/').at(-2)));
+    else if (path.endsWith('/closed') && options?.method === 'POST') {
+      closes++;
+      if (closeOutcome !== 'lost-before-close') posts.find(x => x.seq === Number(path.split('/').at(-2))).status = 'CLOSED';
+      if (closeOutcome.startsWith('lost')) throw new Error('close response lost');
+      response = true;
+    }
     else if (options?.method === 'POST' && path === '/api/subscribe/share') {
       const body = JSON.parse(String(options.body)); writes.push(body);
       if (outcome !== 'lost-before-create') posts.push({ ...body, seq: 17000, category1: { seq: body.category }, memberCount: 0, status: 'ON_SALE' });
@@ -43,7 +49,7 @@ function fixture() {
   const app = new Hono(); registerGbutsSpotifyListingRoutes(app, () => createGbutsOttSellerClient('fixture', transport));
   const body = { requestId: 'spotify-request-1', title: '[스포티파이] 기존 제목', description: source.description,
     noticeBeforeOrder: source.noticeBeforeOrder, noticeAfterOrder: null, startDate: '2026-10-18', endDate: '2027-10-17', dailyPrice: 140, capacity: 5 };
-  return { app, source, posts, writes, body, set outcome(value: string) { outcome = value; },
+  return { app, source, posts, writes, body, get closes() { return closes; }, set closeOutcome(value: string) { closeOutcome = value; }, set outcome(value: string) { outcome = value; },
     publish: (patch = {}) => app.request('/gbuts/spotify/listings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, ...patch }) }) };
 }
 it('loads the previous Spotify wording and purchase notices with a new one-year period', async () => {
@@ -96,4 +102,35 @@ it('rejects invalid periods, excess places and disabled buyer automation before 
   expect((await f.publish({ capacity: 6 })).status).toBe(400);
   process.env.GBUTS_SPOTIFY_AUTO_MESSAGE_ENABLED = 'false';
   expect((await f.publish()).status).toBe(503); expect(f.writes).toHaveLength(0);
+});
+it('closes recruitment before hiding the listing and preserves existing buyer monitoring across repeated deletion', async () => {
+  const f = fixture(); await f.publish();
+  f.posts.find(x => x.seq === 17000).memberCount = 2;
+  const remove = () => f.app.request(`/gbuts/spotify/listings/${f.body.requestId}`, { method: 'DELETE' });
+  expect((await remove()).status).toBe(200);
+  expect(f.posts.find(x => x.seq === 17000).status).toBe('CLOSED');
+  expect(readSpotifyListings().listings[f.body.requestId].deletedAt).toBeTruthy();
+  expect((await (await f.app.request('/gbuts/spotify/listings')).json()).listings).toEqual([]);
+  expect(spotifyPostSeqs()).toEqual([15557, 17000]);
+  expect(deletedSpotifyPostSeqs()).toEqual([17000]);
+  expect((await remove()).status).toBe(200); expect(f.closes).toBe(1);
+  expect((await f.publish()).status).toBe(409); expect(f.writes).toHaveLength(1);
+});
+it('verifies a lost close response without repeating the close operation', async () => {
+  const f = fixture(); await f.publish(); f.closeOutcome = 'lost-after-close';
+  expect((await f.app.request(`/gbuts/spotify/listings/${f.body.requestId}`, { method: 'DELETE' })).status).toBe(200);
+  expect(f.closes).toBe(1); expect(deletedSpotifyPostSeqs()).toEqual([17000]);
+});
+it('keeps the post visible when recruitment closure cannot be verified', async () => {
+  const f = fixture(); await f.publish(); f.closeOutcome = 'lost-before-close';
+  expect((await f.app.request(`/gbuts/spotify/listings/${f.body.requestId}`, { method: 'DELETE' })).status).toBe(502);
+  expect(readSpotifyListings().listings[f.body.requestId].deletedAt).toBeUndefined();
+  expect((await (await f.app.request('/gbuts/spotify/listings')).json()).listings).toHaveLength(1);
+  expect(f.closes).toBe(1); expect(spotifyPostSeqs()).toContain(17000);
+});
+it('does not close an unverified registration or another unknown seller post', async () => {
+  const f = fixture(); f.outcome = 'lost-before-create'; await f.publish();
+  expect((await f.app.request(`/gbuts/spotify/listings/${f.body.requestId}`, { method: 'DELETE' })).status).toBe(409);
+  expect((await f.app.request('/gbuts/spotify/listings/unknown-post', { method: 'DELETE' })).status).toBe(404);
+  expect(f.closes).toBe(0);
 });

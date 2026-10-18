@@ -23,7 +23,7 @@ export function registerGbutsSpotifyListingRoutes(app: Hono, clientFactory: () =
   app.get('/gbuts/spotify/listings', async c => {
     try {
       const template = spotifyTemplate(await clientFactory().getPost(Number(process.env.GBUTS_SPOTIFY_POST_SEQ || LEGACY_SPOTIFY_POST_SEQ)));
-      return c.json({ ok: true, template, listings: Object.values(readSpotifyListings().listings),
+      return c.json({ ok: true, template, listings: Object.values(readSpotifyListings().listings).filter(x => !x.deletedAt),
         enabled: enabled() });
     } catch (e) { return c.json({ ok: false, error: e instanceof Error ? e.message : '기존 스포티파이 판매글 조회 실패' }, 503); }
   });
@@ -44,6 +44,7 @@ export function registerGbutsSpotifyListingRoutes(app: Hono, clientFactory: () =
         const store = readSpotifyListings(); const previous = store.listings[id]; const client = clientFactory();
         if (previous) {
           if (previous.requestHash !== requestHash) return c.json({ ok: false, error: '이미 사용한 등록 요청입니다.' }, 409);
+          if (previous.deletedAt) return c.json({ ok: false, error: '삭제한 판매글의 등록 요청입니다. 새 요청으로 등록해주세요.' }, 409);
           if (previous.state !== 'registered') await reconcile(previous, client);
           return c.json({ ok: true, listing: readSpotifyListings().listings[id] });
         }
@@ -73,7 +74,32 @@ export function registerGbutsSpotifyListingRoutes(app: Hono, clientFactory: () =
     try {
       const listing = readSpotifyListings().listings[c.req.param('id')];
       if (!listing) return c.json({ ok: false, error: '확인할 등록 요청이 없습니다.' }, 404);
+      if (listing.deletedAt) return c.json({ ok: false, error: '이미 삭제한 판매글입니다.' }, 409);
       await reconcile(listing, clientFactory()); return c.json({ ok: true, listing });
     } catch (e) { return c.json({ ok: false, error: e instanceof Error ? e.message : '등록 결과 확인 실패' }, 409); }
+  }));
+  app.delete('/gbuts/spotify/listings/:id', c => serial(async () => {
+    try {
+      const store = readSpotifyListings(); const listing = store.listings[c.req.param('id')];
+      if (!listing) return c.json({ ok: false, error: '삭제할 판매글이 없습니다.' }, 404);
+      if (listing.deletedAt) return c.json({ ok: true, alreadyDeleted: true });
+      if (listing.state !== 'registered' || !listing.postSeq)
+        return c.json({ ok: false, error: '등록 결과를 먼저 확인한 뒤 삭제해주세요.' }, 409);
+      const client = clientFactory(); const post = await client.getPost(listing.postSeq);
+      if (post.seq !== listing.postSeq || post.category1.seq !== 20 || post.subscriptionType !== 'INVITE')
+        throw new Error('삭제 대상 스포티파이 판매글을 확인하지 못했습니다.');
+      if (!['ON_SALE', 'CLOSED'].includes(post.status))
+        throw new Error('벗츠 판매글 상태를 확인해주세요. 모집 마감을 확인한 글만 삭제할 수 있습니다.');
+      if (post.status === 'ON_SALE') {
+        try { await client.closePost(listing.postSeq); } catch { /* Verify an uncertain close; never repeat the write here. */ }
+        const current = await client.getPost(listing.postSeq);
+        if (current.seq !== listing.postSeq || current.category1.seq !== 20 || current.status !== 'CLOSED')
+          throw new Error('모집 마감을 확인하지 못해 목록에 유지했습니다. 잠시 후 다시 확인해주세요.');
+      }
+      // Keep the registered ID in the monitor so existing buyers still receive
+      // Notion updates and private messages after the seller removes recruitment.
+      listing.deletedAt = new Date().toISOString(); delete listing.error; writeSpotifyListings(store);
+      return c.json({ ok: true });
+    } catch (e) { return c.json({ ok: false, error: e instanceof Error ? e.message : '판매글 삭제 실패' }, 502); }
   }));
 }
