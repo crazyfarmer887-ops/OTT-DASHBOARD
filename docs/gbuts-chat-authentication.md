@@ -17,4 +17,5 @@ The official GButs chat client supplies `api_key: Bearer <seller token>` in its 
 
 - Before the fix: live missing-guide audit failed; authenticated-broker transport regression failed.
 - After the fix: 86 focused tests across transport, Spotify messages/sync, OTT sync and Office messages passed. Production client build and whitespace review passed.
-- Deployment and live recovery verification: pending.
+- Runtime `b5804f8` committed, pushed and deployed as an immutable release. Service active; dashboard login returns HTTP 200.
+- The affected order was still paid and its history remained empty immediately before recovery. The authenticated production sender received saved-message echoes for all three approved guide paragraphs; a fresh REST history read independently confirmed all three at 18:21 KST. The normal scheduler subsequently reconciled the existing journal entry to `confirmed` without repeating the guide. The original missing-guide audit now passes with `guide_delivery_missing 0`.
