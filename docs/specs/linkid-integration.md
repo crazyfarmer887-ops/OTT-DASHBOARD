@@ -29,3 +29,7 @@ Official production web client inspected on 2026-10-12. JSON POST uses `version-
 
 ## Release
 Local source -> targeted integration tests, existing navigation/admin gates, build/review -> commit/push -> immutable production release -> live five-profile read and Telegram delivery smoke.
+
+## Office 365 invitation operations
+
+2026-10-19: the user established the ongoing invitation procedure: Xianyu order link → requested buyer email → issued `aka.ms` invitation URL → register that URL in the Linkid participant profile → send the same URL with acceptance instructions in the private chat. Follow [the invitation runbook](../linkid-office-invitations.md), including separate verification of profile link registration and chat delivery.
