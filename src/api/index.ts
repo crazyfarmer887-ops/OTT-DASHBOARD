@@ -3126,6 +3126,7 @@ export async function sendYouTubeJevReply(deal: { dealUsid: string; chatRoomUuid
 
 export async function alertYouTubeCountryIssue(deal: { dealUsid: string; chatRoomUuid: string }): Promise<void> {
   await sendSellerAlert({
+    provider: 'graytag',
     key: `youtube-country-issue-${deal.dealUsid}-${Date.now()}`,
     title: '유튜브 초대 국가 오류',
     body: `구매자가 국가가 다르다는 초대 오류를 신고했습니다. 실제 국가·거주지 요건을 확인하고 재초대 가능 여부를 판단해 주세요.\n거래: ${deal.dealUsid}\n채팅: https://graytag.co.kr/chat/${encodeURIComponent(deal.chatRoomUuid)}`,
@@ -3139,6 +3140,7 @@ export async function alertYouTubePostDeliveryIssue(
 ): Promise<void> {
   const title = intent === 'premium_lost' ? '유튜브 프리미엄 이용 중단 문의' : '배송 완료 후 초대장 미도착 문의';
   await sendSellerAlert({
+    provider: 'graytag',
     key: `youtube-post-delivery-${intent}-${deal.dealUsid}-${Date.now()}`,
     title,
     body: `구매자가 ${title}를 보냈습니다. 초대 및 이용 상태를 직접 확인해 주세요.\n거래: ${deal.dealUsid}\n채팅: https://graytag.co.kr/chat/${encodeURIComponent(deal.chatRoomUuid)}`,
@@ -4171,6 +4173,7 @@ async function processDailyAutomatedNotice(job: any, dryRun: boolean): Promise<{
 
 async function notifyAutoReplyHuman(job: any, reason: string, severity: 'warning' | 'critical' = 'warning') {
   await sendHumanReviewAlertIfEnabled(process.env, sendSellerAlert, {
+    provider: 'graytag',
     key: `auto-reply-human-${job.chatRoomUuid}-${reason}`,
     title: '자동응답 사람 확인 필요',
     body: [
@@ -4190,6 +4193,7 @@ async function notifyAutoReplyHuman(job: any, reason: string, severity: 'warning
 async function notifyAutoReplyDraft(job: any, draftReply: string, reason: string) {
   if (job.telegramAlertSentAt) return;
   const result = await sendSellerAlert({
+    provider: 'graytag',
     key: `auto-reply-draft-${job.id}`,
     title: '새 구매자 메시지 · AI 초안',
     body: [
@@ -4774,6 +4778,7 @@ async function notifySellerStatusWarnings(status: ReturnType<typeof buildSellerS
     const result = await sendSellerAlert({
       key,
       title: 'Seller status warning',
+      provider: 'graytag',
       body: warning,
       severity: /세션|오류|오래됨/.test(warning) ? 'critical' : 'warning',
     });

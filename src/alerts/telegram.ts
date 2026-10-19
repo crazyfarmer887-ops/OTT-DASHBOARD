@@ -10,6 +10,8 @@ export type SellerAlertResult =
 
 type FetchLike = (url: string, init?: any) => Promise<{ ok: boolean; status?: number; text?: () => Promise<string> }>;
 
+export type SellerAlertProvider = 'gbuts' | 'linkid' | 'graytag';
+
 export type SellerAlertCategory = 'purchase' | 'inquiry' | 'auto-reply' | 'system';
 
 export type SellerAlertInput = {
@@ -19,6 +21,7 @@ export type SellerAlertInput = {
   actionUrl?: string;
   severity?: 'warning' | 'critical';
   category?: SellerAlertCategory;
+  provider?: SellerAlertProvider;
   statePath?: string;
   throttleMs?: number;
   nowMs?: number;
@@ -71,7 +74,14 @@ function categoryLabel(category: SellerAlertCategory | undefined): string {
   return '⚙️ 시스템';
 }
 
-function categoryThreadId(category: SellerAlertCategory | undefined): string {
+function alertThreadId(input: SellerAlertInput): string {
+  // Route from the caller's trusted provider, never from buyer-controlled text or URLs.
+  const provider = input.provider;
+  if (provider === 'gbuts' || provider === 'linkid' || provider === 'graytag') {
+    const threadId = env(`SELLER_ALERT_TELEGRAM_${provider.toUpperCase()}_THREAD_ID`);
+    if (threadId) return threadId;
+  }
+  const category = input.category;
   const upper = String(category || 'system').replace(/[^A-Za-z0-9]/g, '_').toUpperCase();
   return env(`SELLER_ALERT_TELEGRAM_${upper}_THREAD_ID`);
 }
@@ -108,7 +118,7 @@ export async function sendSellerAlert(input: SellerAlertInput): Promise<SellerAl
   const fetcher = input.fetchImpl || (globalThis.fetch as unknown as FetchLike | undefined);
   const text = buildText(input);
   const payload: Record<string, any> = { chat_id: chatId, text, disable_web_page_preview: true };
-  const threadId = categoryThreadId(input.category);
+  const threadId = alertThreadId(input);
   if (threadId) payload.message_thread_id = Number(threadId) || threadId;
   const url = input.actionUrl || extractFirstUrl(input.body);
   if (url) {

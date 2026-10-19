@@ -474,6 +474,7 @@ async function recordPollFailure(reason: string, alertKey: string, severity: 'wa
 
   if (consecutiveFailures >= POLL_FAILURE_ALERT_THRESHOLD || isSessionAlert) {
     const result = await sendSellerAlert({
+      provider: 'graytag',
       key: alertKey,
       title: 'PollDaemon 확인 필요',
       body: `${reason}\n연속 실패: ${consecutiveFailures}회`,
@@ -566,6 +567,7 @@ async function sendNewChatMessageAlerts(
         const didSend = await reserveAndSendChatAlert(alert, updated, (state) => saveKnownChatMessages(state, statePath), async () => {
           const invitation = options.sendInvitationEmailAlert ? youtubeInvitationAlertForMessage(alert.dealUsid, alert.text) : null;
           return sendChatContentAlert({
+            provider: 'graytag',
             key: `graytag-chat-${accountId}-${createHash('sha256').update(alert.fingerprint).digest('hex')}`,
             title: `${alertPrefix}${invitation ? invitation.title : '새 문의 도착'}`,
             body: `${accountLabel ? `운영 계정: ${accountLabel}\n` : ''}${alert.productType} · ${alert.borrowerName}${accountLine}${dealLine}\n시간: ${alert.timestamp}${invitation ? `\n${invitation.body}` : ''}`,
@@ -615,6 +617,7 @@ async function pollDedicatedYouTubeAccount(): Promise<void> {
     youtubePurchaseAlerts.updated,
     (state) => saveKnownDeals(state, YOUTUBE_SALES_KNOWN_DEALS_PATH),
     youtubePurchaseAlerts.alerts.map((message) => () => sendSellerAlert({
+      provider: 'graytag',
       key: `poll-daemon-youtube-sales-deal-${message.slice(-80)}`,
       title: '유튜브 판매 전용 · 구매/판매 이벤트',
       body: `운영 계정: 유튜브 판매 전용\n${message.replace(/<[^>]+>/g, '')}`,
@@ -721,6 +724,7 @@ async function pollGraytag() {
 
     await persistAndSendDealAlerts(updated, saveKnownDeals, alerts.map((msg) => async () => {
       const result = await sendSellerAlert({
+        provider: 'graytag',
         key: 'poll-daemon-deal-' + msg.slice(-80),
         title: '계정 구매/판매 이벤트',
         body: msg.replace(/<[^>]+>/g, ''),

@@ -149,6 +149,7 @@ export async function sendYouTubeInvitationAlert(input: {
 }): Promise<SellerAlertResult | { sent: false; reason: 'already-sent' }> {
   if (input.alreadySentAt) return { sent: false, reason: 'already-sent' };
   return input.sender({
+    provider: 'graytag',
     key: `youtube-invitation-email-${input.messageFingerprint}`,
     title: input.alert.title,
     body: input.alert.body,

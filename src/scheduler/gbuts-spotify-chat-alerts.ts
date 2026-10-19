@@ -105,6 +105,7 @@ export async function syncGbutsSpotifyChatAlerts(deps: GbutsSpotifyChatAlertDepe
     for (const batch of batches) {
       const batchKey = createHash('sha256').update(batch.map(x => x.receipt).join(':')).digest('hex').slice(0, 24);
       const result = await deps.sendAlert({
+        provider: 'gbuts',
         key: `gbuts-chat-content-${batchKey}`, title: `GButs ${(deps.productLabel || 'Spotify').slice(0, 100)} 구매자 채팅`,
         body: [`새 구매자 메시지 ${new Set(batch.map(x => x.id)).size}개가 도착했습니다.`, header,
           batch.map(x => x.text).join('\n\n')].join('\n\n') + footer,

@@ -52,10 +52,10 @@ async function deliverPending(store: LinkidStore, account: LinkidAccount, deps: 
         if (!message?.text) continue; // Keep legacy events pending until their text can be read.
         event.message = splitTelegramChatText(message.text).join(''); event.buyerName = room?.name; deps.write(store);
       }
-      result = await sendChatContentAlert({ key, title: `링키드 · ${event.title}`, body: [...context,
+      result = await sendChatContentAlert({ provider: 'linkid', key, title: `링키드 · ${event.title}`, body: [...context,
         `구매자: ${(event.buyerName || '파티 채팅').slice(0, 80)}`].join('\n'), message: event.message,
         actionUrl, category: 'inquiry', throttleMs: 365 * 86400000 }, deps.alert);
-    } else result = await deps.alert({ key, title: `링키드 · ${event.title}`,
+    } else result = await deps.alert({ provider: 'linkid', key, title: `링키드 · ${event.title}`,
       category: /가입|파티원|매칭|구매/.test(event.title) ? 'purchase' : 'system',
       body: [...context, '링키드에 새 알림이 도착했습니다.', actionUrl].join('\n'), actionUrl, throttleMs: 365 * 86400000 });
     if (result.sent || result.reason === 'throttled') {
@@ -109,7 +109,7 @@ export async function syncLinkid(deps: LinkidSyncDependencies = linkidRuntime, o
       account.retryAfter = failedAt + (e instanceof LinkidError && e.kind === 'rate' ? 5 * 60000 : 90000);
       const sustained = account.consecutiveFailures >= 3 && failedAt - Date.parse(account.firstFailureAt) >= 15 * 60000;
       if ((e instanceof LinkidError && e.kind === 'auth') || sustained) {
-        await deps.alert({ key: `linkid-connection-${account.id}`, category: 'system', title: '링키드 연결 확인 필요',
+        await deps.alert({ provider: 'linkid', key: `linkid-connection-${account.id}`, category: 'system', title: '링키드 연결 확인 필요',
           body: `${account.label}\n${account.lastError}\nhttps://email-verify.one/dashboard/linkid`, throttleMs: 60 * 60000 });
       }
     }

@@ -49,6 +49,7 @@ describe('Linkid durable event notifications', () => {
     expect(f.store.accounts[0].pending).toHaveLength(0);
     const bodies = vi.mocked(f.deps.alert).mock.calls.map(x => x[0].body).join('\n');
     expect(bodies).toContain('둘째 프로필'); expect(bodies).toContain('링키드 1호기');
+    expect(vi.mocked(f.deps.alert).mock.calls.every(([input]) => input.provider === 'linkid')).toBe(true);
     expect(bodies).toContain('MY_PRIVATE_MESSAGE'); expect(bodies).not.toContain('server-secret');
     vi.mocked(f.deps.alert).mockClear(); await syncLinkid(f.deps); expect(f.deps.alert).not.toHaveBeenCalled();
   });
@@ -122,7 +123,7 @@ describe('Linkid durable event notifications', () => {
     vi.mocked(f.deps.client.auth).mockRejectedValue(new LinkidError('로그인 필요', 'auth'));
     vi.mocked(f.deps.client.login).mockRejectedValue(new LinkidError('로그인 필요', 'auth'));
     await syncLinkid(f.deps);
-    expect(f.deps.alert).toHaveBeenCalledWith(expect.objectContaining({ title: '링키드 연결 확인 필요' }));
+    expect(f.deps.alert).toHaveBeenCalledWith(expect.objectContaining({ title: '링키드 연결 확인 필요', provider: 'linkid' }));
   });
   it('keeps one transient 404 in the dashboard without a Telegram warning', async () => {
     const f = fixture();

@@ -17,6 +17,7 @@ afterEach(() => {
   if (tmp) rmSync(tmp, { recursive: true, force: true });
   tmp = null;
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
 });
 
 function tempStatePath() {
@@ -25,6 +26,47 @@ function tempStatePath() {
 }
 
 describe('seller Telegram alerts', () => {
+  it.each(['gbuts', 'linkid', 'graytag'] as const)('routes every %s alert category to its service topic', async provider => {
+    vi.stubEnv('SELLER_ALERT_TELEGRAM_BOT_TOKEN', 'test-token');
+    vi.stubEnv('SELLER_ALERT_TELEGRAM_CHAT_ID', 'test-chat');
+    vi.stubEnv(`SELLER_ALERT_TELEGRAM_${provider.toUpperCase()}_THREAD_ID`, '101');
+    const fetchMock = vi.fn(async (_url: string, _init?: any) => new Response('{"ok":true}'));
+    const statePath = tempStatePath();
+    for (const category of ['purchase', 'inquiry', 'auto-reply', 'system'] as const) {
+      vi.stubEnv(`SELLER_ALERT_TELEGRAM_${category.replace('-', '_').toUpperCase()}_THREAD_ID`, '999');
+      await sendSellerAlert({ provider, category, key: category, title: '서비스 알림',
+        body: '링키드 gbuts graytag https://example.com/graytag', actionUrl: 'https://email-verify.one/dashboard',
+        statePath, fetchImpl: fetchMock });
+    }
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    for (const [, init] of fetchMock.mock.calls) {
+      expect(JSON.parse(init.body)).toMatchObject({ chat_id: 'test-chat', message_thread_id: 101 });
+    }
+  });
+
+  it('keeps category routing when a service topic is not configured', async () => {
+    vi.stubEnv('SELLER_ALERT_TELEGRAM_BOT_TOKEN', 'test-token');
+    vi.stubEnv('SELLER_ALERT_TELEGRAM_CHAT_ID', 'test-chat');
+    vi.stubEnv('SELLER_ALERT_TELEGRAM_GBUTS_THREAD_ID', '');
+    vi.stubEnv('SELLER_ALERT_TELEGRAM_INQUIRY_THREAD_ID', '202');
+    const fetchMock = vi.fn(async (_url: string, _init?: any) => new Response('{"ok":true}'));
+    await sendSellerAlert({ provider: 'gbuts', category: 'inquiry', key: 'fallback', title: '문의', body: '내용',
+      statePath: tempStatePath(), fetchImpl: fetchMock });
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).message_thread_id).toBe(202);
+  });
+
+  it('does not infer service routing from buyer text or links', async () => {
+    vi.stubEnv('SELLER_ALERT_TELEGRAM_BOT_TOKEN', 'test-token');
+    vi.stubEnv('SELLER_ALERT_TELEGRAM_CHAT_ID', 'test-chat');
+    vi.stubEnv('SELLER_ALERT_TELEGRAM_LINKID_THREAD_ID', '303');
+    vi.stubEnv('SELLER_ALERT_TELEGRAM_SYSTEM_THREAD_ID', '');
+    const fetchMock = vi.fn(async (_url: string, _init?: any) => new Response('{"ok":true}'));
+    await sendSellerAlert({ key: 'unknown', title: '링키드', body: 'https://linkid.pw',
+      statePath: tempStatePath(), fetchImpl: fetchMock });
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).not.toHaveProperty('message_thread_id');
+  });
+
+
   it('keeps an explicit official chat button even if a buyer message contains a different URL', async () => {
     process.env.SELLER_ALERT_TELEGRAM_BOT_TOKEN = 'test-token';
     process.env.SELLER_ALERT_TELEGRAM_CHAT_ID = 'test-chat';
