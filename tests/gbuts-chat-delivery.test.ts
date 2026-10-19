@@ -1,9 +1,13 @@
-import { afterEach, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { buildGbutsNetflixDeliveryText, buildGbutsNetflixLegacyDeliveryText } from '../src/lib/gbuts-ott-templates';
 import { sendGbutsText, sendGbutsSingleText } from '../src/scheduler/gbuts-spotify-messages';
 import { GbutsChatDeliveryError, gbutsChatContainsText, splitGbutsChatText } from '../src/lib/gbuts-chat-delivery';
 
-afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
+beforeEach(() => {
+  vi.stubEnv('GBUTS_SESSION_PATH', '/nonexistent/gbuts-chat-test-session.json');
+  vi.stubEnv('GBUTS_API_TOKEN', 'test-chat-token');
+});
+afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.useRealTimers(); });
 const guide = buildGbutsNetflixLegacyDeliveryText('https://email-verify.one/dashboard/access/test-buyer', 1);
 function broker({ echo = true, failConnect = false, frameBudget = false } = {}) {
   const accepted: string[] = [];
@@ -11,7 +15,11 @@ function broker({ echo = true, failConnect = false, frameBudget = false } = {}) 
     onopen?: () => void; onmessage?: (event: { data: string }) => void; onerror?: () => void; onclose?: () => void;
     constructor() { queueMicrotask(() => failConnect ? this.onerror?.() : this.onopen?.()); }
     send(frame: string) {
-      if (frame.startsWith('CONNECT\n')) queueMicrotask(() => this.onmessage?.({ data: 'CONNECTED\nversion:1.2\n\n\0' }));
+      if (frame.startsWith('CONNECT\n')) {
+        const authenticated = frame.includes('\napi_key:Bearer test-chat-token\n');
+        queueMicrotask(() => this.onmessage?.({ data: authenticated
+          ? 'CONNECTED\nversion:1.2\n\n\0' : 'ERROR\nmessage:authentication required\n\n\0' }));
+      }
       if (!frame.startsWith('SEND\n')) return;
       const payload = JSON.parse(frame.split('\n\n')[1].replace(/\0$/, ''));
       // Reproduces the observed silent rejection of long multibyte messages.
@@ -24,6 +32,19 @@ function broker({ echo = true, failConnect = false, frameBudget = false } = {}) 
   vi.stubGlobal('WebSocket', Socket);
   return accepted;
 }
+test('authenticates the chat connection before sending the Spotify buyer guide', async () => {
+  const accepted = broker();
+  const { SPOTIFY_BUYER_GUIDE } = await import('../src/scheduler/gbuts-spotify-messages');
+  await sendGbutsText('test-room', 99, SPOTIFY_BUYER_GUIDE);
+  expect(accepted).toEqual(splitGbutsChatText(SPOTIFY_BUYER_GUIDE));
+});
+
+test('does not open an anonymous socket when the seller session is missing', async () => {
+  vi.stubEnv('GBUTS_API_TOKEN', '');
+  const Socket = vi.fn(); vi.stubGlobal('WebSocket', Socket);
+  await expect(sendGbutsText('test-room', 99, '구매 감사합니다')).rejects.toMatchObject({ submitted: false, retryable: true });
+  expect(Socket).not.toHaveBeenCalled();
+});
 test('delivers the full Korean guide through a broker that silently rejects oversized text', async () => {
   const accepted = broker();
   await sendGbutsText('test-room', 99, guide);

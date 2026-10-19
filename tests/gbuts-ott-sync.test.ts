@@ -155,6 +155,8 @@ ${url}
     expect(f.send).not.toHaveBeenCalled(); expect(f.deps.management).not.toHaveBeenCalled();
   });
   it('uses the real default structured-message transport for a newly paid Netflix buyer', async () => {
+    vi.stubEnv('GBUTS_SESSION_PATH', '/nonexistent/gbuts-chat-test-session.json');
+    vi.stubEnv('GBUTS_API_TOKEN', 'test-chat-token');
     const f = fixture(); const frames: string[] = []; const saved: any[] = [];
     class Socket {
       onopen?: () => void; onmessage?: (event: { data: string }) => void; onerror?: () => void; onclose?: () => void;
@@ -176,7 +178,7 @@ ${url}
       expect(saved[1].message).toBe('접근 링크: https://email-verify.one/dashboard/access/token-100:1');
       expect(f.store.orders['100:1'].delivery).toBe('confirmed');
       expect(f.store.orders['100:1'].deliveryMessage).toContain('token-100:1');
-    } finally { vi.unstubAllGlobals(); }
+    } finally { vi.unstubAllGlobals(); vi.unstubAllEnvs(); }
   });
   it('does not repeat permanent preflight failures or label them connection errors', async () => {
     const f = fixture();

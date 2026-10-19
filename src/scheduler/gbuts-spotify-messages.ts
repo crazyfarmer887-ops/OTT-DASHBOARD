@@ -3,6 +3,7 @@ import { explicitYouTubeBuyerEmails } from '../lib/youtube-buyer-email';
 import { existsSync, readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { writeJsonAtomic } from '../lib/graytag-sales-session';
+import { loadGbutsSession, parseGbutsToken } from '../lib/gbuts-session';
 import { extractGbutsSpotifyCredentials, gbutsSpotifyOrderKey, isActiveGbutsSpotifyMember, isSpotifyAccountForBuyer, jamkkangudokSpotifyEmail,
   type GbutsChatMessage, type GbutsSpotifyMember, type SpotifyCredentials } from '../lib/gbuts-spotify';
 import type { SpotifyNotionRow } from './gbuts-spotify-sync';
@@ -184,6 +185,9 @@ function gbutsTextSendFrame(roomId: string, accountSeq: number, text: string): s
   return `SEND\ndestination:/pub/chat/text\ncontent-length:${Buffer.byteLength(payload)}\n\n${payload}\0`;
 }
 async function sendGbutsChatParts(roomId: string, accountSeq: number, parts: string[]): Promise<void> {
+  let token: string;
+  try { token = parseGbutsToken(loadGbutsSession()?.token || process.env.GBUTS_API_TOKEN); }
+  catch { throw new GbutsChatDeliveryError('GButs chat seller session unavailable', false); }
   await new Promise<void>((resolve, reject) => {
     let socket: WebSocket;
     try { socket = new WebSocket('wss://socket.gbuts.com/ws/websocket'); }
@@ -203,7 +207,8 @@ async function sendGbutsChatParts(roomId: string, accountSeq: number, parts: str
       catch { finish('GButs chat socket send failed'); }
     };
     socket.onopen = () => {
-      try { socket.send('CONNECT\naccept-version:1.2\nheart-beat:0,0\n\n\0'); }
+      // The official chat client authenticates STOMP separately from the REST API.
+      try { socket.send(`CONNECT\naccept-version:1.2\nheart-beat:0,0\napi_key:Bearer ${token}\n\n\0`); }
       catch { finish('GButs chat connection failed'); }
     };
     socket.onerror = () => finish('GButs chat socket error');
