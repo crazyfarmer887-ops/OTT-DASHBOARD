@@ -206,6 +206,22 @@ describe('GButs Spotify buyer messages', () => {
     expect(result.invitedRepliesAttempted).toBe(0); expect(sendText).not.toHaveBeenCalled();
   });
 
+  it.each([[false, false], [true, false], [false, true], [true, true]])(
+    'delivers generated login details only after both checks (Registered=%s, Invited=%s)', async (registered, invited) => {
+      const sendText = vi.fn(async () => undefined);
+      const issued = { ...row, email: 'spabcdefgh23@jamkkangudok.com', password: 'Abcdefgh2345!@#K', registered, invited };
+      await syncGbutsSpotifyMessages({
+        listMembers: async () => [member], openPrivateRoom: async () => '777',
+        getChat: async () => ({ messages: [{ ...buyerMessage, message: '새 계정 발급 부탁드립니다' }] }),
+        sellerAccountSeq: async () => 7, listRows: async () => [issued], sendText,
+        readJournal: () => ({ version: 1, records: {} }), writeJournal: vi.fn(),
+      }, 15557);
+      const loginMessages = sendText.mock.calls.filter(([, , text]) => text.includes('ID :'));
+      expect(loginMessages).toHaveLength(registered && invited ? 1 : 0);
+      if (registered && invited) expect(loginMessages[0][2]).toBe(
+        spotifyRegisteredAccountInvitedReply(issued.email, issued.password));
+    });
+
   it('sends the issued login when the buyer chose a new account and the partner checked both boxes', async () => {
     const issuedRow: SpotifyNotionRow = { ...row, email: 'issued@jamkkangudok.com', password: 'issued123',
       registered: true };

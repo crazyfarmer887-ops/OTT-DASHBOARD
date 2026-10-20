@@ -2,6 +2,7 @@ import { extractGbutsCredentialsWithOpenRouter } from '../api/notion-chat-extrac
 import { createSingleFlightRunner } from './poll-daemon';
 import { loadGbutsSession } from '../lib/gbuts-session';
 import { loadSafeModeConfig } from '../api/safe-mode';
+import { getOrCreateSpotifyNewAccountCredentials, isGeneratedSpotifyLogin } from './spotify-new-account-credentials';
 import { LEGACY_SPOTIFY_POST_SEQ, spotifyPostSeqs } from '../lib/gbuts-spotify-listings';
 import { readGbutsSpotifyMessageJournal, requestedSpotifyNewAccount, sendGbutsText, syncGbutsSpotifyMessages,
   writeGbutsSpotifyMessageJournal } from './gbuts-spotify-messages';
@@ -85,7 +86,8 @@ export async function syncGbutsSpotifyCredentials(deps: GbutsSpotifySyncDependen
       if (newAccountRequestsByOrder.get(orderKey) && matches.length === 0 && deps.createNewAccountRequestRow) {
         if ((await deps.listRows()).some((row) => row.orderKey === orderKey)) { conflicts += 1; continue; }
         const row = await deps.createNewAccountRequestRow(orderKey);
-        if (row.orderKey !== orderKey || row.email || row.password || row.registered || row.invited || row.cancelled)
+        if (row.orderKey !== orderKey || !isGeneratedSpotifyLogin(row)
+          || row.registered || row.invited || row.cancelled)
           throw new Error('Spotify Notion new-account request response invalid');
         rows.push(row);
         created += 1;
@@ -229,7 +231,8 @@ function notionTitle(email: string, cancelled = false) {
 }
 
 export function createGbutsSpotifyNotionClient(token: string, dataSourceId = SPOTIFY_NOTION_DATA_SOURCE_ID,
-  transport: typeof fetch = fetch) {
+  transport: typeof fetch = fetch,
+  newAccountCredentials: (orderKey: string) => SpotifyCredentials = getOrCreateSpotifyNewAccountCredentials) {
   const headers = { Authorization: `Bearer ${token}`, 'Notion-Version': NOTION_VERSION, 'Content-Type': 'application/json' };
   const listRows = async (): Promise<SpotifyNotionRow[]> => {
     const rows: SpotifyNotionRow[] = [];
@@ -274,17 +277,21 @@ export function createGbutsSpotifyNotionClient(token: string, dataSourceId = SPO
       return row;
     },
     async createNewAccountRequestRow(orderKey: string): Promise<SpotifyNotionRow> {
+      const credentials = newAccountCredentials(orderKey);
+      if (!isGeneratedSpotifyLogin(credentials)) throw new Error('Spotify generated credentials invalid');
       const response = await transport('https://api.notion.com/v1/pages', {
         method: 'POST', headers, signal: AbortSignal.timeout(15_000),
         body: JSON.stringify({ parent: { type: 'data_source_id', data_source_id: dataSourceId }, properties: {
-          'Spotify account': { title: [{ text: { content: 'New account requested' } }] },
+          'Spotify account': { title: notionTitle(credentials.email) },
+          Password: { rich_text: [{ text: { content: credentials.password } }] },
           Registered: { checkbox: false }, Invited: { checkbox: false },
           'GButs order ID': { rich_text: [{ text: { content: orderKey } }] },
         } }),
       });
       if (!response.ok) throw new Error(`Spotify Notion new-account request failed: HTTP ${response.status}`);
       const row = parseNotionRow(await response.json());
-      if (!row) throw new Error('Spotify Notion new-account request response invalid');
+      if (!row || row.orderKey !== orderKey || row.email !== credentials.email || row.password !== credentials.password
+        || row.registered || row.invited || row.cancelled) throw new Error('Spotify Notion new-account request response invalid');
       return row;
     },
     async claimRow(row: SpotifyNotionRow, orderKey: string): Promise<SpotifyNotionRow> {

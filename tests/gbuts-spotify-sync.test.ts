@@ -5,6 +5,8 @@ import { syncGbutsSpotifyMessages, SPOTIFY_INVITED_REPLY, type GbutsSpotifyMessa
 const member = { seq: 91, userSeq: 42, productId: '801', status: 'APPLY', cancelStatus: null };
 const credentialMessage = { senderSeq: 42, message: 'Spotify email: buyer@example.com\nPassword: secret123',
   messageType: 'TEXT', createdAt: '2026-10-02T10:00:00Z' };
+const generatedCredentials = { email: 'spabcdefgh23@jamkkangudok.com', password: 'Abcdefgh2345!@#K',
+  receivedAt: '2026-10-20T00:00:00Z' };
 
 describe('GButs Spotify Notion sync', () => {
   it('keeps old and new listing buyers separate and delivers the existing invited reply for both', async () => {
@@ -81,8 +83,8 @@ describe('GButs Spotify Notion sync', () => {
   it('creates one order-linked row for an explicit new-account request without credentials', async () => {
     let rows: SpotifyNotionRow[] = [];
     const createNewAccountRequestRow = vi.fn(async (orderKey: string) => {
-      const created: SpotifyNotionRow = { id: 'requested-page', orderKey, email: '', emailHistory: [],
-        password: '', registered: false, invited: false, cancelled: false };
+      const created: SpotifyNotionRow = { id: 'requested-page', orderKey, ...generatedCredentials, emailHistory: [],
+        registered: false, invited: false, cancelled: false };
       rows = [created];
       return created;
     });
@@ -99,7 +101,7 @@ describe('GButs Spotify Notion sync', () => {
     expect(await syncGbutsSpotifyCredentials(deps, 15557)).toMatchObject({ created: 0 });
   });
 
-  it('creates a blank Notion account request and replaces it without striking a nonexistent email', async () => {
+  it('creates a generated Notion account request without marking it registered or invited', async () => {
     const requests: Array<{ url: string; body: any }> = [];
     const transport = vi.fn(async (url: string | URL | Request, init: RequestInit = {}) => {
       const body = JSON.parse(String(init.body));
@@ -112,10 +114,11 @@ describe('GButs Spotify Notion sync', () => {
         'GButs order ID': { rich_text: [{ plain_text: '15557:91' }] },
       } }), { status: 200 });
     }) as unknown as typeof fetch;
-    const notion = createGbutsSpotifyNotionClient('token', undefined, transport);
+    const notion = createGbutsSpotifyNotionClient('token', undefined, transport, () => generatedCredentials);
     const placeholder = await notion.createNewAccountRequestRow('15557:91');
-    expect(placeholder).toMatchObject({ orderKey: '15557:91', email: '', registered: false });
-    expect(requests[0].body.properties['Spotify account'].title[0].text.content).toBe('New account requested');
+    expect(placeholder).toMatchObject({ orderKey: '15557:91', email: generatedCredentials.email,
+      password: generatedCredentials.password, registered: false, invited: false });
+    expect(requests[0].body.properties['Spotify account'].title[0].text.content).toBe(generatedCredentials.email);
     await notion.replaceCredentials(placeholder, { email: 'issued@jamkkangudok.com',
       password: 'issued123', receivedAt: '2026-10-03T10:00:00Z' });
     expect(requests[1].body.properties['Spotify account'].title).toEqual([
