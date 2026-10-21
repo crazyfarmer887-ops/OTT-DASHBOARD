@@ -48,6 +48,11 @@ test('existing external occupants or an invalid purchase timestamp block all new
  expect(allocateDisneyProfilesForSync(f.store,f.management,[]).size).toBe(1);
  expect(f.store.orders['100:1'].profileNumber).toBeUndefined();
 });
+test('five-place Disney sales use the actual capacity in buyer guidance', () => {
+ expect(buildGbutsDisneyDeliveryText('https://example.com/access',5,5)).toContain('1~5번');
+ expect(()=>buildGbutsDisneyDeliveryText('https://example.com/access',6,5)).toThrow();
+ expect(buildGbutsDisneyDeliveryText('https://example.com/access',6)).toContain('1~6번');
+});
 test('the real poller sends each private buyer a stable numbered password-only guide and does not repeat it', async () => {
  const f=fixture();let store=f.store;const chats=new Map<string,any[]>();
  const members=[2,1].map(n=>({seq:n,userSeq:n+10,productId:String(n),nickname:`buyer${n}`,status:'APPLY',cancelStatus:null,createdAt:`2026-10-21 10:0${n}:00`,subscriptionEndsAt:'2026-12-01'}));

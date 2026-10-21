@@ -51,7 +51,7 @@ export async function syncGbutsOtt(deps: GbutsOttRuntimeDependencies,
   const eligible = Object.values(store.orders).filter(order => deliverableOttOrder(order) && order.verifiedAt === now);
   const sellerSeq = eligible.length ? await client.sellerAccountSeq() : 0;
   const deliveryText = (order: GbutsOttOrder) => order.deliveryMessage || (store.listings[order.listingId].deliveryMode === 'disney-numbered-password'
-    ? buildGbutsDisneyDeliveryText(order.accessUrl!, order.profileNumber!) : store.listings[order.listingId].serviceType === '넷플릭스'
+    ? buildGbutsDisneyDeliveryText(order.accessUrl!, order.profileNumber!, store.listings[order.listingId].capacity) : store.listings[order.listingId].serviceType === '넷플릭스'
     ? (order.attemptedAt || order.delivery === 'attempted' ? buildGbutsNetflixLegacyDeliveryText : buildGbutsNetflixDeliveryText)(order.accessUrl!, order.profileNumber!)
     : buildGbutsOttDeliveryText(order.accessUrl!));
   // Confirmation discloses nothing new: use the persisted link and profile lease,

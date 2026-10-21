@@ -1,9 +1,9 @@
 import { buildPartyAccessDeliveryTemplate } from './party-access-template';
 import { makeDefaultProductDescription } from './write-default-template';
 
-export function buildGbutsDisneyDeliveryText(accessUrl: string, number: number): string {
-  if (!Number.isInteger(number) || number < 1 || number > 6) throw new Error('디즈니 프로필 번호를 확인해주세요.');
-  return `구매 감사합니다! 디즈니플러스 ${number}번 프로필을 새로 만들어 이용해 주세요. 구매 순서대로 1~6번을 배정합니다.
+export function buildGbutsDisneyDeliveryText(accessUrl: string, number: number, capacity = 6): string {
+  if (!Number.isInteger(capacity) || capacity < 1 || capacity > 6 || !Number.isInteger(number) || number < 1 || number > capacity) throw new Error('디즈니 프로필 번호를 확인해주세요.');
+  return `구매 감사합니다! 디즈니플러스 ${number}번 프로필을 새로 만들어 이용해 주세요. 구매 순서대로 1~${capacity}번을 배정합니다.
 
 계정 정보 확인: ${accessUrl}
 
