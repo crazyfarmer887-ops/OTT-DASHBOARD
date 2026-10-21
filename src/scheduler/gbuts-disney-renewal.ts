@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { activeOttOrder, holdsDisneyProfile, koreaToday, ottDate, ottKey, updateGbutsOttOrders, type GbutsOttListing, type GbutsOttOrder, type GbutsOttStore, type GbutsOttManagement } from '../lib/gbuts-ott';
+import { activeOttOrder, holdsDisneyProfile, koreaToday, ottDate, ottKey, updateGbutsOttOrders, type GbutsOttListing, type GbutsOttOrder, type GbutsOttStore, type GbutsOttRenewal, type GbutsOttManagement } from '../lib/gbuts-ott';
 import { readGbutsOttStore, writeGbutsOttStore } from '../lib/gbuts-ott-store';
 import { createGbutsOttSellerClient, type GbutsOttPost, type GbutsOttMember } from '../lib/gbuts-ott-client';
 import { decodeGbutsSubscriptionCredential } from '../lib/gbuts-subscription-credentials';
@@ -56,15 +56,48 @@ async function reconcile(listing: GbutsOttListing, credentials: GbutsOttCredenti
   listing.verifiedAt = new Date().toISOString(); delete listing.error;
 }
 
+/** Reconcile public sale edits before changing local conditions; closed history stays immutable. */
+export async function applyGbutsDisneySaleTerms(store: GbutsOttStore, policy: GbutsOttRenewal,
+  client: ReturnType<typeof createGbutsOttSellerClient>, write: (store: GbutsOttStore) => void): Promise<void> {
+  const listing = store.listings[policy.listingId];
+  if (!policy.saleTerms || policy.pendingId) return;
+  if (!listing?.postSeq || listing.deliveryMode !== 'disney-numbered-password') throw new Error('판매 조건을 적용할 계정을 확인해주세요.');
+  const post = await client.getPost(listing.postSeq);
+  // Price may already be the requested value after a lost PUT response. All
+  // other immutable binding fields must still match before this exact edit.
+  if (!sameConditions(post, { ...listing, dailyPrice: Number(post.price) }) || !['ON_SALE', 'CLOSED'].includes(post.status))
+    throw new Error('판매 조건 수정 전 원본 연결을 확인해주세요.');
+  if (post.status === 'ON_SALE') {
+    await client.updateDisneySaleTerms(post, policy.saleTerms);
+  }
+  // A successful PUT can be followed by a sell-out before its lost response is
+  // recovered. Adopt the verified edit even on CLOSED, without editing history.
+  if (post.status === 'ON_SALE' || (Number(post.price) === policy.saleTerms.dailyPrice && title(post) === policy.saleTerms.title)) {
+    listing.dailyPrice = policy.saleTerms.dailyPrice; listing.title = policy.saleTerms.title;
+  }
+  policy.saleTermsAppliedTo = listing.postSeq; delete policy.saleTermsRetryAt; write(store);
+}
+
 /** Called only inside withGbutsOttInventory, shared with sales sync/publication. */
 export async function renewDueGbutsDisneyListings(deps: GbutsOttRuntimeDependencies,
   client: ReturnType<typeof createGbutsOttSellerClient>, now = new Date()): Promise<{ renewed: number; checked: number; errors: number }> {
   const read = deps.readStore || readGbutsOttStore; const write = deps.writeStore || writeGbutsOttStore;
   const store = read(); const result = { renewed: 0, checked: 0, errors: 0 };
   for (const policy of Object.values(store.renewals || {})) {
-    if ((!policy.enabled && !policy.pendingId) || Date.parse(policy.nextAt) > now.getTime()) continue;
-    result.checked++;
+    if (!policy.enabled && !policy.pendingId) continue;
+    const due = Date.parse(policy.nextAt) <= now.getTime();
     const source = store.listings[policy.listingId];
+    const edit = policy.saleTerms && !policy.pendingId && (due || policy.saleTermsAppliedTo !== source?.postSeq)
+      && (!policy.saleTermsRetryAt || Date.parse(policy.saleTermsRetryAt) <= now.getTime());
+    if (edit) {
+      try { await applyGbutsDisneySaleTerms(store, policy, client, write); delete policy.lastError; }
+      catch (error) {
+        result.errors++; policy.lastError = error instanceof Error ? error.message : '판매 조건 수정 확인이 필요합니다.';
+        policy.saleTermsRetryAt = new Date(now.getTime() + 60_000).toISOString(); write(store); continue;
+      }
+    }
+    if (!due || (policy.saleTermsRetryAt && Date.parse(policy.saleTermsRetryAt) > now.getTime())) continue;
+    result.checked++;
     const complete = (listing?: GbutsOttListing) => {
       if (listing) { policy.listingId = listing.id; delete listing.beforePostSeqs; result.renewed++; }
       delete policy.pendingId; delete policy.lastError;
@@ -116,9 +149,9 @@ export async function renewDueGbutsDisneyListings(deps: GbutsOttRuntimeDependenc
         if (source.replacedBy) throw new Error('이미 교체된 원본입니다. 연결을 확인해주세요.');
         const id = `disney-hourly-${source.postSeq}-${now.getTime()}`;
         if (store.listings[id]) throw new Error('기존 재등록 기록을 확인해주세요.');
-        const afterSeq = await client.latestPostSeq(); const newTitle = title(post);
+        const afterSeq = await client.latestPostSeq(); const newTitle = policy.saleTerms?.title || title(post);
         if (!newTitle || newTitle.length > 30) throw new Error('판매글 제목을 확인해주세요.');
-        replacement = { ...source, id, title: newTitle, description: typeof post.description === 'string' ? post.description : String(post.description?.ko || ''),
+        replacement = { ...source, id, title: newTitle, dailyPrice: policy.saleTerms?.dailyPrice ?? source.dailyPrice, description: typeof post.description === 'string' ? post.description : String(post.description?.ko || ''),
           requestHash: createHash('sha256').update(id).digest('hex'), state: 'submitting', capacity: remaining,
           postSeq: undefined, beforePostSeqs: undefined, repostAfterSeq: afterSeq, repostCredentialsHash: credentialsHash(credentials.id, credentials.password), createdAt: now.toISOString(), verifiedAt: undefined,
           error: undefined, replacedBy: undefined, repostFrom: source.id, repostPhase: 'closing' };
@@ -141,9 +174,10 @@ export async function renewDueGbutsDisneyListings(deps: GbutsOttRuntimeDependenc
       assertDedicatedAccount(await (deps.renewalManagement ? deps.renewalManagement() : deps.management()), policy.accountEmail, policy.capacity, source.endDate);
       credentials = await deps.listingCredentials?.(source);
       if (!credentials) throw new Error('최신 디즈니 계정 정보를 확인해주세요.');
-      const finalTitle = title(closed);
+      const finalTitle = policy.saleTerms?.title || title(closed);
       if (!finalTitle || finalTitle.length > 30) throw new Error('현재 판매글 제목을 확인해주세요.');
       replacement.title = finalTitle;
+      replacement.dailyPrice = policy.saleTerms?.dailyPrice ?? source.dailyPrice;
       replacement.description = typeof closed.description === 'string' ? closed.description : String(closed.description?.ko || '');
       replacement.repostCredentialsHash = credentialsHash(credentials.id, credentials.password);
       replacement.capacity = remaining; replacement.repostPhase = 'publishing'; source.replacedBy = replacement.id; write(store);

@@ -1,4 +1,4 @@
-import { renewDueGbutsDisneyListings, DISNEY_RENEWAL_INTERVAL } from '../scheduler/gbuts-disney-renewal';
+import { applyGbutsDisneySaleTerms, renewDueGbutsDisneyListings, DISNEY_RENEWAL_INTERVAL } from '../scheduler/gbuts-disney-renewal';
 import { loadSafeModeConfig } from './safe-mode';
 import { makeGbutsOttDescription } from '../lib/gbuts-ott-templates';
 import { Hono } from 'hono';
@@ -260,6 +260,35 @@ export function registerGbutsOttRoutes(app: Hono, deps: GbutsOttRuntimeDependenc
       }
       writeGbutsOttStore(store); return c.json({ ok: true, renewals: Object.values(store.renewals) });
     } catch (e) { return c.json({ ok: false, error: e instanceof Error ? e.message : '자동 재등록 설정 실패' }, 409); }
+  }));
+  app.post('/gbuts/ott/renewals/terms', c => withGbutsOttInventory(async () => {
+    try {
+      if (loadSafeModeConfig().enabled) throw new Error('판매 자동화가 일시정지 상태입니다.');
+      const body = await c.req.json() as { accountEmails: string[]; dailyPrice: number; title: string };
+      if (!Array.isArray(body.accountEmails) || !body.accountEmails.length || body.accountEmails.some(email => typeof email !== 'string')
+        || !Number.isSafeInteger(body.dailyPrice) || body.dailyPrice < 1 || body.dailyPrice > 1000000
+        || typeof body.title !== 'string' || !body.title.trim() || body.title.trim().length > 30) throw new Error('가격·제목과 대상 계정을 확인해주세요.');
+      const store = readGbutsOttStore();
+      const selected = [...new Set(body.accountEmails.map(email => email.trim().toLowerCase()))].map(email => store.renewals?.[email]);
+      if (selected.some(policy => !policy || !policy.enabled || !store.listings[policy.listingId]?.postSeq)) throw new Error('활성화된 자동 재등록 계정을 선택해주세요.');
+      // Persist the entire intent first. Partial provider failures resume from
+      // these settings under the same inventory lock as the normal poller.
+      for (const policy of selected) {
+        policy!.saleTerms = { dailyPrice: body.dailyPrice, title: body.title.trim() };
+        delete policy!.saleTermsAppliedTo; delete policy!.saleTermsRetryAt;
+      }
+      writeGbutsOttStore(store);
+      const client = gbutsOttClient(); let errors = 0;
+      for (const policy of selected) {
+        try { await applyGbutsDisneySaleTerms(store, policy!, client, writeGbutsOttStore); delete policy!.lastError; }
+        catch (error) {
+          errors++; policy!.lastError = error instanceof Error ? error.message : '판매 조건 수정 확인이 필요합니다.';
+          policy!.saleTermsRetryAt = new Date(Date.now() + 60_000).toISOString();
+        }
+        writeGbutsOttStore(store);
+      }
+      return c.json({ ok: errors === 0, errors, renewals: selected }, errors ? 409 : 200);
+    } catch (error) { return c.json({ ok: false, error: error instanceof Error ? error.message : '판매 조건 설정 실패' }, 409); }
   }));
   app.post('/gbuts/ott/renewals/run', c => withGbutsOttInventory(async () => {
     if (process.env.GBUTS_OTT_SYNC_ENABLED !== 'true' || loadSafeModeConfig().enabled) return c.json({ ok: false, error: '판매 자동화가 일시정지 상태입니다.' }, 409);

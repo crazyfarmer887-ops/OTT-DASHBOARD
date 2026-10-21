@@ -155,6 +155,33 @@ export function createGbutsOttSellerClient(token: string, transport: typeof fetc
         || saved.description !== description || saved.noticeBeforeOrder !== noticeBeforeOrder || saved.noticeAfterOrder !== DISNEY_AFTER_ORDER_NOTICE)
         throw new Error('벗츠 계정 정보 저장 확인이 필요합니다.');
     },
+    async updateDisneySaleTerms(post: GbutsOttPost, terms: { dailyPrice: number; title: string }): Promise<void> {
+      if (post.category1.seq !== 6 || post.subscriptionType !== 'SHARE' || post.priceType !== 'DAY' || post.status !== 'ON_SALE'
+        || !Array.isArray(post.countries) || !Number.isSafeInteger(terms.dailyPrice) || terms.dailyPrice < 1 || terms.dailyPrice > 1000000
+        || !terms.title.trim() || terms.title.length > 30) throw new Error('디즈니 판매 조건을 확인해주세요.');
+      const title = `[디즈니플러스] ${terms.title}`;
+      let currentTitle = post.title;
+      try { currentTitle = typeof currentTitle === 'string' ? JSON.parse(currentTitle).ko : currentTitle?.ko; } catch { /* Plain title. */ }
+      if (Number(post.price) === terms.dailyPrice && currentTitle === title) return;
+      const id = decodeGbutsSubscriptionCredential(post.subscriptionPrincipal);
+      const password = decodeGbutsSubscriptionCredential(post.subscriptionCredential);
+      assertGbutsOttCredentials({ id, password });
+      await request(`/api/subscribe/${integer(post.seq)}/share`, { method: 'PUT', body: JSON.stringify({
+        category: post.category1.seq, countries: post.countries, subscriptionType: post.subscriptionType,
+        subscriptionPrincipal: id, subscriptionCredential: password,
+        subscriptionStartsAt: post.subscriptionStartsAt, subscriptionEndsAt: post.subscriptionEndsAt,
+        price: terms.dailyPrice, priceType: post.priceType, memberLimit: post.memberLimit,
+        title, description: post.description, noticeBeforeOrder: post.noticeBeforeOrder, noticeAfterOrder: post.noticeAfterOrder,
+      }) });
+      const saved = await this.getPost(post.seq);
+      let savedTitle = saved.title;
+      try { savedTitle = typeof savedTitle === 'string' ? JSON.parse(savedTitle).ko : savedTitle?.ko; } catch { /* Plain title. */ }
+      if (Number(saved.price) !== terms.dailyPrice || savedTitle !== title || saved.memberLimit !== post.memberLimit
+        || saved.subscriptionEndsAt !== post.subscriptionEndsAt || saved.subscriptionStartsAt !== post.subscriptionStartsAt
+        || decodeGbutsSubscriptionCredential(saved.subscriptionPrincipal) !== id || decodeGbutsSubscriptionCredential(saved.subscriptionCredential) !== password
+        || saved.description !== post.description || saved.noticeBeforeOrder !== post.noticeBeforeOrder || saved.noticeAfterOrder !== post.noticeAfterOrder)
+        throw new Error('디즈니 판매 조건 저장 확인이 필요합니다.');
+    },
     async closePost(seq: number): Promise<void> { await request(`/api/seller/subscribe/share/${integer(seq)}/closed`, { method: 'POST' }); },
   };
 }

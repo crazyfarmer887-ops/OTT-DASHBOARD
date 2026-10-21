@@ -30,3 +30,7 @@ Verification seam: provider client doubles and durable store, covering partially
 
 
 Operational start: an explicit `startNow` configuration option permits a first real cycle immediately; repeated configuration keeps the existing deadline and capacity. Default first due time remains one hour after enablement. Existing submitted work is recovered even when future renewal is disabled. Fresh foreign occupancy uses authoritative open before/after streams, avoiding archived-management hydration. Native seller discovery treats status groups and same-second timestamps independently, and submitted credential fingerprints support safe reconciliation after credential rotation.
+
+## Fixed sale terms — October 22
+
+Apply 110 KRW/day (supersedes 120/150) and title `벗츠 업자 최저가 보장 아니면 연장` to all five Disney recruitment chains. Persist desired terms under the inventory lock before editing current ON_SALE posts through the official seller PUT. Preserve credentials, dates, capacity, notices, body and old orders/receipts. Closed historical posts retain their original conditions. Future remaining-capacity replacements use the fixed terms. Reconcile already submitted CREATEs against their frozen conditions before applying the new terms. Lost edit responses recover by reading the current post, without recreating a listing or resending buyer messages. Keep hourly deadlines intact.

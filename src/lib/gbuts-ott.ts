@@ -36,6 +36,8 @@ export interface GraytagOttClaim {
 export interface GbutsOttRenewal {
   accountEmail: string; capacity: number; listingId: string; enabled: boolean; nextAt: string;
   pendingId?: string; lastSuccess?: string; lastError?: string;
+  saleTerms?: { dailyPrice: number; title: string };
+  saleTermsAppliedTo?: number; saleTermsRetryAt?: string;
 }
 export interface GbutsOttStore {
   version: 1; listings: Record<string, GbutsOttListing>; orders: Record<string, GbutsOttOrder>;

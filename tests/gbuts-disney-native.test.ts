@@ -111,3 +111,14 @@ test('ordinary seller history still loads beyond one hundred hourly renewal page
  const transport=vi.fn(async(url:any)=>{const page=Number(new URL(String(url)).searchParams.get('page'));return new Response(JSON.stringify({success:true,error:null,response:page<=105?[{seq:1000-page,category1:{seq:6},memberLimit:5,memberCount:0,status:'CLOSED',subscriptionEndsAt:'2026-12-01'}]:[]}));});
  expect(await createGbutsOttSellerClient('test',transport).listPosts()).toHaveLength(105);expect(transport).toHaveBeenCalledTimes(106);
 });
+
+test('sale terms PUT changes only current public price/title and preserves private fields, dates and notices',async()=>{
+ let post:any={seq:100,category1:{seq:6},countries:['KR'],subscriptionType:'SHARE',subscriptionStartsAt:'2026-10-21 00:00:00',subscriptionEndsAt:'2026-12-01 23:59:59',memberLimit:3,memberCount:1,status:'ON_SALE',price:150,priceType:'DAY',title:JSON.stringify({ko:'[디즈니플러스] old'}),description:'성인 인증 직접',noticeBeforeOrder:'before',noticeAfterOrder:'after',subscriptionPrincipal:encrypted('account@example.com'),subscriptionCredential:encrypted('private-password')};
+ const writes:any[]=[];
+ const transport=vi.fn(async(_url:any,init?:RequestInit)=>{if(init?.method==='PUT'){const body=JSON.parse(String(init.body));writes.push(body);post={...post,...body,title:JSON.stringify({ko:body.title}),subscriptionPrincipal:encrypted(body.subscriptionPrincipal),subscriptionCredential:encrypted(body.subscriptionCredential)};}return new Response(JSON.stringify({success:true,error:null,response:post}));});
+ const client=createGbutsOttSellerClient('test',transport);
+ await client.updateDisneySaleTerms(await client.getPost(100),{dailyPrice:110,title:'벗츠 업자 최저가 보장 아니면 연장'});
+ expect(writes).toHaveLength(1);expect(writes[0]).toMatchObject({price:110,title:'[디즈니플러스] 벗츠 업자 최저가 보장 아니면 연장',memberLimit:3,subscriptionPrincipal:'account@example.com',subscriptionCredential:'private-password',subscriptionStartsAt:'2026-10-21 00:00:00',subscriptionEndsAt:'2026-12-01 23:59:59',description:'성인 인증 직접',noticeBeforeOrder:'before',noticeAfterOrder:'after'});
+ await client.updateDisneySaleTerms(await client.getPost(100),{dailyPrice:110,title:'벗츠 업자 최저가 보장 아니면 연장'});expect(writes).toHaveLength(1);
+ await expect(client.updateDisneySaleTerms({...post,status:'CLOSED'},{dailyPrice:110,title:'new'})).rejects.toThrow('판매 조건');
+});
