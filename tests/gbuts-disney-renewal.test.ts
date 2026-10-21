@@ -144,7 +144,7 @@ test('resuming an unpublished replacement carries edits from the final original 
 });
 
 test('fixed terms edit current recruitment without advancing the hourly deadline or changing buyer receipts',async()=>{
- const f=fixture(2); const store=f.store();const policy=store.renewals![f.listing.accountEmail];
+ const f=fixture(0); const store=f.store();const policy=store.renewals![f.listing.accountEmail];
  policy.nextAt=new Date(Date.now()+DISNEY_RENEWAL_INTERVAL).toISOString();const nextAt=policy.nextAt;
  policy.saleTerms={dailyPrice:110,title:'벗츠 업자 최저가 보장 아니면 연장'};f.deps.writeStore(store);
  const before=structuredClone(store.orders);
@@ -154,11 +154,11 @@ test('fixed terms edit current recruitment without advancing the hourly deadline
  expect(f.store().renewals![f.listing.accountEmail].nextAt).toBe(nextAt);expect(f.store().orders).toEqual(before);
  expect(f.store().listings[f.listing.id]).toMatchObject({dailyPrice:110,title:policy.saleTerms.title});
  await f.run();expect(update).toHaveBeenCalledTimes(1);
- f.advance();expect((await f.run()).renewed).toBe(1);expect(f.posts[1]).toMatchObject({price:110,memberLimit:3});
- expect(f.posts[1].title).toContain(policy.saleTerms.title);expect(f.store().orders['100:1'].delivery).toBe('confirmed');
+ f.advance();expect((await f.run()).renewed).toBe(1);expect(f.posts[1]).toMatchObject({price:110,memberLimit:5});
+ expect(f.posts[1].title).toContain(policy.saleTerms.title);
 });
 test('lost sale edit response recovers by reading actual conditions and never creates early',async()=>{
- const f=fixture(); const store=f.store();const policy=store.renewals![f.listing.accountEmail];
+ const f=fixture(0); const store=f.store();const policy=store.renewals![f.listing.accountEmail];
  policy.nextAt=new Date(Date.now()+DISNEY_RENEWAL_INTERVAL).toISOString();policy.saleTerms={dailyPrice:110,title:'새 제목'};f.deps.writeStore(store);
  const update=vi.fn(async(post:any,terms:any)=>{f.posts[0].price=terms.dailyPrice;f.posts[0].title=JSON.stringify({ko:`[디즈니플러스] ${terms.title}`});if(update.mock.calls.length===1)throw new Error('lost PUT response');});
  Object.assign(f.client,{updateDisneySaleTerms:update});
@@ -186,10 +186,38 @@ test('new terms wait for an uncertain CREATE to reconcile at its frozen original
 });
 
 test('a sell-out after a successful but unanswered edit reconciles the closed binding and later refunds reopen at the fixed price',async()=>{
- const f=fixture(5); const store=f.store();store.renewals![f.listing.accountEmail].saleTerms={dailyPrice:110,title:'새 제목'};f.deps.writeStore(store);
- const update=vi.fn(async()=>{f.posts[0].price=110;f.posts[0].title=JSON.stringify({ko:'[디즈니플러스] 새 제목'});f.posts[0].status='CLOSED';throw new Error('lost edit response');});Object.assign(f.client,{updateDisneySaleTerms:update});
+ const f=fixture(0); const store=f.store();store.renewals![f.listing.accountEmail].saleTerms={dailyPrice:110,title:'새 제목'};f.deps.writeStore(store);
+ const update=vi.fn(async()=>{f.posts[0].price=110;f.posts[0].title=JSON.stringify({ko:'[디즈니플러스] 새 제목'});f.posts[0].status='CLOSED';f.posts[0].memberCount=5;f.rosters.set(100,Array.from({length:5},(_,i)=>f.member(i+1)));throw new Error('lost edit response');});Object.assign(f.client,{updateDisneySaleTerms:update});
  expect((await f.run()).errors).toBe(1);vi.setSystemTime(new Date(Date.now()+61000));expect((await f.run()).errors).toBe(0);
  expect(f.store().listings[f.listing.id]).toMatchObject({dailyPrice:110,title:'새 제목'});expect(update).toHaveBeenCalledTimes(1);
  f.rosters.get(100)![0].cancelStatus='REFUNDED';f.rosters.get(100)![0].status='CANCEL';f.posts[0].memberCount=4;f.advance();
  expect((await f.run()).renewed).toBe(1);expect(f.posts[1]).toMatchObject({price:110,memberLimit:1});
+});
+
+test('joined posts cannot edit price: early fixed-term renewal transfers remaining places and preserves original due time',async()=>{
+ const f=fixture(2);const store=f.store();const p=store.renewals![f.listing.accountEmail];p.nextAt=new Date(Date.now()+3600000).toISOString();p.saleTerms={dailyPrice:110,title:'새 제목'};f.deps.writeStore(store);
+ const before=structuredClone(store.orders);const update=vi.fn();Object.assign(f.client,{updateDisneySaleTerms:update});
+ expect((await f.run()).renewed).toBe(1);expect(update).not.toHaveBeenCalled();expect(f.posts[0].price).toBe(150);
+ expect(f.posts[1]).toMatchObject({price:110,memberLimit:3});expect(f.store().renewals![f.listing.accountEmail].nextAt).toBe(p.nextAt);
+ expect(f.store().orders['100:1'].directDelivery).toEqual(before['100:1'].directDelivery);expect(f.store().orders['100:1'].roomId).toBe('room-1');
+ await f.run();expect(f.client.createPost).toHaveBeenCalledTimes(1);
+});
+test('full joined posts do not repeatedly attempt price edits or republish before the original deadline',async()=>{
+ const f=fixture(5);const store=f.store();const p=store.renewals![f.listing.accountEmail];p.nextAt=new Date(Date.now()+3600000).toISOString();p.saleTerms={dailyPrice:110,title:'새 제목'};f.deps.writeStore(store);
+ const update=vi.fn();Object.assign(f.client,{updateDisneySaleTerms:update});
+ expect((await f.run()).renewed).toBe(0);expect((await f.run()).checked).toBe(0);expect(update).not.toHaveBeenCalled();expect(f.client.createPost).not.toHaveBeenCalled();
+});
+
+test('early terms renewal retains the original deadline across a lost CREATE response and restart',async()=>{
+ const f=fixture(2);const store=f.store();const p=store.renewals![f.listing.accountEmail];p.nextAt=new Date(Date.now()+3600000).toISOString();p.saleTerms={dailyPrice:110,title:'새 제목'};f.deps.writeStore(store);
+ const create=f.client.createPost.getMockImplementation()!;f.client.createPost.mockImplementation(async(l,c)=>{await create(l,c);throw new Error('lost response');});
+ expect((await f.run()).errors).toBe(1);vi.setSystemTime(new Date(Date.now()+61000));expect((await f.run()).renewed).toBe(1);
+ expect(f.store().renewals![f.listing.accountEmail].nextAt).toBe(p.nextAt);expect(f.client.createPost).toHaveBeenCalledTimes(1);
+});
+
+test('recovery beyond the original early-renewal deadline leaves its scheduled cycle due',async()=>{
+ const f=fixture(2);const store=f.store();const p=store.renewals![f.listing.accountEmail];p.nextAt=new Date(Date.now()+3600000).toISOString();p.saleTerms={dailyPrice:110,title:'새 제목'};f.deps.writeStore(store);
+ const create=f.client.createPost.getMockImplementation()!;f.client.createPost.mockImplementation(async(l,c)=>{await create(l,c);throw new Error('lost response');});
+ expect((await f.run()).errors).toBe(1);vi.setSystemTime(new Date(Date.now()+3660000));expect((await f.run()).renewed).toBe(1);
+ expect(f.store().renewals![f.listing.accountEmail].nextAt).toBe(p.nextAt);expect(Date.parse(p.nextAt)).toBeLessThan(Date.now());
 });

@@ -46,6 +46,7 @@ export function readGbutsOttStore(path = process.env.GBUTS_OTT_STORE_PATH || DEF
           || typeof policy.saleTerms.title !== 'string' || !policy.saleTerms.title.trim() || policy.saleTerms.title.length > 30))
         || (policy.saleTermsAppliedTo !== undefined && (!Number.isSafeInteger(policy.saleTermsAppliedTo) || policy.saleTermsAppliedTo < 1))
         || (policy.saleTermsRetryAt !== undefined && !Number.isFinite(Date.parse(policy.saleTermsRetryAt)))
+        || (policy.earlyRenewalNextAt !== undefined && !Number.isFinite(Date.parse(policy.earlyRenewalNextAt)))
         || !Number.isFinite(Date.parse(policy.nextAt)) || (policy.pendingId && !data.listings[policy.pendingId]))
         throw new Error('자동 재등록 설정이 올바르지 않습니다.');
     }

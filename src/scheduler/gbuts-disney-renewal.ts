@@ -58,15 +58,18 @@ async function reconcile(listing: GbutsOttListing, credentials: GbutsOttCredenti
 
 /** Reconcile public sale edits before changing local conditions; closed history stays immutable. */
 export async function applyGbutsDisneySaleTerms(store: GbutsOttStore, policy: GbutsOttRenewal,
-  client: ReturnType<typeof createGbutsOttSellerClient>, write: (store: GbutsOttStore) => void): Promise<void> {
+  client: ReturnType<typeof createGbutsOttSellerClient>, write: (store: GbutsOttStore) => void): Promise<boolean> {
   const listing = store.listings[policy.listingId];
-  if (!policy.saleTerms || policy.pendingId) return;
+  if (!policy.saleTerms || policy.pendingId) return false;
   if (!listing?.postSeq || listing.deliveryMode !== 'disney-numbered-password') throw new Error('판매 조건을 적용할 계정을 확인해주세요.');
   const post = await client.getPost(listing.postSeq);
   // Price may already be the requested value after a lost PUT response. All
   // other immutable binding fields must still match before this exact edit.
   if (!sameConditions(post, { ...listing, dailyPrice: Number(post.price) }) || !['ON_SALE', 'CLOSED'].includes(post.status))
     throw new Error('판매 조건 수정 전 원본 연결을 확인해주세요.');
+  // GButs forbids price changes once anyone has joined. Transfer only the
+  // remaining capacity through the existing close/final-roster/create journal.
+  if (post.status === 'ON_SALE' && post.memberCount > 0 && Number(post.price) !== policy.saleTerms.dailyPrice) return true;
   if (post.status === 'ON_SALE') {
     await client.updateDisneySaleTerms(post, policy.saleTerms);
   }
@@ -75,7 +78,7 @@ export async function applyGbutsDisneySaleTerms(store: GbutsOttStore, policy: Gb
   if (post.status === 'ON_SALE' || (Number(post.price) === policy.saleTerms.dailyPrice && title(post) === policy.saleTerms.title)) {
     listing.dailyPrice = policy.saleTerms.dailyPrice; listing.title = policy.saleTerms.title;
   }
-  policy.saleTermsAppliedTo = listing.postSeq; delete policy.saleTermsRetryAt; write(store);
+  policy.saleTermsAppliedTo = listing.postSeq; delete policy.saleTermsRetryAt; write(store); return false;
 }
 
 /** Called only inside withGbutsOttInventory, shared with sales sync/publication. */
@@ -85,12 +88,19 @@ export async function renewDueGbutsDisneyListings(deps: GbutsOttRuntimeDependenc
   const store = read(); const result = { renewed: 0, checked: 0, errors: 0 };
   for (const policy of Object.values(store.renewals || {})) {
     if (!policy.enabled && !policy.pendingId) continue;
-    const due = Date.parse(policy.nextAt) <= now.getTime();
+    let due = Date.parse(policy.nextAt) <= now.getTime();
+    const scheduledNextAt = policy.nextAt;
     const source = store.listings[policy.listingId];
     const edit = policy.saleTerms && !policy.pendingId && (due || policy.saleTermsAppliedTo !== source?.postSeq)
       && (!policy.saleTermsRetryAt || Date.parse(policy.saleTermsRetryAt) <= now.getTime());
     if (edit) {
-      try { await applyGbutsDisneySaleTerms(store, policy, client, write); delete policy.lastError; }
+      try {
+        if (await applyGbutsDisneySaleTerms(store, policy, client, write)) {
+          if (!due) { policy.earlyRenewalNextAt ||= scheduledNextAt; write(store); }
+          due = true;
+        }
+        delete policy.lastError;
+      }
       catch (error) {
         result.errors++; policy.lastError = error instanceof Error ? error.message : '판매 조건 수정 확인이 필요합니다.';
         policy.saleTermsRetryAt = new Date(now.getTime() + 60_000).toISOString(); write(store); continue;
@@ -101,7 +111,14 @@ export async function renewDueGbutsDisneyListings(deps: GbutsOttRuntimeDependenc
     const complete = (listing?: GbutsOttListing) => {
       if (listing) { policy.listingId = listing.id; delete listing.beforePostSeqs; result.renewed++; }
       delete policy.pendingId; delete policy.lastError;
-      policy.lastSuccess = now.toISOString(); policy.nextAt = new Date(now.getTime() + DISNEY_RENEWAL_INTERVAL).toISOString(); write(store);
+      policy.lastSuccess = now.toISOString();
+      policy.nextAt = policy.earlyRenewalNextAt || new Date(now.getTime() + DISNEY_RENEWAL_INTERVAL).toISOString();
+      delete policy.earlyRenewalNextAt;
+      if (policy.saleTerms) {
+        if (!listing || (listing.dailyPrice === policy.saleTerms.dailyPrice && listing.title === policy.saleTerms.title)) policy.saleTermsAppliedTo = (listing || source).postSeq;
+        else delete policy.saleTermsAppliedTo; // Frozen CREATE may still carry the previous terms.
+      }
+      write(store);
     };
     try {
       if (!source?.postSeq || source.deliveryMode !== 'disney-numbered-password') throw new Error('자동 재등록의 원본 계정을 확인해주세요.');

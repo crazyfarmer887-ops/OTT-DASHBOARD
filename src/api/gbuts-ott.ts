@@ -278,16 +278,18 @@ export function registerGbutsOttRoutes(app: Hono, deps: GbutsOttRuntimeDependenc
         delete policy!.saleTermsAppliedTo; delete policy!.saleTermsRetryAt;
       }
       writeGbutsOttStore(store);
-      const client = gbutsOttClient(); let errors = 0;
+      const client = gbutsOttClient(); let errors = 0; let needsRenewal = false;
       for (const policy of selected) {
-        try { await applyGbutsDisneySaleTerms(store, policy!, client, writeGbutsOttStore); delete policy!.lastError; }
+        try { needsRenewal = await applyGbutsDisneySaleTerms(store, policy!, client, writeGbutsOttStore) || needsRenewal; delete policy!.lastError; }
         catch (error) {
           errors++; policy!.lastError = error instanceof Error ? error.message : '판매 조건 수정 확인이 필요합니다.';
           policy!.saleTermsRetryAt = new Date(Date.now() + 60_000).toISOString();
         }
         writeGbutsOttStore(store);
       }
-      return c.json({ ok: errors === 0, errors, renewals: selected }, errors ? 409 : 200);
+      if (needsRenewal) errors += (await renewDueGbutsDisneyListings(deps, client)).errors;
+      const saved = readGbutsOttStore();
+      return c.json({ ok: errors === 0, errors, renewals: selected.map(policy => saved.renewals![policy!.accountEmail.trim().toLowerCase()]) }, errors ? 409 : 200);
     } catch (error) { return c.json({ ok: false, error: error instanceof Error ? error.message : '판매 조건 설정 실패' }, 409); }
   }));
   app.post('/gbuts/ott/renewals/run', c => withGbutsOttInventory(async () => {
