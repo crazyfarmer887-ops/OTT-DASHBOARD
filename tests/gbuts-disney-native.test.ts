@@ -38,7 +38,8 @@ test('new Disney posts require private credentials while buyer messages never co
  expect(post.description).not.toContain('secret');
  expect(buildGbutsDisneyDeliveryText('https://example.com/dashboard/access/private',2,5)).not.toContain('https://');
  const text=buildGbutsDisneyDirectText({id:'current@example.com',password:'secret',emailAccessUrl:'https://tinyhost.shop/current@example.com'},2);
- expect(text).toContain(DISNEY_REFUND_NOTICE);expect(text).not.toContain('/dashboard/access/');
+ expect(text.replace(/\s+/g,' ')).toContain(DISNEY_REFUND_NOTICE.replace('환불 안내: ',''));expect(text).not.toContain('/dashboard/access/');
+ expect(splitGbutsChatText(text).map(part=>part.split('\n')[0])).toEqual(['[계정 정보]','[이메일 인증]','[환불 안내]']);
  expect(splitGbutsChatText(text).every(x=>Buffer.byteLength(x)<=500)).toBe(true);
  expect(()=>buildGbutsDisneyDirectText({id:'current@example.com',password:'secret',emailAccessUrl:'https://tinyhost.shop/other@example.com'},2)).toThrow();
 });
@@ -80,4 +81,11 @@ test('provider second precision confirms a migration started within that second 
  const run=()=>syncGbutsDirectCredentials(store,Object.values(store.orders),99,{credentials:async()=>({id:'current@example.com',password:'secret',emailAccessUrl:'https://tinyhost.shop/current@example.com'})} as any,{openPrivateRoom:async()=> 'room',getChat:async()=>({messages})} as any,s=>{store=structuredClone(s);},send);
  await run();expect(store.orders[order.key].directDelivery?.state).toBe('confirmed');
  await run();expect(send).toHaveBeenCalledOnce();
+});
+test('formatting-only changes never resend previously confirmed Disney credentials',async()=>{
+ const store=emptyGbutsOttStore();const l=listing();store.listings[l.id]=l;
+ const order=fixtureOrder({profileName:'1',profileNumber:1,delivery:'confirmed',roomId:'room',directDelivery:{format:'disney-mailbox-v1',requestAt:'2026-10-21T12:00:00Z',requestKey:'a'.repeat(64),state:'confirmed',messageHash:'b'.repeat(64),messageHashes:['b'.repeat(64)],attemptedAt:'2026-10-21T12:00:00Z'}});store.orders[order.key]=order;
+ const previous=structuredClone(order.directDelivery);const credentials=vi.fn();const send=vi.fn();
+ await syncGbutsDirectCredentials(store,[order],99,{credentials} as any,{openPrivateRoom:async()=> 'room',getChat:async()=>({messages:[]})} as any,()=>{},send);
+ expect(send).not.toHaveBeenCalled();expect(credentials).not.toHaveBeenCalled();expect(order.directDelivery).toEqual(previous);
 });

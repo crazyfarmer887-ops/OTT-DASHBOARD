@@ -16,7 +16,8 @@ export function buildGbutsDisneyDirectText(value: GbutsOttCredentials, profileNu
   const mailbox = safeTinyhostEmailAccessUrl(value.emailAccessUrl, value.id);
   if (!mailbox || !Number.isInteger(profileNumber) || profileNumber < 1 || profileNumber > 6)
     throw new Error('배정된 디즈니 계정의 이메일 인증 주소·프로필을 확인해주세요.');
-  return `ID : ${value.id}\nPW : ${value.password}\n${profileNumber}번 프로필을 새로 만들어 이용하세요.\n이메일 인증: ${mailbox}\nTV에서 6자리 코드를 요구하면 위 주소의 최신 메일을 확인하세요.\n\n${DISNEY_REFUND_NOTICE}`;
+  const refund = DISNEY_REFUND_NOTICE.replace('환불 안내: ', '').replace(/\. /g, '.\n');
+  return `[계정 정보]\nID : ${value.id}\nPW : ${value.password}\n프로필 : ${profileNumber}번 (새로 만들어 이용)\n\n[이메일 인증]\n${mailbox}\nTV에서 6자리 코드를 요구하면\n위 주소의 최신 메일을 확인하세요.\n\n[환불 안내]\n${refund}`;
 }
 
 /** Keep merchant copy in sync without touching prices, dates or refund promises. */
