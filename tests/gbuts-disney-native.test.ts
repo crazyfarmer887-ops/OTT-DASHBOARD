@@ -73,3 +73,11 @@ test('an agreed refund holds the automatic supplement even before the provider r
  await syncGbutsDirectCredentials(store,[order],99,{credentials} as any,{openPrivateRoom:async()=> 'room',getChat:async()=>({messages:[{senderSeq:99,messageType:'TEXT',message:'환불 진행해드리겠습니다. 환불 신청해주세요.',createdAt:'2026-10-21 21:30:00'}]})} as any,()=>{},send);
  expect(credentials).not.toHaveBeenCalled();expect(send).not.toHaveBeenCalled();
 });
+test('provider second precision confirms a migration started within that second without duplicate sends',async()=>{
+ vi.setSystemTime(new Date('2026-10-21T13:00:00.789Z'));
+ let store=emptyGbutsOttStore();const l=listing();store.listings[l.id]=l;const order=fixtureOrder({profileName:'1',profileNumber:1,delivery:'confirmed',roomId:'room',directDelivery:{requestAt:'2026-10-21T12:00:00Z',requestKey:'a'.repeat(64),state:'confirmed',messageHash:'b'.repeat(64),attemptedAt:'2026-10-21T12:00:00Z'}});store.orders[order.key]=order;
+ let messages:any[]=[];const send=vi.fn(async(_r:string,_s:number,text:string)=>{messages=splitGbutsChatText(text).map(message=>({senderSeq:99,messageType:'TEXT',message,createdAt:'2026-10-21 22:00:00'}));});
+ const run=()=>syncGbutsDirectCredentials(store,Object.values(store.orders),99,{credentials:async()=>({id:'current@example.com',password:'secret',emailAccessUrl:'https://tinyhost.shop/current@example.com'})} as any,{openPrivateRoom:async()=> 'room',getChat:async()=>({messages})} as any,s=>{store=structuredClone(s);},send);
+ await run();expect(store.orders[order.key].directDelivery?.state).toBe('confirmed');
+ await run();expect(send).toHaveBeenCalledOnce();
+});

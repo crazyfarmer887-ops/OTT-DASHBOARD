@@ -15,8 +15,12 @@ function messageTime(value: string): number {
 }
 function savedDirectMessage(messages: Array<GbutsTextMessage & { createdAt: string }>, sellerSeq: number, delivery: NonNullable<GbutsOttOrder['directDelivery']>): boolean {
   const hashes = delivery.messageHashes || [delivery.messageHash];
+  // Provider chat timestamps have second precision; our persisted attempts have
+  // milliseconds. Compare at the provider's precision so the first bubble of
+  // an automatic same-second send can actually confirm after restart.
+  const since = Math.floor(Date.parse(delivery.requestAt) / 1000) * 1000;
   return hashes.every(hash => !!hash && messages.some(m => m.senderSeq === sellerSeq && m.messageType === 'TEXT'
-    && messageTime(m.createdAt) >= Date.parse(delivery.requestAt) && fingerprint(m.message) === hash));
+    && messageTime(m.createdAt) >= since && fingerprint(m.message) === hash));
 }
 
 export async function syncGbutsDirectCredentials(store: GbutsOttStore, orders: GbutsOttOrder[], sellerSeq: number,
