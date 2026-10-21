@@ -22,6 +22,8 @@ Direct-request verification: 47 tests pass across four suites, including numbere
 
 - [x] Implement explicit per-account Tinyhost setting, account-matched URL, both page renderers and revised fallback copy.
 - [x] Verify identity checks, unconfigured accounts, existing consent and both rendered links; commit/push/deploy.
-- [ ] Enable only the requested account, verify its existing buyer access page and update the live listing's contradictory copy.
+- [x] Enable only the requested account, verify its existing buyer access page and update the live listing's contradictory copy.
 
 Tinyhost pre-deploy: 71 focused tests across six suites pass; client build passes. Review kept internal-mailbox validation and frame CSP unchanged, restricts Tinyhost to the explicitly enabled Disney account, requires matching mailbox path and login identity, opens a new tab without referrer, and preserves consent redaction.
+
+Tinyhost production: release `3a41fae` built from pushed local Git source and activated, preserving all service environment/data paths. Enabled `emailAccessProvider=tinyhost` for only the requested account via authenticated existing account PATCH; private pre-change backup retained. Actual existing buyer access page now displays a matching `https://tinyhost.shop/<login-email>` new-tab link with `noreferrer`, without a PIN prompt. Opened the exact destination and verified the Tinyhost Inbox page. No mailbox contents or codes were needed. Seller listing #17436 now describes password sign-in as default and TV email-code fallback; original price/period/recruitment remain. Service active with zero restarts; polling has no error. Screenshot in the chat workspace shows the live link without exposing the password.
