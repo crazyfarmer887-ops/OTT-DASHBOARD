@@ -48,3 +48,8 @@ test('foreign mail URLs cannot open a frame and legacy GrayTag presentation rema
   expect(host.textContent).toContain('프로필이 꽉 찼다면');
   expect(host.querySelector('iframe')).toBeNull();
 });
+
+test('numbered Disney React view shows password-only instructions with no email access or deletion guidance', async () => {
+ const host=await render({...payload,presentation:'gbuts-disney-numbered',serviceType:'디즈니플러스',profileName:'6'});
+ expect(host.textContent).toContain('프로필 6번을 새로 만들어');expect(host.textContent).toContain('ID·비밀번호로만');expect(host.textContent).not.toContain('프로필이 꽉 찼다면');expect(host.querySelector('[aria-label="파티원 프로필"]')).toBeNull();expect(host.querySelector('iframe')).toBeNull();expect(host.textContent).not.toContain('이메일 확인하러 가기');
+});

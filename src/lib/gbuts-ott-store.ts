@@ -12,6 +12,7 @@ export function readGbutsOttStore(path = process.env.GBUTS_OTT_STORE_PATH || DEF
     if (listing?.id !== id || !Number.isSafeInteger(listing.capacity) || listing.capacity < 1
       || !GBUTS_OTT_CATEGORIES[listing.serviceType] || typeof listing.accountEmail !== 'string' || !listing.accountEmail.trim()
       || !['submitting', 'registered', 'uncertain', 'failed', 'closed'].includes(listing.state)
+      || (listing.deliveryMode !== undefined && (listing.deliveryMode !== 'disney-numbered-password' || listing.serviceType !== '디즈니플러스' || listing.capacity > 6))
       || !/^\d{4}-\d{2}-\d{2}$/.test(listing.endDate)) throw new Error('벗츠 판매 재고 기록이 올바르지 않습니다.');
   }
   for (const [key, order] of Object.entries(data.orders) as Array<[string, any]>)
@@ -26,7 +27,7 @@ export function readGbutsOttStore(path = process.env.GBUTS_OTT_STORE_PATH || DEF
         || (['attempted', 'confirmed'].includes(order.directDelivery.state) && (!order.directDelivery.messageHash
           || !Number.isFinite(Date.parse(order.directDelivery.attemptedAt))))))
       || (order.deliveryMessage !== undefined && (typeof order.deliveryMessage !== 'string' || !order.deliveryMessage.trim() || order.deliveryMessage.length > 2000))
-      || (order.profileNumber !== undefined && (data.listings[order.listingId].serviceType !== '넷플릭스' || !Number.isInteger(order.profileNumber) || order.profileNumber < 1 || order.profileNumber > 5 || order.profileName !== String(order.profileNumber)))
+      || (order.profileNumber !== undefined && ((data.listings[order.listingId].serviceType !== '넷플릭스' && data.listings[order.listingId].deliveryMode !== 'disney-numbered-password') || !Number.isInteger(order.profileNumber) || order.profileNumber < 1 || order.profileNumber > (data.listings[order.listingId].deliveryMode === 'disney-numbered-password' ? 6 : 5) || order.profileName !== String(order.profileNumber)))
       || (order.profileReleasedAt !== undefined && (order.profileNumber === undefined || !Number.isFinite(Date.parse(order.profileReleasedAt)) || !['refunded', 'expired'].includes(order.profileReleaseReason)))) throw new Error('벗츠 구매자 기록이 올바르지 않습니다.');
   for (const [id, claim] of Object.entries(data.graytagClaims) as Array<[string, any]>)
     if (claim?.id !== id || !GBUTS_OTT_CATEGORIES[claim.serviceType] || typeof claim.accountEmail !== 'string' || !claim.accountEmail.trim()

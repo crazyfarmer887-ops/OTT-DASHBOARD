@@ -8,6 +8,7 @@ export interface GbutsOttListing {
   dailyPrice: number; endDate: string; title: string; description: string;
   state: GbutsOttListingState; postSeq?: number; createdAt: string; verifiedAt?: string; error?: string;
   beforePostSeqs?: number[];
+  deliveryMode?: 'disney-numbered-password';
 }
 export interface GbutsOttOrder {
   key: string; listingId: string; postSeq: number; memberSeq: number; userSeq: number;
@@ -62,6 +63,10 @@ export function holdsNetflixProfile(order: GbutsOttOrder, listing: GbutsOttListi
   return listing.serviceType === '넷플릭스' && order.profileNumber !== undefined && !order.profileReleasedAt
     && order.cancelStatus !== 'REFUNDED' && !!order.endDate && order.endDate >= koreaToday(now);
 }
+export function holdsDisneyProfile(order: GbutsOttOrder, listing: GbutsOttListing, now = new Date()): boolean {
+  return listing.deliveryMode === 'disney-numbered-password' && order.profileNumber !== undefined && !order.profileReleasedAt
+    && order.cancelStatus !== 'REFUNDED' && !!order.endDate && order.endDate >= koreaToday(now);
+}
 export function updateGbutsOttOrders(store: GbutsOttStore, listing: GbutsOttListing,
   members: Array<{ seq: number; userSeq: number; nickname: string; status: string; cancelStatus: string | null; createdAt: string; subscriptionEndsAt: string }>, now: string): void {
   const seen = new Set<string>();
@@ -84,6 +89,12 @@ export function updateGbutsOttOrders(store: GbutsOttStore, listing: GbutsOttList
 export function hasGbutsOttProfileLease(store: GbutsOttStore, order: GbutsOttOrder, expectedProfileName?: string, now = new Date()): boolean {
   const listing = store.listings[order.listingId];
   if (!listing || order.profileReleasedAt) return false;
+  if (listing.deliveryMode === 'disney-numbered-password') {
+    if (!activeOttOrder(order, now) || !Number.isInteger(order.profileNumber) || order.profileNumber! < 1 || order.profileNumber! > 6
+      || order.profileName !== String(order.profileNumber) || (expectedProfileName !== undefined && expectedProfileName !== order.profileName)) return false;
+    return !Object.values(store.orders).some(other => other.key !== order.key && holdsDisneyProfile(other, store.listings[other.listingId], now)
+      && other.profileName === order.profileName && ottKey(store.listings[other.listingId].serviceType, store.listings[other.listingId].accountEmail) === ottKey(listing.serviceType, listing.accountEmail));
+  }
   if (listing.serviceType !== '넷플릭스' || order.profileNumber === undefined) return true;
   if (!holdsNetflixProfile(order, listing, now) || order.profileName !== String(order.profileNumber)
     || (expectedProfileName !== undefined && expectedProfileName !== order.profileName)) return false;
@@ -113,7 +124,7 @@ export function accountGbutsInventory(store: GbutsOttStore, serviceType: string,
   const listings = Object.values(store.listings).filter(x => ottKey(x.serviceType, x.accountEmail) === key);
   const ids = new Set(listings.map(x => x.id));
   const members = Object.values(store.orders).filter(x => ids.has(x.listingId)
-    && (activeOttOrder(x, now) || holdsNetflixProfile(x, store.listings[x.listingId], now)));
+    && (activeOttOrder(x, now) || holdsNetflixProfile(x, store.listings[x.listingId], now) || holdsDisneyProfile(x, store.listings[x.listingId], now)));
   const currentUsers = members.length;
   let reserved = 0;
   for (const listing of listings) {

@@ -39,3 +39,8 @@ test('the public renderer retains GrayTag profiles and rejects a foreign mail fr
   const foreign = await page({ ...payload, emailAccessUrl: 'https://other.example/email/mail/1' });
   try { expect(foreign.document.querySelector('iframe')).toBeNull(); expect(foreign.document.querySelector('.email-access-button')).toBeNull(); } finally { foreign.dom.window.close(); }
 });
+
+test('numbered Disney public HTML shows profile creation and password-only login without any mailbox controls', async () => {
+ const f=await page({...payload,presentation:'gbuts-disney-numbered',serviceType:'디즈니플러스',profileName:'6'});
+ try {expect(f.document.body.textContent).toContain('프로필 6번을 새로 만들어');expect(f.document.body.textContent).toContain('ID·비밀번호로만');expect(f.document.querySelector('.email-access-button')).toBeNull();expect(f.document.querySelector('.profile-picker')).toBeNull();expect(f.document.getElementById('root')!.textContent).not.toContain('프로필이 꽉 찼다면');} finally {f.dom.window.close();}
+});

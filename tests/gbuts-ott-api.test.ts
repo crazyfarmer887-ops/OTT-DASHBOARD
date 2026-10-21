@@ -236,3 +236,15 @@ describe('shared inventory publication', () => {
     expect(() => readGbutsOttStore()).toThrow('자리 확보 기록');
   });
 });
+
+it('new Disney registration persists numbered password delivery and rejects occupied accounts', async () => {
+ const f=fixture();
+ const account={email:'account@example.com',serviceType:'디즈니플러스',totalSlots:6,members:[],expiryDate:'20261231T2359',generatedAccount:{paymentStatus:'paid'}};
+ f.deps.management.mockResolvedValue({services:[{serviceType:'디즈니플러스',accounts:[account]}],onSaleByKeepAcct:{},cache:{status:'hit',updatedAt:new Date().toISOString()}} as any);
+ const response=await f.publish({serviceType:'디즈니플러스',capacity:6});
+ expect(response.status).toBe(200);expect((await response.json()).listing.deliveryMode).toBe('disney-numbered-password');
+ expect(readGbutsOttStore().listings['request-123'].deliveryMode).toBe('disney-numbered-password');
+ expect(f.posts).toHaveLength(1);
+ expect((await f.publish({requestId:'request-disney-2',serviceType:'디즈니플러스',capacity:1,title:'another'})).status).toBe(409);
+ expect(f.posts).toHaveLength(1);
+});

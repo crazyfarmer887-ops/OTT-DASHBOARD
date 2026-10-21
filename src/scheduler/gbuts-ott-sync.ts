@@ -10,6 +10,8 @@ import { buildGbutsOttDeliveryText, buildGbutsNetflixAccessText, buildGbutsNetfl
 import { buildPartyAccessDeliveryTemplate } from '../lib/party-access-template';
 import { syncGbutsDirectCredentials } from './gbuts-ott-direct-delivery';
 import { sendGbutsText } from './gbuts-spotify-messages';
+import { allocateDisneyProfilesForSync } from '../lib/gbuts-disney-profiles';
+import { buildGbutsDisneyDeliveryText } from '../lib/gbuts-ott-templates';
 
 export interface GbutsOttRuntimeDependencies {
   management(options?: { forceRefresh: boolean }): Promise<GbutsOttManagement>;
@@ -48,7 +50,8 @@ export async function syncGbutsOtt(deps: GbutsOttRuntimeDependencies,
   }
   const eligible = Object.values(store.orders).filter(order => deliverableOttOrder(order) && order.verifiedAt === now);
   const sellerSeq = eligible.length ? await client.sellerAccountSeq() : 0;
-  const deliveryText = (order: GbutsOttOrder) => order.deliveryMessage || (store.listings[order.listingId].serviceType === '넷플릭스'
+  const deliveryText = (order: GbutsOttOrder) => order.deliveryMessage || (store.listings[order.listingId].deliveryMode === 'disney-numbered-password'
+    ? buildGbutsDisneyDeliveryText(order.accessUrl!, order.profileNumber!) : store.listings[order.listingId].serviceType === '넷플릭스'
     ? (order.attemptedAt || order.delivery === 'attempted' ? buildGbutsNetflixLegacyDeliveryText : buildGbutsNetflixDeliveryText)(order.accessUrl!, order.profileNumber!)
     : buildGbutsOttDeliveryText(order.accessUrl!));
   // Confirmation discloses nothing new: use the persisted link and profile lease,
@@ -86,6 +89,7 @@ export async function syncGbutsOtt(deps: GbutsOttRuntimeDependencies,
   const management = await deps.management();
   const manualMembers = deps.manualMembers();
   const profileErrors = allocateNetflixProfilesForSync(store, management, manualMembers);
+  for (const [key, error] of allocateDisneyProfilesForSync(store, management, manualMembers)) profileErrors.set(key, error);
   write(store);
   const inventory = sharedOttAccounts(management, manualMembers, store);
   for (const pending of pendingOrders) {

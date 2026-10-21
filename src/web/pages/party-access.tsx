@@ -25,7 +25,7 @@ type AccessPayload = {
     isCurrentMember: boolean;
   }>;
   period?: { startDateTime: string | null; endDateTime: string | null };
-  presentation?: 'gbuts-netflix-numbered';
+  presentation?: 'gbuts-netflix-numbered' | 'gbuts-disney-numbered';
   consentRequired?: boolean;
   sensitiveRedacted?: boolean;
   credentials?: { id: string; password: string; pin: string; updatedAt: string };
@@ -152,6 +152,7 @@ export default function PartyAccessPage() {
   }
 
   const numberedNetflix = payload.presentation === 'gbuts-netflix-numbered';
+  const numberedDisney = payload.presentation === 'gbuts-disney-numbered';
   const profileName = payload.profileName || payload.memberName || '(미확인)';
   const partyProfiles = payload.partyProfiles || [];
   const isAdminAccess = payload.adminAccess === true;
@@ -170,7 +171,7 @@ export default function PartyAccessPage() {
     } catch {}
   };
   const emailAccessUrl = safeEmailVerifyUrl(payload.emailAccessUrl);
-  const showEmailAccess = !numberedNetflix && Boolean(emailAccessUrl) && !isWavveService(payload.serviceType);
+  const showEmailAccess = !numberedNetflix && !numberedDisney && Boolean(emailAccessUrl) && !isWavveService(payload.serviceType);
   const displayProfiles = partyProfiles.length > 0 ? partyProfiles : [{
     profileName,
     memberName: payload.memberName || '파티원',
@@ -216,7 +217,7 @@ export default function PartyAccessPage() {
       no: '02', tone:'var(--muted)', border:'var(--border)', title:'최신 정보 먼저 확인', image:'/dashboard/access-notice-assets/disney-profiles.jpg', imageLabel:'프로필 수정 화면 예시', text:'로그인이 안 되면 먼저 이 페이지를 새로고침해 확인하세요.', required:AGREEMENT_2, key:'a2' as const,
     },
     {
-      no: '03', tone:'#ECFDF5', border:'#A7F3D0', title:'1인 1프로필 사용', text:numberedNetflix ? '1:1 채팅에서 안내받은 번호의 프로필만 사용하세요. 프로필 이름·PIN 변경, 생성·삭제는 금지합니다.' : '배정된 프로필 1개만 쓰고, 현황에 없는 프로필만 삭제하세요.', required:AGREEMENT_3, key:'a3' as const,
+      no: '03', tone:'#ECFDF5', border:'#A7F3D0', title:'1인 1프로필 사용', text:numberedDisney ? '1:1 채팅에서 안내받은 번호로 프로필을 새로 만들어 사용하세요. 다른 분의 프로필은 변경·삭제하지 마세요.' : numberedNetflix ? '1:1 채팅에서 안내받은 번호의 프로필만 사용하세요. 프로필 이름·PIN 변경, 생성·삭제는 금지합니다.' : '배정된 프로필 1개만 쓰고, 현황에 없는 프로필만 삭제하세요.', required:AGREEMENT_3, key:'a3' as const,
     },
   ];
   const currentConsentCard = consentCards[consentStep] || consentCards[0];
@@ -288,7 +289,7 @@ export default function PartyAccessPage() {
             <div style={{ fontSize:11, color:'#9CA3AF', marginTop:4 }}>{fmtDate(payload.period?.startDateTime)} ~ {fmtDate(payload.period?.endDateTime)}</div>
           </div>
 
-          {!numberedNetflix && <section aria-label="파티원 프로필" style={{ background:'linear-gradient(145deg,#111827,#312E81)', borderRadius:22, padding:'20px 14px 18px', marginBottom:14, color:'#fff', textAlign:'center', overflow:'hidden' }}>
+          {!numberedNetflix && !numberedDisney && <section aria-label="파티원 프로필" style={{ background:'linear-gradient(145deg,#111827,#312E81)', borderRadius:22, padding:'20px 14px 18px', marginBottom:14, color:'#fff', textAlign:'center', overflow:'hidden' }}>
             <div style={{ fontSize:22, fontWeight:1000, letterSpacing:'-0.04em' }}>누가 시청할까요?</div>
             <div style={{ fontSize:11, color:'var(--text-subtle)', fontWeight:800, marginTop:4 }}>보라색 테두리가 구매자님에게 배정된 프로필이에요</div>
             <div className="profile-avatar-grid" style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(82px,1fr))', gap:'18px 10px', marginTop:20, alignItems:'start' }}>
@@ -320,6 +321,7 @@ export default function PartyAccessPage() {
             ))}
           </div>
 
+          {numberedDisney && <p role="note" style={{fontWeight:800}}>프로필 {profileName}번을 새로 만들어 사용하세요. 이메일 접근 없이 ID·비밀번호로만 로그인하세요. 이메일로 코드 받기를 선택하지 마세요.</p>}
           {numberedNetflix && <GbutsNetflixEmailPanel url={emailAccessUrl} pin={payload.credentials?.pin} />}
           {numberedNetflix && <p style={{ fontSize:12, color:"#991B1B", lineHeight:1.6 }}>프로필 이름·PIN 변경, 프로필 생성·삭제 및 계정 정보 변경은 금지합니다. {GBUTS_ACCOUNT_CHANGE_WARNING}</p>}
           {showEmailAccess && <button type="button" onClick={() => { setPinCopyStatus('idle'); setEmailDialogOpen(true); }} style={{ width:'100%', border:'none', borderRadius:16, padding:'14px 16px', background:'linear-gradient(135deg,var(--action),var(--action))', color:'#fff', fontSize:14, fontWeight:1000, display:'flex', alignItems:'center', justifyContent:'center', gap:8, cursor:'pointer', marginBottom:10, boxShadow:'0 10px 24px rgba(124,58,237,.24)' }}><Mail size={17} /> 이메일 확인하러 가기</button>}

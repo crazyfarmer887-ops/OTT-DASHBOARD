@@ -1,6 +1,17 @@
 import { buildPartyAccessDeliveryTemplate } from './party-access-template';
 import { makeDefaultProductDescription } from './write-default-template';
 
+export function buildGbutsDisneyDeliveryText(accessUrl: string, number: number): string {
+  if (!Number.isInteger(number) || number < 1 || number > 6) throw new Error('디즈니 프로필 번호를 확인해주세요.');
+  return `구매 감사합니다! 디즈니플러스 ${number}번 프로필을 새로 만들어 이용해 주세요. 구매 순서대로 1~6번을 배정합니다.
+
+계정 정보 확인: ${accessUrl}
+
+중요: 안내된 이메일 주소(ID)와 비밀번호를 직접 입력해 로그인해 주세요. 이메일 접근·이메일 인증 링크는 제공하지 않으며, 비밀번호 로그인만 이용해 주세요. 이메일로 로그인 코드 받기를 선택하지 마세요.
+
+다른 분의 프로필이나 계정 이메일·비밀번호·결제 설정은 변경하지 마세요. 로그인에 문제가 있으면 이 1:1 채팅으로 문의해 주세요.`;
+}
+
 export const GBUTS_ACCOUNT_CHANGE_WARNING = '무단 변경으로 피해가 발생하면 이용 제한과 함께 민사상 손해배상 청구 및 형사 고소·고발 등 법적 조치를 진행할 수 있습니다.';
 export const GBUTS_NETFLIX_DESCRIPTION = `📌 넷플릭스 파티 필수 이용수칙
 
@@ -22,6 +33,13 @@ https://www.netflix.com/verifyage
 ${GBUTS_ACCOUNT_CHANGE_WARNING}`;
 
 export function makeGbutsOttDescription(serviceType: string): string {
+  if (serviceType === '디즈니플러스') return `디즈니플러스 · 1인 1프로필 이용
+
+구매 순서대로 1~6번 프로필을 배정해 1:1 채팅으로 안내합니다. 안내받은 번호로 프로필을 새로 만들어 이용해 주세요.
+
+중요: 계정 ID(이메일 주소)와 비밀번호를 직접 입력하는 비밀번호 로그인만 이용해 주세요. 이메일 접근·이메일 인증 링크는 제공하지 않습니다. 이메일로 로그인 코드 받기를 선택하지 마세요.
+
+다른 분의 프로필을 변경·삭제하거나 계정 이메일·비밀번호·결제 설정을 변경하지 마세요. 로그인에 문제가 있으면 1:1 채팅으로 문의해 주세요.`;
   return serviceType === '넷플릭스' ? GBUTS_NETFLIX_DESCRIPTION : makeDefaultProductDescription(serviceType);
 }
 export function buildGbutsNetflixLegacyDeliveryText(accessUrl: string, number: number): string {

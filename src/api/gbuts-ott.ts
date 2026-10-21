@@ -171,6 +171,7 @@ export function registerGbutsOttRoutes(app: Hono, deps: GbutsOttRuntimeDependenc
         const endDate = String(body.endDate || ''); const capacity = Number(body.capacity); const dailyPrice = Number(body.dailyPrice);
         const id = String(body.requestId || ''); const title = String(body.title || `${serviceType} 프리미엄 · 계정 자동 안내`).trim();
         const description = String(body.description || makeGbutsOttDescription(serviceType)).trim();
+        const deliveryMode = serviceType === '디즈니플러스' ? 'disney-numbered-password' as const : undefined;
         if (!GBUTS_OTT_CATEGORIES[serviceType] || !accountEmail || !/^[A-Za-z0-9_-]{8,100}$/.test(id)
           || !Number.isSafeInteger(capacity) || capacity < 1 || !Number.isSafeInteger(dailyPrice) || dailyPrice < 1 || dailyPrice > 100000
           || !/^\d{4}-\d{2}-\d{2}$/.test(endDate) || !Number.isFinite(Date.parse(endDate)) || new Date(endDate).toISOString().slice(0, 10) !== endDate
@@ -188,6 +189,8 @@ export function registerGbutsOttRoutes(app: Hono, deps: GbutsOttRuntimeDependenc
         const account = sharedOttAccounts(management, deps.manualMembers(), store).find(x => x.key === ottKey(serviceType, accountEmail));
         if (!account || account.available < capacity || account.endDate < endDate || account.overbooked)
           return c.json({ ok: false, error: '현재 남은 자리 또는 계정 이용 기간을 초과했습니다. 새로고침 후 확인해주세요.' }, 409);
+        if (deliveryMode && (capacity > 6 || account.occupied > 0))
+          return c.json({ ok: false, error: '번호형 디즈니 판매는 기존 이용자·모집이 없는 계정에서 최대 6명까지 등록해주세요.' }, 409);
         if (serviceType === '넷플릭스' && availableNetflixProfiles(store, management, deps.manualMembers(), accountEmail).length < capacity)
           throw new Error('확인된 빈 프로필 번호가 모집 인원보다 적습니다. 기존 번호 배정을 확인해주세요.');
         const rawAccount = management.services.flatMap(x => x.accounts).find(x => ottKey(x.serviceType, x.email) === account.key)!;
@@ -197,7 +200,7 @@ export function registerGbutsOttRoutes(app: Hono, deps: GbutsOttRuntimeDependenc
           delivery: 'ready', verifiedAt: new Date().toISOString() },
           { id, serviceType, accountEmail: rawAccount.email } as GbutsOttListing, '미리보기', management);
         const listing: GbutsOttListing = { id, requestHash, serviceType, accountEmail: rawAccount.email, endDate, capacity, dailyPrice,
-          title, description, state: 'submitting', createdAt: new Date().toISOString(), beforePostSeqs: posts.map(x => x.seq) };
+          title, description, deliveryMode, state: 'submitting', createdAt: new Date().toISOString(), beforePostSeqs: posts.map(x => x.seq) };
         store.listings[id] = listing; writeGbutsOttStore(store);
         try {
           listing.postSeq = (await client.createPost(listing)) || undefined;

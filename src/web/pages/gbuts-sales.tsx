@@ -158,6 +158,7 @@ function GbutsOttSalesPage({ view }: { view: 'sales' | 'orders' }) {
         {data?.accounts.filter(x => x.available > 0 && (!requestedService || x.serviceType === requestedService)).map(x => <option key={x.key} value={x.key}>{x.serviceType} · {x.accountEmail} · 남은 {x.available}자리</option>)}</select></label>
       {data && !data.accounts.some(x => x.available > 0 && (!requestedService || x.serviceType === requestedService)) && <p style={{ color: '#B45309', fontSize: 13 }}>현재 판매 가능한 자리가 없습니다. 기존 계정의 결제·이용 기간과 공동 재고를 확인해 주세요.</p>}
       {account?.serviceType === '넷플릭스' && <p style={{ fontSize:12, lineHeight:1.6 }}>넷플릭스 프로필 이름을 1, 2, 3, 4, 5로 미리 만들어주세요. 구매자에게 빈 프로필 번호를 순서대로 안내하며, 환불 완료·이용 종료된 번호는 재사용합니다.</p>}
+      {account?.serviceType === '디즈니플러스' && <p style={{fontSize:12}}>새 디즈니 판매는 구매 순서대로 1~6번 프로필 생성을 안내합니다. 이메일 접근 없이 ID·비밀번호 로그인만 안내하므로 기존 이용자·모집이 없는 전용 계정을 선택하세요.</p>}
       {account && <p style={{ fontSize: 12 }}>전체 {account.total}자리 · 그레이태그 {account.graytag} · 수동 {account.manual} · 벗츠 {account.gbuts} · 등록 확인 중 {account.claims} · 남은 {account.available}자리</p>}
       <ListingPeriodPresets startDate={today} endDate={endDate} maxEndDate={account?.endDate} disabled={busy || !account}
         onChange={value => { setEndDate(value); requestId.current = crypto.randomUUID(); }} />
