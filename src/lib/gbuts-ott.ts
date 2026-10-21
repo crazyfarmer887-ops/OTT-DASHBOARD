@@ -17,7 +17,8 @@ export interface GbutsOttOrder {
   delivery: 'ready' | 'attempted' | 'confirmed' | 'blocked'; verifiedAt: string; error?: string;
   attemptedAt?: string;
   deliveryMessage?: string;
-  directDelivery?: { requestAt: string; requestKey: string; state: 'ready' | 'attempted' | 'confirmed' | 'blocked'; messageHash?: string; attemptedAt?: string };
+  directDelivery?: { requestAt: string; requestKey: string; state: 'ready' | 'attempted' | 'confirmed' | 'blocked'; messageHash?: string; attemptedAt?: string;
+    format?: 'disney-mailbox-v1'; messageHashes?: string[] };
   purchasedAt?: string;
   profileNumber?: number;
   profileReleasedAt?: string;

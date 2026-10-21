@@ -201,9 +201,11 @@ export function registerGbutsOttRoutes(app: Hono, deps: GbutsOttRuntimeDependenc
           { id, serviceType, accountEmail: rawAccount.email } as GbutsOttListing, '미리보기', management);
         const listing: GbutsOttListing = { id, requestHash, serviceType, accountEmail: rawAccount.email, endDate, capacity, dailyPrice,
           title, description, deliveryMode, state: 'submitting', createdAt: new Date().toISOString(), beforePostSeqs: posts.map(x => x.seq) };
+        const credentials = deliveryMode ? await deps.listingCredentials?.(listing) : undefined;
+        if (deliveryMode && !credentials) throw new Error('디즈니 판매글 계정 정보를 확인해주세요.');
         store.listings[id] = listing; writeGbutsOttStore(store);
         try {
-          listing.postSeq = (await client.createPost(listing)) || undefined;
+          listing.postSeq = (await client.createPost(listing, credentials)) || undefined;
           listing.state = 'uncertain'; writeGbutsOttStore(store);
           await reconcileListing(listing, client); writeGbutsOttStore(store);
           return c.json({ ok: true, listing, url: `https://gbuts.com/subscriptions/${listing.postSeq}` });

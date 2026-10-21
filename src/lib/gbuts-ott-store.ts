@@ -24,6 +24,9 @@ export function readGbutsOttStore(path = process.env.GBUTS_OTT_STORE_PATH || DEF
         || !['ready', 'attempted', 'confirmed', 'blocked'].includes(order.directDelivery.state)
         || !Number.isFinite(Date.parse(order.directDelivery.requestAt)) || !/^[a-f0-9]{64}$/.test(order.directDelivery.requestKey)
         || (order.directDelivery.messageHash !== undefined && !/^[a-f0-9]{64}$/.test(order.directDelivery.messageHash))
+        || (order.directDelivery.format !== undefined && (order.directDelivery.format !== 'disney-mailbox-v1' || data.listings[order.listingId].deliveryMode !== 'disney-numbered-password'))
+        || (order.directDelivery.messageHashes !== undefined && (!Array.isArray(order.directDelivery.messageHashes) || !order.directDelivery.messageHashes.length
+          || order.directDelivery.messageHashes.some((hash: unknown) => typeof hash !== 'string' || !/^[a-f0-9]{64}$/.test(hash))))
         || (['attempted', 'confirmed'].includes(order.directDelivery.state) && (!order.directDelivery.messageHash
           || !Number.isFinite(Date.parse(order.directDelivery.attemptedAt))))))
       || (order.deliveryMessage !== undefined && (typeof order.deliveryMessage !== 'string' || !order.deliveryMessage.trim() || order.deliveryMessage.length > 2000))

@@ -52,3 +52,10 @@ Subsequently removed the party-size wording from all four titles at the user's r
 - [x] Deploy committed source and verify existing eligible buyer delivery and production health.
 
 Production: pushed source `c5e08f8` built and passed the same 55 tests on the server, then activated at `/home/ubuntu/releases/aio-dashboard-c5e08f8`. Existing service settings/data paths preserved. Authenticated orders endpoint returned 200, automatic sync enabled, zero unlinked sales, lastError null, service active and zero restarts. The two active Disney orders without direct-delivery journals (#17436:48228 and #17436:48280) now have confirmed credential delivery; read-only provider chat checks matched each stored message hash to an actual seller message in its buyer room. Already confirmed credential sends were retained, and the refund-requested buyer received no new automatic delivery. No synthetic buyer/message was created. Broader server type checking retains existing unrelated diagnostics; no diagnostics name the changed modules.
+
+## Native GButs credentials and concise mailbox delivery
+
+- [x] Supersede the access-link flow in the existing spec. Resolve native seller fields and buyer chat from current account storage/maintenance; construct a matching Tinyhost URL only for explicitly configured accounts.
+- [x] Add native field creation and change-only synchronization using the provider's own seller edit protocol. Preserve actual live title, price, capacity, dates and public notices without exposing secrets there.
+- [x] Send a short profile guide and a versioned ID/password/mailbox/refund message. Maintain explicit `!`, private buyer verification, credential-free journals and complete split-message reconciliation. Hold automatic migration where seller already agreed to a refund.
+- [ ] Complete tests/review, commit/push, deploy, verify native fields and actual buyer chat receipts.

@@ -12,12 +12,14 @@ import { syncGbutsDirectCredentials } from './gbuts-ott-direct-delivery';
 import { sendGbutsText } from './gbuts-spotify-messages';
 import { allocateDisneyProfilesForSync } from '../lib/gbuts-disney-profiles';
 import { buildGbutsDisneyDeliveryText } from '../lib/gbuts-ott-templates';
+import type { GbutsOttCredentials } from '../lib/gbuts-disney-delivery';
 
 export interface GbutsOttRuntimeDependencies {
   management(options?: { forceRefresh: boolean }): Promise<GbutsOttManagement>;
   manualMembers(): any[];
   access(order: GbutsOttOrder, listing: GbutsOttListing, profileName: string, managementSnapshot?: GbutsOttManagement): Promise<string>;
-  credentials?(order: GbutsOttOrder, listing: GbutsOttListing): Promise<{ id: string; password: string }>;
+  credentials?(order: GbutsOttOrder, listing: GbutsOttListing): Promise<GbutsOttCredentials>;
+  listingCredentials?(listing: GbutsOttListing): Promise<GbutsOttCredentials>;
   refreshAccess(orders: GbutsOttOrder[]): Promise<void>;
   readStore?(): GbutsOttStore;
   writeStore?(store: GbutsOttStore): void;
@@ -37,6 +39,8 @@ export async function syncGbutsOtt(deps: GbutsOttRuntimeDependencies,
       throw new Error('벗츠 판매글의 서비스·기간·인원이 연결 설정과 달라 자동 전달을 멈췄습니다.');
     if (!['ON_SALE', 'CLOSED', 'SUSPENDED', 'REFUNDED'].includes(post.status)) throw new Error('벗츠 판매글 상태 확인이 필요합니다.');
     if (members.length < post.memberCount) throw new Error('벗츠 구매자 목록을 모두 확인하지 못했습니다.');
+    if (listing.deliveryMode === 'disney-numbered-password' && deps.listingCredentials)
+      await client.syncDisneyCredentials(post, await deps.listingCredentials(listing));
     listing.verifiedAt = now;
     listing.state = post.status === 'ON_SALE' ? 'registered' : 'closed';
     updateGbutsOttOrders(store, listing, members, now);

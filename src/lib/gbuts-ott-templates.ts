@@ -1,17 +1,9 @@
 import { buildPartyAccessDeliveryTemplate } from './party-access-template';
 import { makeDefaultProductDescription } from './write-default-template';
 
-export function buildGbutsDisneyDeliveryText(accessUrl: string, number: number, capacity = 6): string {
+export function buildGbutsDisneyDeliveryText(_accessUrl: string, number: number, capacity = 6): string {
   if (!Number.isInteger(capacity) || capacity < 1 || capacity > 6 || !Number.isInteger(number) || number < 1 || number > capacity) throw new Error('디즈니 프로필 번호를 확인해주세요.');
-  return `구매 감사합니다! 디즈니플러스 ${number}번 프로필을 새로 만들어 이용해 주세요. 구매 순서대로 1~${capacity}번을 배정합니다.
-
-계정 정보 확인: ${accessUrl}
-
-ID·비밀번호를 이어서 이 1:1 채팅으로 바로 안내해드립니다. 최신 계정 정보를 다시 받으시려면 ! 만 남겨주세요.
-
-기본은 안내된 이메일 주소(ID)와 비밀번호를 직접 입력하는 비밀번호 로그인입니다. TV 등에서 이메일 인증 코드를 요구하면 계정 정보 페이지의 이메일 인증 코드 확인 버튼을 이용해 주세요. 버튼이 없거나 확인이 안 되면 이 1:1 채팅으로 문의해 주세요.
-
-다른 분의 프로필이나 계정 이메일·비밀번호·결제 설정은 변경하지 마세요. 로그인에 문제가 있으면 이 1:1 채팅으로 문의해 주세요.`;
+  return `구매 감사합니다! 디즈니플러스 ${number}번 프로필을 새로 만들어 이용해 주세요. 구매 순서대로 1~${capacity}번을 배정합니다.\n\nID·PW와 이메일 인증 주소를 이어서 보내드립니다. 계정 정보 변경·타인 프로필 사용은 금지합니다. 최신 정보를 다시 받으시려면 ! 만 남겨주세요.`;
 }
 
 export const GBUTS_ACCOUNT_CHANGE_WARNING = '무단 변경으로 피해가 발생하면 이용 제한과 함께 민사상 손해배상 청구 및 형사 고소·고발 등 법적 조치를 진행할 수 있습니다.';

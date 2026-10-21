@@ -1,6 +1,6 @@
 import { registerLinkidRoutes } from './linkid';
 import { registerFinanceRoutes } from './finance';
-import { resolveGbutsOttDirectCredentials } from '../lib/gbuts-ott-credentials';
+import { resolveGbutsOttDirectCredentials, resolveGbutsDisneyListingCredentials } from '../lib/gbuts-ott-credentials';
 import { Hono } from 'hono';
 import { execFile } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
@@ -6704,6 +6704,10 @@ async function readGraytagOttManagement(options = { forceRefresh: true }) {
 }
 
 export const gbutsOttRuntimeDependencies: GbutsOttRuntimeDependencies = {
+  async listingCredentials(listing) {
+    return resolveGbutsDisneyListingCredentials(listing, { accessRecords: loadPartyAccessLinkStore(),
+      maintenance: loadPartyMaintenanceChecklistStore(), generated: readGeneratedAccountStore() });
+  },
   management: readGraytagOttManagement,
   manualMembers: () => manualOttMembersWithProfiles(loadManualMembers(), Object.values(loadPartyAccessLinkStore())),
   async access(order, listing, profileName, managementSnapshot) {

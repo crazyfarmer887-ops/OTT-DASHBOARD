@@ -39,7 +39,7 @@ function fixture() {
     return new Response(JSON.stringify({ success: true, error: null, response }), { headers: { 'content-type': 'application/json' } });
   });
   vi.stubGlobal('fetch', transport);
-  const deps = { management: vi.fn(async () => ({ ...fixtureManagement(), cache: { status: 'hit', updatedAt: new Date().toISOString() } })), manualMembers: () => [], access: vi.fn(async () => 'validated'), refreshAccess: async () => {} };
+  const deps = { listingCredentials: vi.fn(async()=>({id:'current@example.com',password:'private-password',emailAccessUrl:'https://tinyhost.shop/current@example.com'})), management: vi.fn(async () => ({ ...fixtureManagement(), cache: { status: 'hit', updatedAt: new Date().toISOString() } })), manualMembers: () => [], access: vi.fn(async () => 'validated'), refreshAccess: async () => {} };
   const app = new Hono(); registerGbutsOttRoutes(app, deps);
   const body = { requestId: 'request-123', serviceType: '넷플릭스', accountEmail: 'account@example.com', endDate: '2026-12-01', dailyPrice: 200, capacity: 1, title: '프리미엄', description: '본인 프로필을 이용해주세요.' };
   const publish = (patch = {}) => app.request('/gbuts/ott/listings', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...body, ...patch }) });
@@ -245,6 +245,9 @@ it('new Disney registration persists numbered password delivery and rejects occu
  expect(response.status).toBe(200);expect((await response.json()).listing.deliveryMode).toBe('disney-numbered-password');
  expect(readGbutsOttStore().listings['request-123'].deliveryMode).toBe('disney-numbered-password');
  expect(f.posts).toHaveLength(1);
+ expect(f.posts[0]).toMatchObject({subscriptionPrincipal:'current@example.com',subscriptionCredential:'private-password'});
+ expect(f.posts[0].noticeAfterOrder).not.toContain('계정 확인 링크');
+ expect(JSON.stringify(readGbutsOttStore())).not.toContain('private-password');
  expect((await f.publish({requestId:'request-disney-2',serviceType:'디즈니플러스',capacity:1,title:'another'})).status).toBe(409);
  expect(f.posts).toHaveLength(1);
 });
