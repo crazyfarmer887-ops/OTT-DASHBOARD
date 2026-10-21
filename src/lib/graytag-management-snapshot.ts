@@ -49,7 +49,7 @@ export function dedupeGraytagManagementDeals(rows: any[]): any[] {
 type InventoryPageReader = (kind: 'after' | 'before', finished: boolean, page: number) => Promise<Response>;
 
 /** Only GET pages may be retried. A failed stream invalidates the whole snapshot. */
-export async function readVerifiedGraytagManagementSnapshot(readPage: InventoryPageReader) {
+export async function readVerifiedGraytagManagementSnapshot(readPage: InventoryPageReader, options: { includeFinished?: boolean } = {}) {
   const read = async (kind: 'after' | 'before', finished: boolean) => {
     const collected: any[] = [];
     for (let page = 1; page <= MAX_GRAYTAG_INVENTORY_PAGES; page++) {
@@ -94,9 +94,9 @@ export async function readVerifiedGraytagManagementSnapshot(readPage: InventoryP
   };
   // Sequential streams avoid the burst caused by four concurrent page loops.
   const afterOpenDeals = await read('after', false);
-  const afterFinishedDeals = await read('after', true);
+  const afterFinishedDeals = options.includeFinished === false ? [] : await read('after', true);
   const beforeOpenDeals = await read('before', false);
-  const beforeFinishedDeals = await read('before', true);
+  const beforeFinishedDeals = options.includeFinished === false ? [] : await read('before', true);
   return { afterOpenDeals, afterFinishedDeals, beforeOpenDeals, beforeFinishedDeals };
 }
 

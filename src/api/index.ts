@@ -1,3 +1,4 @@
+import { buildDisneyRenewalInventory } from '../lib/gbuts-disney-renewal-inventory';
 import { registerLinkidRoutes } from './linkid';
 import { registerFinanceRoutes } from './finance';
 import { resolveGbutsOttDirectCredentials, resolveGbutsDisneyListingCredentials } from '../lib/gbuts-ott-credentials';
@@ -6703,7 +6704,20 @@ async function readGraytagOttManagement(options = { forceRefresh: true }) {
   return payload;
 }
 
+async function readDisneyRenewalManagement(): Promise<Awaited<ReturnType<typeof readGraytagOttManagement>>> {
+  const cookies = resolveCookies({}, 'primary');
+  if (!cookies) throw new Error('그레이태그 판매자 연결을 확인해주세요.');
+  const snapshot = await readVerifiedGraytagManagementSnapshot((kind, _finished, page) => rateLimitedFetch(
+    buildFinishedDealsUrl(kind, page, GRAYTAG_INVENTORY_PAGE_SIZE, false),
+    { headers: { ...BASE_HEADERS, Cookie: buildCookieStr(cookies), Referer: 'https://graytag.co.kr/lender/deal/list' },
+      redirect: 'manual', signal: AbortSignal.timeout(15_000) }, false, undefined, isAuthoritativeGraytagInventoryResponse,
+  ), { includeFinished: false });
+  return buildDisneyRenewalInventory(readGeneratedAccountStore(), [...snapshot.afterOpenDeals, ...snapshot.beforeOpenDeals],
+    loadPartyAccessLinkStore(), loadPartyMaintenanceChecklistStore());
+}
+
 export const gbutsOttRuntimeDependencies: GbutsOttRuntimeDependencies = {
+  renewalManagement: readDisneyRenewalManagement,
   async listingCredentials(listing) {
     return resolveGbutsDisneyListingCredentials(listing, { accessRecords: loadPartyAccessLinkStore(),
       maintenance: loadPartyMaintenanceChecklistStore(), generated: readGeneratedAccountStore() });

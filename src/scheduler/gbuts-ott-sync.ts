@@ -18,6 +18,7 @@ import type { GbutsOttCredentials } from '../lib/gbuts-disney-delivery';
 export interface GbutsOttRuntimeDependencies {
   management(options?: { forceRefresh: boolean }): Promise<GbutsOttManagement>;
   manualMembers(): any[];
+  renewalManagement?(): Promise<GbutsOttManagement>;
   access(order: GbutsOttOrder, listing: GbutsOttListing, profileName: string, managementSnapshot?: GbutsOttManagement): Promise<string>;
   credentials?(order: GbutsOttOrder, listing: GbutsOttListing): Promise<GbutsOttCredentials>;
   listingCredentials?(listing: GbutsOttListing): Promise<GbutsOttCredentials>;

@@ -245,7 +245,7 @@ export function registerGbutsOttRoutes(app: Hono, deps: GbutsOttRuntimeDependenc
   });
   app.post('/gbuts/ott/renewals', c => withGbutsOttInventory(async () => {
     try {
-      const body = await c.req.json() as { enabled: boolean; listingIds: string[] };
+      const body = await c.req.json() as { enabled: boolean; listingIds: string[]; startNow?: boolean };
       if (typeof body.enabled !== 'boolean' || !Array.isArray(body.listingIds) || !body.listingIds.length) throw new Error('자동 재등록할 판매글을 선택해주세요.');
       const store = readGbutsOttStore(); store.renewals ||= {};
       const selected = body.listingIds.map(id => store.listings[id]);
@@ -255,7 +255,7 @@ export function registerGbutsOttRoutes(app: Hono, deps: GbutsOttRuntimeDependenc
         if (previous && previous.listingId !== listing.id) throw new Error('최근 재등록된 판매글을 선택해주세요.');
         store.renewals[key] = previous ? { ...previous, enabled: body.enabled } : {
           accountEmail: listing.accountEmail, capacity: listing.capacity, listingId: listing.id, enabled: body.enabled,
-          nextAt: new Date(Date.now() + DISNEY_RENEWAL_INTERVAL).toISOString(),
+          nextAt: new Date(Date.now() + (body.startNow === true ? 0 : DISNEY_RENEWAL_INTERVAL)).toISOString(),
         };
       }
       writeGbutsOttStore(store); return c.json({ ok: true, renewals: Object.values(store.renewals) });

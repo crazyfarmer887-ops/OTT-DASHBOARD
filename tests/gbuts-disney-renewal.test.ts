@@ -105,3 +105,40 @@ test('new buyer on a smaller repost receives an account-wide profile number and 
  expect(send).toHaveBeenCalledTimes(1);expect(send.mock.calls[0][2]).toContain('5번 프로필');expect(send.mock.calls[0][2]).toContain('1~5번');
  expect(f.store().orders['100:1'].roomId).toBe('room-1');expect(f.store().orders['100:1'].delivery).toBe('confirmed');
 });
+test('refunded history cannot conceal a newly paid buyer missing from the final roster',async()=>{
+ const f=fixture(2);f.rosters.get(100)!.push({...f.member(8),status:'CANCEL',cancelStatus:'REFUNDED'});
+ f.client.closePost.mockImplementation(async()=>{f.posts[0].status='CLOSED';f.posts[0].memberCount=3;});
+ expect((await f.run()).errors).toBe(1);expect(f.client.createPost).not.toHaveBeenCalled();
+ f.rosters.get(100)!.push(f.member(3));vi.setSystemTime(new Date(Date.now()+61000));
+ expect((await f.run()).renewed).toBe(1);expect(f.posts[1].memberLimit).toBe(2);
+});
+test('live GrayTag occupants/recruitment block renewal before closing and are checked again before publication',async()=>{
+ const f=fixture(); f.management.services[0].accounts[0].members.push({} as never);
+ expect((await f.run()).errors).toBe(1);expect(f.client.closePost).not.toHaveBeenCalled();
+ const g=fixture();g.client.closePost.mockImplementation(async()=>{g.posts[0].status='CLOSED';g.management.onSaleByKeepAcct[g.listing.accountEmail]=[{}];});
+ expect((await g.run()).errors).toBe(1);expect(g.client.createPost).not.toHaveBeenCalled();
+});
+test('submitted work is reconciled after disabling and password rotation, then current credentials are synchronized',async()=>{
+ const f=fixture();const create=f.client.createPost.getMockImplementation()!;
+ f.client.createPost.mockImplementation(async(l,c)=>{await create(l,c);throw new Error('lost response');});
+ expect((await f.run()).errors).toBe(1);
+ const store=f.store();store.renewals![f.listing.accountEmail].enabled=false;f.deps.writeStore(store);
+ f.creds.password='rotated-password';
+ const sync=vi.fn(async(post:any,c:any)=>{const actual=f.posts.find(p=>p.seq===post.seq);actual.subscriptionPrincipal=encrypted(c.id);actual.subscriptionCredential=encrypted(c.password);});
+ Object.assign(f.client,{syncDisneyCredentials:sync});
+ vi.setSystemTime(new Date(Date.now()+61000));expect((await f.run()).renewed).toBe(1);expect(sync).toHaveBeenCalledTimes(1);
+ expect(f.store().renewals![f.listing.accountEmail].enabled).toBe(false);expect(f.store().listings[f.replacementId].state).toBe('registered');
+ f.advance();expect((await f.run()).checked).toBe(0);expect(f.client.createPost).toHaveBeenCalledTimes(1);
+});
+test('disabling a pending close releases its unpublished reservation without creating a new post',async()=>{
+ const f=fixture();f.client.closePost.mockRejectedValue(new Error('offline'));await f.run();
+ const store=f.store();store.renewals![f.listing.accountEmail].enabled=false;f.deps.writeStore(store);
+ vi.setSystemTime(new Date(Date.now()+61000));expect((await f.run()).errors).toBe(0);expect(f.client.createPost).not.toHaveBeenCalled();
+ expect(f.store().listings[f.replacementId].state).toBe('failed');expect(f.store().renewals![f.listing.accountEmail].pendingId).toBeUndefined();
+});
+test('resuming an unpublished replacement carries edits from the final original title and body',async()=>{
+ const f=fixture();f.client.closePost.mockRejectedValueOnce(new Error('offline'));expect((await f.run()).errors).toBe(1);
+ f.posts[0].title=JSON.stringify({ko:'[디즈니플러스] 변경한 제목'});f.posts[0].description='수정한 본문';
+ vi.setSystemTime(new Date(Date.now()+61000));expect((await f.run()).renewed).toBe(1);
+ expect(f.client.createPost.mock.calls[0][0]).toMatchObject({title:'변경한 제목',description:'수정한 본문'});
+});

@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
-import { activeOttOrder, holdsDisneyProfile, koreaToday, ottDate, ottKey, updateGbutsOttOrders, type GbutsOttListing, type GbutsOttOrder, type GbutsOttStore } from '../lib/gbuts-ott';
+import { activeOttOrder, holdsDisneyProfile, koreaToday, ottDate, ottKey, updateGbutsOttOrders, type GbutsOttListing, type GbutsOttOrder, type GbutsOttStore, type GbutsOttManagement } from '../lib/gbuts-ott';
 import { readGbutsOttStore, writeGbutsOttStore } from '../lib/gbuts-ott-store';
-import { createGbutsOttSellerClient, type GbutsOttPost } from '../lib/gbuts-ott-client';
+import { createGbutsOttSellerClient, type GbutsOttPost, type GbutsOttMember } from '../lib/gbuts-ott-client';
 import { decodeGbutsSubscriptionCredential } from '../lib/gbuts-subscription-credentials';
 import type { GbutsOttCredentials } from '../lib/gbuts-disney-delivery';
 import type { GbutsOttRuntimeDependencies } from './gbuts-ott-sync';
@@ -24,6 +24,19 @@ function sameConditions(post: GbutsOttPost, listing: GbutsOttListing): boolean {
   return post.category1.seq === 6 && post.subscriptionType === 'SHARE' && post.priceType === 'DAY'
     && post.memberLimit === listing.capacity && Number(post.price) === listing.dailyPrice && ottDate(post.subscriptionEndsAt) === listing.endDate;
 }
+function credentialsHash(id: string, password: string): string {
+  return createHash('sha256').update(JSON.stringify([id, password])).digest('hex');
+}
+function completeRoster(post: GbutsOttPost, members: GbutsOttMember[], now: Date): boolean {
+  return members.filter(member => activeOttOrder({ ...member, endDate: ottDate(member.subscriptionEndsAt) }, now)).length >= post.memberCount;
+}
+function assertDedicatedAccount(management: GbutsOttManagement, email: string, capacity: number, endDate: string): void {
+  const account = management.services.flatMap(s => s.accounts).find(a => ottKey(a.serviceType, a.email) === ottKey('디즈니플러스', email));
+  if (!account || account.archivedAccount || account.totalSlots < capacity || account.generatedAccount?.paymentStatus !== 'paid'
+    || ottDate(account.expiryDate) < endDate || account.members.length
+    || (management.onSaleByKeepAcct[account.email] || []).length)
+    throw new Error('그레이태그 이용자·모집 또는 계정 정원을 확인해야 재등록할 수 있습니다.');
+}
 async function reconcile(listing: GbutsOttListing, credentials: GbutsOttCredentials, client: ReturnType<typeof createGbutsOttSellerClient>) {
   const possible = listing.postSeq ? [await client.getPost(listing.postSeq)]
     : (await client.listPostsAfter(listing.repostAfterSeq!)).filter(post => sameConditions(post, listing) && title(post) === listing.title);
@@ -31,10 +44,13 @@ async function reconcile(listing: GbutsOttListing, credentials: GbutsOttCredenti
   for (const candidate of possible) {
     const post = listing.postSeq ? candidate : await client.getPost(candidate.seq);
     if (sameConditions(post, listing) && title(post) === listing.title
-      && decodeGbutsSubscriptionCredential(post.subscriptionPrincipal) === credentials.id
-      && decodeGbutsSubscriptionCredential(post.subscriptionCredential) === credentials.password) matches.push(post);
+      && (post.seq === listing.postSeq || credentialsHash(decodeGbutsSubscriptionCredential(post.subscriptionPrincipal), decodeGbutsSubscriptionCredential(post.subscriptionCredential)) === listing.repostCredentialsHash
+        || (decodeGbutsSubscriptionCredential(post.subscriptionPrincipal) === credentials.id && decodeGbutsSubscriptionCredential(post.subscriptionCredential) === credentials.password))) matches.push(post);
   }
   if (matches.length !== 1 || !['ON_SALE', 'CLOSED'].includes(matches[0].status)) throw new Error('재등록 결과를 하나로 확인하지 못했습니다. 새로 생성하지 않고 확인을 계속합니다.');
+  if (decodeGbutsSubscriptionCredential(matches[0].subscriptionPrincipal) !== credentials.id
+    || decodeGbutsSubscriptionCredential(matches[0].subscriptionCredential) !== credentials.password)
+    await client.syncDisneyCredentials(matches[0], credentials);
   listing.postSeq = matches[0].seq;
   listing.state = matches[0].status === 'ON_SALE' ? 'registered' : 'closed';
   listing.verifiedAt = new Date().toISOString(); delete listing.error;
@@ -46,7 +62,7 @@ export async function renewDueGbutsDisneyListings(deps: GbutsOttRuntimeDependenc
   const read = deps.readStore || readGbutsOttStore; const write = deps.writeStore || writeGbutsOttStore;
   const store = read(); const result = { renewed: 0, checked: 0, errors: 0 };
   for (const policy of Object.values(store.renewals || {})) {
-    if (!policy.enabled || Date.parse(policy.nextAt) > now.getTime()) continue;
+    if ((!policy.enabled && !policy.pendingId) || Date.parse(policy.nextAt) > now.getTime()) continue;
     result.checked++;
     const source = store.listings[policy.listingId];
     const complete = (listing?: GbutsOttListing) => {
@@ -56,13 +72,24 @@ export async function renewDueGbutsDisneyListings(deps: GbutsOttRuntimeDependenc
     };
     try {
       if (!source?.postSeq || source.deliveryMode !== 'disney-numbered-password') throw new Error('자동 재등록의 원본 계정을 확인해주세요.');
-      if (source.endDate <= koreaToday(now)) { policy.enabled = false; delete policy.lastError; write(store); continue; }
+      if (source.endDate <= koreaToday(now)) { policy.enabled = false; if (!policy.pendingId) { delete policy.lastError; write(store); continue; } }
       let replacement = policy.pendingId ? store.listings[policy.pendingId] : undefined;
-      const credentials = await deps.listingCredentials?.(source);
+      let credentials = await deps.listingCredentials?.(source);
       if (!credentials) throw new Error('최신 디즈니 계정 정보를 확인해주세요.');
       if (replacement?.repostPhase === 'publishing') {
         await reconcile(replacement, credentials, client); complete(replacement); continue;
       }
+      if (!policy.enabled) {
+        // Disabling stops future CREATEs, while submitted work is still recovered
+        // above so real buyers cannot disappear from ordinary delivery polling.
+        const [actual, members] = await Promise.all([client.getPost(source.postSeq), client.listOttMembers(source.postSeq)]);
+        if (!sameConditions(actual, source) || !['ON_SALE', 'CLOSED'].includes(actual.status) || !completeRoster(actual, members, now)) throw new Error('중단한 재등록의 기존 구매자 확인 중입니다.');
+        source.state = actual.status === 'ON_SALE' ? 'registered' : 'closed';
+        updateGbutsOttOrders(store, source, members, now.toISOString());
+        if (replacement) { replacement.state = 'failed'; replacement.error = '새 글 생성 전 자동 재등록이 중단되었습니다.'; }
+        complete(); continue;
+      }
+      assertDedicatedAccount(await (deps.renewalManagement ? deps.renewalManagement() : deps.management()), policy.accountEmail, policy.capacity, source.endDate);
       const key = ottKey('디즈니플러스', policy.accountEmail);
       if (deps.manualMembers().some(m => ottKey(m.serviceType || '', m.accountEmail || '') === key && m.status === 'active' && m.endDate >= koreaToday(now))
         || Object.values(store.graytagClaims).some(c => ottKey(c.serviceType, c.accountEmail) === key)
@@ -76,7 +103,7 @@ export async function renewDueGbutsDisneyListings(deps: GbutsOttRuntimeDependenc
       for (const listing of relevant) {
         if (!listing.postSeq) throw new Error('기존 구매자의 판매글 연결을 확인해주세요.');
         const [actual, members] = await Promise.all([client.getPost(listing.postSeq), client.listOttMembers(listing.postSeq)]);
-        if (!sameConditions(actual, listing) || !['ON_SALE', 'CLOSED'].includes(actual.status) || members.length < actual.memberCount)
+        if (!sameConditions(actual, listing) || !['ON_SALE', 'CLOSED'].includes(actual.status) || !completeRoster(actual, members, now))
           throw new Error('기존 판매 조건 또는 구매자 목록이 달라 재등록을 보류합니다.');
         updateGbutsOttOrders(store, listing, members, now.toISOString());
         if (listing.id === source.id) post = actual;
@@ -93,7 +120,7 @@ export async function renewDueGbutsDisneyListings(deps: GbutsOttRuntimeDependenc
         if (!newTitle || newTitle.length > 30) throw new Error('판매글 제목을 확인해주세요.');
         replacement = { ...source, id, title: newTitle, description: typeof post.description === 'string' ? post.description : String(post.description?.ko || ''),
           requestHash: createHash('sha256').update(id).digest('hex'), state: 'submitting', capacity: remaining,
-          postSeq: undefined, beforePostSeqs: undefined, repostAfterSeq: afterSeq, createdAt: now.toISOString(), verifiedAt: undefined,
+          postSeq: undefined, beforePostSeqs: undefined, repostAfterSeq: afterSeq, repostCredentialsHash: credentialsHash(credentials.id, credentials.password), createdAt: now.toISOString(), verifiedAt: undefined,
           error: undefined, replacedBy: undefined, repostFrom: source.id, repostPhase: 'closing' };
         policy.pendingId = id; store.listings[id] = replacement; write(store);
       }
@@ -101,7 +128,7 @@ export async function renewDueGbutsDisneyListings(deps: GbutsOttRuntimeDependenc
         try { await client.closePost(source.postSeq); } catch { /* Read actual closure before publication. */ }
       }
       const [closed, finalMembers] = await Promise.all([client.getPost(source.postSeq), client.listOttMembers(source.postSeq)]);
-      if (closed.status !== 'CLOSED' || finalMembers.length < closed.memberCount) throw new Error('원본 모집 종료와 최종 구매자 확인 중입니다.');
+      if (closed.status !== 'CLOSED' || !completeRoster(closed, finalMembers, now)) throw new Error('원본 모집 종료와 최종 구매자 확인 중입니다.');
       source.state = 'closed'; source.verifiedAt = now.toISOString();
       updateGbutsOttOrders(store, source, finalMembers, now.toISOString());
       if (!sameConditions(closed, source)) throw new Error('모집 종료 중 조건이 변경되어 재등록을 보류합니다.');
@@ -111,6 +138,14 @@ export async function renewDueGbutsDisneyListings(deps: GbutsOttRuntimeDependenc
         replacement.state = 'failed'; replacement.error = '모집 종료 중 만석이 되어 새 글을 생성하지 않았습니다.';
         complete(); continue;
       }
+      assertDedicatedAccount(await (deps.renewalManagement ? deps.renewalManagement() : deps.management()), policy.accountEmail, policy.capacity, source.endDate);
+      credentials = await deps.listingCredentials?.(source);
+      if (!credentials) throw new Error('최신 디즈니 계정 정보를 확인해주세요.');
+      const finalTitle = title(closed);
+      if (!finalTitle || finalTitle.length > 30) throw new Error('현재 판매글 제목을 확인해주세요.');
+      replacement.title = finalTitle;
+      replacement.description = typeof closed.description === 'string' ? closed.description : String(closed.description?.ko || '');
+      replacement.repostCredentialsHash = credentialsHash(credentials.id, credentials.password);
       replacement.capacity = remaining; replacement.repostPhase = 'publishing'; source.replacedBy = replacement.id; write(store);
       // Persisted phase prevents a second CREATE even after an unknown response
       // or process restart. Future attempts only reconcile native account fields.

@@ -11,6 +11,7 @@ export interface GbutsOttListing {
   deliveryMode?: 'disney-numbered-password';
   replacedBy?: string;
   repostAfterSeq?: number;
+  repostCredentialsHash?: string;
   repostFrom?: string;
   repostPhase?: 'closing' | 'publishing';
 }
