@@ -107,3 +107,7 @@ test('status-filtered discovery tolerates same-second ID ties across page bounda
  expect((await client.listPostsAfter(110)).map(p=>p.seq).sort()).toEqual([111,112]);
  expect(transport.mock.calls.every(([url])=>String(url).includes('status=')||String(url).endsWith('/view'))).toBe(true);
 });
+test('ordinary seller history still loads beyond one hundred hourly renewal pages',async()=>{
+ const transport=vi.fn(async(url:any)=>{const page=Number(new URL(String(url)).searchParams.get('page'));return new Response(JSON.stringify({success:true,error:null,response:page<=105?[{seq:1000-page,category1:{seq:6},memberLimit:5,memberCount:0,status:'CLOSED',subscriptionEndsAt:'2026-12-01'}]:[]}));});
+ expect(await createGbutsOttSellerClient('test',transport).listPosts()).toHaveLength(105);expect(transport).toHaveBeenCalledTimes(106);
+});

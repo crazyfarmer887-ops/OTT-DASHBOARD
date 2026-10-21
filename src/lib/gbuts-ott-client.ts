@@ -61,11 +61,15 @@ export function createGbutsOttSellerClient(token: string, transport: typeof fetc
   };
   return { ...createGbutsSpotifySellerClient(token, transport),
     async listPosts(): Promise<GbutsOttPost[]> {
-      const posts: GbutsOttPost[] = [];
-      for (let page = 1; page <= 100; page++) {
+      const posts: GbutsOttPost[] = []; const seen = new Set<number>();
+      // Five hourly renewals can exceed 100 pages within a paid month.
+      for (let page = 1; page <= 1000; page++) {
         const data = await request(`/api/seller/subscribe/share/list?page=${page}`);
         if (!Array.isArray(data.response)) throw new Error('벗츠 판매글 목록이 올바르지 않습니다.');
-        posts.push(...data.response.map(validatePost));
+        const rows = data.response.map(validatePost);
+        if (rows.some((post: GbutsOttPost) => seen.has(post.seq))) throw new Error('판매글 목록이 조회 중 변경되어 다시 확인해야 합니다.');
+        for (const post of rows) seen.add(post.seq);
+        posts.push(...rows);
         if (data.response.length === 0) return posts;
       }
       throw new Error('벗츠 판매글 페이지 확인을 완료하지 못했습니다.');
