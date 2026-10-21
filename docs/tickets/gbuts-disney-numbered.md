@@ -14,4 +14,6 @@ Production: committed release `ca38a48` built on the server and activated with a
 
 - [x] Inspect existing verified buyer `!` handler: it already covers numbered Disney leases and reads current credentials at request time.
 - [x] Add Disney-specific private guide text offering `!`, without Netflix email-code guidance.
-- [ ] Verify the actual Disney poller/request/resolver, then commit/push/deploy and check runtime health.
+- [x] Verify the actual Disney poller/request/resolver, then commit/push/deploy and check runtime health.
+
+Direct-request verification: 47 tests pass across four suites, including numbered Disney private-room isolation, one reply per buyer request, current credential changes on a later request, no plaintext credentials in the request journal, real resolver lease validation and refund denial. Client build passed. Release `e973aa5` pushed and deployed from the local Git archive; service active with zero restarts, deployed guide includes the `!` offer, production polling advanced and lastError remains null. Existing buyer for #17436 already had the old guide; sent the new non-secret usage notice once via the seller 1:1 UI and verified it in history. No synthetic buyer request or credential message was sent.
