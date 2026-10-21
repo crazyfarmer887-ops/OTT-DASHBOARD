@@ -44,13 +44,19 @@ export function createGbutsOttSellerClient(token: string, transport: typeof fetc
     if (!Number.isSafeInteger(post.memberCount) || post.memberCount < 0 || !ottDate(post.subscriptionEndsAt) || typeof post.status !== 'string') throw new Error('벗츠 판매글 응답이 올바르지 않습니다.');
     return post;
   };
-  // The seller list is newest-first. Check ordering before using a high-water
-  // mark so hourly renewal need not repeatedly scan years of retired posts.
-  const postPage = async (page: number): Promise<GbutsOttPost[]> => {
-    const data = await request(`/api/seller/subscribe/share/list?page=${page}`);
+  // GButs groups unfiltered results by recruitment status. Query the official
+  // open/completed filters before using each newest-first high-water stream.
+  const postTime = (post: GbutsOttPost): number => {
+    const raw = String(post.createdAt || '').replace(' ', 'T');
+    const time = Date.parse(raw + (/(?:Z|[+-]\d\d:\d\d)$/.test(raw) ? '' : '+09:00'));
+    if (!Number.isFinite(time)) throw new Error('판매글 생성 시각을 확인하지 못했습니다.');
+    return time;
+  };
+  const postPage = async (page: number, status: 'SUB_ON_SALE' | 'COMPLETED'): Promise<GbutsOttPost[]> => {
+    const data = await request(`/api/seller/subscribe/share/list?page=${page}&status=${status}`);
     if (!Array.isArray(data.response)) throw new Error('벗츠 판매글 목록이 올바르지 않습니다.');
     const posts = data.response.map(validatePost);
-    if (posts.some((post: GbutsOttPost, i: number) => i > 0 && posts[i - 1].seq <= post.seq)) throw new Error('판매글의 최신순 정렬을 확인하지 못했습니다.');
+    if (posts.some((post: GbutsOttPost, i: number) => i > 0 && postTime(posts[i - 1]) < postTime(post))) throw new Error('판매글의 최신순 정렬을 확인하지 못했습니다.');
     return posts;
   };
   return { ...createGbutsSpotifySellerClient(token, transport),
@@ -64,19 +70,38 @@ export function createGbutsOttSellerClient(token: string, transport: typeof fetc
       }
       throw new Error('벗츠 판매글 페이지 확인을 완료하지 못했습니다.');
     },
-    async latestPostSeq(): Promise<number> { return (await postPage(1))[0]?.seq || 0; },
+    async latestPostSeq(): Promise<number> {
+      let highest = 0;
+      for (const status of ['SUB_ON_SALE', 'COMPLETED'] as const) {
+        let newestTime: number | undefined; let complete = false;
+        for (let page = 1; page <= 100; page++) {
+          const posts = await postPage(page, status);
+          if (!posts.length) { complete = true; break; }
+          newestTime ??= postTime(posts[0]);
+          for (const post of posts.filter(post => postTime(post) === newestTime)) highest = Math.max(highest, post.seq);
+          if (postTime(posts.at(-1)!) < newestTime) { complete = true; break; }
+        }
+        if (!complete) throw new Error('최신 판매글 조회를 완료하지 못했습니다.');
+      }
+      return highest;
+    },
     async listPostsAfter(afterSeq: number): Promise<GbutsOttPost[]> {
       if (!Number.isSafeInteger(afterSeq) || afterSeq < 0) throw new Error('판매글 확인 기준이 올바르지 않습니다.');
-      const result: GbutsOttPost[] = []; let lastSeq = Infinity;
-      for (let page = 1; page <= 100; page++) {
-        const posts = await postPage(page);
-        if (!posts.length) return result;
-        if (posts[0].seq >= lastSeq) throw new Error('판매글 페이지 순서를 확인하지 못했습니다.');
-        result.push(...posts.filter(post => post.seq > afterSeq));
-        lastSeq = posts.at(-1)!.seq;
-        if (lastSeq <= afterSeq) return result;
+      const boundary = afterSeq ? postTime(validatePost((await request(`/api/seller/subscribe/share/${integer(afterSeq)}/view`)).response)) : -Infinity;
+      const result = new Map<number, GbutsOttPost>();
+      for (const status of ['SUB_ON_SALE', 'COMPLETED'] as const) {
+        let lastTime = Infinity; let complete = false; const seen = new Set<number>();
+        for (let page = 1; page <= 100; page++) {
+          const posts = await postPage(page, status);
+          if (!posts.length) { complete = true; break; }
+          if (postTime(posts[0]) > lastTime || posts.some(post => seen.has(post.seq))) throw new Error('판매글 페이지 순서를 확인하지 못했습니다.');
+          for (const post of posts) { seen.add(post.seq); if (post.seq > afterSeq) result.set(post.seq, post); }
+          lastTime = postTime(posts.at(-1)!);
+          if (lastTime < boundary) { complete = true; break; }
+        }
+        if (!complete) throw new Error('재등록 이후 판매글 조회를 완료하지 못했습니다.');
       }
-      throw new Error('재등록 이후 판매글 조회를 완료하지 못했습니다.');
+      return Array.from(result.values());
     },
     async getPost(seq: number): Promise<GbutsOttPost> { return validatePost((await request(`/api/seller/subscribe/share/${integer(seq)}/view`)).response); },
     async listOttMembers(seq: number): Promise<GbutsOttMember[]> {

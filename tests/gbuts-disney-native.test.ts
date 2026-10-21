@@ -90,11 +90,20 @@ test('formatting-only changes never resend previously confirmed Disney credentia
  expect(send).not.toHaveBeenCalled();expect(credentials).not.toHaveBeenCalled();expect(order.directDelivery).toEqual(previous);
 });
 test('renewal scans only newer seller pages and rejects unordered/duplicated pages',async()=>{
- const post=(seq:number)=>({seq,category1:{seq:6},memberLimit:5,memberCount:0,status:'ON_SALE',subscriptionEndsAt:'2026-12-01'});
+ const post=(seq:number)=>({seq,createdAt:new Date(Date.UTC(2026,9,21,0,0,seq)).toISOString(),category1:{seq:6},memberLimit:5,memberCount:0,status:'ON_SALE',subscriptionEndsAt:'2026-12-01'});
  const pages:any[][]=[[post(110),post(109)],[post(108),post(107)],[post(106),post(105)]];
- const transport=vi.fn(async(url:any)=>new Response(JSON.stringify({success:true,error:null,response:pages[Number(new URL(String(url)).searchParams.get('page'))-1]||[]})));
+ const transport=vi.fn(async(url:any)=>new Response(JSON.stringify({success:true,error:null,response:String(url).endsWith('/view')?post(Number(new URL(String(url)).pathname.split('/').at(-2))):pages[Number(new URL(String(url)).searchParams.get('page'))-1]||[]})));
  const client=createGbutsOttSellerClient('test',transport);expect(await client.latestPostSeq()).toBe(110);transport.mockClear();
- expect((await client.listPostsAfter(108)).map(p=>p.seq)).toEqual([110,109]);expect(transport).toHaveBeenCalledTimes(2);
+ expect((await client.listPostsAfter(108)).map(p=>p.seq)).toEqual([110,109]);expect(transport).toHaveBeenCalledTimes(5);
  pages[0]=[post(109),post(110)];await expect(client.latestPostSeq()).rejects.toThrow('최신순');
  pages[0]=[post(110),post(109)];pages[1]=[post(109),post(108)];await expect(client.listPostsAfter(100)).rejects.toThrow('페이지 순서');
+});
+test('status-filtered discovery tolerates same-second ID ties across page boundaries',async()=>{
+ const p=(seq:number,time:string)=>({seq,createdAt:time,category1:{seq:6},memberLimit:5,memberCount:0,status:'ON_SALE',subscriptionEndsAt:'2026-12-01'});
+ const time='2026-10-21 23:03:08';
+ const pages=[[p(109,time),p(110,time)],[p(112,time),p(111,time)],[p(108,'2026-10-21 23:03:07')]];
+ const transport=vi.fn(async(url:any)=>{const u=new URL(String(url));const response=u.pathname.endsWith('/view')?p(110,time):pages[Number(u.searchParams.get('page'))-1]||[];return new Response(JSON.stringify({success:true,error:null,response}));});
+ const client=createGbutsOttSellerClient('test',transport);expect(await client.latestPostSeq()).toBe(112);
+ expect((await client.listPostsAfter(110)).map(p=>p.seq).sort()).toEqual([111,112]);
+ expect(transport.mock.calls.every(([url])=>String(url).includes('status=')||String(url).endsWith('/view'))).toBe(true);
 });
