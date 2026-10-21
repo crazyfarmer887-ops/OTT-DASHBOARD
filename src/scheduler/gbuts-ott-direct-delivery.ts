@@ -39,7 +39,16 @@ export async function syncGbutsDirectCredentials(store: GbutsOttStore, orders: G
         .map(m => ({ time: messageTime(m.createdAt), key: fingerprint(`${m.senderSeq}:${m.createdAt}:!`) }))
         .filter(m => Number.isFinite(m.time) && m.time >= messageTime(order.purchasedAt || `${order.startDate}T00:00:00+09:00`)
           && m.time <= Date.now() + 60_000).sort((a, b) => b.time - a.time);
-      const request = requests[0];
+      // Numbered Disney purchases receive credentials without a buyer prompt.
+      // Reuse the hashed delivery journal so restart/uncertain-send handling is
+      // identical to an explicit request, without persisting the password.
+      const purchasedAt = messageTime(order.purchasedAt || `${order.startDate}T00:00:00+09:00`);
+      const initialKey = fingerprint(`initial:${order.key}`);
+      const initial = (!previous || (previous.state === 'ready' && previous.requestKey === initialKey))
+        && store.listings[order.listingId].deliveryMode === 'disney-numbered-password'
+        && Number.isFinite(purchasedAt) && purchasedAt <= Date.now()
+        ? { time: purchasedAt, key: initialKey } : undefined;
+      const request = requests[0] || initial;
       if (!request) continue;
       if (previous && (request.time < Date.parse(previous.requestAt)
         || (request.key === previous.requestKey && previous.state !== 'ready'))) continue;

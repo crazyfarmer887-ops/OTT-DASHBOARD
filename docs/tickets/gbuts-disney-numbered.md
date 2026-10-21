@@ -41,3 +41,12 @@ Tinyhost production: release `3a41fae` built from pushed local Git source and ac
 At the user's request, superseded the qualified refund sentence on all four live listings (#17451–17454) with: “사전에 안내한 동시 접속으로 인한 일시적 시청 제한을 사유로 한 환불은 불가합니다.” Each saved seller detail page was read back in the browser and confirmed to contain the new sentence. This is a listing-copy change; automatic refund processing was not changed.
 
 The provider's edit form rejected the previous titles for exceeding its 30-character limit. Shortened all four to “1개월 · 5인 · 비밀번호 로그인” so the edits could save. Existing 150 KRW/day, five places and November 20 expiry remain. Screenshot of the saved fourth listing is in the chat workspace artifacts directory. No application release is needed for this operational text update.
+
+Subsequently removed the party-size wording from all four titles at the user's request. Seller index read-back verifies #17451–17454 now use “1개월 · 비밀번호 로그인”; actual capacity remains five.
+
+## Automatic private ID/password delivery
+
+- [x] Extend the existing numbered Disney delivery flow to send current credentials after the private guide without waiting for `!`, including active buyers who have no direct-delivery journal.
+- [x] Preserve explicit refresh requests, other-service behavior, paid buyer/account/profile/room validation and hashed journaling without plaintext passwords.
+- [x] Verify automatic private delivery, duplicate prevention, pre-send retry, uncertain-send reconciliation, restart, refunds, wrong rooms and duplicate profiles. 55 focused tests across four suites and client build pass. Review checked that initial delivery uses the existing current-credential resolver and never places credentials in public templates or `deliveryMessage`.
+- [ ] Deploy committed source and verify existing eligible buyer delivery and production health.

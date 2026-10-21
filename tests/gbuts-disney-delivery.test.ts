@@ -12,6 +12,8 @@ import { tinyhostMailboxUrl, safeTinyhostEmailAccessUrl } from '../src/lib/disne
 import { normalizeGeneratedAccountPatch, buildGeneratedAccount } from '../src/lib/generated-accounts';
 import { resolveGbutsOttDirectCredentials } from '../src/lib/gbuts-ott-credentials';
 import { syncGbutsOtt } from '../src/scheduler/gbuts-ott-sync';
+import { syncGbutsDirectCredentials } from '../src/scheduler/gbuts-ott-direct-delivery';
+import { GbutsChatDeliveryError } from '../src/lib/gbuts-chat-delivery';
 beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-21T06:00:00Z')); });
 afterEach(() => vi.useRealTimers());
 function fixture() {
@@ -63,21 +65,58 @@ test('the real poller sends each private buyer a stable numbered password-only g
  const send=vi.fn(async(r:string,_s:number,message:string)=>{chats.set(r,[...(chats.get(r)||[]),{senderSeq:99,messageType:'TEXT',message,createdAt:new Date().toISOString()}]);});
  expect(await syncGbutsOtt(deps,client as any,send)).toMatchObject({attempted:2,confirmed:2});
  await syncGbutsOtt(deps,client as any,send);
- expect(send).toHaveBeenCalledTimes(2);
+ expect(send).toHaveBeenCalledTimes(4);
  for(const n of [1,2]) {const text=chats.get(String(n+10))![0].message;expect(text).toContain(`${n}번 프로필을 새로`);expect(text).toContain('비밀번호 로그인입니다');expect(text).not.toContain('이메일 PIN');}
- expect(chats.get('11')![0].message).toContain('! 만 남겨주세요');
+ expect(chats.get('11')![0].message).toContain('이어서 이 1:1 채팅으로 바로');
+ for(const room of ['11','12']) expect(chats.get(room)![1].message).toBe('ID : current@example.com\nPW : current-password');
  chats.get('11')!.push({senderSeq:11,messageType:'TEXT',message:' ! ',createdAt:new Date().toISOString()});
  await syncGbutsOtt(deps,client as any,send);
  await syncGbutsOtt(deps,client as any,send);
- expect(send).toHaveBeenCalledTimes(3);expect(send.mock.calls.at(-1)).toEqual(['11',99,'ID : current@example.com\nPW : current-password']);
+ expect(send).toHaveBeenCalledTimes(5);expect(send.mock.calls.at(-1)).toEqual(['11',99,'ID : current@example.com\nPW : current-password']);
  expect(store.orders['100:1'].directDelivery?.state).toBe('confirmed');
- expect(chats.get('12')).toHaveLength(1);expect(JSON.stringify(store)).not.toContain('current-password');
+ expect(chats.get('12')).toHaveLength(2);expect(JSON.stringify(store)).not.toContain('current-password');
  vi.setSystemTime(new Date('2026-10-21T06:01:00Z'));
  credentials.mockResolvedValue({id:'updated@example.com',password:'updated-password'});
  chats.get('11')!.push({senderSeq:11,messageType:'TEXT',message:'!',createdAt:new Date().toISOString()});
  await syncGbutsOtt(deps,client as any,send);
  expect(send.mock.calls.at(-1)).toEqual(['11',99,'ID : updated@example.com\nPW : updated-password']);
- expect(send).toHaveBeenCalledTimes(4);
+ expect(send).toHaveBeenCalledTimes(6);
+});
+
+test.each(['pre-send', 'uncertain'])('automatic Disney credentials survive %s failures and restart without a buyer prompt', async mode => {
+ const f=fixture();let store=f.store;
+ store.orders['100:1']=fixtureOrder({profileName:'1',profileNumber:1,delivery:'confirmed',roomId:'room',purchasedAt:'2026-10-21 10:00:00'});
+ let messages:any[]=[];
+ const credentials=vi.fn(async()=>({id:'latest@example.com',password:'latest-private-password'}));
+ const client={openPrivateRoom:async()=> 'room',getChat:async()=>({messages})};
+ const write=(next:typeof store)=>{store=structuredClone(next);};
+ const send=vi.fn(async()=>{throw mode==='pre-send'?new GbutsChatDeliveryError('offline',false):new Error('unknown');});
+ const run=()=>syncGbutsDirectCredentials(store,Object.values(store.orders),99,{credentials} as any,client as any,write,send);
+ await run();
+ expect(store.orders['100:1'].directDelivery?.state).toBe(mode==='pre-send'?'ready':'attempted');
+ expect(JSON.stringify(store)).not.toContain('latest-private-password');
+ if(mode==='pre-send') {
+   send.mockImplementation(async()=>{messages=[{senderSeq:99,messageType:'TEXT',message:'ID : latest@example.com\nPW : latest-private-password',createdAt:new Date().toISOString()}];});
+   await run();
+   expect(send).toHaveBeenCalledTimes(2);
+ } else {
+   await run(); expect(send).toHaveBeenCalledTimes(1);
+   messages=[{senderSeq:99,messageType:'TEXT',message:'ID : latest@example.com\nPW : latest-private-password',createdAt:new Date().toISOString()}];
+   await run(); expect(send).toHaveBeenCalledTimes(1);
+ }
+ expect(store.orders['100:1'].directDelivery?.state).toBe('confirmed');
+ await run(); expect(send).toHaveBeenCalledTimes(mode==='pre-send'?2:1);
+});
+
+test.each(['refund', 'wrong-room', 'duplicate-profile', 'unconfirmed-guide'])('automatic Disney credentials do not bypass %s checks', async mode => {
+ const f=fixture();const order=fixtureOrder({profileName:'1',profileNumber:1,delivery:'confirmed',roomId:'room',purchasedAt:'2026-10-21 10:00:00'});
+ f.store.orders[order.key]=order;
+ if(mode==='refund') order.cancelStatus='REFUNDED';
+ if(mode==='duplicate-profile') f.store.orders['100:2']=fixtureOrder({key:'100:2',memberSeq:2,profileName:'1',profileNumber:1});
+ if(mode==='unconfirmed-guide') order.delivery='attempted';
+ const credentials=vi.fn(async()=>({id:'test@example.com',password:'private-password'}));const send=vi.fn();
+ await syncGbutsDirectCredentials(f.store,[order],99,{credentials} as any,{openPrivateRoom:async()=>mode==='wrong-room'?'other-room':'room',getChat:async()=>({messages:[]})} as any,()=>{},send);
+ expect(credentials).not.toHaveBeenCalled();expect(send).not.toHaveBeenCalled();
 });
 test('public account payload suppresses mail access for numbered Disney but preserves legacy Disney', () => {
  const record=createPartyAccessLinkRecord({token:'test',serviceType:'디즈니플러스',accountEmail:'account@example.com',fallbackPassword:'test-password',emailAccessUrl:'https://email-verify.one/email/mail/private',profileName:'6',member:{kind:'gbuts',memberId:'100:6',memberName:'buyer',status:'active',endDateTime:'2026-12-01',verifiedAt:new Date().toISOString()}});
