@@ -35,3 +35,9 @@ Tinyhost production: release `3a41fae` built from pushed local Git source and ac
 - [x] Publish exactly four idempotently journaled listings: #17451, #17452, #17453, #17454. Each is ON_SALE, 5 places, 150 KRW/day, October 21–November 20. Seller API read-back verifies each post and its exact account binding; the first seller page also verified in the browser.
 - [x] Description prominently discloses overlapping simultaneous viewing and temporary limits, asks buyers to review/agree before purchase, and qualifies refusal of refunds for the disclosed limitation with marketplace policy and statutory rights. No unconditional waiver or automatic refund rejection was added.
 - [x] Existing numbered profile allocation, verified buyer access, live `!` credential requests and Tinyhost code links remain connected. Production poll timestamp advances with lastError null. Private operational receipt: `disney-five-registration-20261021.json` in the shared data directory. Temporary credential input files removed after verification.
+
+## Refund wording revision — October 21
+
+At the user's request, superseded the qualified refund sentence on all four live listings (#17451–17454) with: “사전에 안내한 동시 접속으로 인한 일시적 시청 제한을 사유로 한 환불은 불가합니다.” Each saved seller detail page was read back in the browser and confirmed to contain the new sentence. This is a listing-copy change; automatic refund processing was not changed.
+
+The provider's edit form rejected the previous titles for exceeding its 30-character limit. Shortened all four to “1개월 · 5인 · 비밀번호 로그인” so the edits could save. Existing 150 KRW/day, five places and November 20 expiry remain. Screenshot of the saved fourth listing is in the chat workspace artifacts directory. No application release is needed for this operational text update.
