@@ -67,4 +67,6 @@ Five existing active buyers received exactly one two-part credential/mailbox/ref
 ## Future message spacing
 
 - [x] Group account information, mailbox instructions and refund rules with headings, line breaks and paragraph separators. Preserve the delivery format identifier and existing receipts to prevent a formatting-only resend.
-- [ ] Verify formatting/byte limits and no resend, commit/push/deploy and check unchanged existing receipts. No live test message or broadcast authorized for this formatting update.
+- [x] Verify formatting/byte limits and no resend, commit/push/deploy and check unchanged existing receipts. No live test message or broadcast authorized for this formatting update.
+
+Release `3ac5bb7` committed/pushed and deployed after 87 focused tests and the client build passed locally and on the host. Runtime-only preview confirms the three headed sections fit provider message limits. Existing seven Disney direct-delivery receipts compare unchanged against the pre-deploy snapshot; no formatting migration or test chat was sent. Service active, zero restarts, authenticated orders endpoint 200, sync enabled, polling advanced and lastError null. Existing environment/data settings preserved.
