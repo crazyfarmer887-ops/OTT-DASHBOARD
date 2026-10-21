@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { tinyhostMailboxUrl } from './disney-mailbox';
 import type { GeneratedAccountStore } from './generated-accounts';
 import { isGraytagAccessNoticeCredential } from './graytag-fill';
 import type { PartyMaintenanceChecklistStore } from './party-maintenance-checklist';
@@ -903,13 +904,16 @@ export function buildPartyAccessPublicPayload(
   const credentialRecord = enrichPartyAccessRecordWithKnownCredentials(record, store, checklistStore, generatedStore);
   const numberedNetflix = record.member.kind === 'gbuts' && record.serviceType === '넷플릭스' && /^[1-5]$/.test(record.profileName);
   const numberedDisney = record.member.kind === 'gbuts' && record.serviceType === '디즈니플러스' && /^[1-6]$/.test(record.profileName);
+  const disneyMailboxUrl = record.serviceType === '디즈니플러스'
+    && findGeneratedAccount(generatedStore, record.serviceType, record.accountEmail)?.emailAccessProvider === 'tinyhost'
+    ? tinyhostMailboxUrl(credentialRecord.accountEmail) : '';
   const base = {
     presentation: numberedNetflix ? 'gbuts-netflix-numbered' as const : numberedDisney ? 'gbuts-disney-numbered' as const : undefined,
     serviceType: record.serviceType,
     accountEmail: usablePartyAccessCredential(credentialRecord.accountEmail),
     memberName: record.member.memberName,
     profileName: numberedNetflix ? undefined : record.profileName || record.member.memberName,
-    emailAccessUrl: numberedDisney ? '' : resolvePartyAccessEmailAccessUrl(credentialRecord, checklistStore, generatedStore),
+    emailAccessUrl: disneyMailboxUrl || (numberedDisney ? '' : resolvePartyAccessEmailAccessUrl(credentialRecord, checklistStore, generatedStore)),
     partyProfiles: numberedNetflix ? [] : buildPartyAccessProfileStatuses(record, store, now, profileAssignments),
     period: { startDateTime: record.member.startDateTime || null, endDateTime: record.member.endDateTime || null },
     audit: { memberId: record.member.memberId, allowed: allowed.allowed, reason: allowed.reason, viewedAt: now },

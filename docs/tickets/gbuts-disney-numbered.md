@@ -17,3 +17,11 @@ Production: committed release `ca38a48` built on the server and activated with a
 - [x] Verify the actual Disney poller/request/resolver, then commit/push/deploy and check runtime health.
 
 Direct-request verification: 47 tests pass across four suites, including numbered Disney private-room isolation, one reply per buyer request, current credential changes on a later request, no plaintext credentials in the request journal, real resolver lease validation and refund denial. Client build passed. Release `e973aa5` pushed and deployed from the local Git archive; service active with zero restarts, deployed guide includes the `!` offer, production polling advanced and lastError remains null. Existing buyer for #17436 already had the old guide; sent the new non-secret usage notice once via the seller 1:1 UI and verified it in history. No synthetic buyer request or credential message was sent.
+
+## Tinyhost email-code link
+
+- [x] Implement explicit per-account Tinyhost setting, account-matched URL, both page renderers and revised fallback copy.
+- [x] Verify identity checks, unconfigured accounts, existing consent and both rendered links; commit/push/deploy.
+- [ ] Enable only the requested account, verify its existing buyer access page and update the live listing's contradictory copy.
+
+Tinyhost pre-deploy: 71 focused tests across six suites pass; client build passes. Review kept internal-mailbox validation and frame CSP unchanged, restricts Tinyhost to the explicitly enabled Disney account, requires matching mailbox path and login identity, opens a new tab without referrer, and preserves consent redaction.

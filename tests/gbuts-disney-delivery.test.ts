@@ -6,8 +6,10 @@ import { allocateDisneyProfilesForSync } from '../src/lib/gbuts-disney-profiles'
 import { emptyGbutsOttStore, hasGbutsOttProfileLease } from '../src/lib/gbuts-ott';
 import { buildGbutsDisneyDeliveryText } from '../src/lib/gbuts-ott-templates';
 import { readGbutsOttStore, writeGbutsOttStore } from '../src/lib/gbuts-ott-store';
-import { buildPartyAccessPublicPayload, createPartyAccessLinkRecord } from '../src/lib/party-access';
+import { buildPartyAccessPublicPayload, createPartyAccessLinkRecord, redactPartyAccessPayloadForConsent } from '../src/lib/party-access';
 import { fixtureListing, fixtureOrder } from './fixtures/gbuts-ott';
+import { tinyhostMailboxUrl, safeTinyhostEmailAccessUrl } from '../src/lib/disney-mailbox';
+import { normalizeGeneratedAccountPatch, buildGeneratedAccount } from '../src/lib/generated-accounts';
 import { resolveGbutsOttDirectCredentials } from '../src/lib/gbuts-ott-credentials';
 import { syncGbutsOtt } from '../src/scheduler/gbuts-ott-sync';
 beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-21T06:00:00Z')); });
@@ -57,7 +59,7 @@ test('the real poller sends each private buyer a stable numbered password-only g
  expect(await syncGbutsOtt(deps,client as any,send)).toMatchObject({attempted:2,confirmed:2});
  await syncGbutsOtt(deps,client as any,send);
  expect(send).toHaveBeenCalledTimes(2);
- for(const n of [1,2]) {const text=chats.get(String(n+10))![0].message;expect(text).toContain(`${n}번 프로필을 새로`);expect(text).toContain('비밀번호 로그인만');expect(text).not.toContain('이메일 PIN');}
+ for(const n of [1,2]) {const text=chats.get(String(n+10))![0].message;expect(text).toContain(`${n}번 프로필을 새로`);expect(text).toContain('비밀번호 로그인입니다');expect(text).not.toContain('이메일 PIN');}
  expect(chats.get('11')![0].message).toContain('! 만 남겨주세요');
  chats.get('11')!.push({senderSeq:11,messageType:'TEXT',message:' ! ',createdAt:new Date().toISOString()});
  await syncGbutsOtt(deps,client as any,send);
@@ -88,4 +90,21 @@ test('public account payload suppresses mail access for numbered Disney but pres
  expect(resolveGbutsOttDirectCredentials(order,f.store.listings['request-1'],data)).toEqual({id:'account@example.com',password:'latest-password'});
  order.cancelStatus='REFUNDED';
  expect(()=>resolveGbutsOttDirectCredentials(order,f.store.listings['request-1'],data)).toThrow('구매자의 계정 배정');
+});
+
+ test('Tinyhost is explicitly enabled per Disney account, follows its address, and remains redacted before consent', () => {
+ const account={...buildGeneratedAccount({serviceType:'디즈니플러스',alias:{email:'mailbox@example.com'},password:'private-password',pin:'',memo:''}),emailAccessProvider:'tinyhost' as const};
+ const record=createPartyAccessLinkRecord({token:'test-mailbox',serviceType:'디즈니플러스',accountEmail:account.email,profileName:'1',member:{kind:'gbuts',memberId:'100:1',memberName:'buyer',status:'active',endDateTime:'2026-12-01',verifiedAt:new Date().toISOString()}});
+ const payload=buildPartyAccessPublicPayload(record,{}, {[account.id]:account});
+ expect(payload.emailAccessUrl).toBe('https://tinyhost.shop/mailbox@example.com');
+ expect(redactPartyAccessPayloadForConsent(payload).emailAccessUrl).toBeUndefined();
+ expect(buildPartyAccessPublicPayload({...record,accountEmail:'other@example.com'}, {}, {[account.id]:account}).emailAccessUrl).toBe('');
+ expect(buildPartyAccessPublicPayload({...record,serviceType:'넷플릭스'}, {}, {[account.id]:account}).emailAccessUrl).not.toContain('tinyhost');
+ expect(normalizeGeneratedAccountPatch({emailAccessProvider:'tinyhost'})).toEqual({emailAccessProvider:'tinyhost'});
+ expect(normalizeGeneratedAccountPatch({emailAccessProvider:null})).toEqual({emailAccessProvider:null});
+ expect(()=>normalizeGeneratedAccountPatch({emailAccessProvider:'other'} as any)).toThrow();
+ expect(tinyhostMailboxUrl('mailbox@example.com')).toBe(payload.emailAccessUrl);
+ expect(tinyhostMailboxUrl('x@example.com/other')).toBe('');
+ for(const value of ['https://tinyhost.shop/other@example.com','https://tinyhost.shop.evil.test/mailbox@example.com','http://tinyhost.shop/mailbox@example.com','https://tinyhost.shop/mailbox@example.com?x=1','https://user:pw@tinyhost.shop/mailbox@example.com','javascript:alert(1)']) expect(safeTinyhostEmailAccessUrl(value,account.email)).toBe('');
+ expect(safeTinyhostEmailAccessUrl(payload.emailAccessUrl,account.email)).toBe(payload.emailAccessUrl);
 });

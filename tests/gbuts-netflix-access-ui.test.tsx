@@ -51,5 +51,11 @@ test('foreign mail URLs cannot open a frame and legacy GrayTag presentation rema
 
 test('numbered Disney React view shows password-only instructions with no email access or deletion guidance', async () => {
  const host=await render({...payload,presentation:'gbuts-disney-numbered',serviceType:'디즈니플러스',profileName:'6'});
- expect(host.textContent).toContain('프로필 6번을 새로 만들어');expect(host.textContent).toContain('ID·비밀번호로만');expect(host.textContent).not.toContain('프로필이 꽉 찼다면');expect(host.querySelector('[aria-label="파티원 프로필"]')).toBeNull();expect(host.querySelector('iframe')).toBeNull();expect(host.textContent).not.toContain('이메일 확인하러 가기');
+ expect(host.textContent).toContain('프로필 6번을 새로 만들어');expect(host.textContent).toContain('ID·비밀번호 로그인');expect(host.textContent).not.toContain('프로필이 꽉 찼다면');expect(host.querySelector('[aria-label="파티원 프로필"]')).toBeNull();expect(host.querySelector('iframe')).toBeNull();expect(host.textContent).not.toContain('이메일 확인하러 가기');
+});
+
+ test('Disney mailbox is an account-matched external link, while consent still hides it', async () => {
+ const value={...payload,presentation:'gbuts-disney-numbered',serviceType:'디즈니플러스',profileName:'1',accountEmail:'mailbox@example.com',emailAccessUrl:'https://tinyhost.shop/mailbox@example.com'};
+ const host=await render(value);const link=host.querySelector<HTMLAnchorElement>('a[href^="https://tinyhost.shop/"]');
+ expect(link?.href).toBe(value.emailAccessUrl);expect(link?.rel).toBe('noreferrer');expect(host.textContent).toContain('TV 등에서 이메일 인증 코드를 요구하면');expect(host.querySelector('iframe')).toBeNull();
 });

@@ -24,6 +24,7 @@ export interface GeneratedAccount {
   registrationKind?: 'manual';
   expiryDate?: string | null;
   tvingLoginId?: string;
+  emailAccessProvider?: 'tinyhost' | null;
 }
 
 export interface SimpleLoginAliasRef {
@@ -228,6 +229,10 @@ export function normalizeGeneratedAccountPatch(input: Partial<GeneratedAccount>)
     patch.paidAt = input.paymentStatus === 'paid' ? (input.paidAt || new Date().toISOString()) : null;
   }
   if (input.expiryDate !== undefined) patch.expiryDate = validateAccountExpiry(input.expiryDate);
+  if (input.emailAccessProvider !== undefined) {
+    if (input.emailAccessProvider !== null && input.emailAccessProvider !== 'tinyhost') throw new Error('이메일 확인 서비스를 확인해주세요.');
+    patch.emailAccessProvider = input.emailAccessProvider;
+  }
   return patch;
 }
 

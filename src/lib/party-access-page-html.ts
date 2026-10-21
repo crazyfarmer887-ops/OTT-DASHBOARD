@@ -1,4 +1,5 @@
 import { GBUTS_ACCOUNT_CHANGE_WARNING } from './gbuts-ott-templates';
+import { safeTinyhostEmailAccessUrl } from './disney-mailbox';
 
 function jsonForScript(value: string): string {
   return JSON.stringify(value).replace(/</g, '\\u003c').replace(/>/g, '\\u003e').replace(/&/g, '\\u0026');
@@ -56,6 +57,7 @@ export function buildPartyAccessHtml(token: string, nonce = ''): string {
       };
       const safeEmailVerifyUrl = (value) => { try { const parsed=new URL(String(value||'').trim()); if(parsed.origin!=='https://email-verify.one'||!(new RegExp('^/email/mail/[^/]+/?$')).test(parsed.pathname)) return ''; parsed.username=''; parsed.password=''; parsed.search=''; parsed.hash=''; return parsed.toString(); } catch (_) { return ''; } };
       const isWavveService = (value) => { const v = String(value || '').trim().toLowerCase().replace(/\\s+/g, ''); return v === '웨이브' || v === 'wavve'; };
+      const safeDisneyEmailUrl = ${safeTinyhostEmailAccessUrl.toString()};
       const getAdminToken = () => {
         try {
           const queryToken = new URLSearchParams(window.location.search).get('admin_token') || '';
@@ -187,6 +189,7 @@ export function buildPartyAccessHtml(token: string, nonce = ''): string {
         const numberedDisney = payload.presentation === 'gbuts-disney-numbered';
         const c = payload.credentials || {}; const profileName = payload.profileName || payload.memberName || '(미확인)';
         const emailAccessUrl = safeEmailVerifyUrl(payload.emailAccessUrl);
+        const disneyMailboxUrl = payload.serviceType === '디즈니플러스' ? safeDisneyEmailUrl(payload.emailAccessUrl, payload.accountEmail || c.id) : '';
         const showEmailAccess = !numberedNetflix && !numberedDisney && Boolean(emailAccessUrl) && !isWavveService(payload.serviceType);
         const isAdminAccess = payload.adminAccess === true;
         if (!isAdminAccess && payload.sensitiveRedacted) {
@@ -198,7 +201,7 @@ export function buildPartyAccessHtml(token: string, nonce = ''): string {
         card.appendChild(el('div','top-warning', isAdminAccess ? '⚠️ 관리자 인증으로 동의 절차를 건너뛰었습니다. 구매자 화면에서는 기존처럼 필수 동의 후 계정 정보가 표시됩니다.' : '⚠️ 계정 정보와 추가회원/자리 설정은 절대 변경하지 마세요. 로그인 안 될 때는 이 페이지를 새로고침해 최신 정보를 먼저 확인해주세요.'));
         const info = el('div','info'); info.appendChild(el('div','service',(payload.serviceType || '') + ' · ' + (payload.memberName || ''))); info.appendChild(el('div','period',fmtDate(payload.period && payload.period.startDateTime) + ' ~ ' + fmtDate(payload.period && payload.period.endDateTime))); card.appendChild(info);
         if (!numberedNetflix && !numberedDisney) card.appendChild(renderProfilePicker(payload, profileName));
-        if (numberedDisney) card.appendChild(el('p',null,'프로필 ' + profileName + '번을 새로 만들어 사용하세요. 이메일 접근 없이 ID·비밀번호로만 로그인하세요. 이메일로 코드 받기를 선택하지 마세요.'));
+        if (numberedDisney) card.appendChild(el('p',null,'프로필 ' + profileName + '번을 새로 만들어 사용하세요. 기본은 ID·비밀번호 로그인입니다. ' + (disneyMailboxUrl ? 'TV 등에서 이메일 인증 코드를 요구하면 아래 이메일 인증 코드 확인 버튼을 이용하세요.' : '이메일 인증이 필요하면 구매하신 1:1 채팅으로 문의해 주세요.')));
         const rows = el('div','rows'); addCredentialRow(rows,'ID',c.id || ''); addCredentialRow(rows,'PW',c.password || ''); card.appendChild(rows);
         if (numberedNetflix) {
           addCredentialRow(rows,'이메일 PIN',c.pin || '등록된 PIN이 없어요');
@@ -206,6 +209,7 @@ export function buildPartyAccessHtml(token: string, nonce = ''): string {
           card.appendChild(el('p',null,'프로필 이름·PIN 변경, 프로필 생성·삭제 및 계정 정보 변경은 금지합니다. ' + accountChangeWarning));
         }
         if (showEmailAccess) { const emailButton = el('button','email-access-button','이메일 확인하러 가기'); emailButton.type='button'; emailButton.onclick=()=>openEmailAccessDialog(payload); card.appendChild(emailButton); }
+        if (disneyMailboxUrl) { const link=el('a','email-access-button','이메일 인증 코드 확인 ↗'); link.href=disneyMailboxUrl; link.target='_blank'; link.rel='noreferrer'; card.appendChild(link); }
         if (isAdminAccess) card.appendChild(renderAdminCredentialEditor(payload));
         card.appendChild(el('div','note','이 페이지는 최신 로그인 정보를 실시간으로 보여줍니다. 비밀번호가 갑자기 안 되면 먼저 새로고침 후 다시 확인해주세요.'));
         wrap.appendChild(card); root.appendChild(wrap);

@@ -42,5 +42,13 @@ test('the public renderer retains GrayTag profiles and rejects a foreign mail fr
 
 test('numbered Disney public HTML shows profile creation and password-only login without any mailbox controls', async () => {
  const f=await page({...payload,presentation:'gbuts-disney-numbered',serviceType:'디즈니플러스',profileName:'6'});
- try {expect(f.document.body.textContent).toContain('프로필 6번을 새로 만들어');expect(f.document.body.textContent).toContain('ID·비밀번호로만');expect(f.document.querySelector('.email-access-button')).toBeNull();expect(f.document.querySelector('.profile-picker')).toBeNull();expect(f.document.getElementById('root')!.textContent).not.toContain('프로필이 꽉 찼다면');} finally {f.dom.window.close();}
+ try {expect(f.document.body.textContent).toContain('프로필 6번을 새로 만들어');expect(f.document.body.textContent).toContain('ID·비밀번호 로그인');expect(f.document.querySelector('.email-access-button')).toBeNull();expect(f.document.querySelector('.profile-picker')).toBeNull();expect(f.document.getElementById('root')!.textContent).not.toContain('프로필이 꽉 찼다면');} finally {f.dom.window.close();}
+});
+
+ test('configured Disney mailbox opens the matching Tinyhost page directly without PIN or iframe', async () => {
+ const email='mailbox@example.com';
+ const f=await page({...payload,presentation:'gbuts-disney-numbered',serviceType:'디즈니플러스',profileName:'1',accountEmail:email,emailAccessUrl:'https://tinyhost.shop/'+email});
+ try {const root=f.document.getElementById('root')!;const link=root.querySelector<HTMLAnchorElement>('a[href^="https://tinyhost.shop/"]');expect(link?.href).toBe('https://tinyhost.shop/'+email);expect(link?.target).toBe('_blank');expect(link?.rel).toBe('noreferrer');expect(root.textContent).toContain('TV 등에서 이메일 인증 코드를 요구하면');expect(root.querySelector('iframe')).toBeNull();expect(root.textContent).not.toContain('PIN을 먼저');} finally {f.dom.window.close();}
+ const other=await page({...payload,presentation:'gbuts-disney-numbered',serviceType:'디즈니플러스',accountEmail:email,emailAccessUrl:'https://tinyhost.shop/other@example.com'});
+ try {expect(other.document.getElementById('root')!.querySelector('a[href^="https://tinyhost.shop/"]')).toBeNull();} finally {other.dom.window.close();}
 });

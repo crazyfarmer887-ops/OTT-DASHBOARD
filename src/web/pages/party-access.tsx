@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { AlertTriangle, CheckCircle2, Copy, ExternalLink, KeyRound, Loader2, Lock, Mail, ShieldCheck, X } from "lucide-react";
 import { getProfileAvatarTheme } from "../../lib/profile-avatar-theme";
 import { safeEmailVerifyUrl } from "../lib/email-verify-url";
+import { safeTinyhostEmailAccessUrl } from '../../lib/disney-mailbox';
 
 import GbutsNetflixEmailPanel from '../components/gbuts-netflix-email-panel';
 import { GBUTS_ACCOUNT_CHANGE_WARNING } from '../../lib/gbuts-ott-templates';
@@ -171,6 +172,7 @@ export default function PartyAccessPage() {
     } catch {}
   };
   const emailAccessUrl = safeEmailVerifyUrl(payload.emailAccessUrl);
+  const disneyMailboxUrl = payload.serviceType === '디즈니플러스' ? safeTinyhostEmailAccessUrl(payload.emailAccessUrl, payload.accountEmail || payload.credentials?.id) : '';
   const showEmailAccess = !numberedNetflix && !numberedDisney && Boolean(emailAccessUrl) && !isWavveService(payload.serviceType);
   const displayProfiles = partyProfiles.length > 0 ? partyProfiles : [{
     profileName,
@@ -321,7 +323,8 @@ export default function PartyAccessPage() {
             ))}
           </div>
 
-          {numberedDisney && <p role="note" style={{fontWeight:800}}>프로필 {profileName}번을 새로 만들어 사용하세요. 이메일 접근 없이 ID·비밀번호로만 로그인하세요. 이메일로 코드 받기를 선택하지 마세요.</p>}
+          {numberedDisney && <p role="note" style={{fontWeight:800}}>프로필 {profileName}번을 새로 만들어 사용하세요. 기본은 ID·비밀번호 로그인입니다. {disneyMailboxUrl ? 'TV 등에서 이메일 인증 코드를 요구하면 아래 이메일 인증 코드 확인 버튼을 이용하세요.' : '이메일 인증이 필요하면 구매하신 1:1 채팅으로 문의해 주세요.'}</p>}
+          {disneyMailboxUrl && <a href={disneyMailboxUrl} target="_blank" rel="noreferrer" style={{display:'block',textAlign:'center',padding:14,borderRadius:16,background:'var(--action)',color:'#fff',fontWeight:900,textDecoration:'none',marginBottom:10}}>이메일 인증 코드 확인 ↗</a>}
           {numberedNetflix && <GbutsNetflixEmailPanel url={emailAccessUrl} pin={payload.credentials?.pin} />}
           {numberedNetflix && <p style={{ fontSize:12, color:"#991B1B", lineHeight:1.6 }}>프로필 이름·PIN 변경, 프로필 생성·삭제 및 계정 정보 변경은 금지합니다. {GBUTS_ACCOUNT_CHANGE_WARNING}</p>}
           {showEmailAccess && <button type="button" onClick={() => { setPinCopyStatus('idle'); setEmailDialogOpen(true); }} style={{ width:'100%', border:'none', borderRadius:16, padding:'14px 16px', background:'linear-gradient(135deg,var(--action),var(--action))', color:'#fff', fontSize:14, fontWeight:1000, display:'flex', alignItems:'center', justifyContent:'center', gap:8, cursor:'pointer', marginBottom:10, boxShadow:'0 10px 24px rgba(124,58,237,.24)' }}><Mail size={17} /> 이메일 확인하러 가기</button>}
