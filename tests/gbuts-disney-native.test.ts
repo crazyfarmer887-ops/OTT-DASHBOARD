@@ -89,3 +89,12 @@ test('formatting-only changes never resend previously confirmed Disney credentia
  await syncGbutsDirectCredentials(store,[order],99,{credentials} as any,{openPrivateRoom:async()=> 'room',getChat:async()=>({messages:[]})} as any,()=>{},send);
  expect(send).not.toHaveBeenCalled();expect(credentials).not.toHaveBeenCalled();expect(order.directDelivery).toEqual(previous);
 });
+test('renewal scans only newer seller pages and rejects unordered/duplicated pages',async()=>{
+ const post=(seq:number)=>({seq,category1:{seq:6},memberLimit:5,memberCount:0,status:'ON_SALE',subscriptionEndsAt:'2026-12-01'});
+ const pages:any[][]=[[post(110),post(109)],[post(108),post(107)],[post(106),post(105)]];
+ const transport=vi.fn(async(url:any)=>new Response(JSON.stringify({success:true,error:null,response:pages[Number(new URL(String(url)).searchParams.get('page'))-1]||[]})));
+ const client=createGbutsOttSellerClient('test',transport);expect(await client.latestPostSeq()).toBe(110);transport.mockClear();
+ expect((await client.listPostsAfter(108)).map(p=>p.seq)).toEqual([110,109]);expect(transport).toHaveBeenCalledTimes(2);
+ pages[0]=[post(109),post(110)];await expect(client.latestPostSeq()).rejects.toThrow('최신순');
+ pages[0]=[post(110),post(109)];pages[1]=[post(109),post(108)];await expect(client.listPostsAfter(100)).rejects.toThrow('페이지 순서');
+});

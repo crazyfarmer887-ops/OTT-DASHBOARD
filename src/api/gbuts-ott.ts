@@ -1,3 +1,5 @@
+import { renewDueGbutsDisneyListings, DISNEY_RENEWAL_INTERVAL } from '../scheduler/gbuts-disney-renewal';
+import { loadSafeModeConfig } from './safe-mode';
 import { makeGbutsOttDescription } from '../lib/gbuts-ott-templates';
 import { Hono } from 'hono';
 import { createHash, randomUUID } from 'node:crypto';
@@ -89,7 +91,7 @@ export function registerGbutsOttRoutes(app: Hono, deps: GbutsOttRuntimeDependenc
         }));
       } catch { unlinkedCheckError = '벗츠 판매글 연결 상태를 확인하지 못했습니다. 기존 주문은 표시하지만 미연결 글 자동 감시 상태는 확인이 필요합니다.'; }
       return c.json({ ok: true, enabled: process.env.GBUTS_OTT_SYNC_ENABLED === 'true', accounts: [], unlinked,
-        unlinkedCheckError, listings: Object.values(store.listings), orders: Object.values(store.orders), lastSuccess: store.lastSuccess, lastError: store.lastError });
+        unlinkedCheckError, listings: Object.values(store.listings), orders: Object.values(store.orders), renewals: Object.values(store.renewals || {}), lastSuccess: store.lastSuccess, lastError: store.lastError });
     } catch (e) { return c.json({ ok: false, error: e instanceof Error ? e.message : '벗츠 주문 기록 조회 실패' }, 503); }
   });
   app.get('/gbuts/ott', async c => {
@@ -236,6 +238,34 @@ export function registerGbutsOttRoutes(app: Hono, deps: GbutsOttRuntimeDependenc
     if (listing.state === 'registered') return c.json({ ok: true, listing });
     return c.json({ ok: false, listing, error: '등록 결과를 확인해야 합니다. 연결된 판매글을 확인해주세요.' }, 409);
   });
+  app.get('/gbuts/ott/renewals', c => {
+    const store = readGbutsOttStore();
+    return c.json({ ok: true, enabled: process.env.GBUTS_OTT_SYNC_ENABLED === 'true', safeMode: loadSafeModeConfig().enabled,
+      renewals: Object.values(store.renewals || {}), lastSuccess: store.lastSuccess, lastError: store.lastError });
+  });
+  app.post('/gbuts/ott/renewals', c => withGbutsOttInventory(async () => {
+    try {
+      const body = await c.req.json() as { enabled: boolean; listingIds: string[] };
+      if (typeof body.enabled !== 'boolean' || !Array.isArray(body.listingIds) || !body.listingIds.length) throw new Error('자동 재등록할 판매글을 선택해주세요.');
+      const store = readGbutsOttStore(); store.renewals ||= {};
+      const selected = body.listingIds.map(id => store.listings[id]);
+      if (selected.some(l => !l || l.deliveryMode !== 'disney-numbered-password' || !l.postSeq || !['registered', 'closed'].includes(l.state) || l.endDate <= koreaToday())) throw new Error('현재 디즈니 판매글을 확인해주세요.');
+      for (const listing of selected) {
+        const key = listing.accountEmail.trim().toLowerCase(); const previous = store.renewals[key];
+        if (previous && previous.listingId !== listing.id) throw new Error('최근 재등록된 판매글을 선택해주세요.');
+        store.renewals[key] = previous ? { ...previous, enabled: body.enabled } : {
+          accountEmail: listing.accountEmail, capacity: listing.capacity, listingId: listing.id, enabled: body.enabled,
+          nextAt: new Date(Date.now() + DISNEY_RENEWAL_INTERVAL).toISOString(),
+        };
+      }
+      writeGbutsOttStore(store); return c.json({ ok: true, renewals: Object.values(store.renewals) });
+    } catch (e) { return c.json({ ok: false, error: e instanceof Error ? e.message : '자동 재등록 설정 실패' }, 409); }
+  }));
+  app.post('/gbuts/ott/renewals/run', c => withGbutsOttInventory(async () => {
+    if (process.env.GBUTS_OTT_SYNC_ENABLED !== 'true' || loadSafeModeConfig().enabled) return c.json({ ok: false, error: '판매 자동화가 일시정지 상태입니다.' }, 409);
+    const result = await renewDueGbutsDisneyListings(deps, gbutsOttClient());
+    return c.json({ ok: result.errors === 0, ...result, renewals: Object.values(readGbutsOttStore().renewals || {}) });
+  }));
   app.post('/gbuts/ott/listings/:id/reconcile', c => withGbutsOttInventory(async () => {
     try {
       const store = readGbutsOttStore(); const listing = store.listings[c.req.param('id')];

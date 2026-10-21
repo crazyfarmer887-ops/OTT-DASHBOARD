@@ -1,5 +1,6 @@
+import { renewDueGbutsDisneyListings } from './gbuts-disney-renewal';
 import { GbutsChatDeliveryError, gbutsChatContainsText } from '../lib/gbuts-chat-delivery';
-import { hasGbutsOttProfileLease, GBUTS_OTT_CATEGORIES, activeOttOrder, deliverableOttOrder, ottDate, ottKey, sharedOttAccounts, updateGbutsOttOrders, type GbutsOttListing, type GbutsOttManagement, type GbutsOttOrder, type GbutsOttStore } from '../lib/gbuts-ott';
+import { disneyAccountCapacity, hasGbutsOttProfileLease, koreaToday, GBUTS_OTT_CATEGORIES, activeOttOrder, deliverableOttOrder, ottDate, ottKey, sharedOttAccounts, updateGbutsOttOrders, type GbutsOttListing, type GbutsOttManagement, type GbutsOttOrder, type GbutsOttStore } from '../lib/gbuts-ott';
 import { createGbutsOttSellerClient } from '../lib/gbuts-ott-client';
 import { readGbutsOttStore, withGbutsOttInventory, writeGbutsOttStore } from '../lib/gbuts-ott-store';
 import { loadGbutsSession } from '../lib/gbuts-session';
@@ -28,7 +29,13 @@ export async function syncGbutsOtt(deps: GbutsOttRuntimeDependencies,
   client: ReturnType<typeof createGbutsOttSellerClient>, sendText?: typeof sendGbutsText): Promise<{ orders: number; attempted: number; confirmed: number }> {
   const read = deps.readStore || readGbutsOttStore; const write = deps.writeStore || writeGbutsOttStore;
   const store = read(); const now = new Date().toISOString();
-  const listings = Object.values(store.listings).filter(x => x.state === 'registered' || x.state === 'closed');
+  const listings = Object.values(store.listings).filter(listing => {
+    if (listing.state === 'registered') return true;
+    if (listing.state !== 'closed') return false;
+    if (!listing.replacedBy) return true;
+    return Object.values(store.orders).some(order => order.listingId === listing.id
+      && (activeOttOrder(order) || (order.status === 'MISSING' && order.cancelStatus !== 'REFUNDED' && order.endDate >= koreaToday())));
+  });
   let attempted = 0; let confirmed = 0;
   // Read all bound listings before issuing any chat or opening buyer access.
   for (const listing of listings) {
@@ -55,7 +62,7 @@ export async function syncGbutsOtt(deps: GbutsOttRuntimeDependencies,
   const eligible = Object.values(store.orders).filter(order => deliverableOttOrder(order) && order.verifiedAt === now);
   const sellerSeq = eligible.length ? await client.sellerAccountSeq() : 0;
   const deliveryText = (order: GbutsOttOrder) => order.deliveryMessage || (store.listings[order.listingId].deliveryMode === 'disney-numbered-password'
-    ? buildGbutsDisneyDeliveryText(order.accessUrl!, order.profileNumber!, store.listings[order.listingId].capacity) : store.listings[order.listingId].serviceType === '넷플릭스'
+    ? buildGbutsDisneyDeliveryText(order.accessUrl!, order.profileNumber!, disneyAccountCapacity(store, store.listings[order.listingId])) : store.listings[order.listingId].serviceType === '넷플릭스'
     ? (order.attemptedAt || order.delivery === 'attempted' ? buildGbutsNetflixLegacyDeliveryText : buildGbutsNetflixDeliveryText)(order.accessUrl!, order.profileNumber!)
     : buildGbutsOttDeliveryText(order.accessUrl!));
   // Confirmation discloses nothing new: use the persisted link and profile lease,
@@ -158,6 +165,8 @@ export function startGbutsOttSync(deps: GbutsOttRuntimeDependencies): (() => voi
       if (!token) return;
       try {
         const result = await syncGbutsOtt(deps, createGbutsOttSellerClient(token));
+        const renewals = await renewDueGbutsDisneyListings(deps, createGbutsOttSellerClient(token));
+        if (renewals.renewed || renewals.errors) console.log('[GbutsDisneyRenewal]', renewals);
         if (result.attempted || result.confirmed) console.log('[GbutsOttSync]', result);
       } catch (e) {
         const store = readGbutsOttStore(); store.lastError = e instanceof Error ? e.message : '벗츠 주문 확인 실패'; writeGbutsOttStore(store);

@@ -9,6 +9,8 @@ export interface GbutsOttListing {
   state: GbutsOttListingState; postSeq?: number; createdAt: string; verifiedAt?: string; error?: string;
   beforePostSeqs?: number[];
   deliveryMode?: 'disney-numbered-password';
+  replacedBy?: string;
+  repostAfterSeq?: number;
   repostFrom?: string;
   repostPhase?: 'closing' | 'publishing';
 }
@@ -30,8 +32,13 @@ export interface GraytagOttClaim {
   id: string; serviceType: string; accountEmail: string; productUsid?: string;
   state: 'pending' | 'registered' | 'uncertain'; createdAt: string;
 }
+export interface GbutsOttRenewal {
+  accountEmail: string; capacity: number; listingId: string; enabled: boolean; nextAt: string;
+  pendingId?: string; lastSuccess?: string; lastError?: string;
+}
 export interface GbutsOttStore {
   version: 1; listings: Record<string, GbutsOttListing>; orders: Record<string, GbutsOttOrder>;
+  renewals?: Record<string, GbutsOttRenewal>;
   graytagClaims: Record<string, GraytagOttClaim>; lastSuccess: string | null; lastError: string | null;
 }
 export const emptyGbutsOttStore = (): GbutsOttStore => ({ version: 1, listings: {}, orders: {}, graytagClaims: {}, lastSuccess: null, lastError: null });
@@ -56,6 +63,12 @@ export function ottDate(value: unknown): string {
 }
 export function koreaToday(now = new Date()): string { return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now); }
 export function ottKey(serviceType: string, email: string): string { return `${serviceType}:${email.trim().toLowerCase()}`; }
+export function disneyAccountCapacity(store: GbutsOttStore, listing: GbutsOttListing): number {
+  const configured = store.renewals?.[listing.accountEmail.trim().toLowerCase()]?.capacity;
+  return configured || Math.max(...Object.values(store.listings)
+    .filter(other => ottKey(other.serviceType, other.accountEmail) === ottKey(listing.serviceType, listing.accountEmail))
+    .map(other => other.capacity));
+}
 export function activeOttOrder(order: Pick<GbutsOttOrder, 'status' | 'cancelStatus' | 'endDate'>, now = new Date()): boolean {
   return order.status === 'APPLY' && order.cancelStatus !== 'REFUNDED' && Boolean(order.endDate) && order.endDate >= koreaToday(now);
 }

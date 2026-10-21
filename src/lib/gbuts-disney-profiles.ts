@@ -1,4 +1,4 @@
-import { activeOttOrder, deliverableOttOrder, holdsDisneyProfile, koreaToday, ottKey, type GbutsOttManagement, type GbutsOttStore } from './gbuts-ott';
+import { disneyAccountCapacity, activeOttOrder, deliverableOttOrder, holdsDisneyProfile, koreaToday, ottKey, type GbutsOttManagement, type GbutsOttStore } from './gbuts-ott';
 
 /** Numbered Disney listings use a dedicated six-place account. Never renumber a delivered buyer. */
 export function allocateDisneyProfilesForSync(store: GbutsOttStore, management: GbutsOttManagement, manual: any[], now = new Date()): Map<string, string> {
@@ -16,6 +16,7 @@ export function allocateDisneyProfilesForSync(store: GbutsOttStore, management: 
       for (const order of orders) if (order.profileNumber !== undefined && !order.profileReleasedAt && (order.cancelStatus === 'REFUNDED' || order.endDate < koreaToday(now))) {
         order.profileReleasedAt = now.toISOString(); order.profileReleaseReason = order.cancelStatus === 'REFUNDED' ? 'refunded' : 'expired';
       }
+      const capacity = disneyAccountCapacity(store, listings.find(l => ottKey(l.serviceType, l.accountEmail) === key)!);
       const used = new Set<number>();
       for (const order of orders.filter(x => activeOttOrder(x, now) || holdsDisneyProfile(x, store.listings[x.listingId], now))) {
         if (store.listings[order.listingId].deliveryMode !== 'disney-numbered-password' || order.profileReleasedAt)
@@ -24,17 +25,17 @@ export function allocateDisneyProfilesForSync(store: GbutsOttStore, management: 
           if (order.profileName || order.attemptedAt || order.delivery === 'confirmed') throw new Error('기존 디즈니 프로필은 자동으로 변경하지 않습니다.');
           continue;
         }
-        if (!Number.isInteger(order.profileNumber) || order.profileNumber < 1 || order.profileNumber > 6 || order.profileName !== String(order.profileNumber) || used.has(order.profileNumber))
+        if (!Number.isInteger(order.profileNumber) || order.profileNumber < 1 || order.profileNumber > capacity || order.profileName !== String(order.profileNumber) || used.has(order.profileNumber))
           throw new Error('디즈니 프로필 번호가 중복되거나 올바르지 않습니다.');
         used.add(order.profileNumber);
       }
       const pending = orders.filter(x => deliverableOttOrder(x, now) && x.profileNumber === undefined)
         .map(order => ({ order, time: Date.parse((order.purchasedAt || order.startDate).replace(' ', 'T') + (/(?:Z|[+-]\d\d:\d\d)$/.test(order.purchasedAt || order.startDate) ? '' : (order.purchasedAt || order.startDate).length === 10 ? 'T00:00:00+09:00' : '+09:00')) }));
       if (pending.some(x => !Number.isFinite(x.time))) throw new Error('디즈니 구매 순서를 확인하지 못했습니다.');
-      if (pending.length + used.size > 6) throw new Error('디즈니의 1~6번 프로필 자리가 부족합니다.');
+      if (pending.length + used.size > capacity) throw new Error('디즈니 계정의 프로필 자리가 부족합니다.');
       pending.sort((a, b) => a.time - b.time || a.order.postSeq - b.order.postSeq || a.order.memberSeq - b.order.memberSeq);
       for (const { order } of pending) {
-        const number = [1, 2, 3, 4, 5, 6].find(n => !used.has(n))!;
+        const number = Array.from({length:capacity}, (_, i) => i + 1).find(n => !used.has(n))!;
         order.profileNumber = number; order.profileName = String(number); used.add(number);
       }
     } catch (error) { errors.set(key, error instanceof Error ? error.message : '디즈니 프로필 확인이 필요합니다.'); }

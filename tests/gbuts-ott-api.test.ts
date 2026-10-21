@@ -327,3 +327,14 @@ describe('unsold Disney reservation transfer', () => {
     expect(readGbutsOttStore().listings['replacement-123'].state).toBe('failed');
   });
 });
+
+it('enables hourly renewal once and preserves its deadline/capacity across repeated configuration and disable', async () => {
+ const f=fixture();f.deps.management.mockResolvedValue({services:[{serviceType:'디즈니플러스',accounts:[{email:'account@example.com',serviceType:'디즈니플러스',totalSlots:5,members:[],expiryDate:'20261231',generatedAccount:{paymentStatus:'paid'}}]}],onSaleByKeepAcct:{},cache:{status:'hit',updatedAt:new Date().toISOString()}} as any);
+ expect((await f.publish({serviceType:'디즈니플러스',capacity:5})).status).toBe(200);
+ const configure=(enabled:boolean)=>f.app.request('/gbuts/ott/renewals',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({enabled,listingIds:['request-123']})});
+ expect((await configure(true)).status).toBe(200);
+ const original=readGbutsOttStore().renewals!['account@example.com'];expect(original.capacity).toBe(5);expect(Date.parse(original.nextAt)-Date.now()).toBe(3600000);
+ vi.setSystemTime(new Date(Date.now()+60000));expect((await configure(true)).status).toBe(200);expect(readGbutsOttStore().renewals!['account@example.com'].nextAt).toBe(original.nextAt);
+ expect((await configure(false)).status).toBe(200);expect(readGbutsOttStore().renewals!['account@example.com'].enabled).toBe(false);
+ const status=await (await f.app.request('/gbuts/ott/orders')).json();expect(status.renewals).toHaveLength(1);
+});

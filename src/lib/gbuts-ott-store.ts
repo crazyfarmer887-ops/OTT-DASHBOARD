@@ -35,6 +35,17 @@ export function readGbutsOttStore(path = process.env.GBUTS_OTT_STORE_PATH || DEF
   for (const [id, claim] of Object.entries(data.graytagClaims) as Array<[string, any]>)
     if (claim?.id !== id || !GBUTS_OTT_CATEGORIES[claim.serviceType] || typeof claim.accountEmail !== 'string' || !claim.accountEmail.trim()
       || !['pending', 'registered', 'uncertain'].includes(claim.state)) throw new Error('그레이태그 자리 확보 기록이 올바르지 않습니다.');
+  if (data.renewals !== undefined) {
+    if (!data.renewals || typeof data.renewals !== 'object' || Array.isArray(data.renewals)) throw new Error('자동 재등록 설정이 올바르지 않습니다.');
+    for (const [key, policy] of Object.entries(data.renewals) as Array<[string, any]>) {
+      const listing = data.listings[policy?.listingId];
+      if (!listing || listing.deliveryMode !== 'disney-numbered-password' || key !== policy.accountEmail?.trim().toLowerCase()
+        || listing.accountEmail.trim().toLowerCase() !== key || typeof policy.enabled !== 'boolean'
+        || !Number.isInteger(policy.capacity) || policy.capacity < 1 || policy.capacity > 6
+        || !Number.isFinite(Date.parse(policy.nextAt)) || (policy.pendingId && !data.listings[policy.pendingId]))
+        throw new Error('자동 재등록 설정이 올바르지 않습니다.');
+    }
+  }
   return data;
 }
 export function writeGbutsOttStore(store: GbutsOttStore, path = process.env.GBUTS_OTT_STORE_PATH || DEFAULT_PATH) { writeJsonAtomic(path, store); }
