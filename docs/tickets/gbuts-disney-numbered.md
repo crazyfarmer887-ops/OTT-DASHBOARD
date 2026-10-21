@@ -76,5 +76,10 @@ Release `3ac5bb7` committed/pushed and deployed after 87 focused tests and the c
 - [x] Inspect live recruiting posts and historical rosters: only #17453, #17452 and #17451 qualify; retain sold #17454 and #17436.
 - [x] Save the requested title on the two retained Disney posts through the seller edit form.
 - [x] Add a durable, serialized same-account reservation transfer with empty-roster/condition checks, purchase-race handling and read-only reconciliation after unknown creation outcomes.
-- [ ] Verify focused tests/build and review; commit/push/deploy.
-- [ ] Close/repost the three qualifying listings and verify same account, native credentials, conditions, title and automatic delivery binding.
+- [x] Verify focused tests/build and review; commit/push/deploy.
+- [x] Close/repost the three qualifying listings and verify same account, native credentials, conditions, title and automatic delivery binding.
+
+
+Production: source `62ee9e2` passed all 93 focused tests and the build locally and on the server. Reviewed purchase races, retained profile leases, changed closing conditions, unknown close/create responses and stable request replay. Activated `/home/ubuntu/releases/aio-dashboard-62ee9e2`, preserving the existing service configuration and data paths. Authenticated order monitoring remains enabled, lastError null and no unlinked sales.
+
+Verified replacement mapping: #17453 → #17466 (`ma1ac`), #17452 → #17467 (`philliph`), #17451 → #17468 (`dorothy`), all at the existing salakoais.shop domain. Originals are CLOSED with zero historical members. New posts are ON_SALE at 150 KRW/day, five places, November 20 expiry. All five live Disney posts (#17466–17468, #17454, #17436) read back the requested title, matching current native credentials and mailbox URL, adult-verification description and numbered automatic delivery binding. The retained posts keep their original five/six-place capacities. Existing private delivery receipts are unchanged; no buyer test/broadcast was sent. Private pre-operation snapshot and stable request receipts are under `data/backups/disney-repost-62ee9e2/`. Seller browser read-back and screenshot confirm the new listings and titles.
