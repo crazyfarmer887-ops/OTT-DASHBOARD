@@ -70,3 +70,11 @@ Five existing active buyers received exactly one two-part credential/mailbox/ref
 - [x] Verify formatting/byte limits and no resend, commit/push/deploy and check unchanged existing receipts. No live test message or broadcast authorized for this formatting update.
 
 Release `3ac5bb7` committed/pushed and deployed after 87 focused tests and the client build passed locally and on the host. Runtime-only preview confirms the three headed sections fit provider message limits. Existing seven Disney direct-delivery receipts compare unchanged against the pre-deploy snapshot; no formatting migration or test chat was sent. Service active, zero restarts, authenticated orders endpoint 200, sync enabled, polling advanced and lastError null. Existing environment/data settings preserved.
+
+## Unsold listing renewal and Disney title
+
+- [x] Inspect live recruiting posts and historical rosters: only #17453, #17452 and #17451 qualify; retain sold #17454 and #17436.
+- [x] Save the requested title on the two retained Disney posts through the seller edit form.
+- [x] Add a durable, serialized same-account reservation transfer with empty-roster/condition checks, purchase-race handling and read-only reconciliation after unknown creation outcomes.
+- [ ] Verify focused tests/build and review; commit/push/deploy.
+- [ ] Close/repost the three qualifying listings and verify same account, native credentials, conditions, title and automatic delivery binding.

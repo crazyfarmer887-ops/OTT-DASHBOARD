@@ -9,6 +9,8 @@ export interface GbutsOttListing {
   state: GbutsOttListingState; postSeq?: number; createdAt: string; verifiedAt?: string; error?: string;
   beforePostSeqs?: number[];
   deliveryMode?: 'disney-numbered-password';
+  repostFrom?: string;
+  repostPhase?: 'closing' | 'publishing';
 }
 export interface GbutsOttOrder {
   key: string; listingId: string; postSeq: number; memberSeq: number; userSeq: number;

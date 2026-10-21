@@ -1,7 +1,7 @@
 import { makeGbutsOttDescription } from '../lib/gbuts-ott-templates';
 import { Hono } from 'hono';
 import { createHash, randomUUID } from 'node:crypto';
-import { GBUTS_OTT_CATEGORIES, koreaToday, ottKey, ottDate, sharedOttAccounts, updateGbutsOttOrders, type GbutsOttListing, type GbutsOttManagement, type GbutsOttStore } from '../lib/gbuts-ott';
+import { GBUTS_OTT_CATEGORIES, activeOttOrder, holdsDisneyProfile, koreaToday, ottKey, ottDate, sharedOttAccounts, updateGbutsOttOrders, type GbutsOttListing, type GbutsOttManagement, type GbutsOttStore } from '../lib/gbuts-ott';
 import { createGbutsOttSellerClient, type GbutsOttPost } from '../lib/gbuts-ott-client';
 import { loadGbutsSession } from '../lib/gbuts-session';
 import { readGbutsOttStore, withGbutsOttInventory, writeGbutsOttStore } from '../lib/gbuts-ott-store';
@@ -258,6 +258,81 @@ export function registerGbutsOttRoutes(app: Hono, deps: GbutsOttRuntimeDependenc
       listing.state = 'closed'; listing.verifiedAt = new Date().toISOString(); writeGbutsOttStore(store);
       return c.json({ ok: true, listing });
     } catch (e) { return c.json({ ok: false, error: e instanceof Error ? e.message : '모집 종료 실패' }, 502); }
+  }));
+  // Transfer an existing dedicated Disney reservation. No additional capacity,
+  // account or paid period is introduced, so a full remote inventory refresh is
+  // unnecessary. Serialize closure, the final roster and publication together.
+  app.post('/gbuts/ott/listings/:id/repost', c => withGbutsOttInventory(async () => {
+    let replacement: GbutsOttListing | undefined;
+    try {
+      if (process.env.GBUTS_OTT_SYNC_ENABLED !== 'true') throw new Error('벗츠 판매 연결을 확인해주세요.');
+      const body = await c.req.json().catch(() => ({})) as any;
+      const id = String(body.requestId || ''); const title = String(body.title || '').trim();
+      if (!/^[A-Za-z0-9_-]{8,100}$/.test(id) || !title || title.length > 30 || id === c.req.param('id'))
+        return c.json({ ok: false, error: '새 등록 요청과 제목(30자 이내)을 확인해주세요.' }, 400);
+      const store = readGbutsOttStore(); const source = store.listings[c.req.param('id')];
+      if (!source?.postSeq || source.deliveryMode !== 'disney-numbered-password' || source.endDate <= koreaToday())
+        throw new Error('이용 기간이 남은 번호형 디즈니 판매글만 재등록할 수 있습니다.');
+      const previous = store.listings[id]; const client = gbutsOttClient();
+      if (previous) {
+        if (previous.repostFrom !== source.id || previous.title !== title) throw new Error('이미 사용한 재등록 요청입니다.');
+        if (previous.state === 'failed') throw new Error('중단된 재등록 요청입니다. 구매 이력과 원본 조건을 확인해주세요.');
+        replacement = previous;
+        if (previous.state === 'registered') return c.json({ ok: true, listing: previous, alreadyRegistered: true });
+        if (previous.repostPhase !== 'closing') {
+          await reconcileListing(previous, client); writeGbutsOttStore(store);
+          return c.json({ ok: true, listing: previous });
+        }
+      } else if (source.state !== 'registered') throw new Error('현재 모집 중인 미판매 글을 선택해주세요.');
+      const [post, members] = await Promise.all([client.getPost(source.postSeq), client.listOttMembers(source.postSeq)]);
+      if (post.category1.seq !== 6 || post.subscriptionType !== 'SHARE' || post.memberLimit !== source.capacity
+        || ottDate(post.subscriptionEndsAt) !== source.endDate || Number(post.price) !== source.dailyPrice || post.priceType !== 'DAY'
+        || !['ON_SALE', ...(previous ? ['CLOSED'] : [])].includes(post.status)) throw new Error('원본 판매글의 계정·조건·모집 상태를 확인해주세요.');
+      if (post.memberCount !== 0 || members.length !== 0) throw new Error('구매 이력이 있는 글은 자동 재등록하지 않습니다.');
+      const key = ottKey(source.serviceType, source.accountEmail);
+      if (Object.values(store.orders).some(o => ottKey(store.listings[o.listingId].serviceType, store.listings[o.listingId].accountEmail) === key && (activeOttOrder(o) || holdsDisneyProfile(o, store.listings[o.listingId])))
+        || deps.manualMembers().some(m => ottKey(m.serviceType || '', m.accountEmail || '') === key && m.status === 'active' && m.endDate >= koreaToday())
+        || Object.values(store.graytagClaims).some(claim => ottKey(claim.serviceType, claim.accountEmail) === key)
+        || Object.values(store.listings).some(l => l.id !== source.id && l.id !== id && ottKey(l.serviceType, l.accountEmail) === key
+          && !['closed', 'failed'].includes(l.state))) throw new Error('이 계정의 다른 이용자·모집·자리 확보 기록을 확인해주세요.');
+      const credentials = await deps.listingCredentials?.(source);
+      if (!credentials) throw new Error('재등록할 계정 정보를 확인해주세요.');
+      if (!replacement) {
+        const posts = await client.listPosts();
+        replacement = { ...source, id, title, description: legacyPostDescription(post),
+          requestHash: createHash('sha256').update(JSON.stringify([source.id, id, title])).digest('hex'),
+          state: 'submitting', postSeq: undefined, beforePostSeqs: posts.map(p => p.seq),
+          createdAt: new Date().toISOString(), verifiedAt: undefined, error: undefined,
+          repostFrom: source.id, repostPhase: 'closing' };
+        store.listings[id] = replacement; writeGbutsOttStore(store);
+      }
+      if (post.status === 'ON_SALE') {
+        try { await client.closePost(source.postSeq); } catch { /* Always verify the actual close result. */ }
+      }
+      const [closed, finalMembers] = await Promise.all([client.getPost(source.postSeq), client.listOttMembers(source.postSeq)]);
+      if (closed.status !== 'CLOSED') throw new Error('원본 글 모집 종료를 확인하지 못했습니다.');
+      source.state = 'closed'; source.verifiedAt = new Date().toISOString();
+      if (closed.memberCount !== 0 || finalMembers.length !== 0) {
+        updateGbutsOttOrders(store, source, finalMembers, source.verifiedAt);
+        replacement.state = 'failed'; replacement.error = '모집 종료 직전 구매가 발생해 재등록을 중단했습니다.';
+        writeGbutsOttStore(store); throw new Error(replacement.error);
+      }
+      if (closed.category1.seq !== 6 || closed.subscriptionType !== 'SHARE' || closed.memberLimit !== source.capacity
+        || ottDate(closed.subscriptionEndsAt) !== source.endDate || Number(closed.price) !== source.dailyPrice || closed.priceType !== 'DAY') {
+        replacement.state = 'failed'; replacement.error = '모집 종료 중 원본 조건이 변경되어 재등록을 중단했습니다.';
+        writeGbutsOttStore(store); throw new Error(replacement.error);
+      }
+      replacement.repostPhase = 'publishing'; writeGbutsOttStore(store);
+      try {
+        replacement.postSeq = (await client.createPost(replacement, credentials)) || undefined;
+        replacement.state = 'uncertain'; writeGbutsOttStore(store);
+        await reconcileListing(replacement, client); writeGbutsOttStore(store);
+        return c.json({ ok: true, listing: replacement, oldPostSeq: source.postSeq, url: `https://gbuts.com/subscriptions/${replacement.postSeq}` });
+      } catch {
+        replacement.state = 'uncertain'; replacement.error = '재등록 결과 확인이 필요합니다. 같은 요청은 조회만 진행합니다.';
+        writeGbutsOttStore(store); return c.json({ ok: false, listing: replacement, error: replacement.error }, 502);
+      }
+    } catch (e) { return c.json({ ok: false, error: e instanceof Error ? e.message : '미판매 글 재등록 실패' }, 409); }
   }));
 }
 export async function reserveGraytagOttPlace(serviceType: string, accountEmail: string, deps: GbutsOttRuntimeDependencies, endDate?: string): Promise<string> {

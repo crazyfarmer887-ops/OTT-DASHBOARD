@@ -13,3 +13,9 @@ October 21 simplified delivery supersedes the account-link guidance above: numbe
 Provider integration evidence (October 21): public seller application `/assets/index-ClQyxOre.js` uses `PUT /api/subscribe/:seq/share`; `/assets/edit-CCdUX4OG.js` supplies the complete edit form, and `/assets/libraries-Doe4yRCW.js` documents the authenticated response-field decoder. Use these native private fields, never put credentials or mailbox URLs in public description/title/notice fields.
 
 Formatting follow-up: improve future messages with section headings and line/paragraph breaks for account details, email verification and refund rules. Paragraphs are distinct readable chat bubbles because the provider web view can collapse single line breaks. Keep `disney-mailbox-v1` and all prior receipts unchanged; no broadcast, migration or re-send for formatting alone. Uncertain old sends must reconcile their stored hashes.
+
+## Unsold listing renewal and title — October 21
+
+The seller requested closing currently recruiting posts with no sales history and publishing fresh posts for the same accounts. Disney titles become `1개월 / TV도 가능 / 연장도 가능`. Keep the existing account, paid expiry, daily price, capacity and current adult-verification description; keep sold posts and their buyers intact.
+
+A dedicated reservation-transfer operation serializes the original close, final roster and replacement publication under the existing shared inventory lock. It rejects any historical member, other active account claim or retained profile lease. Before closing it journals a replacement reservation. After confirming closure and an unchanged empty roster/conditions, it atomically transfers the local reservation and submits creation once. A stable request ID makes completion idempotent; an unknown creation result is reconciled by reads and never automatically created again. This transfers already reserved capacity without waiting for an unrelated GrayTag inventory refresh.

@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { registerGbutsOttRoutes, reserveGraytagOttPlace } from '../src/api/gbuts-ott';
-import { readGbutsOttStore } from '../src/lib/gbuts-ott-store';
+import { readGbutsOttStore, writeGbutsOttStore } from '../src/lib/gbuts-ott-store';
 import { writeSpotifyListings } from '../src/lib/gbuts-spotify-listings';
 import { fixtureManagement } from './fixtures/gbuts-ott';
 let directory = ''; const env = { ...process.env };
@@ -250,4 +250,80 @@ it('new Disney registration persists numbered password delivery and rejects occu
  expect(JSON.stringify(readGbutsOttStore())).not.toContain('private-password');
  expect((await f.publish({requestId:'request-disney-2',serviceType:'디즈니플러스',capacity:1,title:'another'})).status).toBe(409);
  expect(f.posts).toHaveLength(1);
+});
+
+
+describe('unsold Disney reservation transfer', () => {
+  async function setup() {
+    const f = fixture();
+    f.deps.management.mockResolvedValue({ services: [{serviceType:'디즈니플러스',accounts:[{
+      email:'account@example.com',serviceType:'디즈니플러스',totalSlots:5,members:[],expiryDate:'20261231T2359',generatedAccount:{paymentStatus:'paid'}
+    }]}], onSaleByKeepAcct:{}, cache:{status:'hit',updatedAt:new Date().toISOString()} } as any);
+    expect((await f.publish({serviceType:'디즈니플러스',capacity:5,dailyPrice:150,description:'성인 인증은 직접 진행해주세요.'})).status).toBe(200);
+    f.deps.management.mockClear().mockRejectedValue(new Error('unrelated provider unavailable'));
+    const repost = (patch = {}) => f.app.request('/gbuts/ott/listings/request-123/repost', {
+      method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({requestId:'replacement-123',title:'1개월 / TV도 가능 / 연장도 가능',...patch})
+    });
+    return {...f,repost,fixture:f};
+  }
+  it('transfers the same capacity, account, expiry and current description without remote inventory or duplicate creation', async () => {
+    const f = await setup();
+    const response = await f.repost(); expect(response.status).toBe(200);
+    expect((await response.json()).listing).toMatchObject({state:'registered',postSeq:101,accountEmail:'account@example.com',capacity:5,dailyPrice:150,endDate:'2026-12-01',repostFrom:'request-123'});
+    expect(f.posts[0].status).toBe('CLOSED');
+    expect(f.posts[1]).toMatchObject({memberLimit:5,price:150,subscriptionEndsAt:f.posts[0].subscriptionEndsAt,subscriptionPrincipal:'current@example.com',subscriptionCredential:'private-password'});
+    expect(f.posts[1].title).toContain('TV도 가능');
+    expect(JSON.stringify(f.posts[1].description)).toContain('성인 인증');
+    expect(f.deps.management).not.toHaveBeenCalled();
+    expect(readGbutsOttStore().listings['request-123'].state).toBe('closed');
+    expect(JSON.stringify(readGbutsOttStore())).not.toContain('private-password');
+    expect((await f.repost()).status).toBe(200); expect(f.posts).toHaveLength(2);
+    expect((await f.repost({title:'다른 제목'})).status).toBe(409); expect(f.posts).toHaveLength(2);
+  });
+  it('rejects any historical roster, even refunded customers', async () => {
+    const f = await setup(); f.fixture.members = [{seq:1,status:'CANCEL',cancelStatus:'REFUNDED'}];
+    expect((await f.repost()).status).toBe(409); expect(f.posts).toHaveLength(1); expect(f.posts[0].status).toBe('ON_SALE');
+  });
+  it('stops publication and retains a buyer who pays during closure', async () => {
+    const f = await setup(); const original = f.transport.getMockImplementation()!;
+    f.transport.mockImplementation(async (url, options) => {
+      const result = await original(url,options);
+      if (String(url).endsWith('/closed')) {
+        f.posts[0].memberCount = 1;
+        f.fixture.members = [{seq:1,userSeq:10,nickname:'buyer',status:'APPLY',cancelStatus:null,createdAt:'2026-10-05T06:00:00Z',subscriptionEndsAt:'2026-12-01T23:59:59Z'}];
+      }
+      return result;
+    });
+    expect((await f.repost()).status).toBe(409); expect(f.posts).toHaveLength(1);
+    const store = readGbutsOttStore(); expect(store.orders['100:1'].userSeq).toBe(10);
+    expect(store.listings['replacement-123'].state).toBe('failed'); expect(store.listings['request-123'].state).toBe('closed');
+  });
+  it('reconciles a lost creation response without creating again', async () => {
+    const f = await setup(); const original = f.transport.getMockImplementation()!;
+    f.transport.mockImplementation(async (url, options) => {
+      const result = await original(url,options);
+      if (new URL(String(url)).pathname === '/api/subscribe/share' && options?.method === 'POST') throw new Error('lost response');
+      return result;
+    });
+    expect((await f.repost()).status).toBe(502); expect(f.posts).toHaveLength(2);
+    expect((await f.repost()).status).toBe(200); expect(f.posts).toHaveLength(2);
+  });
+  it('does not publish until closure is confirmed, and can resume', async () => {
+    const f = await setup(); const original = f.transport.getMockImplementation()!;
+    f.transport.mockImplementation(async (url,options) => { if (String(url).endsWith('/closed')) throw new Error('offline'); return original(url,options); });
+    expect((await f.repost()).status).toBe(409); expect(f.posts).toHaveLength(1);
+    expect(readGbutsOttStore().listings['replacement-123'].repostPhase).toBe('closing');
+    f.transport.mockImplementation(original);
+    expect((await f.repost()).status).toBe(200); expect(f.posts).toHaveLength(2);
+  });
+  it('rejects a retained profile lease and changed final sale conditions', async () => {
+    const f = await setup(); const store = readGbutsOttStore();
+    store.orders['100:9'] = {key:'100:9',listingId:'request-123',postSeq:100,memberSeq:9,userSeq:9,name:'held',status:'MISSING',cancelStatus:null,startDate:'2026-10-05',endDate:'2026-12-01',delivery:'ready',verifiedAt:new Date().toISOString(),profileNumber:1};
+    writeGbutsOttStore(store); expect((await f.repost()).status).toBe(409);
+    delete store.orders['100:9']; writeGbutsOttStore(store);
+    const original = f.transport.getMockImplementation()!;
+    f.transport.mockImplementation(async (url,options) => { const result=await original(url,options); if(String(url).endsWith('/closed')) f.posts[0].price=999; return result; });
+    expect((await f.repost()).status).toBe(409); expect(f.posts).toHaveLength(1);
+    expect(readGbutsOttStore().listings['replacement-123'].state).toBe('failed');
+  });
 });
