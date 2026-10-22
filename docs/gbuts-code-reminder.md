@@ -1,7 +1,7 @@
 # GButs email-code request reminder
 
-Status: deployment prepared in the established local repository; activation is
-verified separately against the running production process. The original
+Status: **deployed and enabled** on 2026-10-22 at 21:32:45 KST, release
+`c66d4cc`. The original
 `4cf17f6` implementation was recovered from the interrupted task and imported
 without replacing the existing Disney ranking and Spotify workflows.
 
@@ -63,3 +63,16 @@ This feature is off by default; deploying code alone does not enable replies.
 - The production pre-activation probe found that `openrouter/free` could select
   a content-safety model instead of a JSON instruction-following model. Pinning
   the existing free chat model avoids that routing incompatibility.
+- Both live probes passed with HTTP 200 and reported cost 0: a normal email-code
+  request was positive; a buyer who had already followed the guide but received
+  no code was negative. These used fictional text and did not send buyer chats.
+- Production process flags and activation cutoff were verified, the seller
+  session remained connected, and the chat worker completed a 127-post scan at
+  21:33:04 KST with zero failures/errors. The reminder journal initially had no
+  records because no qualifying post-activation inquiry had been received.
+- Spotify automatic messages and all five Disney rank policies remained enabled.
+  The server-wide TypeScript diagnostics exactly matched the unchanged baseline
+  (34 diagnostic lines); this release introduced no additional diagnostics.
+- Activation uses a separate systemd release override. Its previous release and
+  rollback record are preserved in the private data backups. Existing data and
+  message receipt journals are retained across the restart.
