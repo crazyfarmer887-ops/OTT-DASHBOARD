@@ -38,6 +38,23 @@ describe('GButs code reminder', () => {
     expect(JSON.stringify(s.journal())).not.toContain(s.chat.messages[1].message);
     expect(JSON.stringify(s.journal())).not.toContain('ROOM12');
   });
+  it('confirms a provider echo truncated to seconds when the send started within that second', async () => {
+    const s = setup();
+    s.deps.now = () => '2026-10-22T11:01:00.700Z';
+    await processCodeReminder(s.chat, s.deps);
+    expect(Object.values(s.journal().records)[0].state).toBe('confirmed');
+  });
+  it('reconciles a second-precision echo after an uncertain send without sending again', async () => {
+    const s = setup();
+    s.deps.now = () => '2026-10-22T11:01:00.700Z';
+    s.deps.sendText.mockRejectedValueOnce(new Error('unknown outcome'));
+    await processCodeReminder(s.chat, s.deps);
+    s.chat.messages.push({ senderSeq: 7, message: CODE_REMINDER_TEXT,
+      messageType: 'TEXT', createdAt: '2026-10-22 20:01:00' });
+    await processCodeReminder(s.chat, s.deps);
+    expect(Object.values(s.journal().records)[0].state).toBe('confirmed');
+    expect(s.deps.sendText).toHaveBeenCalledTimes(1);
+  });
   it.each(['환불해주세요', '초대해주세요', '위 안내 읽었는데 코드가 안 와요', '이미 정독했는데 링크 오류입니다'])('ignores unrelated/escalated request: %s', async text => {
     const s = setup(); s.chat.messages[1].message = text;
     await processCodeReminder(s.chat, s.deps); expect(s.deps.sendText).not.toHaveBeenCalled();

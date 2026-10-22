@@ -9,6 +9,8 @@ export const CODE_REMINDER_MODEL = 'openrouter/free';
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
 const time = (value: string) => Date.parse(/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:\.\d+)?$/.test(value)
   ? `${value.replace(' ', 'T')}+09:00` : value);
+// GButs history truncates saved-message times to whole seconds.
+const sentSince = (messageAt: string, attemptedAt: string) => time(messageAt) >= Math.floor(time(attemptedAt) / 1000) * 1000;
 export interface CodeReminderChat {
   postSeq: number; member: GbutsSpotifyMember; roomId: string; messages: GbutsChatMessage[];
 }
@@ -95,7 +97,7 @@ export async function processCodeReminder(chat: CodeReminderChat, deps: Reminder
   // The seller echo resolves previous uncertain sends, including after a restart.
   for (const r of Object.values(journal.records).filter(r => r.room === room && r.state === 'attempted')) {
     if (chat.messages.some(m => m.senderSeq === deps.sellerSeq && m.messageType === 'TEXT'
-      && time(m.createdAt) >= time(r.at) && hash(m.message.trim()) === r.textHash)) {
+      && sentSince(m.createdAt, r.at) && hash(m.message.trim()) === r.textHash)) {
       r.state = 'confirmed'; deps.writeJournal(journal);
     } else return;
   }
@@ -123,7 +125,7 @@ export async function processCodeReminder(chat: CodeReminderChat, deps: Reminder
   try {
     await deps.sendText(chat.roomId, deps.sellerSeq, CODE_REMINDER_TEXT);
     const saved = (await deps.getChat(chat.roomId)).messages.some(m => m.senderSeq === deps.sellerSeq
-      && m.messageType === 'TEXT' && time(m.createdAt) >= time(receipt.at) && m.message.trim() === CODE_REMINDER_TEXT);
+      && m.messageType === 'TEXT' && sentSince(m.createdAt, receipt.at) && m.message.trim() === CODE_REMINDER_TEXT);
     if (saved) { receipt.state = 'confirmed'; deps.writeJournal(latestJournal); }
   } catch (error) {
     if (error instanceof GbutsChatDeliveryError && !error.submitted) {

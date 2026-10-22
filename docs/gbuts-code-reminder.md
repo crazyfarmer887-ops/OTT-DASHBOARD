@@ -1,8 +1,9 @@
 # GButs email-code request reminder
 
-Status: implemented and tested locally; **not deployed or active in production**.
-The existing host `ubuntu@43.155.153.165:2222` rejects SSH from this task environment
-with `Operation not permitted`. No buyer message was sent during development.
+Status: deployment prepared in the established local repository; activation is
+verified separately against the running production process. The original
+`4cf17f6` implementation was recovered from the interrupted task and imported
+without replacing the existing Disney ranking and Spotify workflows.
 
 The existing all-product chat scan calls the reminder handler independently of
 Telegram receipts. It classifies only the latest unanswered buyer request using
@@ -50,12 +51,12 @@ This feature is off by default; deploying code alone does not enable replies.
 
 ## Verification
 
-- 69 focused tests pass across reminder classification, chat scans, saved-message
-  delivery and existing Spotify messages. Model/network responses are mocked;
-  no live inference or buyer-send smoke test was performed.
+- 75 focused tests pass across reminder classification, chat scans, saved-message
+  delivery and existing Spotify messages. Two added regressions cover GButs
+  second-precision timestamps against millisecond send receipts, including
+  recovery after an uncertain submission. Model/network responses are mocked;
+  no buyer-send smoke test is used.
 - `npm run build` and `git diff --check` pass.
-- A focused TypeScript check reports the pre-existing
-  `src/lib/youtube-invitation-poller.ts:131` unknown-to-string error. The same
-  diagnostic is reproduced in the unchanged source checkout.
-- GitHub read-only remote lookup also fails (`Could not resolve host: github.com`),
-  so the commit is local and neither pushed nor deployed.
+- The server TypeScript check is compared with the unchanged `cbc8282` source
+  snapshot. Existing diagnostics are recorded separately; no unrelated fixes
+  are included in this feature.
