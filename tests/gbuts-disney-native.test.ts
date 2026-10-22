@@ -122,3 +122,10 @@ test('sale terms PUT changes only current public price/title and preserves priva
  await client.updateDisneySaleTerms(await client.getPost(100),{dailyPrice:110,title:'벗츠 업자 최저가 보장 아니면 연장'});expect(writes).toHaveLength(1);
  await expect(client.updateDisneySaleTerms({...post,status:'CLOSED'},{dailyPrice:110,title:'new'})).rejects.toThrow('판매 조건');
 });
+
+test('ranking uses the buyer latest Disney list and rejects incomplete, mixed-category or duplicate prefixes',async()=>{
+ let rows:any[]=[{seq:100,seller:{seq:99},category1:{seq:6}},{seq:101,seller:{seq:88},category1:{seq:6}}];let count=2;
+ const transport=vi.fn(async(url:any)=>{expect(String(url)).toBe('https://api.gbuts.com/api/subscribe/share?categorySeqs=6&page=1&size=20');return new Response(JSON.stringify({success:true,error:null,response:rows,pagination:{currentPage:1,totalCount:count}}));});
+ const client=createGbutsOttSellerClient('test',transport);expect(await client.listDisneyPublicRanking()).toEqual([{seq:100,sellerSeq:99},{seq:101,sellerSeq:88}]);
+ count=3;await expect(client.listDisneyPublicRanking()).rejects.toThrow('모두 확인');count=2;rows[1].seq=100;await expect(client.listDisneyPublicRanking()).rejects.toThrow('조회 중 변경');rows[1].seq=101;rows[1].category1.seq=5;await expect(client.listDisneyPublicRanking()).rejects.toThrow('상품 종류');
+});

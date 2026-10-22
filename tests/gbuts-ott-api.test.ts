@@ -353,3 +353,14 @@ it('persists fixed terms before a failed provider edit, preserves deadlines and 
  expect(after).toMatchObject({capacity:5,nextAt:before.nextAt,saleTerms:{dailyPrice:110,title:'벗츠 업자 최저가 보장 아니면 연장'},lastError:'offline'});
  expect(after.saleTermsRetryAt).toBeDefined();
 });
+
+it('switches only the selected existing chain to rank checks while preserving its sale terms, capacity and history',async()=>{
+ const f=fixture();f.deps.management.mockResolvedValue({services:[{serviceType:'디즈니플러스',accounts:[{email:'account@example.com',serviceType:'디즈니플러스',totalSlots:5,members:[],expiryDate:'20261231',generatedAccount:{paymentStatus:'paid'}}]}],onSaleByKeepAcct:{},cache:{status:'hit',updatedAt:new Date().toISOString()}} as any);
+ expect((await f.publish({serviceType:'디즈니플러스',capacity:5})).status).toBe(200);
+ await f.app.request('/gbuts/ott/renewals',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({enabled:true,listingIds:['request-123']})});
+ const before=readGbutsOttStore();const request=(patch={})=>f.app.request('/gbuts/ott/renewals/ranking',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({accountEmails:['account@example.com'],threshold:5,...patch})});
+ expect((await request({threshold:1})).status).toBe(409);expect(readGbutsOttStore().renewals!['account@example.com'].trigger).toBeUndefined();
+ expect((await request()).status).toBe(200);const after=readGbutsOttStore();
+ expect(after.renewals!['account@example.com']).toMatchObject({trigger:'rank',rankThreshold:5,capacity:5,listingId:'request-123',nextAt:new Date().toISOString()});
+ expect(after.listings).toEqual(before.listings);expect(after.orders).toEqual(before.orders);
+});

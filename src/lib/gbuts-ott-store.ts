@@ -42,6 +42,10 @@ export function readGbutsOttStore(path = process.env.GBUTS_OTT_STORE_PATH || DEF
       if (!listing || listing.deliveryMode !== 'disney-numbered-password' || key !== policy.accountEmail?.trim().toLowerCase()
         || listing.accountEmail.trim().toLowerCase() !== key || typeof policy.enabled !== 'boolean'
         || !Number.isInteger(policy.capacity) || policy.capacity < 1 || policy.capacity > 6
+        || (policy.trigger !== undefined && !['hourly', 'rank'].includes(policy.trigger))
+        || (policy.trigger === 'rank' && (!Number.isInteger(policy.rankThreshold) || policy.rankThreshold < 2 || policy.rankThreshold > 20))
+        || (policy.lastRank !== undefined && policy.lastRank !== null && (!Number.isInteger(policy.lastRank) || policy.lastRank < 1 || policy.lastRank > 20))
+        || [policy.rankCheckedAt, policy.lastRepostedAt].some(value => value !== undefined && !Number.isFinite(Date.parse(value)))
         || (policy.saleTerms !== undefined && (!policy.saleTerms || !Number.isSafeInteger(policy.saleTerms.dailyPrice) || policy.saleTerms.dailyPrice < 1 || policy.saleTerms.dailyPrice > 1000000
           || typeof policy.saleTerms.title !== 'string' || !policy.saleTerms.title.trim() || policy.saleTerms.title.length > 30))
         || (policy.saleTermsAppliedTo !== undefined && (!Number.isSafeInteger(policy.saleTermsAppliedTo) || policy.saleTermsAppliedTo < 1))

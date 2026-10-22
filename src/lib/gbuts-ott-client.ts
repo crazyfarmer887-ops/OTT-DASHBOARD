@@ -60,6 +60,19 @@ export function createGbutsOttSellerClient(token: string, transport: typeof fetc
     return posts;
   };
   return { ...createGbutsSpotifySellerClient(token, transport),
+    /** Buyer-facing Disney latest list, excluding separately rendered PICK/UP sections. */
+    async listDisneyPublicRanking(): Promise<Array<{ seq: number; sellerSeq: number }>> {
+      const data = await request('/api/subscribe/share?categorySeqs=6&page=1&size=20', { cache: 'no-store' });
+      const page = data.pagination;
+      if (!Array.isArray(data.response) || !page || page.currentPage !== 1 || !Number.isSafeInteger(page.totalCount)
+        || page.totalCount < 0 || data.response.length !== Math.min(20, page.totalCount)) throw new Error('디즈니 최신순 목록을 모두 확인하지 못했습니다.');
+      const rows = data.response.map((post: any) => {
+        if (post.category1?.seq !== 6) throw new Error('디즈니 목록의 상품 종류를 확인해주세요.');
+        return { seq: integer(post.seq), sellerSeq: integer(post.seller?.seq) };
+      });
+      if (new Set(rows.map((row: { seq: number }) => row.seq)).size !== rows.length) throw new Error('디즈니 목록이 조회 중 변경되었습니다.');
+      return rows;
+    },
     async listPosts(): Promise<GbutsOttPost[]> {
       const posts: GbutsOttPost[] = []; const seen = new Set<number>();
       // Five hourly renewals can exceed 100 pages within a paid month.

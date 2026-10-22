@@ -261,6 +261,23 @@ export function registerGbutsOttRoutes(app: Hono, deps: GbutsOttRuntimeDependenc
       writeGbutsOttStore(store); return c.json({ ok: true, renewals: Object.values(store.renewals) });
     } catch (e) { return c.json({ ok: false, error: e instanceof Error ? e.message : '자동 재등록 설정 실패' }, 409); }
   }));
+  app.post('/gbuts/ott/renewals/ranking', c => withGbutsOttInventory(async () => {
+    try {
+      if (process.env.GBUTS_OTT_SYNC_ENABLED !== 'true' || loadSafeModeConfig().enabled) throw new Error('판매 자동화가 일시정지 상태입니다.');
+      const body = await c.req.json() as { accountEmails: string[]; threshold: number };
+      if (!Array.isArray(body.accountEmails) || !body.accountEmails.length || body.accountEmails.some(email => typeof email !== 'string')
+        || !Number.isInteger(body.threshold) || body.threshold < 2 || body.threshold > 20) throw new Error('대상 계정과 순위 기준을 확인해주세요.');
+      const store = readGbutsOttStore();
+      const selected = [...new Set(body.accountEmails.map(email => email.trim().toLowerCase()))].map(email => store.renewals?.[email]);
+      if (selected.some(policy => !policy || !policy.enabled || !store.listings[policy.listingId]?.postSeq)) throw new Error('활성화된 자동 재등록 계정을 선택해주세요.');
+      for (const policy of selected) {
+        policy!.trigger = 'rank'; policy!.rankThreshold = body.threshold;
+        policy!.lastRepostedAt ||= store.listings[policy!.listingId].createdAt;
+        policy!.nextAt = new Date().toISOString();
+      }
+      writeGbutsOttStore(store); return c.json({ ok: true, renewals: selected });
+    } catch (error) { return c.json({ ok: false, error: error instanceof Error ? error.message : '순위 감시 설정 실패' }, 409); }
+  }));
   app.post('/gbuts/ott/renewals/terms', c => withGbutsOttInventory(async () => {
     try {
       if (loadSafeModeConfig().enabled) throw new Error('판매 자동화가 일시정지 상태입니다.');

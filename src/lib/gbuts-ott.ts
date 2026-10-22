@@ -38,6 +38,8 @@ export interface GbutsOttRenewal {
   pendingId?: string; lastSuccess?: string; lastError?: string;
   saleTerms?: { dailyPrice: number; title: string };
   saleTermsAppliedTo?: number; saleTermsRetryAt?: string; earlyRenewalNextAt?: string;
+  trigger?: 'hourly' | 'rank'; rankThreshold?: number;
+  lastRank?: number | null; rankCheckedAt?: string; lastRepostedAt?: string;
 }
 export interface GbutsOttStore {
   version: 1; listings: Record<string, GbutsOttListing>; orders: Record<string, GbutsOttOrder>;

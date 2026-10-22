@@ -221,3 +221,67 @@ test('recovery beyond the original early-renewal deadline leaves its scheduled c
  expect((await f.run()).errors).toBe(1);vi.setSystemTime(new Date(Date.now()+3660000));expect((await f.run()).renewed).toBe(1);
  expect(f.store().renewals![f.listing.accountEmail].nextAt).toBe(p.nextAt);expect(Date.parse(p.nextAt)).toBeLessThan(Date.now());
 });
+
+function ranking(f:ReturnType<typeof fixture>,rows:Array<{seq:number;sellerSeq:number}>,patch:any={}){
+ const store=f.store();const policy=store.renewals![f.listing.accountEmail];
+ Object.assign(policy,{trigger:'rank',rankThreshold:5,lastRepostedAt:new Date(Date.now()-6*60_000).toISOString()},patch);f.deps.writeStore(store);
+ Object.assign(f.client,{listDisneyPublicRanking:vi.fn(async()=>rows),sellerAccountSeq:vi.fn(async()=>99)});
+}
+test('rank trigger keeps top-four posts and our own five-post block without hourly churn',async()=>{
+ const f=fixture();ranking(f,[{seq:100,sellerSeq:99},{seq:500,sellerSeq:88}]);
+ expect((await f.run()).renewed).toBe(0);expect(f.client.closePost).not.toHaveBeenCalled();expect(f.store().renewals![f.listing.accountEmail].lastRank).toBe(1);
+ const g=fixture();ranking(g,[1,2,3,4,100].map(seq=>({seq,sellerSeq:99})));
+ expect((await g.run()).renewed).toBe(0);expect(g.client.createPost).not.toHaveBeenCalled();
+});
+test('rank trigger republishes a displaced fifth-place post with its remaining capacity and existing buyer receipts',async()=>{
+ const f=fixture(2);ranking(f,[{seq:999,sellerSeq:88},...[1,2,3,100].map(seq=>({seq,sellerSeq:99}))]);
+ const before=f.store().orders;expect((await f.run()).renewed).toBe(1);
+ expect(f.posts[1].memberLimit).toBe(3);expect(f.store().orders['100:1'].directDelivery).toEqual(before['100:1'].directDelivery);
+ expect(f.store().orders['100:1'].roomId).toBe('room-1');expect(Date.parse(f.store().renewals![f.listing.accountEmail].nextAt)-Date.now()).toBe(60000);
+});
+test('rank trigger checks no more than once a minute and applies a five-minute per-account cooldown',async()=>{
+ const f=fixture();const rows=[1,2,3,4,100].map(seq=>({seq,sellerSeq:seq===100?99:88}));ranking(f,rows,{lastRepostedAt:new Date().toISOString()});
+ expect((await f.run()).renewed).toBe(0);await f.run();expect((f.client as any).listDisneyPublicRanking).toHaveBeenCalledTimes(1);
+ vi.setSystemTime(new Date(Date.now()+5*60_000));expect((await f.run()).renewed).toBe(1);
+});
+test('rank query failures, short absent windows and full accounts never close or create',async()=>{
+ const f=fixture();ranking(f,[{seq:900,sellerSeq:88}]);(f.client as any).listDisneyPublicRanking.mockRejectedValue(new Error('offline'));
+ await f.run();expect(f.client.closePost).not.toHaveBeenCalled();expect(f.store().renewals![f.listing.accountEmail].lastError).toContain('목록 순위 확인 실패');
+ const g=fixture();ranking(g,[{seq:900,sellerSeq:88}]);await g.run();expect(g.client.createPost).not.toHaveBeenCalled();
+ const h=fixture(5);ranking(h,[...Array.from({length:4},(_,i)=>({seq:900+i,sellerSeq:88})),{seq:100,sellerSeq:99}]);await h.run();expect(h.client.createPost).not.toHaveBeenCalled();
+});
+test('only one lowest displaced post is renewed per fresh list, then the next check reads again',async()=>{
+ const f=fixture(0);const store=f.store();const second={...f.listing,id:'second',postSeq:200,accountEmail:'second@example.com'};store.listings.second=second;
+ store.renewals![second.accountEmail]={accountEmail:second.accountEmail,capacity:5,listingId:second.id,enabled:true,nextAt:new Date().toISOString()};f.deps.writeStore(store);
+ f.posts.push({...f.posts[0],seq:200});f.management.services[0].accounts.push({...f.management.services[0].accounts[0],email:second.accountEmail});
+ ranking(f,[...Array.from({length:4},(_,i)=>({seq:900+i,sellerSeq:88})),{seq:100,sellerSeq:99},{seq:200,sellerSeq:99}]);
+ const saved=f.store();Object.assign(saved.renewals![second.accountEmail],{trigger:'rank',rankThreshold:5,lastRepostedAt:new Date(Date.now()-6*60_000).toISOString()});f.deps.writeStore(saved);
+ expect((await f.run()).renewed).toBe(1);expect(f.client.closePost.mock.calls[0][0]).toBe(200);expect(f.client.createPost).toHaveBeenCalledTimes(1);expect(f.posts[0].status).toBe('ON_SALE');
+});
+test('rank mode recovers an uncertain submitted CREATE even while the public list is unavailable',async()=>{
+ const f=fixture();ranking(f,[...Array.from({length:4},(_,i)=>({seq:900+i,sellerSeq:88})),{seq:100,sellerSeq:99}]);
+ const create=f.client.createPost.getMockImplementation()!;f.client.createPost.mockImplementation(async(l,c)=>{await create(l,c);throw new Error('lost response');});
+ expect((await f.run()).errors).toBe(1);(f.client as any).listDisneyPublicRanking.mockRejectedValue(new Error('offline'));
+ vi.setSystemTime(new Date(Date.now()+61000));expect((await f.run()).renewed).toBe(1);expect(f.client.createPost).toHaveBeenCalledTimes(1);
+});
+
+test('a verified complete top-twenty prefix can identify a displaced lower post without scanning history',async()=>{
+ const f=fixture(1);ranking(f,Array.from({length:20},(_,i)=>({seq:900+i,sellerSeq:88})));
+ expect((await f.run()).renewed).toBe(1);expect(f.posts[1].memberLimit).toBe(4);expect(f.store().renewals![f.listing.accountEmail].lastRank).toBeNull();
+});
+
+test('rank mode reopens a closed full chain after a provider-verified refund creates a vacancy',async()=>{
+ const f=fixture(5);const store=f.store();store.listings[f.listing.id].state='closed';store.orders['100:1'].status='CANCEL';store.orders['100:1'].cancelStatus='REFUNDED';f.deps.writeStore(store);
+ f.posts[0].status='CLOSED';f.posts[0].memberCount=4;f.rosters.get(100)![0].status='CANCEL';f.rosters.get(100)![0].cancelStatus='REFUNDED';
+ ranking(f,Array.from({length:20},(_,i)=>({seq:900+i,sellerSeq:88})));
+ expect((await f.run()).renewed).toBe(1);expect(f.posts[1].memberLimit).toBe(1);expect(f.client.closePost).not.toHaveBeenCalled();
+});
+test('rank mode recovers a refund after the final buyer races closure and cancels publication',async()=>{
+ const f=fixture(4);ranking(f,[...Array.from({length:4},(_,i)=>({seq:900+i,sellerSeq:88})),{seq:100,sellerSeq:99}]);
+ f.client.closePost.mockImplementation(async()=>{f.posts[0].status='CLOSED';f.posts[0].memberCount=5;f.rosters.set(100,Array.from({length:5},(_,i)=>f.member(i+1)));});
+ expect((await f.run()).renewed).toBe(0);expect(f.client.createPost).not.toHaveBeenCalled();
+ const store=f.store();store.orders['100:1'].status='CANCEL';store.orders['100:1'].cancelStatus='REFUNDED';f.deps.writeStore(store);
+ f.rosters.get(100)![0].status='CANCEL';f.rosters.get(100)![0].cancelStatus='REFUNDED';f.posts[0].memberCount=4;
+ (f.client as any).listDisneyPublicRanking.mockResolvedValue(Array.from({length:20},(_,i)=>({seq:900+i,sellerSeq:88})));
+ vi.setSystemTime(new Date(Date.now()+6*60000));expect((await f.run()).renewed).toBe(1);expect(f.client.createPost.mock.calls[0][0].capacity).toBe(1);
+});

@@ -6,6 +6,8 @@ import { decodeGbutsSubscriptionCredential } from '../lib/gbuts-subscription-cre
 import type { GbutsOttCredentials } from '../lib/gbuts-disney-delivery';
 import type { GbutsOttRuntimeDependencies } from './gbuts-ott-sync';
 export const DISNEY_RENEWAL_INTERVAL = 60 * 60 * 1000;
+export const DISNEY_RANK_CHECK_INTERVAL = 60_000;
+export const DISNEY_RANK_COOLDOWN = 5 * 60_000;
 
 function accountOrders(store: GbutsOttStore, email: string, now: Date): GbutsOttOrder[] {
   return Object.values(store.orders).filter(order => {
@@ -81,14 +83,54 @@ export async function applyGbutsDisneySaleTerms(store: GbutsOttStore, policy: Gb
   policy.saleTermsAppliedTo = listing.postSeq; delete policy.saleTermsRetryAt; write(store); return false;
 }
 
+/** One displaced post per fresh buyer-list snapshot; own posts alone never cause churn. */
+async function rankedRenewal(store: GbutsOttStore, client: ReturnType<typeof createGbutsOttSellerClient>,
+  now: Date, write: (store: GbutsOttStore) => void): Promise<{ listingId?: string; errors: number }> {
+  const due = Object.values(store.renewals || {}).filter(policy => policy.enabled && policy.trigger === 'rank'
+    && !policy.pendingId && Date.parse(policy.nextAt) <= now.getTime());
+  if (!due.length) return { errors: 0 };
+  const nextCheck = new Date(now.getTime() + DISNEY_RANK_CHECK_INTERVAL).toISOString();
+  if (Object.values(store.renewals || {}).some(policy => policy.trigger === 'rank' && policy.pendingId)) {
+    for (const policy of due) policy.nextAt = nextCheck;
+    write(store); return { errors: 0 };
+  }
+  try {
+    const [rows, sellerSeq] = await Promise.all([client.listDisneyPublicRanking(), client.sellerAccountSeq()]);
+    const foreignIndex = rows.findIndex(row => row.sellerSeq !== sellerSeq);
+    const candidates: Array<{ id: string; rank: number; createdAt: string }> = [];
+    for (const policy of due) {
+      const listing = store.listings[policy.listingId];
+      const index = rows.findIndex(row => row.seq === listing?.postSeq);
+      if (index >= 0 && rows[index].sellerSeq !== sellerSeq) throw new Error('판매자와 판매글 연결이 다릅니다.');
+      policy.lastRank = index >= 0 ? index + 1 : null; policy.rankCheckedAt = now.toISOString();
+      const rank = index >= 0 ? index + 1 : 21;
+      if (listing && ['registered', 'closed'].includes(listing.state) && listing.endDate > koreaToday(now)
+        && accountOrders(store, policy.accountEmail, now).length < policy.capacity
+        && rank >= policy.rankThreshold! && foreignIndex >= 0 && foreignIndex < rank - 1
+        && (index >= 0 || rows.length === 20)
+        && (!policy.lastRepostedAt || now.getTime() - Date.parse(policy.lastRepostedAt) >= DISNEY_RANK_COOLDOWN))
+        candidates.push({ id: policy.listingId, rank, createdAt: listing.createdAt });
+    }
+    const chosen = candidates.sort((a, b) => b.rank - a.rank || a.createdAt.localeCompare(b.createdAt))[0]?.id;
+    for (const policy of due) if (policy.listingId !== chosen) { policy.nextAt = nextCheck; delete policy.lastError; }
+    write(store); return { listingId: chosen, errors: 0 };
+  } catch (error) {
+    for (const policy of due) { policy.lastError = error instanceof Error ? `목록 순위 확인 실패: ${error.message}` : '목록 순위 확인 실패'; policy.nextAt = nextCheck; }
+    write(store); return { errors: due.length };
+  }
+}
+
 /** Called only inside withGbutsOttInventory, shared with sales sync/publication. */
 export async function renewDueGbutsDisneyListings(deps: GbutsOttRuntimeDependencies,
   client: ReturnType<typeof createGbutsOttSellerClient>, now = new Date()): Promise<{ renewed: number; checked: number; errors: number }> {
   const read = deps.readStore || readGbutsOttStore; const write = deps.writeStore || writeGbutsOttStore;
   const store = read(); const result = { renewed: 0, checked: 0, errors: 0 };
+  const rankCheck = await rankedRenewal(store, client, now, write);
+  result.errors += rankCheck.errors;
   for (const policy of Object.values(store.renewals || {})) {
     if (!policy.enabled && !policy.pendingId) continue;
-    let due = Date.parse(policy.nextAt) <= now.getTime();
+    let due = Date.parse(policy.nextAt) <= now.getTime()
+      && (policy.trigger !== 'rank' || Boolean(policy.pendingId) || policy.listingId === rankCheck.listingId);
     const scheduledNextAt = policy.nextAt;
     const source = store.listings[policy.listingId];
     const edit = policy.saleTerms && !policy.pendingId && (due || policy.saleTermsAppliedTo !== source?.postSeq)
@@ -109,10 +151,11 @@ export async function renewDueGbutsDisneyListings(deps: GbutsOttRuntimeDependenc
     if (!due || (policy.saleTermsRetryAt && Date.parse(policy.saleTermsRetryAt) > now.getTime())) continue;
     result.checked++;
     const complete = (listing?: GbutsOttListing) => {
-      if (listing) { policy.listingId = listing.id; delete listing.beforePostSeqs; result.renewed++; }
+      if (listing) { policy.listingId = listing.id; policy.lastRepostedAt = now.toISOString(); delete listing.beforePostSeqs; result.renewed++; }
       delete policy.pendingId; delete policy.lastError;
       policy.lastSuccess = now.toISOString();
-      policy.nextAt = policy.earlyRenewalNextAt || new Date(now.getTime() + DISNEY_RENEWAL_INTERVAL).toISOString();
+      policy.nextAt = policy.trigger === 'rank' ? new Date(now.getTime() + DISNEY_RANK_CHECK_INTERVAL).toISOString()
+        : policy.earlyRenewalNextAt || new Date(now.getTime() + DISNEY_RENEWAL_INTERVAL).toISOString();
       delete policy.earlyRenewalNextAt;
       if (policy.saleTerms) {
         if (!listing || (listing.dailyPrice === policy.saleTerms.dailyPrice && listing.title === policy.saleTerms.title)) policy.saleTermsAppliedTo = (listing || source).postSeq;
