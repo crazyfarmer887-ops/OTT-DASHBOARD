@@ -7,7 +7,7 @@ without replacing the existing Disney ranking and Spotify workflows.
 
 The existing all-product chat scan calls the reminder handler independently of
 Telegram receipts. It classifies only the latest unanswered buyer request using
-OpenRouter's `openrouter/free` router. No paid model fallback is configured. The
+OpenRouter's fixed `nvidia/nemotron-3.5-lightning:free` chat model. No paid model fallback is configured. The
 model only returns a boolean and confidence; outgoing text is fixed:
 
 > 안녕하세요. 이메일 인증코드 확인 방법은 위 안내에 적혀 있으니, 위 내용을 먼저 꼼꼼히 읽어 주세요. 감사합니다.
@@ -60,3 +60,6 @@ This feature is off by default; deploying code alone does not enable replies.
 - The server TypeScript check is compared with the unchanged `cbc8282` source
   snapshot. Existing diagnostics are recorded separately; no unrelated fixes
   are included in this feature.
+- The production pre-activation probe found that `openrouter/free` could select
+  a content-safety model instead of a JSON instruction-following model. Pinning
+  the existing free chat model avoids that routing incompatibility.

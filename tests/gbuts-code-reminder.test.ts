@@ -115,10 +115,11 @@ describe('GButs code reminder', () => {
 
 describe('OpenRouter free classification', () => {
   const reply = (content: string, finish_reason = 'stop') => new Response(JSON.stringify({ choices: [{ finish_reason, message: { content } }] }));
-  it('uses only the free router, sends redacted request text and accepts a confident decision', async () => {
+  it('uses a fixed free chat model, sends redacted request text and accepts a confident decision', async () => {
     const transport = vi.fn(async (_url: any, init: any) => {
       const body = JSON.parse(init.body);
-      expect(body.model).toBe(CODE_REMINDER_MODEL); expect(body.models).toBeUndefined();
+      expect(body.model).toBe(CODE_REMINDER_MODEL); expect(body.model).toMatch(/:free$/);
+      expect(body.models).toBeUndefined(); expect(body.reasoning.enabled).toBe(false);
       expect(body.messages[1].content).not.toMatch(/buyer@example\.com|MySecret123!|123456|private-token/);
       return reply('{"emailCodeRequest":true,"confidence":0.99}');
     });
