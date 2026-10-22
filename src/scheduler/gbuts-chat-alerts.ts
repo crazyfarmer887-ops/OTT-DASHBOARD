@@ -3,6 +3,9 @@ import { loadSafeModeConfig } from '../api/safe-mode';
 import { createGbutsOttSellerClient } from '../lib/gbuts-ott-client';
 import { loadGbutsSession } from '../lib/gbuts-session';
 import { GBUTS_SPOTIFY_POST_SEQ } from './gbuts-spotify-sync';
+import { classifyCodeRequest, processCodeReminder, readCodeReminderJournal, writeCodeReminderJournal,
+  type CodeReminderChat } from './gbuts-code-reminder';
+import { sendGbutsSingleText } from './gbuts-spotify-messages';
 import { readGbutsSpotifyChatAlertJournal, syncGbutsSpotifyChatAlerts, writeGbutsSpotifyChatAlertJournal,
   type GbutsSpotifyChatAlertDependencies } from './gbuts-spotify-chat-alerts';
 
@@ -43,12 +46,18 @@ export async function syncGbutsChatAlerts(deps: ChatScanDependencies) {
 /** One owner for the existing receipt journal; inventory and delivery loops never wait on this scan. */
 export function startGbutsChatAlerts(): (() => void) | undefined {
   const configured = process.env.GBUTS_CHAT_ALERT_ENABLED;
+  const reminders = process.env.GBUTS_CODE_REMINDER_ENABLED === 'true';
   if (configured !== 'true' && !(configured === undefined && process.env.GBUTS_SPOTIFY_CHAT_ALERT_ENABLED === 'true')) return;
   const allPosts = configured === 'true';
   const startAt = allPosts ? process.env.GBUTS_CHAT_ALERT_START_AT || '' : process.env.GBUTS_SPOTIFY_CHAT_ALERT_START_AT || '';
   if (!Number.isFinite(Date.parse(startAt))) { console.error('[GbutsChatAlerts] 감시 시작 시각 설정 필요'); return; }
+  const reminderStartAt = process.env.GBUTS_CODE_REMINDER_START_AT || '';
+  if (reminders && (!Number.isFinite(Date.parse(reminderStartAt)) || !process.env.OPENROUTER_API_KEY?.trim())) {
+    console.error('[GbutsChatAlerts] 코드 자동 안내 시작 시각 또는 OpenRouter 키 설정 필요');
+  }
   const spotifyPostSeq = Number(process.env.GBUTS_SPOTIFY_POST_SEQ || GBUTS_SPOTIFY_POST_SEQ);
   let running = false;
+  let inferenceRetryAfter = 0;
   const run = async () => {
     if (running) return;
     running = true;
@@ -57,11 +66,28 @@ export function startGbutsChatAlerts(): (() => void) | undefined {
       const session = loadGbutsSession(); const token = session?.token || process.env.GBUTS_API_TOKEN?.trim();
       if (!token) return;
       const client = createGbutsOttSellerClient(token);
+      const reminderReady = reminders && Number.isFinite(Date.parse(reminderStartAt)) && !!process.env.OPENROUTER_API_KEY?.trim();
+      let sellerSeq = 0;
+      if (reminderReady) {
+        try { sellerSeq = await client.sellerAccountSeq(); }
+        catch { console.error('[GbutsChatAlerts] 코드 자동 안내 판매자 확인 실패'); }
+      }
+      const processBuyerChat = reminderReady && sellerSeq > 0 ? async (chat: CodeReminderChat) => {
+        await processCodeReminder(chat, { ...client, sellerSeq, startAt: reminderStartAt,
+          classify: async text => {
+            if (Date.now() < inferenceRetryAfter) throw new Error('코드 문의 분류 재시도 대기');
+            try { return await classifyCodeRequest(text); }
+            catch { inferenceRetryAfter = Date.now() + 5 * 60_000; throw new Error('코드 문의 분류 일시 실패'); }
+          },
+          readJournal: readCodeReminderJournal, writeJournal: writeCodeReminderJournal, sendText: sendGbutsSingleText,
+        });
+      } : undefined;
       const result = await syncGbutsChatAlerts({ ...client,
         listPosts: async () => (await client.listPosts()).filter(p => allPosts || p.seq === spotifyPostSeq),
         readJournal: readGbutsSpotifyChatAlertJournal, writeJournal: writeGbutsSpotifyChatAlertJournal,
         sendAlert: sendSellerAlert, accountLabel: session?.sellerLabel || '기본 벗츠 판매 계정', startAt,
         spotifyPostSeq, spotifyStartAt: process.env.GBUTS_SPOTIFY_CHAT_ALERT_START_AT,
+        processBuyerChat,
       });
       if (result.sent || result.failed || result.errors) console.log('[GbutsChatAlerts]', result);
     } catch { console.error('[GbutsChatAlerts] 구매자 채팅 확인 실패'); }

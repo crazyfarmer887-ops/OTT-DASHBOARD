@@ -40,6 +40,7 @@ export interface GbutsSpotifyChatAlertDependencies {
   productLabel?: string;
   buyerName?(member: GbutsSpotifyMember): string;
   now?(): string;
+  processBuyerChat?(chat: { postSeq: number; member: GbutsSpotifyMember; roomId: string; messages: GbutsChatMessage[] }): Promise<void>;
 }
 
 function fingerprint(roomId: string, entry: GbutsChatMessage, occurrence: number): string {
@@ -74,6 +75,10 @@ export async function syncGbutsSpotifyChatAlerts(deps: GbutsSpotifyChatAlertDepe
       if (member.cancelStatus === 'REFUNDED' && error instanceof GbutsSellerRequestError && error.status === 400) unavailable++;
       else failed++;
       continue;
+    }
+    if (deps.processBuyerChat) {
+      try { await deps.processBuyerChat({ postSeq, member, roomId, messages: chat.messages }); }
+      catch { failed++; } // A reminder failure must not suppress the existing seller alert.
     }
     const occurrences = new Map<string, number>();
     const unseen: Array<{ id: string; entry: GbutsChatMessage }> = [];
