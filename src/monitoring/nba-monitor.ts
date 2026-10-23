@@ -66,7 +66,7 @@ export async function monitorNba(deps: MonitorDependencies): Promise<void> {
   for (const target of targets) {
     const digest = createHash('sha256').update(target.email.toLowerCase() + '\0' + target.password).digest('hex');
     let record = state.targets[target.key];
-    if (!record || digest !== record.credentialHash || now - record.checkedAt >= NBA_CHECK_INTERVAL) {
+    if (!record || digest !== record.credentialHash || Math.floor(now / NBA_CHECK_INTERVAL) > Math.floor(record.checkedAt / NBA_CHECK_INTERVAL)) {
       const result = checks.get(digest) || await deps.check(target.email, target.password); checks.set(digest, result);
       record = { checkedAt: now, result, credentialHash: digest, incident: record?.incident || 0,
         notifiedIncident: record?.notifiedIncident, notifiedAt: record?.notifiedAt };

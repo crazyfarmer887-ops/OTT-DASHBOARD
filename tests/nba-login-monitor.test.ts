@@ -33,6 +33,11 @@ describe('NBA scheduled login checks', () => {
     f.advance(NBA_CHECK_INTERVAL - 1); await monitorNba(f.deps); expect(f.deps.check).toHaveBeenCalledTimes(1);
     f.advance(1); await monitorNba(f.deps); expect(f.deps.check).toHaveBeenCalledTimes(2);
   });
+  it('does not skip a scheduled slot when the prior check finished a minute late', async () => {
+    const f = fixture(); f.advance(60000); await monitorNba(f.deps);
+    f.advance(NBA_CHECK_INTERVAL - 60000); await monitorNba(f.deps);
+    expect(f.deps.check).toHaveBeenCalledTimes(2);
+  });
   it('notifies the Linkid topic on invalid login without exposing the password, once per incident', async () => {
     const f = fixture(); vi.mocked(f.deps.check).mockResolvedValue('invalid'); await monitorNba(f.deps);
     expect(f.deps.alert).toHaveBeenCalledWith(expect.objectContaining({ provider: 'linkid', title: 'NBA 계정 이상 · 조치 필요' }));
