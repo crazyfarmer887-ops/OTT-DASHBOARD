@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createCipheriv } from 'node:crypto';
-import { classifyNbaLogin } from '../src/monitoring/nba-login';
+import { classifyNbaLogin, nbaHttpResult } from '../src/monitoring/nba-login';
 import { decodeNbaPartyPassword, monitorNba, NBA_CHECK_INTERVAL, type MonitorDependencies, type NbaMonitorState, type NbaTarget } from '../src/monitoring/nba-monitor';
 function fixture() {
   let time = Date.parse('2026-10-23T09:00:00Z'); let state: NbaMonitorState = { version: 1, targets: {} };
@@ -20,6 +20,12 @@ describe('NBA scheduled login checks', () => {
     expect(classifyNbaLogin({ ...base, challengeVisible: true })).toBe('verification');
     expect(classifyNbaLogin({ ...base, text: 'Enter the verification code' })).toBe('verification');
     expect(classifyNbaLogin({ ...base, text: 'Something went wrong' })).toBe('unavailable');
+  });
+  it('does not label a server HTTP block as a bad password', () => {
+    expect(nbaHttpResult(403)).toBe('verification');
+    expect(nbaHttpResult(429)).toBe('verification');
+    expect(nbaHttpResult(503)).toBe('unavailable');
+    expect(nbaHttpResult(200)).toBeUndefined();
   });
   it('checks once every three hours, remains quiet on success, and keeps scheduling across restart', async () => {
     const f = fixture(); await monitorNba(f.deps); await monitorNba(f.deps);

@@ -12,6 +12,12 @@ export function classifyNbaLogin(o: LoginObservation): NbaLoginResult {
   if (o.authenticated && !o.passwordVisible) return 'ok';
   return 'unknown';
 }
+export function nbaHttpResult(status: number): NbaLoginResult | undefined {
+  if ([401, 403, 429].includes(status)) return 'verification';
+  if (status >= 500 || !status) return 'unavailable';
+  if (status >= 400) return 'unknown';
+  return undefined;
+}
 export function nbaBrowserPath(): string {
   if (process.env.NBA_CHROME_PATH) return process.env.NBA_CHROME_PATH;
   for (const path of ['/opt/google/chrome/chrome', '/usr/bin/google-chrome-stable']) if (existsSync(path)) return path;
@@ -50,7 +56,11 @@ export async function checkNbaLogin(email: string, password: string): Promise<Nb
       args: ['--disable-dev-shm-usage'], timeout: 30000 });
     const context = await browser.createBrowserContext(); const page = await context.newPage();
     page.setDefaultTimeout(20000); page.setDefaultNavigationTimeout(40000);
-    await page.goto('https://www.nba.com/account/sign-in', { waitUntil: 'domcontentloaded' });
+    const response = await page.goto('https://www.nba.com/account/sign-in', { waitUntil: 'domcontentloaded', timeout: 30000 });
+    const statusResult = nbaHttpResult(response?.status() || 0);
+    if (statusResult) return statusResult;
+    const initialResult = classifyNbaLogin(await observeNbaPage(page));
+    if (initialResult !== 'unknown' && initialResult !== 'ok') return initialResult;
     const emailInput = await page.waitForSelector('input[type="email"]', { visible: true });
     if (!emailInput) return 'unknown';
     await emailInput.type(email); await page.click('#email-submit');
