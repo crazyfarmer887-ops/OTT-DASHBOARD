@@ -1,0 +1,13 @@
+[Unit]
+Description=NBA account login check and Linkid Telegram alert
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/nba-login-monitor-current
+EnvironmentFile=/etc/graytag-secrets/nba-login-monitor.env
+ExecStart=/usr/bin/flock -n /home/ubuntu/.hermes/hermes-agent/graytag-aio-manager-0606/data/nba-login-monitor.lock /usr/bin/node --import tsx scripts/nba-login-monitor.ts
+TimeoutStartSec=12min
+UMask=0077

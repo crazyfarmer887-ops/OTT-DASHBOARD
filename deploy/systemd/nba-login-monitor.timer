@@ -1,0 +1,10 @@
+[Unit]
+Description=Check NBA accounts every three hours
+
+[Timer]
+OnCalendar=*-*-* 00,03,06,09,12,15,18,21:00:00 Asia/Seoul
+Persistent=true
+Unit=nba-login-monitor.service
+
+[Install]
+WantedBy=timers.target
