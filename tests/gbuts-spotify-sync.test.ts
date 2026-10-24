@@ -9,6 +9,27 @@ const generatedCredentials = { email: 'spabcdefgh23@jamkkangudok.com', password:
   receivedAt: '2026-10-20T00:00:00Z' };
 
 describe('GButs Spotify Notion sync', () => {
+  it('runs buyer delivery even when Notion credential import fails', async () => {
+    const delivery = vi.fn(async () => undefined);
+    const deps = { listMembers: async () => [], listRows: async () => { throw new Error('Notion unavailable'); },
+      openPrivateRoom: vi.fn(), getChat: vi.fn(), getRow: vi.fn(), createRow: vi.fn(), replaceCredentials: vi.fn(), cancelRow: vi.fn() };
+    const result = await syncGbutsSpotifyPosts(deps, [17124], delivery);
+    expect(result.errors).toHaveLength(1);
+    expect(delivery).toHaveBeenCalledWith(17124);
+  });
+
+  it('welcomes all listings before import and keeps phases independent on failure', async () => {
+    const calls: string[] = [];
+    const deps = { listMembers: async (post: number) => { calls.push(`import:${post}`); return []; },
+      listRows: async () => [], openPrivateRoom: vi.fn(), getChat: vi.fn(), getRow: vi.fn(),
+      createRow: vi.fn(), replaceCredentials: vi.fn(), cancelRow: vi.fn() };
+    const result = await syncGbutsSpotifyPosts(deps, [15557,17124,17124],
+      async post => { calls.push(`deliver:${post}`); },
+      async post => { calls.push(`welcome:${post}`); if(post===15557)throw new Error('room unavailable'); });
+    expect(calls).toEqual(['welcome:15557','welcome:17124','import:15557','deliver:15557','import:17124','deliver:17124']);
+    expect(result.errors).toEqual([{postSeq:15557,error:'room unavailable'}]);
+  });
+
   it('keeps old and new listing buyers separate and delivers the existing invited reply for both', async () => {
     const rows: SpotifyNotionRow[] = [];
     const chats = new Map([15557, 17000].map(post => [String(post), [

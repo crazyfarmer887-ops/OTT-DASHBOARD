@@ -109,6 +109,17 @@ describe('OpenRouter Notion extraction',()=>{
    expect(transport).toHaveBeenCalledTimes(2);
   }finally{vi.useRealTimers();vi.unstubAllGlobals();vi.unstubAllEnvs();}
  });
+ test('retries a complete buyer credential submission after a transient model abstention',async()=>{
+  const input:ExtractionTurn[]=[{role:'buyer',text:'ID: retry-spotify@example.com 비밀번호: Retry579#@!',time:'2026-10-24T05:50:27Z'}];
+  const success=transportFor(input,'retry-spotify@example.com','Retry579#@!');
+  const transport=vi.fn().mockResolvedValueOnce(Response.json({choices:[{message:{content:JSON.stringify({email:null,password:null,confidence:1})}}]})).mockImplementation(success);
+  vi.useFakeTimers();vi.stubEnv('OPENROUTER_API_KEY','key');vi.stubGlobal('fetch',transport);
+  try{
+   expect(await cachedNotionChatExtraction(input,'credentials')).toBeNull();
+   await vi.advanceTimersByTimeAsync(60_001);
+   expect(await cachedNotionChatExtraction(input,'credentials')).toMatchObject({email:'retry-spotify@example.com',password:'Retry579#@!'});
+  }finally{vi.useRealTimers();vi.unstubAllGlobals();vi.unstubAllEnvs();}
+ });
  test('imports the original missed message into one order-linked Notion row using the model extractor',async()=>{
   let rows:SpotifyNotionRow[]=[];const transport=transportFor(turns);
   const deps={listMembers:async()=>[{seq:91,userSeq:42,productId:'SPOT123',status:'APPLY',cancelStatus:null}],openPrivateRoom:async()=> 'ROOM',getChat:async()=>({roomId:'ROOM',members:[],messages:[{senderSeq:42,message:turns[0].text,messageType:'TEXT',createdAt:turns[0].time!}]}),extractCredentials:async()=>extractNotionChatWithOpenRouter(turns,'credentials',transport,'key'),listRows:async()=>rows,getRow:async()=>rows[0],createRow:vi.fn(async(orderKey,credentials)=>{const row={id:'page',orderKey,emailHistory:[],...credentials,invited:false,cancelled:false};rows.push(row);return row;}),replaceCredentials:vi.fn(),cancelRow:vi.fn()};

@@ -16,3 +16,12 @@
 - [x] Commit/push, deploy and verify the actual registered listing's delete control without deleting it during the smoke check.
 
 Runtime `14c9184` deployed on 2026-10-18; service active. Production desktop/mobile browser confirms the existing listing has an enabled Delete button and no page errors or horizontal overflow. Authenticated DELETE for a nonexistent record returns 404; unauthenticated DELETE returns 403. The real listing remains visible and unchanged (one record), and automatic processing is enabled. No actual recruitment closure or sharing termination was executed during smoke verification.
+
+
+## Buyer automation incident — 2026-10-24
+
+- [x] Read production membership, chat metadata, Notion and message receipts. Found one current complete credential submission without an order-linked row or receipt.
+- [x] Reproduce three failures before changing code: complete-pair abstention frozen for 24 hours, welcome blocked by Notion, delivery callback skipped after import failure.
+- [x] Decouple welcome/import/delivery and retry complete-pair model abstentions in one minute. Preserve uncertain-send and vendor checkbox safeguards.
+- [x] Verify relevant extraction, multi-listing isolation, guides, acknowledgments, vendor completion, duplicate-send and refund behavior: 112 tests passed across eight suites; client build and whitespace checks passed.
+- [ ] Commit/push, deploy committed source and verify actual missed order recovery and continued polling.

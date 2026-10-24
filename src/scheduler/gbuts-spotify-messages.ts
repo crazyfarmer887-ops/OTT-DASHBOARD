@@ -68,12 +68,13 @@ export function requestedSpotifyNewAccount(messages: readonly GbutsChatMessage[]
   return selectedAt;
 }
 
-export async function syncGbutsSpotifyMessages(deps: GbutsSpotifyMessageDependencies, postSeq: number): Promise<{
+export async function syncGbutsSpotifyMessages(deps: GbutsSpotifyMessageDependencies, postSeq: number,
+  options: { guidesOnly?: boolean } = {}): Promise<{
   guidesAttempted: number; acknowledgementsAttempted: number; invitedRepliesAttempted: number; confirmed: number;
 }> {
   const ackStart = deps.requestAckStartAt == null ? null : Date.parse(deps.requestAckStartAt);
   if (ackStart !== null && !Number.isFinite(ackStart)) throw new Error('GButs Spotify acknowledgment start time invalid');
-  const [members, rows] = await Promise.all([deps.listMembers(postSeq), deps.listRows()]);
+  const [members, rows] = await Promise.all([deps.listMembers(postSeq), options.guidesOnly ? [] : deps.listRows()]);
   const active = members.filter(isActiveGbutsSpotifyMember);
   const journal = deps.readJournal();
   const sellerSeq = active.length ? await deps.sellerAccountSeq() : 0;
@@ -86,10 +87,16 @@ export async function syncGbutsSpotifyMessages(deps: GbutsSpotifyMessageDependen
     if (active.filter((candidate) => gbutsSpotifyOrderKey(postSeq, candidate) === orderKey).length !== 1) continue;
     const roomId = await deps.openPrivateRoom(postSeq, member.userSeq);
     const chat = await deps.getChat(roomId);
-    const buyerCredentials = await (deps.extractCredentials || extractGbutsSpotifyCredentials)(chat.messages, member.userSeq);
+    // Welcome messages do not depend on Notion or an AI provider. Submitted accounts
+    // are handled by the receipt/delivery phase, never asked for a second time.
+    if (options.guidesOnly && (requestedSpotifyNewAccount(chat.messages, member.userSeq)
+      || chat.messages.some(message => message.senderSeq === member.userSeq && message.messageType === 'TEXT'
+        && explicitYouTubeBuyerEmails(message.message).length > 0))) continue;
+    const buyerCredentials = options.guidesOnly ? null
+      : await (deps.extractCredentials || extractGbutsSpotifyCredentials)(chat.messages, member.userSeq);
     const newAccountRequestedAt = requestedSpotifyNewAccount(chat.messages, member.userSeq);
     // A submitted account waiting for model interpretation is not a missing submission.
-    if (deps.extractCredentials && !buyerCredentials && !newAccountRequestedAt
+    if (!options.guidesOnly && deps.extractCredentials && !buyerCredentials && !newAccountRequestedAt
       && chat.messages.some(message => message.senderSeq === member.userSeq && message.messageType === 'TEXT'
         && explicitYouTubeBuyerEmails(message.message).length > 0)) continue;
     const buyerChoiceAt = [buyerCredentials?.receivedAt, newAccountRequestedAt]

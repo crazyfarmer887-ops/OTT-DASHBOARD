@@ -386,16 +386,30 @@ export function createGbutsSpotifySellerClient(token: string, transport: typeof 
 }
 
 export async function syncGbutsSpotifyPosts(deps: GbutsSpotifySyncDependencies, postSeqs: number[],
-  afterSync?: (postSeq: number) => Promise<void>) {
-  const errors: Array<{ postSeq: number; error: string }> = [];
-  for (const postSeq of new Set(postSeqs)) {
-    try {
+  afterSync?: (postSeq: number) => Promise<void>, beforeSync?: (postSeq: number) => Promise<void>) {
+  const failures = new Map<number, string[]>();
+  const posts: Array<{ postSeq: number; members: number; created: number; updated: number;
+    cancelled: number; waitingForCredentials: number; conflicts: number }> = [];
+  const uniquePosts = [...new Set(postSeqs)];
+  const attempt = async (postSeq: number, work: () => Promise<void>) => {
+    try { await work(); }
+    catch (e) {
+      const errors = failures.get(postSeq) || [];
+      errors.push(e instanceof Error ? e.message : '스포티파이 주문 처리 실패');
+      failures.set(postSeq, errors);
+    }
+  };
+  // Welcome every listing before any potentially slow credential interpretation.
+  for (const postSeq of uniquePosts) await attempt(postSeq, async () => { await beforeSync?.(postSeq); });
+  for (const postSeq of uniquePosts) {
+    await attempt(postSeq, async () => {
       const result = await syncGbutsSpotifyCredentials(deps, postSeq);
-      if (result.created || result.updated || result.cancelled || result.conflicts) console.log('[GbutsSpotifySync] sync', postSeq, result);
-      await afterSync?.(postSeq);
-    } catch (e) { errors.push({ postSeq, error: e instanceof Error ? e.message : '스포티파이 주문 처리 실패' }); }
+      posts.push({ postSeq, ...result });
+    });
+    // Existing partner completions must still deliver if another import fails.
+    await attempt(postSeq, async () => { await afterSync?.(postSeq); });
   }
-  return { errors };
+  return { errors: [...failures].map(([postSeq, errors]) => ({ postSeq, error: errors.join('; ') })), posts };
 }
 
 export function startGbutsSpotifySync(): void {
@@ -414,20 +428,25 @@ export function startGbutsSpotifySync(): void {
       const gbutsToken = loadGbutsSession()?.token || process.env.GBUTS_API_TOKEN?.trim();
       if (!gbutsToken) return;
       const deps = { ...notion, ...createGbutsSpotifySellerClient(gbutsToken), extractCredentials: extractGbutsCredentialsWithOpenRouter };
-      const result = await syncGbutsSpotifyPosts(deps, spotifyPostSeqs(), async postSeq => {
+      const messagesFor = async (postSeq: number, guidesOnly = false) => {
         if (process.env.GBUTS_SPOTIFY_AUTO_MESSAGE_ENABLED !== 'true') return;
         const messages = await syncGbutsSpotifyMessages({ ...deps, sendText: sendGbutsText,
           readJournal: readGbutsSpotifyMessageJournal,
           writeJournal: writeGbutsSpotifyMessageJournal,
-          requestAckStartAt: process.env.GBUTS_SPOTIFY_ACK_START_AT }, postSeq);
+          requestAckStartAt: process.env.GBUTS_SPOTIFY_ACK_START_AT }, postSeq, { guidesOnly });
         if (messages.guidesAttempted || messages.acknowledgementsAttempted
           || messages.invitedRepliesAttempted || messages.confirmed)
-          console.log('[GbutsSpotifySync] messages', messages);
-      });
+          console.log('[GbutsSpotifySync] messages', { postSeq, ...messages });
+      };
+      const result = await syncGbutsSpotifyPosts(deps, spotifyPostSeqs(),
+        postSeq => messagesFor(postSeq), postSeq => messagesFor(postSeq, true));
+      console.log('[GbutsSpotifySync] completed', result.posts);
+
       for (const failure of result.errors) console.error('[GbutsSpotifySync]', failure.postSeq, failure.error);
     } catch (error) {
       console.error('[GbutsSpotifySync] sync failed', error instanceof Error ? error.message : 'unknown error');
     }
   });
+  console.log('[GbutsSpotifySync] started', { intervalMs });
   setTimeout(() => { void run(); setInterval(() => { void run(); }, intervalMs); }, 10_000);
 }

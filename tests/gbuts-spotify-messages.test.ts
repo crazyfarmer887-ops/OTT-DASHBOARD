@@ -10,6 +10,30 @@ const buyerMessage = { senderSeq: 42, message: 'Spotify email: buyer@example.com
   messageType: 'TEXT', createdAt: '2026-10-02T10:00:00Z' };
 
 describe('GButs Spotify buyer messages', () => {
+  it('sends a new buyer guide without waiting for Notion or AI', async () => {
+    const listRows = vi.fn(async () => { throw new Error('Notion unavailable'); });
+    const extractCredentials = vi.fn(async () => { throw new Error('AI unavailable'); });
+    const sendText = vi.fn(async () => undefined);
+    const result = await syncGbutsSpotifyMessages({
+      listMembers: async () => [member], openPrivateRoom: async () => '777',
+      getChat: async () => ({messages:[]}), sellerAccountSeq: async () => 7,
+      listRows, extractCredentials, sendText,
+      readJournal: () => ({version:1,records:{}}), writeJournal: vi.fn(),
+    },17124, {guidesOnly:true});
+    expect(result.guidesAttempted).toBe(1);
+    expect(sendText).toHaveBeenCalledWith('777',7,SPOTIFY_BUYER_GUIDE);
+    expect(listRows).not.toHaveBeenCalled();expect(extractCredentials).not.toHaveBeenCalled();
+  });
+
+  it('does not ask existing submitters again during the independent welcome phase', async () => {
+    const sendText=vi.fn();const listRows=vi.fn();const extractCredentials=vi.fn();
+    await syncGbutsSpotifyMessages({listMembers:async()=>[member],openPrivateRoom:async()=> '777',
+      getChat:async()=>({messages:[buyerMessage]}),sellerAccountSeq:async()=>7,
+      listRows,extractCredentials,sendText,readJournal:()=>({version:1,records:{}}),writeJournal:vi.fn(),
+    },17124,{guidesOnly:true});
+    expect(sendText).not.toHaveBeenCalled();expect(listRows).not.toHaveBeenCalled();expect(extractCredentials).not.toHaveBeenCalled();
+  });
+
   it('keeps submitted credentials pending when the primary model is unavailable instead of asking again', async () => {
     const sendText = vi.fn();
     const result = await syncGbutsSpotifyMessages({

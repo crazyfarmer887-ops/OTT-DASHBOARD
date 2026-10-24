@@ -74,7 +74,7 @@ function eligibleBuyerEvidence(turns: readonly ExtractionTurn[], evidence: reado
 }
 
 interface Selection { email: string | null; password: string | null; confidence: number }
-type ExtractionOutcome = { credentials: SpotifyCredentials | null; settled: boolean };
+type ExtractionOutcome = { credentials: SpotifyCredentials | null; settled: boolean; retryable?: boolean };
 const invalidReply: ExtractionOutcome = { credentials: null, settled: false };
 const pendingReply: ExtractionOutcome = { credentials: null, settled: true };
 async function classifyNotionChat(turns: readonly ExtractionTurn[], mode: 'email' | 'credentials',
@@ -132,11 +132,18 @@ async function classifyNotionChat(turns: readonly ExtractionTurn[], mode: 'email
   if (!selection || !Number.isFinite(selection.confidence) || selection.confidence < 0 || selection.confidence > 1
     || !(selection.email === null || typeof selection.email === 'string')
     || !(selection.password === null || typeof selection.password === 'string')) return invalidReply;
-  if (selection.email === null || selection.confidence < 0.9) return pendingReply;
+  // A transient abstention on a complete pair must not freeze a paid order for a day.
+  const emails = [...new Set(eligible.filter(item => item.kind === 'email').map(item => item.value))];
+  const completePair = mode === 'credentials' && emails.length === 1 && eligible.some(item =>
+    item.value.length >= 6 && item.value.length <= 128 && (item.kind === 'password'
+      || (item.kind === 'token' && turns[item.turn]?.text.trim() === item.value
+        && /[A-Za-z]/.test(item.value) && /[0-9]/.test(item.value))));
+  const modelPending = { ...pendingReply, retryable: completePair };
+  if (selection.email === null || selection.confidence < 0.9) return modelPending;
   const email = eligible.find(item => item.id === selection.email && item.kind === 'email');
   const password = eligible.find(item => item.id === selection.password && (item.kind === 'token' || item.kind === 'password'));
   if (!email) return invalidReply;
-  if (mode === 'credentials' && selection.password === null) return pendingReply;
+  if (mode === 'credentials' && selection.password === null) return modelPending;
   if (mode === 'credentials' && (!password || password.value.length < 6 || password.value.length > 128 || password.turn < email.turn)) return invalidReply;
   return { settled: true, credentials: { email: email.value, password: mode === 'credentials' ? password!.value : '',
     receivedAt: turns[Math.max(email.turn, mode === 'credentials' ? password!.turn : email.turn)]?.time || '' } };
@@ -155,7 +162,7 @@ export async function cachedNotionChatExtraction(turns: readonly ExtractionTurn[
   const entry = { expires: Date.now() + 60_000, pending: Promise.resolve<SpotifyCredentials | null>(null) };
   entry.pending = classifyNotionChat(turns, mode).then(result => {
     // A model abstention must not hide a paid buyer's email for a whole day.
-    const stable = result.settled && (result.credentials !== null || mode === 'credentials');
+    const stable = result.settled && !result.retryable && (result.credentials !== null || mode === 'credentials');
     entry.expires = Date.now() + (stable ? 24 * 60 * 60_000 : 60_000);
     console.info('[NotionChatExtraction] decision', { model: NOTION_CHAT_EXTRACTION_MODEL, mode,
       outcome: result.credentials ? 'confirmed' : result.settled ? 'pending' : 'invalid' });
