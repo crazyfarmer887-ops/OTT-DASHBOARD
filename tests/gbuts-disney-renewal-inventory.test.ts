@@ -46,6 +46,7 @@ test('Netflix inventory resolves placeholder rows only from seller-owned evidenc
  const rows=await resolveGbutsRenewalDealAccounts(deals,access,'넷플릭스',read,new Date('2026-10-25T00:00:00Z'));
  expect(read).toHaveBeenCalledTimes(1);expect(buildGbutsRenewalInventory({[a.id]:a},rows,access,{},'넷플릭스').services[0].accounts[0].members).toHaveLength(1);
  expect(deals[0].keepAcct).toBe('아래 메세지를 확인해주세요');
+ const username=await resolveGbutsRenewalDealAccounts([deals[0]],access,'넷플릭스',async()=>[{owned:true,message:'ID: nonemailuser 문의 contact@example.com'}]);expect(username[0].keepAcct).toBe(deals[0].keepAcct);
  const direct=await resolveGbutsRenewalDealAccounts([deals[0]],access,'넷플릭스',async()=>[{owned:true,message:'ID: netflix@example.com'}]);expect(direct[0].keepAcct).toBe(a.email);
  const untrusted=await resolveGbutsRenewalDealAccounts([deals[0]],access,'넷플릭스',async()=>[{owned:false,message:'ID: netflix@example.com'}]);
  expect(()=>buildGbutsRenewalInventory({[a.id]:a},untrusted,access,{},'넷플릭스')).toThrow('계정 연결');

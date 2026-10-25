@@ -53,7 +53,7 @@ export async function resolveGbutsRenewalDealAccounts(deals: any[], access: Part
         return record && !record.revokedAt && record.serviceType === serviceType ? [record.accountEmail] : [];
       });
       const direct = extractDeliveredAccountFromChats([chat]);
-      if (direct) {
+      if (direct?.includes('@')) {
         // The common extractor returns the first label. Collect every email in
         // that seller delivery so an old/current ID pair cannot hide occupancy.
         emails.push(...(normalizeGraytagChatText(chat.message).match(/[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}/g) || []));
