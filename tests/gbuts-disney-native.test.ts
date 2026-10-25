@@ -126,6 +126,22 @@ test('sale terms PUT changes only current public price/title and preserves priva
 test('ranking uses the buyer latest Disney list and rejects incomplete, mixed-category or duplicate prefixes',async()=>{
  let rows:any[]=[{seq:100,seller:{seq:99},category1:{seq:6}},{seq:101,seller:{seq:88},category1:{seq:6}}];let count=2;
  const transport=vi.fn(async(url:any)=>{expect(String(url)).toBe('https://api.gbuts.com/api/subscribe/share?categorySeqs=6&page=1&size=20');return new Response(JSON.stringify({success:true,error:null,response:rows,pagination:{currentPage:1,totalCount:count}}));});
- const client=createGbutsOttSellerClient('test',transport);expect(await client.listDisneyPublicRanking()).toEqual([{seq:100,sellerSeq:99},{seq:101,sellerSeq:88}]);
- count=3;await expect(client.listDisneyPublicRanking()).rejects.toThrow('모두 확인');count=2;rows[1].seq=100;await expect(client.listDisneyPublicRanking()).rejects.toThrow('조회 중 변경');rows[1].seq=101;rows[1].category1.seq=5;await expect(client.listDisneyPublicRanking()).rejects.toThrow('상품 종류');
+ const client=createGbutsOttSellerClient('test',transport);expect(await client.listOttPublicRanking('디즈니플러스')).toEqual([{seq:100,sellerSeq:99},{seq:101,sellerSeq:88}]);
+ count=3;await expect(client.listOttPublicRanking('디즈니플러스')).rejects.toThrow('모두 확인');count=2;rows[1].seq=100;await expect(client.listOttPublicRanking('디즈니플러스')).rejects.toThrow('조회 중 변경');rows[1].seq=101;rows[1].category1.seq=5;await expect(client.listOttPublicRanking('디즈니플러스')).rejects.toThrow('상품 종류');
+});
+
+test('Netflix rank discovery queries category five and native renewal publication preserves merchant notices',async()=>{
+ const transport=vi.fn(async(url:any)=>{expect(String(url)).toBe('https://api.gbuts.com/api/subscribe/share?categorySeqs=5&page=1&size=20');return new Response(JSON.stringify({success:true,error:null,response:[{seq:555,seller:{seq:99},category1:{seq:5}}],pagination:{currentPage:1,totalCount:1}}));});
+ const client=createGbutsOttSellerClient('test',transport);expect(await client.listOttPublicRanking('넷플릭스')).toEqual([{seq:555,sellerSeq:99}]);
+ const l={...fixtureListing(),serviceType:'넷플릭스',repostFrom:'old',description:'비밀번호로만 로그인. 링키드 닉네임과 동일하게 설정.',noticeBeforeOrder:'닉네임 불일치는 정리될 수 있습니다.',noticeAfterOrder:'비밀번호 입력 전용'};
+ const post=buildGbutsOttPost(l,new Date(),{id:'netflix@example.com',password:'secret-current'});
+ expect(post).toMatchObject({category:5,subscriptionPrincipal:'netflix@example.com',subscriptionCredential:'secret-current',description:l.description,noticeBeforeOrder:l.noticeBeforeOrder,noticeAfterOrder:l.noticeAfterOrder});
+ for(const key of ['description','noticeBeforeOrder','noticeAfterOrder','title'])expect(String(post[key])).not.toContain('secret-current');
+});
+test('Netflix credential rotation preserves public sale copy and native notices without Disney mailbox instructions',async()=>{
+ let post:any={seq:100,category1:{seq:5},subscriptionType:'SHARE',memberLimit:3,memberCount:1,status:'ON_SALE',subscriptionStartsAt:'2026-10-21 00:00:00',subscriptionEndsAt:'2026-12-01 23:59:59',price:190,priceType:'DAY',countries:['KR'],title:JSON.stringify({ko:'[넷플릭스] 비밀번호 로그인'}),description:'이메일함 접근 불가',noticeBeforeOrder:'링키드 닉네임',noticeAfterOrder:'비밀번호 입력 전용',subscriptionPrincipal:encrypted('old@example.com'),subscriptionCredential:encrypted('old-pass')};
+ const writes:any[]=[];const transport=vi.fn(async(_url:any,init?:RequestInit)=>{if(init?.method==='PUT'){const body=JSON.parse(String(init.body));writes.push(body);post={...post,...body,title:JSON.stringify({ko:body.title}),subscriptionPrincipal:encrypted(body.subscriptionPrincipal),subscriptionCredential:encrypted(body.subscriptionCredential)};}return new Response(JSON.stringify({success:true,error:null,response:post}));});
+ const client=createGbutsOttSellerClient('test',transport);await client.syncNetflixCredentials(post,{id:'new@example.com',password:'new-password'});
+ expect(writes[0]).toMatchObject({description:'이메일함 접근 불가',noticeBeforeOrder:'링키드 닉네임',noticeAfterOrder:'비밀번호 입력 전용',memberLimit:3,price:190});
+ await client.syncNetflixCredentials(post,{id:'new@example.com',password:'new-password'});expect(writes).toHaveLength(1);
 });

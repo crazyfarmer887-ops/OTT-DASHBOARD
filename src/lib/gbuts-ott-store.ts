@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { writeJsonAtomic } from './graytag-sales-session';
-import { GBUTS_OTT_CATEGORIES, emptyGbutsOttStore, type GbutsOttStore } from './gbuts-ott';
+import { GBUTS_OTT_CATEGORIES, emptyGbutsOttStore, gbutsOttRenewalKey, supportsGbutsOttRenewal, type GbutsOttStore } from './gbuts-ott';
 const DEFAULT_PATH = '/home/ubuntu/.hermes/hermes-agent/graytag-aio-manager-0606/data/gbuts-ott-sales.json';
 export function readGbutsOttStore(path = process.env.GBUTS_OTT_STORE_PATH || DEFAULT_PATH): GbutsOttStore {
   if (!existsSync(path)) return emptyGbutsOttStore();
@@ -39,9 +39,12 @@ export function readGbutsOttStore(path = process.env.GBUTS_OTT_STORE_PATH || DEF
     if (!data.renewals || typeof data.renewals !== 'object' || Array.isArray(data.renewals)) throw new Error('자동 재등록 설정이 올바르지 않습니다.');
     for (const [key, policy] of Object.entries(data.renewals) as Array<[string, any]>) {
       const listing = data.listings[policy?.listingId];
-      if (!listing || listing.deliveryMode !== 'disney-numbered-password' || key !== policy.accountEmail?.trim().toLowerCase()
-        || listing.accountEmail.trim().toLowerCase() !== key || typeof policy.enabled !== 'boolean'
-        || !Number.isInteger(policy.capacity) || policy.capacity < 1 || policy.capacity > 6
+      if (!listing || !supportsGbutsOttRenewal(listing) || typeof policy.accountEmail !== 'string'
+        || key !== gbutsOttRenewalKey(listing.serviceType, policy.accountEmail)
+        || listing.accountEmail.trim().toLowerCase() !== policy.accountEmail.trim().toLowerCase()
+        || (policy.serviceType !== undefined && policy.serviceType !== listing.serviceType) || typeof policy.enabled !== 'boolean'
+        || !Number.isInteger(policy.capacity) || policy.capacity < 1 || policy.capacity > (listing.serviceType === '넷플릭스' ? 5 : 6)
+        || (listing.serviceType === '넷플릭스' && policy.saleTerms !== undefined)
         || (policy.trigger !== undefined && !['hourly', 'rank'].includes(policy.trigger))
         || (policy.trigger === 'rank' && (!Number.isInteger(policy.rankThreshold) || policy.rankThreshold < 2 || policy.rankThreshold > 20))
         || (policy.lastRank !== undefined && policy.lastRank !== null && (!Number.isInteger(policy.lastRank) || policy.lastRank < 1 || policy.lastRank > 20))
@@ -51,7 +54,10 @@ export function readGbutsOttStore(path = process.env.GBUTS_OTT_STORE_PATH || DEF
         || (policy.saleTermsAppliedTo !== undefined && (!Number.isSafeInteger(policy.saleTermsAppliedTo) || policy.saleTermsAppliedTo < 1))
         || (policy.saleTermsRetryAt !== undefined && !Number.isFinite(Date.parse(policy.saleTermsRetryAt)))
         || (policy.earlyRenewalNextAt !== undefined && !Number.isFinite(Date.parse(policy.earlyRenewalNextAt)))
-        || !Number.isFinite(Date.parse(policy.nextAt)) || (policy.pendingId && !data.listings[policy.pendingId]))
+        || !Number.isFinite(Date.parse(policy.nextAt)) || (policy.pendingId && (!data.listings[policy.pendingId]
+          || data.listings[policy.pendingId].repostFrom !== listing.id
+          || data.listings[policy.pendingId].serviceType !== listing.serviceType
+          || data.listings[policy.pendingId].accountEmail.trim().toLowerCase() !== listing.accountEmail.trim().toLowerCase())))
         throw new Error('자동 재등록 설정이 올바르지 않습니다.');
     }
   }

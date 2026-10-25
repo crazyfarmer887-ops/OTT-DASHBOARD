@@ -1,7 +1,7 @@
-import { buildDisneyRenewalInventory } from '../lib/gbuts-disney-renewal-inventory';
+import { buildGbutsRenewalInventory } from '../lib/gbuts-ott-renewal-inventory';
 import { registerLinkidRoutes } from './linkid';
 import { registerFinanceRoutes } from './finance';
-import { resolveGbutsOttDirectCredentials, resolveGbutsDisneyListingCredentials } from '../lib/gbuts-ott-credentials';
+import { resolveGbutsOttDirectCredentials, resolveGbutsDisneyListingCredentials, resolveGbutsNetflixListingCredentials } from '../lib/gbuts-ott-credentials';
 import { Hono } from 'hono';
 import { execFile } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
@@ -6704,7 +6704,7 @@ async function readGraytagOttManagement(options = { forceRefresh: true }) {
   return payload;
 }
 
-async function readDisneyRenewalManagement(): Promise<Awaited<ReturnType<typeof readGraytagOttManagement>>> {
+async function readGbutsRenewalManagement(serviceType = '디즈니플러스'): Promise<Awaited<ReturnType<typeof readGraytagOttManagement>>> {
   const cookies = resolveCookies({}, 'primary');
   if (!cookies) throw new Error('그레이태그 판매자 연결을 확인해주세요.');
   const snapshot = await readVerifiedGraytagManagementSnapshot((kind, _finished, page) => rateLimitedFetch(
@@ -6712,13 +6712,15 @@ async function readDisneyRenewalManagement(): Promise<Awaited<ReturnType<typeof 
     { headers: { ...BASE_HEADERS, Cookie: buildCookieStr(cookies), Referer: 'https://graytag.co.kr/lender/deal/list' },
       redirect: 'manual', signal: AbortSignal.timeout(15_000) }, false, undefined, isAuthoritativeGraytagInventoryResponse,
   ), { includeFinished: false });
-  return buildDisneyRenewalInventory(readGeneratedAccountStore(), [...snapshot.afterOpenDeals, ...snapshot.beforeOpenDeals],
-    loadPartyAccessLinkStore(), loadPartyMaintenanceChecklistStore());
+  return buildGbutsRenewalInventory(readGeneratedAccountStore(), [...snapshot.afterOpenDeals, ...snapshot.beforeOpenDeals],
+    loadPartyAccessLinkStore(), loadPartyMaintenanceChecklistStore(), serviceType);
 }
 
 export const gbutsOttRuntimeDependencies: GbutsOttRuntimeDependencies = {
-  renewalManagement: readDisneyRenewalManagement,
+  renewalManagement: readGbutsRenewalManagement,
   async listingCredentials(listing) {
+    if (listing.serviceType === '넷플릭스') return resolveGbutsNetflixListingCredentials(listing, { accessRecords: loadPartyAccessLinkStore(),
+      maintenance: loadPartyMaintenanceChecklistStore(), generated: readGeneratedAccountStore() });
     return resolveGbutsDisneyListingCredentials(listing, { accessRecords: loadPartyAccessLinkStore(),
       maintenance: loadPartyMaintenanceChecklistStore(), generated: readGeneratedAccountStore() });
   },

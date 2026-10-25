@@ -39,3 +39,18 @@ export function resolveGbutsDisneyListingCredentials(listing: GbutsOttListing, d
   if (!result.emailAccessUrl) throw new Error('이메일 인증 주소를 확인해주세요.');
   return result;
 }
+
+/** Netflix renewal publication uses the same current paid account resolution as buyer delivery. */
+export function resolveGbutsNetflixListingCredentials(listing: GbutsOttListing, data: {
+  accessRecords: PartyAccessLinkStore; maintenance: PartyMaintenanceChecklistStore; generated: GeneratedAccountStore;
+}): GbutsOttCredentials {
+  if (listing.serviceType !== '넷플릭스') throw new Error('넷플릭스 계정 연결을 확인해주세요.');
+  const accounts = Object.values(data.generated).filter(x => ottKey(x.serviceType, x.email) === ottKey(listing.serviceType, listing.accountEmail));
+  if (accounts.length !== 1 || accounts[0].paymentStatus !== 'paid') throw new Error('결제된 넷플릭스 계정 정보를 확인해주세요.');
+  const record = createPartyAccessLinkRecord({ token: 'admin-netflix-publication-preview', serviceType: listing.serviceType,
+    accountEmail: listing.accountEmail, fallbackPassword: accounts[0].password, profileName: '1',
+    member: { kind: 'gbuts', memberId: `preview:${listing.id}`, memberName: '(판매글 계정 확인)', status: 'active', endDateTime: listing.endDate } });
+  const enriched = enrichPartyAccessRecordWithKnownCredentials(record, data.accessRecords, data.maintenance, data.generated);
+  const credentials = resolvePartyAccessCredentials(enriched, data.maintenance, data.generated);
+  const result = { id: credentials.id, password: credentials.password }; assertGbutsOttCredentials(result); return result;
+}

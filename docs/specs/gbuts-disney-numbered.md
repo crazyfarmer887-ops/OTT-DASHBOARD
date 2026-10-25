@@ -50,3 +50,18 @@ Use the same serialized final-roster/capacity/credential/foreign-inventory check
 Provider source verification: official `/assets/index-CSf9N3vQ.js` buyer list requests `/api/subscribe/share` with categorySeqs6, page1 and size20; `/assets/index-ClQyxOre.js` uses comma array serialization and exposes pagination currentPage/totalCount/totalPage. The rendered list consumes server order directly; separate promotional groups are excluded. Live public response verified against this endpoint before implementation.
 
 October22 latest title steering supersedes the prior merchant-margin title: `프리미엄 / 하루 110원 / TV O`. Apply to current Disney recruitment and durable saleTerms for future rank-triggered replacements. Keep110/day, rank threshold5 and all other merchant/body/operational data unchanged.
+
+
+## Netflix rank renewal — October 25
+
+Scope confirmed by the seller: enable the newly registered 190 KRW/day Netflix account and future newly published Netflix accounts. Do not opt older Netflix chains into renewal. The current actual paid expiry, price, public title/body and pre/post-purchase notices are retained; reposting never starts a new paid month.
+
+Extend the existing durable close/final-roster/create/reconcile flow to Netflix. Read each service's own ordinary latest list; check approximately every minute, require displacement by another seller to fifth place or lower, retain the five-minute account cooldown and choose at most one candidate per run. A failed category read must not block healthy categories. Own listings must not rotate each other.
+
+Account-wide occupied places include active purchases, retained Netflix profile leases and unverified missing buyers on historical posts. Preserve their original account, profile allocations, rooms, access URLs and delivery receipts. Re-read final buyers after closing; a racing purchase reduces replacement capacity. Full accounts create nothing, verified refunds release places, and conflicting manual/GrayTag inventory blocks publication. Unknown CREATE outcomes only reconcile; no second CREATE. Persist the submitted private-credential fingerprint without credentials in the sales journal.
+
+Netflix replacements use verified current native private account fields for unambiguous read recovery. Preserve the source's merchant notices (including nickname/password-only instructions). Resolve Netflix publication credentials from the same paid generated-account record and maintenance settings as buyer delivery. Read current foreign inventory without rewriting the full management cache. Expired policies stop, and submitted pending work continues read-only recovery even when future renewal is disabled. Existing Disney settings and behavior remain compatible.
+
+Future Netflix publications through the managed registration path automatically create a rank policy after verified publication (including initial uncertain-publication reconciliation). Each service has a distinct policy identity even when login emails match. Configuration/status supports explicit listing selection and shows service type. Activation of the current account uses the same authenticated configuration API.
+
+Verification uses existing provider-client/durable-store, authenticated route and inventory-resolver seams. Cover Netflix partial sales across replacements, retained profile assignments/delivery receipts, closure races, full/refund/missing states, lost CREATE recovery and password rotation, category isolation, merchant-copy preservation, future default enablement and existing Disney regressions. Production verification is read-only except requested policy activation and legitimate due work; never create synthetic buyers or chat messages.

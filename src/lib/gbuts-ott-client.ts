@@ -11,14 +11,15 @@ export interface GbutsOttPost { seq: number; category1: { seq: number }; memberL
 function integer(value: unknown): number { if (!Number.isSafeInteger(value) || Number(value) < 1) throw new Error('벗츠 응답 식별자가 올바르지 않습니다.'); return Number(value); }
 export function buildGbutsOttPost(listing: GbutsOttListing, now = new Date(), credentials?: GbutsOttCredentials): Record<string, unknown> {
   const disney = listing.deliveryMode === 'disney-numbered-password';
-  if (disney) { if (!credentials) throw new Error('판매글 계정 정보를 확인해주세요.'); assertGbutsOttCredentials(credentials); }
+  const nativeCredentials = disney || (listing.serviceType === '넷플릭스' && Boolean(listing.repostFrom));
+  if (nativeCredentials) { if (!credentials) throw new Error('판매글 계정 정보를 확인해주세요.'); assertGbutsOttCredentials(credentials); }
   return { category: GBUTS_OTT_CATEGORIES[listing.serviceType], countries: ['KR'],
-    subscriptionType: 'SHARE', subscriptionPrincipal: disney ? credentials!.id : '1:1 채팅의 계정 확인 링크를 열어주세요', subscriptionCredential: disney ? credentials!.password : '1:1 채팅 확인',
+    subscriptionType: 'SHARE', subscriptionPrincipal: nativeCredentials ? credentials!.id : '1:1 채팅의 계정 확인 링크를 열어주세요', subscriptionCredential: nativeCredentials ? credentials!.password : '1:1 채팅 확인',
     subscriptionStartsAt: `${koreaToday(now)} 00:00:00`, subscriptionEndsAt: `${listing.endDate} 23:59:59`,
     price: listing.dailyPrice, priceType: 'DAY', memberLimit: listing.capacity,
     title: `[${listing.serviceType}] ${listing.title}`, description: disney ? disneyDirectDescription(listing.description) : listing.description,
-    noticeBeforeOrder: '1인 1회선으로 본인에게 배정된 프로필만 이용해주세요. 계정 정보와 프로필 설정을 변경하거나 타인에게 공유하지 마세요.' + (disney ? `\n\n${DISNEY_REFUND_NOTICE}` : ''),
-    noticeAfterOrder: disney ? DISNEY_AFTER_ORDER_NOTICE : '구매 감사합니다. 계정 확인 링크를 1:1 채팅으로 자동 안내드립니다. 링크에서 이용 안내에 동의한 뒤 계정 정보를 확인해주세요.' };
+    noticeBeforeOrder: listing.noticeBeforeOrder ?? '1인 1회선으로 본인에게 배정된 프로필만 이용해주세요. 계정 정보와 프로필 설정을 변경하거나 타인에게 공유하지 마세요.' + (disney ? `\n\n${DISNEY_REFUND_NOTICE}` : ''),
+    noticeAfterOrder: listing.noticeAfterOrder ?? (disney ? DISNEY_AFTER_ORDER_NOTICE : '구매 감사합니다. 계정 확인 링크를 1:1 채팅으로 자동 안내드립니다. 링크에서 이용 안내에 동의한 뒤 계정 정보를 확인해주세요.') };
 }
 export function createGbutsOttSellerClient(token: string, transport: typeof fetch = fetch) {
   const request = async (path: string, init?: RequestInit) => {
@@ -44,6 +45,36 @@ export function createGbutsOttSellerClient(token: string, transport: typeof fetc
     if (!Number.isSafeInteger(post.memberCount) || post.memberCount < 0 || !ottDate(post.subscriptionEndsAt) || typeof post.status !== 'string') throw new Error('벗츠 판매글 응답이 올바르지 않습니다.');
     return post;
   };
+  async function syncNativeCredentials(post: GbutsOttPost, credentials: GbutsOttCredentials): Promise<void> {
+    if (![5, 6].includes(post.category1.seq) || post.subscriptionType !== 'SHARE') throw new Error('판매글 계정 연결을 확인해주세요.');
+    const disney = post.category1.seq === 6;
+    assertGbutsOttCredentials(credentials);
+    const description = disney ? disneyDirectDescription(String(post.description || '')) : post.description;
+    const noticeAfterOrder = disney ? DISNEY_AFTER_ORDER_NOTICE : post.noticeAfterOrder;
+    const noticeBeforeOrder = !disney || String(post.noticeBeforeOrder || '').includes(DISNEY_REFUND_NOTICE)
+      ? post.noticeBeforeOrder : `${post.noticeBeforeOrder || ''}\n\n${DISNEY_REFUND_NOTICE}`.trim();
+    if (decodeGbutsSubscriptionCredential(post.subscriptionPrincipal) === credentials.id
+      && decodeGbutsSubscriptionCredential(post.subscriptionCredential) === credentials.password
+      && post.description === description && post.noticeBeforeOrder === noticeBeforeOrder && post.noticeAfterOrder === noticeAfterOrder) return;
+    let title = String(post.title || '');
+    try { title = JSON.parse(title).ko; } catch { /* Plain seller titles are supported. */ }
+    if (!title || !Array.isArray(post.countries) || post.priceType !== 'DAY') throw new Error('판매글 원본 정보를 확인해주세요.');
+    // Same PUT and fields as the official seller edit form. Never send private
+    // fields in title, description, notices, logs or the local listing journal.
+    await request(`/api/subscribe/${integer(post.seq)}/share`, { method: 'PUT', body: JSON.stringify({
+      category: post.category1.seq, countries: post.countries, subscriptionType: post.subscriptionType,
+      subscriptionPrincipal: credentials.id, subscriptionCredential: credentials.password,
+      subscriptionStartsAt: post.subscriptionStartsAt, subscriptionEndsAt: post.subscriptionEndsAt,
+      price: post.price, priceType: post.priceType, memberLimit: post.memberLimit,
+      title, description, noticeBeforeOrder, noticeAfterOrder,
+    }) });
+    const saved = validatePost((await request(`/api/seller/subscribe/share/${integer(post.seq)}/view`)).response);
+    if (decodeGbutsSubscriptionCredential(saved.subscriptionPrincipal) !== credentials.id
+      || decodeGbutsSubscriptionCredential(saved.subscriptionCredential) !== credentials.password
+      || saved.memberLimit !== post.memberLimit || saved.price !== post.price || saved.subscriptionEndsAt !== post.subscriptionEndsAt
+      || saved.description !== description || saved.noticeBeforeOrder !== noticeBeforeOrder || saved.noticeAfterOrder !== noticeAfterOrder)
+      throw new Error('벗츠 계정 정보 저장 확인이 필요합니다.');
+  }
   // GButs groups unfiltered results by recruitment status. Query the official
   // open/completed filters before using each newest-first high-water stream.
   const postTime = (post: GbutsOttPost): number => {
@@ -60,17 +91,19 @@ export function createGbutsOttSellerClient(token: string, transport: typeof fetc
     return posts;
   };
   return { ...createGbutsSpotifySellerClient(token, transport),
-    /** Buyer-facing Disney latest list, excluding separately rendered PICK/UP sections. */
-    async listDisneyPublicRanking(): Promise<Array<{ seq: number; sellerSeq: number }>> {
-      const data = await request('/api/subscribe/share?categorySeqs=6&page=1&size=20', { cache: 'no-store' });
+    /** Service-specific buyer latest list, excluding separately rendered PICK/UP sections. */
+    async listOttPublicRanking(serviceType: string): Promise<Array<{ seq: number; sellerSeq: number }>> {
+      const category = GBUTS_OTT_CATEGORIES[serviceType];
+      if (![5, 6].includes(category)) throw new Error('순위 감시 서비스 종류를 확인해주세요.');
+      const data = await request(`/api/subscribe/share?categorySeqs=${category}&page=1&size=20`, { cache: 'no-store' });
       const page = data.pagination;
       if (!Array.isArray(data.response) || !page || page.currentPage !== 1 || !Number.isSafeInteger(page.totalCount)
-        || page.totalCount < 0 || data.response.length !== Math.min(20, page.totalCount)) throw new Error('디즈니 최신순 목록을 모두 확인하지 못했습니다.');
+        || page.totalCount < 0 || data.response.length !== Math.min(20, page.totalCount)) throw new Error('구독 최신순 목록을 모두 확인하지 못했습니다.');
       const rows = data.response.map((post: any) => {
-        if (post.category1?.seq !== 6) throw new Error('디즈니 목록의 상품 종류를 확인해주세요.');
+        if (post.category1?.seq !== category) throw new Error('구독 목록의 상품 종류를 확인해주세요.');
         return { seq: integer(post.seq), sellerSeq: integer(post.seller?.seq) };
       });
-      if (new Set(rows.map((row: { seq: number }) => row.seq)).size !== rows.length) throw new Error('디즈니 목록이 조회 중 변경되었습니다.');
+      if (new Set(rows.map((row: { seq: number }) => row.seq)).size !== rows.length) throw new Error('구독 목록이 조회 중 변경되었습니다.');
       return rows;
     },
     async listPosts(): Promise<GbutsOttPost[]> {
@@ -141,32 +174,12 @@ export function createGbutsOttSellerClient(token: string, transport: typeof fetc
       return seq == null ? null : integer(seq);
     },
     async syncDisneyCredentials(post: GbutsOttPost, credentials: GbutsOttCredentials): Promise<void> {
-      if (post.category1.seq !== 6 || post.subscriptionType !== 'SHARE') throw new Error('디즈니 판매글 연결을 확인해주세요.');
-      assertGbutsOttCredentials(credentials);
-      const description = disneyDirectDescription(String(post.description || ''));
-      const noticeBeforeOrder = String(post.noticeBeforeOrder || '').includes(DISNEY_REFUND_NOTICE)
-        ? post.noticeBeforeOrder : `${post.noticeBeforeOrder || ''}\n\n${DISNEY_REFUND_NOTICE}`.trim();
-      if (decodeGbutsSubscriptionCredential(post.subscriptionPrincipal) === credentials.id
-        && decodeGbutsSubscriptionCredential(post.subscriptionCredential) === credentials.password
-        && post.description === description && post.noticeBeforeOrder === noticeBeforeOrder && post.noticeAfterOrder === DISNEY_AFTER_ORDER_NOTICE) return;
-      let title = String(post.title || '');
-      try { title = JSON.parse(title).ko; } catch { /* Plain seller titles are supported. */ }
-      if (!title || !Array.isArray(post.countries) || post.priceType !== 'DAY') throw new Error('판매글 원본 정보를 확인해주세요.');
-      // Same PUT and fields as the official seller edit form. Never send private
-      // fields in title, description, notices, logs or the local listing journal.
-      await request(`/api/subscribe/${integer(post.seq)}/share`, { method: 'PUT', body: JSON.stringify({
-        category: post.category1.seq, countries: post.countries, subscriptionType: post.subscriptionType,
-        subscriptionPrincipal: credentials.id, subscriptionCredential: credentials.password,
-        subscriptionStartsAt: post.subscriptionStartsAt, subscriptionEndsAt: post.subscriptionEndsAt,
-        price: post.price, priceType: post.priceType, memberLimit: post.memberLimit,
-        title, description, noticeBeforeOrder, noticeAfterOrder: DISNEY_AFTER_ORDER_NOTICE,
-      }) });
-      const saved = await this.getPost(post.seq);
-      if (decodeGbutsSubscriptionCredential(saved.subscriptionPrincipal) !== credentials.id
-        || decodeGbutsSubscriptionCredential(saved.subscriptionCredential) !== credentials.password
-        || saved.memberLimit !== post.memberLimit || saved.price !== post.price || saved.subscriptionEndsAt !== post.subscriptionEndsAt
-        || saved.description !== description || saved.noticeBeforeOrder !== noticeBeforeOrder || saved.noticeAfterOrder !== DISNEY_AFTER_ORDER_NOTICE)
-        throw new Error('벗츠 계정 정보 저장 확인이 필요합니다.');
+      if (post.category1.seq !== 6) throw new Error('디즈니 판매글 연결을 확인해주세요.');
+      await syncNativeCredentials(post, credentials);
+    },
+    async syncNetflixCredentials(post: GbutsOttPost, credentials: GbutsOttCredentials): Promise<void> {
+      if (post.category1.seq !== 5) throw new Error('넷플릭스 판매글 연결을 확인해주세요.');
+      await syncNativeCredentials(post, credentials);
     },
     async updateDisneySaleTerms(post: GbutsOttPost, terms: { dailyPrice: number; title: string }): Promise<void> {
       if (post.category1.seq !== 6 || post.subscriptionType !== 'SHARE' || post.priceType !== 'DAY' || post.status !== 'ON_SALE'

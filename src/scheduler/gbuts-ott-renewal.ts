@@ -1,29 +1,29 @@
 import { createHash } from 'node:crypto';
-import { activeOttOrder, holdsDisneyProfile, koreaToday, ottDate, ottKey, updateGbutsOttOrders, type GbutsOttListing, type GbutsOttOrder, type GbutsOttStore, type GbutsOttRenewal, type GbutsOttManagement } from '../lib/gbuts-ott';
+import { GBUTS_OTT_CATEGORIES, activeOttOrder, holdsDisneyProfile, holdsNetflixProfile, supportsGbutsOttRenewal, koreaToday, ottDate, ottKey, updateGbutsOttOrders, type GbutsOttListing, type GbutsOttOrder, type GbutsOttStore, type GbutsOttRenewal, type GbutsOttManagement } from '../lib/gbuts-ott';
 import { readGbutsOttStore, writeGbutsOttStore } from '../lib/gbuts-ott-store';
 import { createGbutsOttSellerClient, type GbutsOttPost, type GbutsOttMember } from '../lib/gbuts-ott-client';
 import { decodeGbutsSubscriptionCredential } from '../lib/gbuts-subscription-credentials';
 import type { GbutsOttCredentials } from '../lib/gbuts-disney-delivery';
 import type { GbutsOttRuntimeDependencies } from './gbuts-ott-sync';
 export const DISNEY_RENEWAL_INTERVAL = 60 * 60 * 1000;
-export const DISNEY_RANK_CHECK_INTERVAL = 60_000;
-export const DISNEY_RANK_COOLDOWN = 5 * 60_000;
+export const OTT_RANK_CHECK_INTERVAL = 60_000;
+export const OTT_RANK_COOLDOWN = 5 * 60_000;
 
-function accountOrders(store: GbutsOttStore, email: string, now: Date): GbutsOttOrder[] {
+function accountOrders(store: GbutsOttStore, serviceType: string, email: string, now: Date): GbutsOttOrder[] {
   return Object.values(store.orders).filter(order => {
     const listing = store.listings[order.listingId];
-    return ottKey(listing.serviceType, listing.accountEmail) === ottKey('디즈니플러스', email)
-      && (activeOttOrder(order, now) || holdsDisneyProfile(order, listing, now)
+    return ottKey(listing.serviceType, listing.accountEmail) === ottKey(serviceType, email)
+      && (activeOttOrder(order, now) || holdsDisneyProfile(order, listing, now) || holdsNetflixProfile(order, listing, now)
         || (order.status === 'MISSING' && order.cancelStatus !== 'REFUNDED' && order.endDate >= koreaToday(now)));
   });
 }
 function title(post: GbutsOttPost): string {
   let value = post.title;
   try { value = typeof value === 'string' ? JSON.parse(value).ko : value?.ko; } catch { /* Plain seller title. */ }
-  return String(value || '').replace(/^\[디즈니플러스\]\s*/, '').trim();
+  return String(value || '').replace(/^\[(?:디즈니플러스|넷플릭스)\]\s*/, '').trim();
 }
 function sameConditions(post: GbutsOttPost, listing: GbutsOttListing): boolean {
-  return post.category1.seq === 6 && post.subscriptionType === 'SHARE' && post.priceType === 'DAY'
+  return post.category1.seq === GBUTS_OTT_CATEGORIES[listing.serviceType] && post.subscriptionType === 'SHARE' && post.priceType === 'DAY'
     && post.memberLimit === listing.capacity && Number(post.price) === listing.dailyPrice && ottDate(post.subscriptionEndsAt) === listing.endDate;
 }
 function credentialsHash(id: string, password: string): string {
@@ -32,8 +32,8 @@ function credentialsHash(id: string, password: string): string {
 function completeRoster(post: GbutsOttPost, members: GbutsOttMember[], now: Date): boolean {
   return members.filter(member => activeOttOrder({ ...member, endDate: ottDate(member.subscriptionEndsAt) }, now)).length >= post.memberCount;
 }
-function assertDedicatedAccount(management: GbutsOttManagement, email: string, capacity: number, endDate: string): void {
-  const account = management.services.flatMap(s => s.accounts).find(a => ottKey(a.serviceType, a.email) === ottKey('디즈니플러스', email));
+function assertDedicatedAccount(management: GbutsOttManagement, serviceType: string, email: string, capacity: number, endDate: string): void {
+  const account = management.services.flatMap(s => s.accounts).find(a => ottKey(a.serviceType, a.email) === ottKey(serviceType, email));
   if (!account || account.archivedAccount || account.totalSlots < capacity || account.generatedAccount?.paymentStatus !== 'paid'
     || ottDate(account.expiryDate) < endDate || account.members.length
     || (management.onSaleByKeepAcct[account.email] || []).length)
@@ -52,7 +52,7 @@ async function reconcile(listing: GbutsOttListing, credentials: GbutsOttCredenti
   if (matches.length !== 1 || !['ON_SALE', 'CLOSED'].includes(matches[0].status)) throw new Error('재등록 결과를 하나로 확인하지 못했습니다. 새로 생성하지 않고 확인을 계속합니다.');
   if (decodeGbutsSubscriptionCredential(matches[0].subscriptionPrincipal) !== credentials.id
     || decodeGbutsSubscriptionCredential(matches[0].subscriptionCredential) !== credentials.password)
-    await client.syncDisneyCredentials(matches[0], credentials);
+    await (listing.serviceType === '넷플릭스' ? client.syncNetflixCredentials(matches[0], credentials) : client.syncDisneyCredentials(matches[0], credentials));
   listing.postSeq = matches[0].seq;
   listing.state = matches[0].status === 'ON_SALE' ? 'registered' : 'closed';
   listing.verifiedAt = new Date().toISOString(); delete listing.error;
@@ -89,39 +89,47 @@ async function rankedRenewal(store: GbutsOttStore, client: ReturnType<typeof cre
   const due = Object.values(store.renewals || {}).filter(policy => policy.enabled && policy.trigger === 'rank'
     && !policy.pendingId && Date.parse(policy.nextAt) <= now.getTime());
   if (!due.length) return { errors: 0 };
-  const nextCheck = new Date(now.getTime() + DISNEY_RANK_CHECK_INTERVAL).toISOString();
+  const nextCheck = new Date(now.getTime() + OTT_RANK_CHECK_INTERVAL).toISOString();
   if (Object.values(store.renewals || {}).some(policy => policy.trigger === 'rank' && policy.pendingId)) {
     for (const policy of due) policy.nextAt = nextCheck;
     write(store); return { errors: 0 };
   }
-  try {
-    const [rows, sellerSeq] = await Promise.all([client.listDisneyPublicRanking(), client.sellerAccountSeq()]);
-    const foreignIndex = rows.findIndex(row => row.sellerSeq !== sellerSeq);
-    const candidates: Array<{ id: string; rank: number; createdAt: string }> = [];
-    for (const policy of due) {
-      const listing = store.listings[policy.listingId];
-      const index = rows.findIndex(row => row.seq === listing?.postSeq);
-      if (index >= 0 && rows[index].sellerSeq !== sellerSeq) throw new Error('판매자와 판매글 연결이 다릅니다.');
-      policy.lastRank = index >= 0 ? index + 1 : null; policy.rankCheckedAt = now.toISOString();
-      const rank = index >= 0 ? index + 1 : 21;
-      if (listing && ['registered', 'closed'].includes(listing.state) && listing.endDate > koreaToday(now)
-        && accountOrders(store, policy.accountEmail, now).length < policy.capacity
-        && rank >= policy.rankThreshold! && foreignIndex >= 0 && foreignIndex < rank - 1
-        && (index >= 0 || rows.length === 20)
-        && (!policy.lastRepostedAt || now.getTime() - Date.parse(policy.lastRepostedAt) >= DISNEY_RANK_COOLDOWN))
-        candidates.push({ id: policy.listingId, rank, createdAt: listing.createdAt });
+  const candidates: Array<{ id: string; rank: number; createdAt: string }> = [];
+  let errors = 0;
+  const services = [...new Set(due.map(policy => store.listings[policy.listingId]?.serviceType))];
+  for (const serviceType of services) {
+    const policies = due.filter(policy => store.listings[policy.listingId]?.serviceType === serviceType);
+    try {
+      const [rows, sellerSeq] = await Promise.all([client.listOttPublicRanking(serviceType), client.sellerAccountSeq()]);
+      const foreignIndex = rows.findIndex(row => row.sellerSeq !== sellerSeq);
+      for (const policy of policies) {
+        const listing = store.listings[policy.listingId];
+        const index = rows.findIndex(row => row.seq === listing?.postSeq);
+        if (index >= 0 && rows[index].sellerSeq !== sellerSeq) throw new Error('판매자와 판매글 연결이 다릅니다.');
+        policy.lastRank = index >= 0 ? index + 1 : null; policy.rankCheckedAt = now.toISOString(); delete policy.lastError;
+        if (listing.endDate <= koreaToday(now)) { policy.enabled = false; continue; }
+        const rank = index >= 0 ? index + 1 : 21;
+        if (['registered', 'closed'].includes(listing.state)
+          && accountOrders(store, serviceType, policy.accountEmail, now).length < policy.capacity
+          && rank >= policy.rankThreshold! && foreignIndex >= 0 && foreignIndex < rank - 1
+          && (index >= 0 || rows.length === 20)
+          && (!policy.lastRepostedAt || now.getTime() - Date.parse(policy.lastRepostedAt) >= OTT_RANK_COOLDOWN))
+          candidates.push({ id: policy.listingId, rank, createdAt: listing.createdAt });
+      }
+    } catch (error) {
+      for (const policy of policies) { policy.lastError = error instanceof Error ? `목록 순위 확인 실패: ${error.message}` : '목록 순위 확인 실패'; policy.nextAt = nextCheck; }
+      errors += policies.length;
+      for (let i = candidates.length - 1; i >= 0; i--) if (policies.some(policy => policy.listingId === candidates[i].id)) candidates.splice(i, 1);
     }
-    const chosen = candidates.sort((a, b) => b.rank - a.rank || a.createdAt.localeCompare(b.createdAt))[0]?.id;
-    for (const policy of due) if (policy.listingId !== chosen) { policy.nextAt = nextCheck; delete policy.lastError; }
-    write(store); return { listingId: chosen, errors: 0 };
-  } catch (error) {
-    for (const policy of due) { policy.lastError = error instanceof Error ? `목록 순위 확인 실패: ${error.message}` : '목록 순위 확인 실패'; policy.nextAt = nextCheck; }
-    write(store); return { errors: due.length };
   }
+  const chosen = candidates.sort((a, b) => b.rank - a.rank || a.createdAt.localeCompare(b.createdAt))[0]?.id;
+  for (const policy of due) if (policy.listingId !== chosen) policy.nextAt = nextCheck;
+  write(store); return { listingId: chosen, errors };
+
 }
 
 /** Called only inside withGbutsOttInventory, shared with sales sync/publication. */
-export async function renewDueGbutsDisneyListings(deps: GbutsOttRuntimeDependencies,
+export async function renewDueGbutsOttListings(deps: GbutsOttRuntimeDependencies,
   client: ReturnType<typeof createGbutsOttSellerClient>, now = new Date()): Promise<{ renewed: number; checked: number; errors: number }> {
   const read = deps.readStore || readGbutsOttStore; const write = deps.writeStore || writeGbutsOttStore;
   const store = read(); const result = { renewed: 0, checked: 0, errors: 0 };
@@ -154,7 +162,7 @@ export async function renewDueGbutsDisneyListings(deps: GbutsOttRuntimeDependenc
       if (listing) { policy.listingId = listing.id; policy.lastRepostedAt = now.toISOString(); delete listing.beforePostSeqs; result.renewed++; }
       delete policy.pendingId; delete policy.lastError;
       policy.lastSuccess = now.toISOString();
-      policy.nextAt = policy.trigger === 'rank' ? new Date(now.getTime() + DISNEY_RANK_CHECK_INTERVAL).toISOString()
+      policy.nextAt = policy.trigger === 'rank' ? new Date(now.getTime() + OTT_RANK_CHECK_INTERVAL).toISOString()
         : policy.earlyRenewalNextAt || new Date(now.getTime() + DISNEY_RENEWAL_INTERVAL).toISOString();
       delete policy.earlyRenewalNextAt;
       if (policy.saleTerms) {
@@ -164,11 +172,11 @@ export async function renewDueGbutsDisneyListings(deps: GbutsOttRuntimeDependenc
       write(store);
     };
     try {
-      if (!source?.postSeq || source.deliveryMode !== 'disney-numbered-password') throw new Error('자동 재등록의 원본 계정을 확인해주세요.');
+      if (!source?.postSeq || !supportsGbutsOttRenewal(source)) throw new Error('자동 재등록의 원본 계정을 확인해주세요.');
       if (source.endDate <= koreaToday(now)) { policy.enabled = false; if (!policy.pendingId) { delete policy.lastError; write(store); continue; } }
       let replacement = policy.pendingId ? store.listings[policy.pendingId] : undefined;
       let credentials = await deps.listingCredentials?.(source);
-      if (!credentials) throw new Error('최신 디즈니 계정 정보를 확인해주세요.');
+      if (!credentials) throw new Error('최신 계정 정보를 확인해주세요.');
       if (replacement?.repostPhase === 'publishing') {
         await reconcile(replacement, credentials, client); complete(replacement); continue;
       }
@@ -182,15 +190,15 @@ export async function renewDueGbutsDisneyListings(deps: GbutsOttRuntimeDependenc
         if (replacement) { replacement.state = 'failed'; replacement.error = '새 글 생성 전 자동 재등록이 중단되었습니다.'; }
         complete(); continue;
       }
-      assertDedicatedAccount(await (deps.renewalManagement ? deps.renewalManagement() : deps.management()), policy.accountEmail, policy.capacity, source.endDate);
-      const key = ottKey('디즈니플러스', policy.accountEmail);
+      assertDedicatedAccount(await (deps.renewalManagement ? deps.renewalManagement(source.serviceType) : deps.management()), source.serviceType, policy.accountEmail, policy.capacity, source.endDate);
+      const key = ottKey(source.serviceType, policy.accountEmail);
       if (deps.manualMembers().some(m => ottKey(m.serviceType || '', m.accountEmail || '') === key && m.status === 'active' && m.endDate >= koreaToday(now))
         || Object.values(store.graytagClaims).some(c => ottKey(c.serviceType, c.accountEmail) === key)
         || Object.values(store.listings).some(l => l.id !== source.id && l.id !== replacement?.id && ottKey(l.serviceType, l.accountEmail) === key && !['closed', 'failed'].includes(l.state)))
         throw new Error('다른 판매처 또는 중복 모집 기록이 있어 자동 재등록을 보류합니다.');
       // Refresh current and still occupied old posts. Keep historical buyer IDs/rooms
       // and their delivery journals on the old binding, including missing leases.
-      const occupiedIds = new Set(accountOrders(store, policy.accountEmail, now).map(o => o.listingId));
+      const occupiedIds = new Set(accountOrders(store, source.serviceType, policy.accountEmail, now).map(o => o.listingId));
       const relevant = Object.values(store.listings).filter(l => l.id === source.id || occupiedIds.has(l.id));
       let post: GbutsOttPost | undefined;
       for (const listing of relevant) {
@@ -202,15 +210,15 @@ export async function renewDueGbutsDisneyListings(deps: GbutsOttRuntimeDependenc
         if (listing.id === source.id) post = actual;
       }
       if (!post) throw new Error('원본 판매글 확인이 필요합니다.');
-      let remaining = policy.capacity - accountOrders(store, policy.accountEmail, now).length;
+      let remaining = policy.capacity - accountOrders(store, source.serviceType, policy.accountEmail, now).length;
       if (remaining < 0) throw new Error('기존 이용자가 계정 정원보다 많아 재등록을 보류합니다.');
       if (!remaining && !replacement) { complete(); continue; }
       if (!replacement) {
         if (source.replacedBy) throw new Error('이미 교체된 원본입니다. 연결을 확인해주세요.');
-        const id = `disney-hourly-${source.postSeq}-${now.getTime()}`;
+        const id = `${source.serviceType === '넷플릭스' ? 'netflix-rank' : 'disney-hourly'}-${source.postSeq}-${now.getTime()}`;
         if (store.listings[id]) throw new Error('기존 재등록 기록을 확인해주세요.');
         const afterSeq = await client.latestPostSeq(); const newTitle = policy.saleTerms?.title || title(post);
-        if (!newTitle || newTitle.length > 30) throw new Error('판매글 제목을 확인해주세요.');
+        if (!newTitle || newTitle.length > (source.serviceType === '넷플릭스' ? 80 : 30)) throw new Error('판매글 제목을 확인해주세요.');
         replacement = { ...source, id, title: newTitle, dailyPrice: policy.saleTerms?.dailyPrice ?? source.dailyPrice, description: typeof post.description === 'string' ? post.description : String(post.description?.ko || ''),
           requestHash: createHash('sha256').update(id).digest('hex'), state: 'submitting', capacity: remaining,
           postSeq: undefined, beforePostSeqs: undefined, repostAfterSeq: afterSeq, repostCredentialsHash: credentialsHash(credentials.id, credentials.password), createdAt: now.toISOString(), verifiedAt: undefined,
@@ -225,20 +233,21 @@ export async function renewDueGbutsDisneyListings(deps: GbutsOttRuntimeDependenc
       source.state = 'closed'; source.verifiedAt = now.toISOString();
       updateGbutsOttOrders(store, source, finalMembers, now.toISOString());
       if (!sameConditions(closed, source)) throw new Error('모집 종료 중 조건이 변경되어 재등록을 보류합니다.');
-      remaining = policy.capacity - accountOrders(store, policy.accountEmail, now).length;
+      remaining = policy.capacity - accountOrders(store, source.serviceType, policy.accountEmail, now).length;
       if (remaining < 0) throw new Error('마지막 구매 후 정원을 확인해야 합니다.');
       if (!remaining) {
         replacement.state = 'failed'; replacement.error = '모집 종료 중 만석이 되어 새 글을 생성하지 않았습니다.';
         complete(); continue;
       }
-      assertDedicatedAccount(await (deps.renewalManagement ? deps.renewalManagement() : deps.management()), policy.accountEmail, policy.capacity, source.endDate);
+      assertDedicatedAccount(await (deps.renewalManagement ? deps.renewalManagement(source.serviceType) : deps.management()), source.serviceType, policy.accountEmail, policy.capacity, source.endDate);
       credentials = await deps.listingCredentials?.(source);
-      if (!credentials) throw new Error('최신 디즈니 계정 정보를 확인해주세요.');
+      if (!credentials) throw new Error('최신 계정 정보를 확인해주세요.');
       const finalTitle = policy.saleTerms?.title || title(closed);
-      if (!finalTitle || finalTitle.length > 30) throw new Error('현재 판매글 제목을 확인해주세요.');
+      if (!finalTitle || finalTitle.length > (source.serviceType === '넷플릭스' ? 80 : 30)) throw new Error('현재 판매글 제목을 확인해주세요.');
       replacement.title = finalTitle;
       replacement.dailyPrice = policy.saleTerms?.dailyPrice ?? source.dailyPrice;
       replacement.description = typeof closed.description === 'string' ? closed.description : String(closed.description?.ko || '');
+      replacement.noticeBeforeOrder = closed.noticeBeforeOrder; replacement.noticeAfterOrder = closed.noticeAfterOrder;
       replacement.repostCredentialsHash = credentialsHash(credentials.id, credentials.password);
       replacement.capacity = remaining; replacement.repostPhase = 'publishing'; source.replacedBy = replacement.id; write(store);
       // Persisted phase prevents a second CREATE even after an unknown response

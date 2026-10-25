@@ -3,9 +3,10 @@ import { createCipheriv, createHash } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { renewDueGbutsDisneyListings, DISNEY_RENEWAL_INTERVAL } from '../src/scheduler/gbuts-disney-renewal';
-import { emptyGbutsOttStore } from '../src/lib/gbuts-ott';
+import { renewDueGbutsOttListings, DISNEY_RENEWAL_INTERVAL } from '../src/scheduler/gbuts-ott-renewal';
+import { emptyGbutsOttStore, gbutsOttRenewalKey } from '../src/lib/gbuts-ott';
 import { readGbutsOttStore, writeGbutsOttStore } from '../src/lib/gbuts-ott-store';
+import { allocateNetflixProfilesForSync } from '../src/lib/gbuts-netflix-profiles';
 import { allocateDisneyProfilesForSync } from '../src/lib/gbuts-disney-profiles';
 import { syncGbutsOtt } from '../src/scheduler/gbuts-ott-sync';
 import { fixtureListing, fixtureOrder } from './fixtures/gbuts-ott';
@@ -13,15 +14,15 @@ let directory='';
 beforeEach(()=>{ vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-21T14:00:00Z')); directory=mkdtempSync(join(tmpdir(),'disney-renewal-')); });
 afterEach(()=>{ vi.useRealTimers(); rmSync(directory,{recursive:true,force:true}); });
 function encrypted(value:string){const key=Buffer.alloc(16);const ascii=Buffer.from(createHash('sha512').update('kkmouke0917').digest('hex'));for(let i=0;i<ascii.length;i++)key[i%16]^=ascii[i];const c=createCipheriv('aes-128-ecb',key,null);return Buffer.concat([c.update(value,'utf8'),c.final()]).toString('hex');}
-function fixture(sold=2) {
+function fixture(sold=2, serviceType='디즈니플러스') {
   const path=join(directory,'store.json'); const initial=emptyGbutsOttStore();
-  const listing=fixtureListing({serviceType:'디즈니플러스',deliveryMode:'disney-numbered-password',capacity:5,dailyPrice:150,title:'old cached title'});
+  const listing=fixtureListing({serviceType,deliveryMode:serviceType === '디즈니플러스' ? 'disney-numbered-password' : undefined,capacity:5,dailyPrice:150,title:'old cached title'});
   initial.listings[listing.id]=listing;
-  initial.renewals={[listing.accountEmail]:{accountEmail:listing.accountEmail,capacity:5,listingId:listing.id,enabled:true,nextAt:new Date().toISOString()}};
+  initial.renewals={[gbutsOttRenewalKey(serviceType,listing.accountEmail)]:{accountEmail:listing.accountEmail,capacity:5,listingId:listing.id,enabled:true,nextAt:new Date().toISOString()}};
   const member=(n:number)=>({seq:n,userSeq:10+n,nickname:`buyer${n}`,status:'APPLY',cancelStatus:null as string|null,createdAt:'2026-10-21 12:00:00',subscriptionEndsAt:'2026-12-01'});
   const rosters=new Map([[100,Array.from({length:sold},(_,i)=>member(i+1))]]);
   for(let n=1;n<=sold;n++) initial.orders[`100:${n}`]=fixtureOrder({key:`100:${n}`,memberSeq:n,userSeq:10+n,profileNumber:n,profileName:String(n),roomId:`room-${n}`,accessUrl:`https://example.com/${n}`,delivery:'confirmed',deliveryMessage:'already delivered',attemptedAt:'2026-10-21T03:00:00Z'});
-  const posts:any[]=[{seq:100,category1:{seq:6},subscriptionType:'SHARE',memberLimit:5,memberCount:sold,status:'ON_SALE',subscriptionEndsAt:'2026-12-01 23:59:59',price:150,priceType:'DAY',title:JSON.stringify({ko:'[디즈니플러스] 1개월 / TV도 가능 / 연장도 가능'}),description:'성인 인증은 직접 진행해주세요.'}];
+  const posts:any[]=[{seq:100,category1:{seq:serviceType === '디즈니플러스' ? 6 : 5},subscriptionType:'SHARE',memberLimit:5,memberCount:sold,status:'ON_SALE',subscriptionEndsAt:'2026-12-01 23:59:59',price:150,priceType:'DAY',title:JSON.stringify({ko:`[${serviceType}] 1개월 / TV도 가능 / 연장도 가능`}),description:'성인 인증은 직접 진행해주세요.'}];
   writeGbutsOttStore(initial,path);
   const creds={id:'current@example.com',password:'current-password',emailAccessUrl:'https://tinyhost.shop/current@example.com'};
   const client={
@@ -30,12 +31,12 @@ function fixture(sold=2) {
     latestPostSeq:vi.fn(async()=>Math.max(...posts.map(p=>p.seq))),
     listPostsAfter:vi.fn(async(after:number)=>structuredClone(posts.filter(p=>p.seq>after))),
     closePost:vi.fn(async(seq:number)=>{posts.find(p=>p.seq===seq).status='CLOSED';}),
-    createPost:vi.fn(async(l:any,c:any)=>{const seq=100+posts.length;posts.push({seq,category1:{seq:6},subscriptionType:'SHARE',memberLimit:l.capacity,memberCount:0,status:'ON_SALE',subscriptionEndsAt:l.endDate+' 23:59:59',price:l.dailyPrice,priceType:'DAY',title:JSON.stringify({ko:`[디즈니플러스] ${l.title}`}),description:l.description,subscriptionPrincipal:encrypted(c.id),subscriptionCredential:encrypted(c.password)});rosters.set(seq,[]);return seq;}),
+    createPost:vi.fn(async(l:any,c:any)=>{const seq=100+posts.length;posts.push({seq,category1:{seq:serviceType === '디즈니플러스' ? 6 : 5},subscriptionType:'SHARE',memberLimit:l.capacity,memberCount:0,status:'ON_SALE',subscriptionEndsAt:l.endDate+' 23:59:59',price:l.dailyPrice,priceType:'DAY',title:JSON.stringify({ko:`[${serviceType}] ${l.title}`}),description:l.description,noticeBeforeOrder:l.noticeBeforeOrder,noticeAfterOrder:l.noticeAfterOrder,subscriptionPrincipal:encrypted(c.id),subscriptionCredential:encrypted(c.password)});rosters.set(seq,[]);return seq;}),
   };
-  const management={services:[{serviceType:'디즈니플러스',accounts:[{email:listing.accountEmail,serviceType:'디즈니플러스',totalSlots:5,members:[],expiryDate:'2026-12-31',generatedAccount:{paymentStatus:'paid'}}]}],onSaleByKeepAcct:{}};
+  const management={services:[{serviceType,accounts:[{email:listing.accountEmail,serviceType,totalSlots:5,members:[],expiryDate:'2026-12-31',generatedAccount:{paymentStatus:'paid'}}]}],onSaleByKeepAcct:{}};
   const deps={readStore:()=>readGbutsOttStore(path),writeStore:(s:any)=>writeGbutsOttStore(s,path),manualMembers:()=>[],listingCredentials:vi.fn(async()=>creds),management:vi.fn(async()=>management),access:vi.fn(async(o:any)=>`https://example.com/${o.key}`),refreshAccess:vi.fn(async()=>{})};
-  const replacementId=`disney-hourly-100-${Date.now()}`;
-  const run=()=>renewDueGbutsDisneyListings(deps,client as any);
+  const replacementId=`${serviceType === '디즈니플러스' ? 'disney-hourly' : 'netflix-rank'}-100-${Date.now()}`;
+  const run=()=>renewDueGbutsOttListings(deps,client as any);
   const advance=()=>vi.setSystemTime(new Date(Date.now()+DISNEY_RENEWAL_INTERVAL));
   return {path,initial,listing,replacementId,member,rosters,posts,client,deps,creds,management,run,advance,store:()=>readGbutsOttStore(path)};
 }
@@ -225,7 +226,7 @@ test('recovery beyond the original early-renewal deadline leaves its scheduled c
 function ranking(f:ReturnType<typeof fixture>,rows:Array<{seq:number;sellerSeq:number}>,patch:any={}){
  const store=f.store();const policy=store.renewals![f.listing.accountEmail];
  Object.assign(policy,{trigger:'rank',rankThreshold:5,lastRepostedAt:new Date(Date.now()-6*60_000).toISOString()},patch);f.deps.writeStore(store);
- Object.assign(f.client,{listDisneyPublicRanking:vi.fn(async()=>rows),sellerAccountSeq:vi.fn(async()=>99)});
+ Object.assign(f.client,{listOttPublicRanking:vi.fn(async()=>rows),sellerAccountSeq:vi.fn(async()=>99)});
 }
 test('rank trigger keeps top-four posts and our own five-post block without hourly churn',async()=>{
  const f=fixture();ranking(f,[{seq:100,sellerSeq:99},{seq:500,sellerSeq:88}]);
@@ -241,11 +242,11 @@ test('rank trigger republishes a displaced fifth-place post with its remaining c
 });
 test('rank trigger checks no more than once a minute and applies a five-minute per-account cooldown',async()=>{
  const f=fixture();const rows=[1,2,3,4,100].map(seq=>({seq,sellerSeq:seq===100?99:88}));ranking(f,rows,{lastRepostedAt:new Date().toISOString()});
- expect((await f.run()).renewed).toBe(0);await f.run();expect((f.client as any).listDisneyPublicRanking).toHaveBeenCalledTimes(1);
+ expect((await f.run()).renewed).toBe(0);await f.run();expect((f.client as any).listOttPublicRanking).toHaveBeenCalledTimes(1);
  vi.setSystemTime(new Date(Date.now()+5*60_000));expect((await f.run()).renewed).toBe(1);
 });
 test('rank query failures, short absent windows and full accounts never close or create',async()=>{
- const f=fixture();ranking(f,[{seq:900,sellerSeq:88}]);(f.client as any).listDisneyPublicRanking.mockRejectedValue(new Error('offline'));
+ const f=fixture();ranking(f,[{seq:900,sellerSeq:88}]);(f.client as any).listOttPublicRanking.mockRejectedValue(new Error('offline'));
  await f.run();expect(f.client.closePost).not.toHaveBeenCalled();expect(f.store().renewals![f.listing.accountEmail].lastError).toContain('목록 순위 확인 실패');
  const g=fixture();ranking(g,[{seq:900,sellerSeq:88}]);await g.run();expect(g.client.createPost).not.toHaveBeenCalled();
  const h=fixture(5);ranking(h,[...Array.from({length:4},(_,i)=>({seq:900+i,sellerSeq:88})),{seq:100,sellerSeq:99}]);await h.run();expect(h.client.createPost).not.toHaveBeenCalled();
@@ -261,7 +262,7 @@ test('only one lowest displaced post is renewed per fresh list, then the next ch
 test('rank mode recovers an uncertain submitted CREATE even while the public list is unavailable',async()=>{
  const f=fixture();ranking(f,[...Array.from({length:4},(_,i)=>({seq:900+i,sellerSeq:88})),{seq:100,sellerSeq:99}]);
  const create=f.client.createPost.getMockImplementation()!;f.client.createPost.mockImplementation(async(l,c)=>{await create(l,c);throw new Error('lost response');});
- expect((await f.run()).errors).toBe(1);(f.client as any).listDisneyPublicRanking.mockRejectedValue(new Error('offline'));
+ expect((await f.run()).errors).toBe(1);(f.client as any).listOttPublicRanking.mockRejectedValue(new Error('offline'));
  vi.setSystemTime(new Date(Date.now()+61000));expect((await f.run()).renewed).toBe(1);expect(f.client.createPost).toHaveBeenCalledTimes(1);
 });
 
@@ -282,6 +283,67 @@ test('rank mode recovers a refund after the final buyer races closure and cancel
  expect((await f.run()).renewed).toBe(0);expect(f.client.createPost).not.toHaveBeenCalled();
  const store=f.store();store.orders['100:1'].status='CANCEL';store.orders['100:1'].cancelStatus='REFUNDED';f.deps.writeStore(store);
  f.rosters.get(100)![0].status='CANCEL';f.rosters.get(100)![0].cancelStatus='REFUNDED';f.posts[0].memberCount=4;
- (f.client as any).listDisneyPublicRanking.mockResolvedValue(Array.from({length:20},(_,i)=>({seq:900+i,sellerSeq:88})));
+ (f.client as any).listOttPublicRanking.mockResolvedValue(Array.from({length:20},(_,i)=>({seq:900+i,sellerSeq:88})));
  vi.setSystemTime(new Date(Date.now()+6*60000));expect((await f.run()).renewed).toBe(1);expect(f.client.createPost.mock.calls[0][0].capacity).toBe(1);
+});
+
+
+test('Netflix partial renewal preserves old buyer/profile receipts and native merchant notices',async()=>{
+ const f=fixture(2,'넷플릭스');
+ f.posts[0].title=JSON.stringify({ko:'[넷플릭스] 프리미엄 / 하루 190원 / 1개월 / 비밀번호 로그인'});
+ f.posts[0].description='비밀번호 로그인 전용. 링키드 닉네임과 같은 프로필을 사용하세요.';
+ f.posts[0].noticeBeforeOrder='닉네임 불일치 프로필은 정리될 수 있습니다.';f.posts[0].noticeAfterOrder='이메일 코드는 제공하지 않습니다.';
+ const before=f.store().orders;
+ expect(await f.run()).toEqual({renewed:1,checked:1,errors:0});
+ expect(f.posts[1]).toMatchObject({category1:{seq:5},memberLimit:3,price:150,subscriptionEndsAt:'2026-12-01 23:59:59'});
+ const saved=f.store();expect(saved.orders['100:1']).toMatchObject({roomId:before['100:1'].roomId,profileNumber:1,accessUrl:before['100:1'].accessUrl,delivery:'confirmed',deliveryMessage:'already delivered'});
+ expect(saved.listings[f.replacementId]).toMatchObject({description:f.posts[0].description,noticeBeforeOrder:f.posts[0].noticeBeforeOrder,noticeAfterOrder:f.posts[0].noticeAfterOrder});
+ expect(JSON.stringify(saved)).not.toContain('current-password');
+});
+
+test('Netflix closure-racing sales reduce replacement places and later buyers retain account-wide profile leases',async()=>{
+ const f=fixture(2,'넷플릭스');
+ f.client.closePost.mockImplementation(async()=>{f.posts[0].status='CLOSED';f.posts[0].memberCount=3;f.rosters.set(100,[f.member(1),f.member(2),f.member(3)]);});
+ expect((await f.run()).renewed).toBe(1);expect(f.posts[1].memberLimit).toBe(2);
+ const first=f.store();expect(allocateNetflixProfilesForSync(first,f.management,[]).size).toBe(0);f.deps.writeStore(first);
+ expect(first.orders['100:3'].profileNumber).toBe(3);
+ f.rosters.set(101,[f.member(7)]);f.posts[1].memberCount=1;
+ f.client.closePost.mockImplementation(async seq=>{f.posts.find(p=>p.seq===seq).status='CLOSED';});f.advance();
+ expect((await f.run()).renewed).toBe(1);expect(f.posts[2].memberLimit).toBe(1);
+ const saved=f.store();expect(allocateNetflixProfilesForSync(saved,f.management,[]).size).toBe(0);
+ expect(saved.orders['101:7'].profileNumber).toBe(4);expect(saved.orders['100:1'].profileNumber).toBe(1);expect(saved.orders['100:1'].deliveryMessage).toBe('already delivered');
+});
+test('Netflix unknown CREATE only reconciles the submitted private account and preserves disabled future renewal',async()=>{
+ const f=fixture(2,'넷플릭스');const create=f.client.createPost.getMockImplementation()!;
+ f.client.createPost.mockImplementation(async(l,c)=>{await create(l,c);throw new Error('lost response');});
+ expect((await f.run()).errors).toBe(1);
+ const store=f.store();store.renewals![gbutsOttRenewalKey('넷플릭스',f.listing.accountEmail)].enabled=false;f.deps.writeStore(store);
+ const syncNetflixCredentials=vi.fn(async(p:any,c:any)=>{const actual=f.posts.find(x=>x.seq===p.seq);actual.subscriptionPrincipal=encrypted(c.id);actual.subscriptionCredential=encrypted(c.password);});
+ Object.assign(f.client,{syncNetflixCredentials});f.creds.password='rotated-password';vi.setSystemTime(new Date(Date.now()+61_000));
+ expect((await f.run()).renewed).toBe(1);expect(f.client.createPost).toHaveBeenCalledTimes(1);expect(syncNetflixCredentials).toHaveBeenCalledOnce();
+ expect(f.store().renewals![gbutsOttRenewalKey('넷플릭스',f.listing.accountEmail)].enabled).toBe(false);
+ expect(JSON.stringify(f.store())).not.toContain('rotated-password');
+});
+test('Netflix full accounts create nothing, verified refunds release places, and missing buyers retain places',async()=>{
+ const f=fixture(5,'넷플릭스');expect((await f.run()).renewed).toBe(0);expect(f.client.closePost).not.toHaveBeenCalled();
+ f.rosters.get(100)![0].status='CANCEL';f.rosters.get(100)![0].cancelStatus='REFUNDED';f.posts[0].memberCount=4;f.advance();
+ expect((await f.run()).renewed).toBe(1);expect(f.posts[1].memberLimit).toBe(1);
+ const g=fixture(2,'넷플릭스');g.rosters.set(100,[g.member(1)]);g.posts[0].memberCount=1;
+ expect((await g.run()).renewed).toBe(1);expect(g.posts[1].memberLimit).toBe(3);expect(g.store().orders['100:2'].status).toBe('MISSING');
+});
+test('Netflix ranking failure is isolated from Disney and same-email service policies coexist',async()=>{
+ const f=fixture(2);const store=f.store();const n=fixtureListing({id:'netflix-same-email',serviceType:'넷플릭스',postSeq:700,capacity:5});
+ store.listings[n.id]=n;const nk=gbutsOttRenewalKey('넷플릭스',n.accountEmail);
+ store.renewals![nk]={serviceType:'넷플릭스',accountEmail:n.accountEmail,capacity:5,listingId:n.id,enabled:true,trigger:'rank',rankThreshold:5,nextAt:new Date().toISOString()};
+ store.renewals![f.listing.accountEmail].trigger='rank';store.renewals![f.listing.accountEmail].rankThreshold=5;f.deps.writeStore(store);
+ Object.assign(f.client,{sellerAccountSeq:vi.fn(async()=>99),listOttPublicRanking:vi.fn(async(service:string)=>{if(service==='넷플릭스')throw new Error('Netflix offline');return [{seq:900,sellerSeq:88},{seq:901,sellerSeq:88},{seq:902,sellerSeq:88},{seq:903,sellerSeq:88},{seq:100,sellerSeq:99}];})});
+ expect(await f.run()).toEqual({renewed:1,checked:1,errors:1});expect(f.store().renewals![nk].lastError).toContain('Netflix offline');expect(f.posts[1].category1.seq).toBe(6);
+});
+test('Netflix rank uses its own latest list, ignores own blocks, applies cooldown and disables at paid expiry',async()=>{
+ const f=fixture(0,'넷플릭스');const store=f.store();const k=gbutsOttRenewalKey('넷플릭스',f.listing.accountEmail);Object.assign(store.renewals![k],{trigger:'rank',rankThreshold:5,lastRepostedAt:new Date().toISOString()});f.deps.writeStore(store);
+ const rows=Array.from({length:5},(_,i)=>({seq:i===4?100:900+i,sellerSeq:99}));
+ Object.assign(f.client,{sellerAccountSeq:vi.fn(async()=>99),listOttPublicRanking:vi.fn(async()=>rows)});
+ expect((await f.run()).renewed).toBe(0);expect((f.client as any).listOttPublicRanking).toHaveBeenCalledWith('넷플릭스');
+ rows[0].sellerSeq=88;vi.setSystemTime(new Date(Date.now()+61_000));expect((await f.run()).renewed).toBe(0);
+ vi.setSystemTime(new Date('2026-12-01T01:00:00Z'));expect((await f.run()).renewed).toBe(0);expect(f.store().renewals![k].enabled).toBe(false);expect(f.client.closePost).not.toHaveBeenCalled();
 });

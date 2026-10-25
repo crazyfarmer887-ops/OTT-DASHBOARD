@@ -364,3 +364,21 @@ it('switches only the selected existing chain to rank checks while preserving it
  expect(after.renewals!['account@example.com']).toMatchObject({trigger:'rank',rankThreshold:5,capacity:5,listingId:'request-123',nextAt:new Date().toISOString()});
  expect(after.listings).toEqual(before.listings);expect(after.orders).toEqual(before.orders);
 });
+
+it('new Netflix publication enables rank renewal once; replay and uncertain reconciliation preserve the policy',async()=>{
+ const f=fixture();expect((await f.publish()).status).toBe(200);
+ const key='넷플릭스:account@example.com';
+ const first=readGbutsOttStore().renewals![key];expect(first).toMatchObject({serviceType:'넷플릭스',listingId:'request-123',capacity:1,enabled:true,trigger:'rank',rankThreshold:5});
+ expect((await f.publish()).status).toBe(200);expect(readGbutsOttStore().renewals![key]).toEqual(first);
+ const store=readGbutsOttStore();delete store.renewals;store.listings['request-123'].state='uncertain';writeGbutsOttStore(store);
+ expect((await f.app.request('/gbuts/ott/listings/request-123/reconcile',{method:'POST'})).status).toBe(200);
+ expect(readGbutsOttStore().renewals![key]).toMatchObject({trigger:'rank',rankThreshold:5,capacity:1});
+});
+
+it('explicit Netflix activation defaults to rank and never enables unrelated older bindings',async()=>{
+ const f=fixture();await f.publish();const store=readGbutsOttStore();delete store.renewals;store.listings.older={...store.listings['request-123'],id:'older',postSeq:90,accountEmail:'older@example.com',state:'closed'};writeGbutsOttStore(store);
+ const configure=(enabled:boolean)=>f.app.request('/gbuts/ott/renewals',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({enabled,listingIds:['request-123']})});
+ expect((await configure(true)).status).toBe(200);
+ expect(Object.keys(readGbutsOttStore().renewals!)).toEqual(['넷플릭스:account@example.com']);expect(readGbutsOttStore().renewals!['넷플릭스:account@example.com']).toMatchObject({enabled:true,trigger:'rank',rankThreshold:5});
+ expect((await configure(false)).status).toBe(200);expect(readGbutsOttStore().renewals!['넷플릭스:account@example.com'].enabled).toBe(false);
+});

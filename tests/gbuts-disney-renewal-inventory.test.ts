@@ -1,5 +1,5 @@
 import { expect, test, vi } from 'vitest';
-import { buildDisneyRenewalInventory } from '../src/lib/gbuts-disney-renewal-inventory';
+import { buildGbutsRenewalInventory } from '../src/lib/gbuts-ott-renewal-inventory';
 import { buildGeneratedAccount } from '../src/lib/generated-accounts';
 import { createPartyAccessLinkRecord, partyAccessAccountKey } from '../src/lib/party-access';
 import { readVerifiedGraytagManagementSnapshot } from '../src/lib/graytag-management-snapshot';
@@ -15,14 +15,24 @@ test('current foreign users and recruitment map to generated account aliases wit
  const deals=[{dealUsid:'buyer',productTypeString:'디즈니플러스',dealStatus:'Using',keepAcct:'changed@example.com'},
  {productUsid:'sale',productTypeString:'디즈니플러스',dealStatus:'OnSale',keepAcct:a.email},
  {dealUsid:'unrelated',productTypeString:'넷플릭스',dealStatus:'Using',keepAcct:a.email}];
- const result=buildDisneyRenewalInventory({[a.id]:a},deals,{},maintenance);
+ const result=buildGbutsRenewalInventory({[a.id]:a},deals,{},maintenance);
  expect(result.services[0].accounts[0].members).toHaveLength(1);expect(result.onSaleByKeepAcct[a.email]).toHaveLength(1);
  expect(result.services[0].accounts[0]).toMatchObject({expiryDate:'2026-12-01',totalSlots:6,generatedAccount:{paymentStatus:'paid'}});expect(JSON.stringify(result)).not.toContain('private-password');
 });
 test('placeholder account notices require a verified listing mapping, and unknown service rows fail closed',()=>{
  const a=account();const deal={productUsid:'sale',productTypeString:'디즈니플러스',dealStatus:'OnSale',keepAcct:'아래 메세지를 확인해주세요'};
- expect(()=>buildDisneyRenewalInventory({[a.id]:a},[deal],{},{})).toThrow('계정 연결');
+ expect(()=>buildGbutsRenewalInventory({[a.id]:a},[deal],{},{})).toThrow('계정 연결');
  const record=createPartyAccessLinkRecord({token:'inventory-test',serviceType:a.serviceType,accountEmail:a.email,profileName:'1',member:{kind:'graytag',memberId:'fill:sale',memberName:'buyer',status:'active',endDateTime:'2026-12-01'}});
- expect(buildDisneyRenewalInventory({[a.id]:a},[deal],{[record.tokenHash]:record},{}).onSaleByKeepAcct[a.email]).toHaveLength(1);
- expect(()=>buildDisneyRenewalInventory({[a.id]:a},[{...deal,productTypeString:undefined}],{},{})).toThrow('서비스 종류');
+ expect(buildGbutsRenewalInventory({[a.id]:a},[deal],{[record.tokenHash]:record},{}).onSaleByKeepAcct[a.email]).toHaveLength(1);
+ expect(()=>buildGbutsRenewalInventory({[a.id]:a},[{...deal,productTypeString:undefined}],{},{})).toThrow('서비스 종류');
+});
+
+test('Netflix renewal inventory uses only the selected service and catches foreign alias occupancy',()=>{
+ const a={...account(),serviceType:'넷플릭스',email:'netflix@example.com'};
+ const maintenance:any={[partyAccessAccountKey(a.serviceType,a.email)]:{changedAccountEmail:'changed-netflix@example.com'}};
+ const rows=[{dealUsid:'n1',productTypeString:'넷플릭스',dealStatus:'Using',keepAcct:'changed-netflix@example.com'},
+ {productUsid:'d1',productTypeString:'디즈니플러스',dealStatus:'OnSale',keepAcct:a.email}];
+ const result=buildGbutsRenewalInventory({[a.id]:a},rows,{},maintenance,'넷플릭스');
+ expect(result.services[0]).toMatchObject({serviceType:'넷플릭스',accounts:[{email:a.email,totalSlots:5,members:[{dealUsid:'n1'}]}]});
+ expect(result.onSaleByKeepAcct).toEqual({});expect(JSON.stringify(result)).not.toContain('private-password');
 });

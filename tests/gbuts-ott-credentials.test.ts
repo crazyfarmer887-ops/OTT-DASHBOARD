@@ -2,11 +2,12 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { resolveGbutsOttDirectCredentials } from '../src/lib/gbuts-ott-credentials';
+import { resolveGbutsOttDirectCredentials, resolveGbutsNetflixListingCredentials } from '../src/lib/gbuts-ott-credentials';
 import { createPartyAccessLinkRecord, partyAccessAccountKey } from '../src/lib/party-access';
 import { mergePartyMaintenanceChecklistState } from '../src/lib/party-maintenance-checklist';
 import { emptyGbutsOttStore } from '../src/lib/gbuts-ott';
 import { readGbutsOttStore, writeGbutsOttStore } from '../src/lib/gbuts-ott-store';
+import { buildGeneratedAccount } from '../src/lib/generated-accounts';
 import { fixtureListing, fixtureOrder } from './fixtures/gbuts-ott';
 
 beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-05T06:00:00Z')); });
@@ -46,4 +47,13 @@ test('direct delivery request state survives the real private journal and contai
     expect(restored.orders[f.order.key].directDelivery).toEqual(f.order.directDelivery);
     expect(JSON.stringify(restored)).not.toContain('old-password');
   } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('Netflix publication credentials require the exact paid generated account and follow current maintenance values',()=>{
+ const f=fixture();const a={...buildGeneratedAccount({serviceType:'넷플릭스',alias:{email:f.listing.accountEmail},password:'current-password',pin:'',memo:''}),paymentStatus:'paid' as const};
+ const data={...f.data,generated:{[a.id]:a}};
+ expect(resolveGbutsNetflixListingCredentials(f.listing,data)).toEqual({id:f.listing.accountEmail,password:'current-password'});
+ data.maintenance={[partyAccessAccountKey('넷플릭스',a.email)]:{changedAccountEmail:'new-netflix@example.com',changedPassword:'new-password'}} as any;
+ expect(resolveGbutsNetflixListingCredentials(f.listing,data)).toEqual({id:'new-netflix@example.com',password:'new-password'});
+ a.paymentStatus='unpaid' as any;expect(()=>resolveGbutsNetflixListingCredentials(f.listing,data)).toThrow('결제된');
 });

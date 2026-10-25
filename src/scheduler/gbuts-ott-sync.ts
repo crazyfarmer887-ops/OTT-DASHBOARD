@@ -1,6 +1,6 @@
-import { renewDueGbutsDisneyListings } from './gbuts-disney-renewal';
+import { renewDueGbutsOttListings } from './gbuts-ott-renewal';
 import { GbutsChatDeliveryError, gbutsChatContainsText } from '../lib/gbuts-chat-delivery';
-import { disneyAccountCapacity, hasGbutsOttProfileLease, koreaToday, GBUTS_OTT_CATEGORIES, activeOttOrder, deliverableOttOrder, ottDate, ottKey, sharedOttAccounts, updateGbutsOttOrders, type GbutsOttListing, type GbutsOttManagement, type GbutsOttOrder, type GbutsOttStore } from '../lib/gbuts-ott';
+import { disneyAccountCapacity, holdsNetflixProfile, holdsDisneyProfile, hasGbutsOttProfileLease, koreaToday, GBUTS_OTT_CATEGORIES, activeOttOrder, deliverableOttOrder, ottDate, ottKey, sharedOttAccounts, updateGbutsOttOrders, type GbutsOttListing, type GbutsOttManagement, type GbutsOttOrder, type GbutsOttStore } from '../lib/gbuts-ott';
 import { createGbutsOttSellerClient } from '../lib/gbuts-ott-client';
 import { readGbutsOttStore, withGbutsOttInventory, writeGbutsOttStore } from '../lib/gbuts-ott-store';
 import { loadGbutsSession } from '../lib/gbuts-session';
@@ -18,7 +18,7 @@ import type { GbutsOttCredentials } from '../lib/gbuts-disney-delivery';
 export interface GbutsOttRuntimeDependencies {
   management(options?: { forceRefresh: boolean }): Promise<GbutsOttManagement>;
   manualMembers(): any[];
-  renewalManagement?(): Promise<GbutsOttManagement>;
+  renewalManagement?(serviceType?: string): Promise<GbutsOttManagement>;
   access(order: GbutsOttOrder, listing: GbutsOttListing, profileName: string, managementSnapshot?: GbutsOttManagement): Promise<string>;
   credentials?(order: GbutsOttOrder, listing: GbutsOttListing): Promise<GbutsOttCredentials>;
   listingCredentials?(listing: GbutsOttListing): Promise<GbutsOttCredentials>;
@@ -35,7 +35,7 @@ export async function syncGbutsOtt(deps: GbutsOttRuntimeDependencies,
     if (listing.state !== 'closed') return false;
     if (!listing.replacedBy) return true;
     return Object.values(store.orders).some(order => order.listingId === listing.id
-      && (activeOttOrder(order) || (order.status === 'MISSING' && order.cancelStatus !== 'REFUNDED' && order.endDate >= koreaToday())));
+      && (activeOttOrder(order) || holdsNetflixProfile(order, listing) || holdsDisneyProfile(order, listing) || (order.status === 'MISSING' && order.cancelStatus !== 'REFUNDED' && order.endDate >= koreaToday())));
   });
   let attempted = 0; let confirmed = 0;
   // Read all bound listings before issuing any chat or opening buyer access.
@@ -49,6 +49,8 @@ export async function syncGbutsOtt(deps: GbutsOttRuntimeDependencies,
     if (members.length < post.memberCount) throw new Error('벗츠 구매자 목록을 모두 확인하지 못했습니다.');
     if (listing.deliveryMode === 'disney-numbered-password' && deps.listingCredentials)
       await client.syncDisneyCredentials(post, await deps.listingCredentials(listing));
+    if (listing.serviceType === '넷플릭스' && listing.repostFrom && deps.listingCredentials)
+      await client.syncNetflixCredentials(post, await deps.listingCredentials(listing));
     listing.verifiedAt = now;
     listing.state = post.status === 'ON_SALE' ? 'registered' : 'closed';
     updateGbutsOttOrders(store, listing, members, now);
@@ -166,8 +168,8 @@ export function startGbutsOttSync(deps: GbutsOttRuntimeDependencies): (() => voi
       if (!token) return;
       try {
         const result = await syncGbutsOtt(deps, createGbutsOttSellerClient(token));
-        const renewals = await renewDueGbutsDisneyListings(deps, createGbutsOttSellerClient(token));
-        if (renewals.renewed || renewals.errors) console.log('[GbutsDisneyRenewal]', renewals);
+        const renewals = await renewDueGbutsOttListings(deps, createGbutsOttSellerClient(token));
+        if (renewals.renewed || renewals.errors) console.log('[GbutsOttRenewal]', renewals);
         if (result.attempted || result.confirmed) console.log('[GbutsOttSync]', result);
       } catch (e) {
         const store = readGbutsOttStore(); store.lastError = e instanceof Error ? e.message : '벗츠 주문 확인 실패'; writeGbutsOttStore(store);

@@ -6,6 +6,7 @@ export type GbutsOttListingState = 'submitting' | 'registered' | 'uncertain' | '
 export interface GbutsOttListing {
   id: string; requestHash: string; serviceType: string; accountEmail: string; capacity: number;
   dailyPrice: number; endDate: string; title: string; description: string;
+  noticeBeforeOrder?: string; noticeAfterOrder?: string;
   state: GbutsOttListingState; postSeq?: number; createdAt: string; verifiedAt?: string; error?: string;
   beforePostSeqs?: number[];
   deliveryMode?: 'disney-numbered-password';
@@ -35,6 +36,7 @@ export interface GraytagOttClaim {
 }
 export interface GbutsOttRenewal {
   accountEmail: string; capacity: number; listingId: string; enabled: boolean; nextAt: string;
+  serviceType?: string;
   pendingId?: string; lastSuccess?: string; lastError?: string;
   saleTerms?: { dailyPrice: number; title: string };
   saleTermsAppliedTo?: number; saleTermsRetryAt?: string; earlyRenewalNextAt?: string;
@@ -68,6 +70,22 @@ export function ottDate(value: unknown): string {
 }
 export function koreaToday(now = new Date()): string { return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now); }
 export function ottKey(serviceType: string, email: string): string { return `${serviceType}:${email.trim().toLowerCase()}`; }
+/** Keep persisted Disney keys compatible; Netflix identities cannot collide with them. */
+export function gbutsOttRenewalKey(serviceType: string, email: string): string {
+  return serviceType === '디즈니플러스' ? email.trim().toLowerCase() : ottKey(serviceType, email);
+}
+export function supportsGbutsOttRenewal(listing: GbutsOttListing): boolean {
+  return listing.serviceType === '넷플릭스' || (listing.serviceType === '디즈니플러스' && listing.deliveryMode === 'disney-numbered-password');
+}
+export function enableNewNetflixRenewal(store: GbutsOttStore, listing: GbutsOttListing, now = new Date()): void {
+  if (listing.serviceType !== '넷플릭스' || !listing.postSeq || !['registered', 'closed'].includes(listing.state) || listing.repostFrom) return;
+  const key = gbutsOttRenewalKey(listing.serviceType, listing.accountEmail);
+  store.renewals ||= {};
+  if (store.renewals[key]) return;
+  store.renewals[key] = { serviceType: listing.serviceType, accountEmail: listing.accountEmail,
+    capacity: listing.capacity, listingId: listing.id, enabled: true, trigger: 'rank', rankThreshold: 5,
+    nextAt: now.toISOString(), lastRepostedAt: listing.createdAt };
+}
 export function disneyAccountCapacity(store: GbutsOttStore, listing: GbutsOttListing): number {
   const configured = store.renewals?.[listing.accountEmail.trim().toLowerCase()]?.capacity;
   return configured || Math.max(...Object.values(store.listings)
