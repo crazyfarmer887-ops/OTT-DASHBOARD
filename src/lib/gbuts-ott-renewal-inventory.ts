@@ -4,7 +4,7 @@ import type { PartyMaintenanceChecklistStore } from './party-maintenance-checkli
 import { isGraytagAccessNoticeCredential } from './graytag-fill';
 import { dedupeGraytagManagementDeals } from './graytag-management-snapshot';
 import { koreaToday, ottDate, type GbutsOttManagement } from './gbuts-ott';
-import { extractDeliveredAccountFromChats, type DeliveredAccountChatLike } from './deal-delivered-account';
+import { extractDeliveredAccountFromChats, normalizeGraytagChatText, type DeliveredAccountChatLike } from './deal-delivered-account';
 
 /** Fresh open deals only: do not hydrate chat credentials, replay closed history,
  * revoke links or replace the full account-management cache with a partial view. */
@@ -52,7 +52,12 @@ export async function resolveGbutsRenewalDealAccounts(deals: any[], access: Part
         const record = access[partyAccessTokenHash(token)];
         return record && !record.revokedAt && record.serviceType === serviceType ? [record.accountEmail] : [];
       });
-      const direct = extractDeliveredAccountFromChats([chat]); if (direct) emails.push(direct);
+      const direct = extractDeliveredAccountFromChats([chat]);
+      if (direct) {
+        // The common extractor returns the first label. Collect every email in
+        // that seller delivery so an old/current ID pair cannot hide occupancy.
+        emails.push(...(normalizeGraytagChatText(chat.message).match(/[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}/g) || []));
+      }
       for (const value of emails) if (value.includes('@') && !isGraytagAccessNoticeCredential(value)) candidates.set(value.trim().toLowerCase(), value.trim());
     }
     if (candidates.size > 1) throw new Error('현재 거래의 전달 계정을 하나로 확인하지 못했습니다.');

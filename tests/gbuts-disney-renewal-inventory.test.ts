@@ -51,3 +51,9 @@ test('Netflix inventory resolves placeholder rows only from seller-owned evidenc
  expect(()=>buildGbutsRenewalInventory({[a.id]:a},untrusted,access,{},'넷플릭스')).toThrow('계정 연결');
  await expect(resolveGbutsRenewalDealAccounts([deals[0]],access,'넷플릭스',async()=>[{owned:true,message:'ID: one@example.com'},{owned:true,message:'ID: two@example.com'}])).rejects.toThrow('하나로');
 });
+
+test('one seller message containing previous and current IDs cannot hide target occupancy',async()=>{
+ const row={dealUsid:'buyer',productTypeString:'넷플릭스',dealStatus:'Using',endDateTime:'2026-12-01',keepAcct:'아래 메세지를 확인해주세요'};
+ await expect(resolveGbutsRenewalDealAccounts([row],{},'넷플릭스',async()=>[{owned:true,message:'이전 ID: previous@example.com\n현재 ID: current@example.com'}])).rejects.toThrow('하나로');
+ await expect(resolveGbutsRenewalDealAccounts([row],{},'넷플릭스',async()=>[{owned:true,message:'이전 ID: previous@example.com / 현재 ID: current@example.com'}])).rejects.toThrow('하나로');
+});
