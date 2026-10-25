@@ -1,0 +1,9 @@
+# Spotify new-account request recovery — October25
+
+User reported no response to the buyer's two explicit new-account requests on post18184. Read-only inspection verified an active paid member, correct monitored post registration, enabled sync/messages, working Notion access and a valid credential reservation journal. The deployed request parser recognized the actual latest request timestamp. There was no order-linked Notion row and no acknowledgement receipt. No parser or account-generation change was needed.
+
+The existing automation process had no recent Spotify completion records in the inspected journal. The precise reason that prior process stopped progressing was not established. During the independently tested/deployed Netflix renewal release95ed512, the service was restarted with every existing environment value preserved. The Spotify worker then started and completed successive normal30-second cycles. Recovery used the ordinary worker, without manually sending messages or creating a second order row.
+
+Provider/Notion read-back verified order18184:49475 has exactly one Notion page404ff936-cc9b-8159-94fc-d997068768b7, generated ID/password populated, Registered=false and Invited=false. Exactly one seller acknowledgement was saved at2026-10-25 12:43:28 KST, and its durable receipt is confirmed. Subsequent ordinary cycles completed without another acknowledgement. Actual Spotify account creation/family invitation remains the existing partner/manual checklist workflow; no completion check was asserted.
+
+The existing quiet automation now also checks for a persistent absence of Spotify completion records or repeated errors and alerts only when actionable. Browser proof is saved in the chat workspace artifact folder `artifacts/spotify-new-account-recovery-20261025/`; it contains no login credentials. No synthetic buyer or test message was created.
