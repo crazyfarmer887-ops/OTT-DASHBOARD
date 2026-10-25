@@ -1,5 +1,5 @@
 import { expect, test, vi } from 'vitest';
-import { buildGbutsRenewalInventory } from '../src/lib/gbuts-ott-renewal-inventory';
+import { buildGbutsRenewalInventory, resolveGbutsRenewalDealAccounts } from '../src/lib/gbuts-ott-renewal-inventory';
 import { buildGeneratedAccount } from '../src/lib/generated-accounts';
 import { createPartyAccessLinkRecord, partyAccessAccountKey } from '../src/lib/party-access';
 import { readVerifiedGraytagManagementSnapshot } from '../src/lib/graytag-management-snapshot';
@@ -35,4 +35,19 @@ test('Netflix renewal inventory uses only the selected service and catches forei
  const result=buildGbutsRenewalInventory({[a.id]:a},rows,{},maintenance,'넷플릭스');
  expect(result.services[0]).toMatchObject({serviceType:'넷플릭스',accounts:[{email:a.email,totalSlots:5,members:[{dealUsid:'n1'}]}]});
  expect(result.onSaleByKeepAcct).toEqual({});expect(JSON.stringify(result)).not.toContain('private-password');
+});
+
+test('Netflix inventory resolves placeholder rows only from seller-owned evidence and ignores verified expired history',async()=>{
+ const a={...account(),serviceType:'넷플릭스',email:'netflix@example.com'};
+ const record=createPartyAccessLinkRecord({token:'renewal-delivered-link',serviceType:a.serviceType,accountEmail:a.email,profileName:'1',member:{kind:'graytag',memberId:'historical-room',memberName:'buyer',status:'active',endDateTime:'2026-12-01'}});
+ const access={[record.tokenHash]:record};const deals=[{dealUsid:'buyer',productTypeString:'넷플릭스',dealStatus:'Using',endDateTime:'2026-12-01',keepAcct:'아래 메세지를 확인해주세요'},
+ {dealUsid:'expired',productTypeString:'넷플릭스',dealStatus:'Pause',endDateTime:'2020-01-01',keepAcct:''}];
+ const read=vi.fn(async()=>[{owned:false,message:'ID: attacker@example.com'},{owned:true,message:'https://email-verify.one/dashboard/access/renewal-delivered-link'}]);
+ const rows=await resolveGbutsRenewalDealAccounts(deals,access,'넷플릭스',read,new Date('2026-10-25T00:00:00Z'));
+ expect(read).toHaveBeenCalledTimes(1);expect(buildGbutsRenewalInventory({[a.id]:a},rows,access,{},'넷플릭스').services[0].accounts[0].members).toHaveLength(1);
+ expect(deals[0].keepAcct).toBe('아래 메세지를 확인해주세요');
+ const direct=await resolveGbutsRenewalDealAccounts([deals[0]],access,'넷플릭스',async()=>[{owned:true,message:'ID: netflix@example.com'}]);expect(direct[0].keepAcct).toBe(a.email);
+ const untrusted=await resolveGbutsRenewalDealAccounts([deals[0]],access,'넷플릭스',async()=>[{owned:false,message:'ID: netflix@example.com'}]);
+ expect(()=>buildGbutsRenewalInventory({[a.id]:a},untrusted,access,{},'넷플릭스')).toThrow('계정 연결');
+ await expect(resolveGbutsRenewalDealAccounts([deals[0]],access,'넷플릭스',async()=>[{owned:true,message:'ID: one@example.com'},{owned:true,message:'ID: two@example.com'}])).rejects.toThrow('하나로');
 });

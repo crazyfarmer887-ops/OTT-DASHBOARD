@@ -1,4 +1,4 @@
-import { buildGbutsRenewalInventory } from '../lib/gbuts-ott-renewal-inventory';
+import { buildGbutsRenewalInventory, resolveGbutsRenewalDealAccounts } from '../lib/gbuts-ott-renewal-inventory';
 import { registerLinkidRoutes } from './linkid';
 import { registerFinanceRoutes } from './finance';
 import { resolveGbutsOttDirectCredentials, resolveGbutsDisneyListingCredentials, resolveGbutsNetflixListingCredentials } from '../lib/gbuts-ott-credentials';
@@ -6712,8 +6712,22 @@ async function readGbutsRenewalManagement(serviceType = '디즈니플러스'): P
     { headers: { ...BASE_HEADERS, Cookie: buildCookieStr(cookies), Referer: 'https://graytag.co.kr/lender/deal/list' },
       redirect: 'manual', signal: AbortSignal.timeout(15_000) }, false, undefined, isAuthoritativeGraytagInventoryResponse,
   ), { includeFinished: false });
-  return buildGbutsRenewalInventory(readGeneratedAccountStore(), [...snapshot.afterOpenDeals, ...snapshot.beforeOpenDeals],
-    loadPartyAccessLinkStore(), loadPartyMaintenanceChecklistStore(), serviceType);
+  const access = loadPartyAccessLinkStore();
+  const openDeals = [...snapshot.afterOpenDeals, ...snapshot.beforeOpenDeals];
+  const resolved = serviceType === '넷플릭스' ? await resolveGbutsRenewalDealAccounts(openDeals, access, serviceType, async deal => {
+    const room = resolveDealChatRoomUuid(deal); if (!room) return [];
+    const chats: GraytagChatMessage[] = [];
+    for (let page = 1; page <= 3; page++) {
+      const response = await rateLimitedFetch(`https://graytag.co.kr/ws/chat/findChats?uuid=${encodeURIComponent(room)}&page=${page}`,
+        { headers: { ...BASE_HEADERS, Cookie: buildCookieStr(cookies), Referer: 'https://graytag.co.kr/lender/deal/list' },
+          redirect: 'manual', signal: AbortSignal.timeout(10_000) });
+      if (!response.ok || response.redirected) throw new Error('현재 거래의 계정 전달 내역을 확인하지 못했습니다.');
+      const rows = extractGraytagChats(await safeJson(response)); chats.push(...rows);
+      if (rows.length < 20) break;
+    }
+    return chats;
+  }) : openDeals;
+  return buildGbutsRenewalInventory(readGeneratedAccountStore(), resolved, access, loadPartyMaintenanceChecklistStore(), serviceType);
 }
 
 export const gbutsOttRuntimeDependencies: GbutsOttRuntimeDependencies = {
