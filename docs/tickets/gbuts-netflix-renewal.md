@@ -17,4 +17,6 @@ Status: ready-for-agent.
 - [ ] Tests/review/commit/push/deployment pass, then activate current 190/day chain and update existing quiet heartbeat.
 - [ ] Verify actual settings, progress and existing buyer delivery receipts without synthetic chats.
 
-Local verification: 151 focused tests across eight suites and the client build pass. Whole Vitest run: 1,340 pass, 153 fail across 26 files, matching the documented pre-existing failure count; an exact current-base comparison is pending. Worker type checking reports existing diagnostics in unrelated sections; none name the new renewal modules. Production has not yet changed.
+Local verification: 151 focused tests across eight suites and the client build pass. Whole Vitest run: 1,340 pass, 153 fail across 26 files, matching the documented pre-existing failure count; an exact cef4f9f baseline comparison confirmed identical normalized failure signatures (1,328 baseline passes). Worker type checking diagnostics are byte-for-byte identical to that same baseline; none name the new renewal modules. Production has not yet changed.
+
+Review: Spec found no P1/P2. Standards identified expired Netflix native-field synchronization requiring a now-unpaid account and stopping the poller. Reproduced at the provider/store seam, then excluded expired history from native credential synchronization. Healthy Disney processing continues while live Netflix still requires valid current credentials. Regression verification pending.

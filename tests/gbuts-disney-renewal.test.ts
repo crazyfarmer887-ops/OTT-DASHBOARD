@@ -347,3 +347,15 @@ test('Netflix rank uses its own latest list, ignores own blocks, applies cooldow
  rows[0].sellerSeq=88;vi.setSystemTime(new Date(Date.now()+61_000));expect((await f.run()).renewed).toBe(0);
  vi.setSystemTime(new Date('2026-12-01T01:00:00Z'));expect((await f.run()).renewed).toBe(0);expect(f.store().renewals![k].enabled).toBe(false);expect(f.client.closePost).not.toHaveBeenCalled();
 });
+
+test('expired Netflix history needs no paid credentials and cannot stop a healthy Disney chain',async()=>{
+ const f=fixture(0,'넷플릭스');const store=f.store();
+ Object.assign(store.listings[f.listing.id],{state:'closed',endDate:'2020-01-01',repostFrom:'retired-original'});
+ Object.assign(f.posts[0],{status:'CLOSED',subscriptionEndsAt:'2020-01-01 23:59:59'});
+ const disney=fixtureListing({id:'healthy-disney',serviceType:'디즈니플러스',deliveryMode:'disney-numbered-password',postSeq:700,capacity:5,dailyPrice:150});store.listings[disney.id]=disney;f.deps.writeStore(store);
+ f.posts.push({...f.posts[0],seq:700,category1:{seq:6},status:'ON_SALE',subscriptionEndsAt:'2026-12-01 23:59:59'});
+ f.deps.listingCredentials.mockImplementation(async listing=>{if(listing.serviceType==='넷플릭스')throw new Error('결제된 넷플릭스 계정 정보를 확인해주세요.');return f.creds;});
+ const syncDisneyCredentials=vi.fn(async()=>{});const syncNetflixCredentials=vi.fn(async()=>{});Object.assign(f.client,{syncDisneyCredentials,syncNetflixCredentials});
+ await expect(syncGbutsOtt(f.deps,f.client as any)).resolves.toEqual({orders:0,attempted:0,confirmed:0});
+ expect(syncDisneyCredentials).toHaveBeenCalledOnce();expect(syncNetflixCredentials).not.toHaveBeenCalled();expect(f.deps.listingCredentials).toHaveBeenCalledTimes(1);
+});

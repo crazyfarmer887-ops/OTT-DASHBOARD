@@ -49,7 +49,7 @@ export async function syncGbutsOtt(deps: GbutsOttRuntimeDependencies,
     if (members.length < post.memberCount) throw new Error('벗츠 구매자 목록을 모두 확인하지 못했습니다.');
     if (listing.deliveryMode === 'disney-numbered-password' && deps.listingCredentials)
       await client.syncDisneyCredentials(post, await deps.listingCredentials(listing));
-    if (listing.serviceType === '넷플릭스' && listing.repostFrom && deps.listingCredentials)
+    if (listing.serviceType === '넷플릭스' && listing.repostFrom && listing.endDate >= koreaToday() && deps.listingCredentials)
       await client.syncNetflixCredentials(post, await deps.listingCredentials(listing));
     listing.verifiedAt = now;
     listing.state = post.status === 'ON_SALE' ? 'registered' : 'closed';
