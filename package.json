@@ -27,6 +27,7 @@
     "runable-website-runtime": "^0.0.14",
     "tailwind-merge": "^3.5.0",
     "wouter": "^3.9.0",
+    "ws": "8.22.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {
@@ -37,6 +38,7 @@
     "@types/node": "^25.3.5",
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
+    "@types/ws": "8.18.2",
     "@typescript/native-preview": "^7.0.0-dev.20260306.1",
     "@vitejs/plugin-react": "5.1.4",
     "drizzle-kit": "^0.31.9",

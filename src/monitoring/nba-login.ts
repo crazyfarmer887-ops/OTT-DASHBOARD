@@ -1,7 +1,6 @@
-import { existsSync, readdirSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { join } from 'node:path';
-import puppeteer, { type Page } from 'puppeteer-core';
+import { type Page } from 'puppeteer-core';
+import { withNbaBrowser } from './nba-browser';
+export { nbaBrowserPath } from './nba-browser';
 
 export type NbaLoginResult = 'ok' | 'invalid' | 'blocked' | 'verification' | 'unavailable' | 'unknown';
 export type LoginObservation = { text: string; passwordVisible: boolean; authenticated: boolean; challengeVisible: boolean; url?: string; accountHeadingVisible?: boolean };
@@ -27,16 +26,6 @@ export function nbaHttpResult(status: number): NbaLoginResult | undefined {
   if (status >= 500 || !status) return 'unavailable';
   if (status >= 400) return 'unknown';
   return undefined;
-}
-export function nbaBrowserPath(): string {
-  if (process.env.NBA_CHROME_PATH) return process.env.NBA_CHROME_PATH;
-  for (const path of ['/opt/google/chrome/chrome', '/usr/bin/google-chrome-stable']) if (existsSync(path)) return path;
-  const cache = join(homedir(), '.cache/puppeteer/chrome');
-  if (existsSync(cache)) for (const v of readdirSync(cache).sort().reverse()) {
-    const candidate = join(cache, v, 'chrome-linux64/chrome'); if (existsSync(candidate)) return candidate;
-  }
-  for (const path of ['/usr/bin/chromium', '/usr/bin/chromium-browser', '/usr/bin/google-chrome']) if (existsSync(path)) return path;
-  throw new Error('NBA_BROWSER_UNAVAILABLE');
 }
 export async function observeNbaPage(page: Pick<Page, 'evaluate'>): Promise<LoginObservation> {
   return page.evaluate(() => {
@@ -79,30 +68,28 @@ export function findNbaPasswordSubmit(): HTMLButtonElement | null {
 }
 /** Fresh isolated context: proves a password login, never accepts a cached session as healthy. */
 export async function checkNbaLogin(email: string, password: string): Promise<NbaLoginResult> {
-  let browser;
   try {
-    browser = await puppeteer.launch({ executablePath: nbaBrowserPath(), headless: false,
-      args: ['--disable-dev-shm-usage'], timeout: 30000 });
-    const context = await browser.createBrowserContext(); const page = await context.newPage();
-    page.setDefaultTimeout(20000); page.setDefaultNavigationTimeout(40000);
-    const response = await page.goto('https://www.nba.com/account/sign-in', { waitUntil: 'networkidle2', timeout: 40000 });
-    const statusResult = nbaHttpResult(response?.status() || 0);
-    if (statusResult) return statusResult;
-    const initialResult = classifyNbaLogin(await observeNbaPage(page));
-    if (initialResult !== 'unknown' && initialResult !== 'ok') return initialResult;
-    // Dismiss optional tracking consent without accepting it or changing account settings.
-    await dismissOptionalCookies(page);
-    const emailInput = await page.waitForSelector('input[type="email"]', { visible: true });
-    if (!emailInput) return 'unknown';
-    await emailInput.type(email); await page.click('#email-submit');
-    try { await page.waitForSelector('input[type="password"]', { visible: true, timeout: 25000 }); }
-    catch { return await waitResult(page, 1000, email); }
-    // This is a separate hydrated step; the field can appear before its submit handler is ready.
-    await page.waitForNetworkIdle({ idleTime: 500, timeout: 10000 }).catch(() => undefined);
-    await dismissOptionalCookies(page);
-    await page.type('input[type="password"]', password);
-    await page.locator(findNbaPasswordSubmit).click();
-    return await waitResult(page, 35000, email);
+    return await withNbaBrowser(async browser => {
+      const context = await browser.createBrowserContext(); const page = await context.newPage();
+      page.setDefaultTimeout(20000); page.setDefaultNavigationTimeout(40000);
+      const response = await page.goto('https://www.nba.com/account/sign-in', { waitUntil: 'networkidle2', timeout: 40000 });
+      const statusResult = nbaHttpResult(response?.status() || 0);
+      if (statusResult) return statusResult;
+      const initialResult = classifyNbaLogin(await observeNbaPage(page));
+      if (initialResult !== 'unknown' && initialResult !== 'ok') return initialResult;
+      // Dismiss optional tracking consent without accepting it or changing account settings.
+      await dismissOptionalCookies(page);
+      const emailInput = await page.waitForSelector('input[type="email"]', { visible: true });
+      if (!emailInput) return 'unknown';
+      await emailInput.type(email); await page.click('#email-submit');
+      try { await page.waitForSelector('input[type="password"]', { visible: true, timeout: 25000 }); }
+      catch { return await waitResult(page, 1000, email); }
+      // This is a separate hydrated step; the field can appear before its submit handler is ready.
+      await page.waitForNetworkIdle({ idleTime: 500, timeout: 10000 }).catch(() => undefined);
+      await dismissOptionalCookies(page);
+      await page.type('input[type="password"]', password);
+      await page.locator(findNbaPasswordSubmit).click();
+      return await waitResult(page, 35000, email);
+    });
   } catch { return 'unavailable'; }
-  finally { if (browser) await browser.close().catch(() => undefined); }
 }
