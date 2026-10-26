@@ -57,3 +57,12 @@ The remaining blocker is NBA's own CAPTCHA: the requested test account's server 
 Hourly monitoring and Telegram delivery are repaired; fully unattended password authentication remains restricted by NBA's human verification. A failed security assessment is not evidence of a wrong password. Do not report complete login recovery. An explicit forceCheck option permits one administrative deployment validation without changing historical state or the normal hourly deduplication; unchanged same-slot failure alerts still remain deduplicated.
 
 A real Telegram connection-test message was acknowledged through the existing Linkid topic with dry-run disabled. The first production run also persisted delivery receipts for both inconclusive accounts. The aio-dashboard service and its deployment were untouched. Final focused tests include duplicate-label selection, fail-closed missing/ambiguous submit controls, isolated page callback execution, visible checkbox versus passive badge, and explicit deployment-check deduplication.
+
+
+### Deployed validation — 2026-10-26 KST
+
+Runtime release `/home/ubuntu/releases/nba-login-monitor-96971cc` is built from pushed commit96971cc; the previous recovery release7a3af3b is superseded. Archive SHA256: b957f5f58fb9b8d4faee7ad8ba9547f71c2fc5cb1c37ebdf8eeeb7ff8e8f14dd. Existing shared dependencies matched the lockfile before linking. The installed service uses Xvfb; hourly timer is enabled/active and next fires at12:00KST onOctober26.
+
+One explicit post-deployment forceCheck completed with exit0. All three current owned NBA parties75851/76513/76659 returned verification, and each had a confirmed Telegram delivery receipt for the new result. The historical retired party record was preserved. The state file remains0600. No password or token is in the monitor journal. Actual failure delivery and the separately labelled connection test both succeeded. The final checker reports the human-verification blocker accurately; unattended authentication is not claimed to be fixed.
+
+Final focused tests:39passed. Monitor and test TypeScript check, client build, whitespace check, Standards and Spec re-review passed. The earlier full suite retained153existing unrelated failures; no additional full-suite rerun was needed after the final focused regressions. No code/settings of aio-dashboard were modified or restarted.
