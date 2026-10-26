@@ -92,3 +92,12 @@ The current test-account failure had already been notified in the same hourly sl
 Mac and production Linux focused verification:53tests passed. Final full suite:1365passed/153existing unrelated failures; isolated TypeScript, build, diff check and both Standards/Spec re-review passed. The actual service invocation and timer verification are recorded below.
 
 Actual `nba-login-monitor.service` invocation completed successfully (Result=success, ExecMainStatus=0); the same-slot run reused the just-checked results, avoiding extra login attempts/alerts. The enabled/active timer next fires October26at16:00KST (displayed as15:00CST on the host). The dashboard remained active at the same PID.
+
+
+### Opt-in built-in CAPTCHA experiment — 2026-10-26 KST
+
+The owner explicitly requested enabling Steel's built-in automatic CAPTCHA handling for one fresh sign-in test of the supplied second-profile NBA account. This supersedes the earlier no-solving constraint for this isolated experiment only. A local operational harness reused the committed browser lifetime/cleanup and login helpers, requested `solveCaptcha=true` with a bounded300-second session, and prepared bounded CAPTCHA-status polling and explicit NBA authentication validation. No runtime source, hourly configuration, password, cached session or journal was changed.
+
+The real session-create request returnedHTTP403 before any NBA login attempt: Launch requires at leastUSD10in paid balance for CAPTCHA solving. No browser session was created; scoped cleanup of the allocated ID returned404as expected. The existing key remains valid for ordinary Steel sessions. The account's Wallet UI separately confirms included creditsUSD24.35and purchased creditsUSD0.00, no payment method and no purchase history. Included credits do not satisfy this API gate.
+
+Live CAPTCHA-assisted NBA login remains untested because paid credits are required. No credits were purchased, card added, plan upgraded, or billing gate bypassed. The original timer remains active and the NBA runtime remains6912a83; aio-dashboard stays active at the originalPID588691. The Wallet page was opened for owner action. The operational script and redacted result receipt are preserved in the calling task's `artifacts/nba-steel-captcha-test-20261026/` directory.

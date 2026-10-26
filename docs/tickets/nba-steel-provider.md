@@ -12,3 +12,13 @@ Status: shipped through6912a83; real test-account result is NBA additional verif
 - [x] Verify actual service invocation and hourly timer.
 
 Official references: https://docs.steel.dev/overview/authentication, https://docs.steel.dev/overview/sessions-api/configuration, https://docs.steel.dev/overview/sessions-api/session-lifecycle, https://docs.steel.dev/integrations/puppeteer.
+
+
+## Follow-up: built-in CAPTCHA test
+
+- [x] Owner authorized one-account test using Steel automatic CAPTCHA handling.
+- [x] Request an isolated solving-enabled session and record the actual response.
+- [x] Confirm theHTTP403paid-credit gate against Wallet balances; preserve production monitoring.
+- [ ] Owner supplies at leastUSD10paid balance (or otherwise enables eligible CAPTCHA access); then repeat the real fresh-login test.
+
+This experiment did not reach NBA login and is not evidence of invalid credentials or solver failure. No source/configuration rollout was made.
