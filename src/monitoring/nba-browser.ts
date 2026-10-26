@@ -42,7 +42,7 @@ export async function withNbaBrowser<T>(check: (browser: Browser) => Promise<T>)
     return response;
   };
   try {
-    const response = await request('', { sessionId, timeout: 180000, inactivityTimeout: 60000,
+    const response = await request('', { sessionId, timeout: process.env.NBA_CAPSOLVER_ENABLED === 'true' ? 300000 : 180000, inactivityTimeout: 60000,
       headless: false, useProxy: false, solveCaptcha: false, persistProfile: false,
       stealthConfig: { skipFingerprintInjection: true, humanizeInteractions: false },
       debugConfig: { interactive: false } });

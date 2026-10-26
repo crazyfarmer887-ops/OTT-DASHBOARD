@@ -4,6 +4,8 @@ import puppeteer from 'puppeteer-core';
 import WebSocket from 'ws';
 import { EventEmitter } from 'node:events';
 import { createServer } from 'node:http';
+import { JSDOM } from 'jsdom';
+import { runInContext } from 'node:vm';
 
 vi.mock('ws', () => ({ default: vi.fn() }));
 vi.mock('puppeteer-core', () => ({ default: { connect: vi.fn(), launch: vi.fn() } }));
@@ -28,6 +30,43 @@ function fixture() {
   });
   vi.stubGlobal('fetch', request);
   return { page, browser, context, socket, request, requests };
+}
+function captchaFixture() {
+  const f = fixture(); vi.stubEnv('NBA_CAPSOLVER_ENABLED', 'true'); vi.stubEnv('CAPSOLVER_API_KEY', 'fixture-capsolver-key');
+  const dom = new JSDOM('<main><input type="email"><button id="email-submit">Continue</button><section><input type="password"><button>Sign In</button></section></main>', { url: 'https://www.nba.com/account/sign-in', runScripts: 'outside-only' });
+  Object.defineProperty(dom.window.document.body, 'innerText', { get() { return this.textContent || ''; } });
+  Object.defineProperty(dom.window.Element.prototype, 'checkVisibility', { value() { return !this.closest('[hidden]'); } });
+  let submissions = 0;
+  const submit = vi.fn(async () => {
+    submissions++;
+    if (submissions === 1) {
+      dom.window.document.querySelector('section')!.insertAdjacentHTML('beforeend', '<div><iframe src="https://www.google.com/recaptcha/api2/anchor?k=public-site-key&amp;size=normal"></iframe><textarea name="g-recaptcha-response"></textarea></div>');
+      runInContext("window.___grecaptcha_cfg={clients:{0:{a:{b:{sitekey:'public-site-key',size:'normal',callback:function(token){window.receivedToken=token}}}}}}", dom.getInternalVMContext());
+    } else if (runInContext('window.receivedToken', dom.getInternalVMContext()) === 'fixture-solver-token-valid') {
+      dom.window.document.body.innerHTML = '<h1>MY ACCOUNT</h1>\n<div>fixture@example.com</div>';
+      dom.reconfigure({ url: 'https://www.nba.com/account/nbaprofile' });
+    }
+  });
+  const page = Object.assign(f.page, {
+    goto: vi.fn(async () => ({ status: () => 200 })),
+    evaluate: vi.fn(async (fn: Function, ...args: unknown[]) => {
+      (dom.window as any).testArgs = args;
+      return runInContext(`(${String(fn)})(...window.testArgs)`, dom.getInternalVMContext());
+    }),
+    $: vi.fn(async () => null), waitForSelector: vi.fn(async (_selector?: string, _options?: object) => ({ type: vi.fn() })),
+    click: vi.fn(), type: vi.fn(), title: vi.fn(async () => 'NBA'),
+    waitForNetworkIdle: vi.fn(async () => undefined), locator: vi.fn(() => ({ click: submit })),
+  });
+  const original = f.request.getMockImplementation()!;
+  f.request.mockImplementation(async (url, options) => {
+    if (String(url).startsWith('https://api.capsolver.com/')) {
+      f.requests.push({ url: String(url), options: options || {} });
+      if (String(url).endsWith('/createTask')) return Response.json({ errorId: 0, taskId: 'fixture-task' });
+      return Response.json({ errorId: 0, status: 'ready', solution: { gRecaptchaResponse: 'fixture-solver-token-valid' } });
+    }
+    return original(url, options);
+  });
+  return { ...f, page, dom, submit };
 }
 describe('NBA login through Steel', () => {
   it('uses an owned cloud session, keeps a block distinct from bad credentials, and releases the session', async () => {
@@ -168,6 +207,123 @@ describe('NBA login through Steel', () => {
     expect(await checkNbaLogin('fixture@example.com', 'private-password')).toBe('blocked');
     expect(f.browser.close).toHaveBeenCalledOnce(); expect(f.browser.disconnect).not.toHaveBeenCalled();
     expect(f.request).not.toHaveBeenCalled(); expect(puppeteer.connect).not.toHaveBeenCalled();
+  });
+
+  it('solves a visible CAPTCHA once and verifies the expected account before reporting success', async () => {
+    const f = captchaFixture(); vi.useFakeTimers();
+    try {
+      const result = checkNbaLogin('fixture@example.com', 'private-password');
+      await vi.runAllTimersAsync();
+      expect(await result).toBe('ok');
+      expect(f.submit).toHaveBeenCalledTimes(2);
+      const tasks = f.requests.filter(r => r.url.endsWith('/createTask'));
+      expect(tasks).toHaveLength(1);
+      expect(JSON.parse(String(tasks[0].options.body))).toEqual({ clientKey: 'fixture-capsolver-key', task: {
+        type: 'ReCaptchaV2TaskProxyLess', websiteURL: 'https://www.nba.com/account/sign-in', websiteKey: 'public-site-key', isInvisible: false } });
+      expect(JSON.stringify(tasks)).not.toContain('private-password'); expect(JSON.stringify(tasks)).not.toContain('fixture@example.com');
+      expect(f.requests.at(-1)?.url).toMatch(/\/release$/);
+      expect(JSON.parse(String(f.requests[0].options.body))).toMatchObject({ timeout: 300000, solveCaptcha: false });
+    } finally { f.dom.window.close(); vi.useRealTimers(); }
+  });
+
+  it('handles a challenge already present before the email/password steps', async () => {
+    const f = captchaFixture(); await f.submit(); f.submit.mockClear(); vi.useFakeTimers();
+    try {
+      const result = checkNbaLogin('fixture@example.com', 'private-password'); await vi.runAllTimersAsync();
+      expect(await result).toBe('ok'); expect(f.submit).toHaveBeenCalledOnce();
+      expect(f.requests.filter(r => r.url.endsWith('/createTask'))).toHaveLength(1);
+    } finally { f.dom.window.close(); vi.useRealTimers(); }
+  });
+  it('ignores unrelated empty frames when finding the visible Google challenge', async () => {
+    const f = captchaFixture();
+    f.dom.window.document.body.insertAdjacentHTML('afterbegin', '<iframe></iframe>'); vi.useFakeTimers();
+    try {
+      const result = checkNbaLogin('fixture@example.com', 'private-password'); await vi.runAllTimersAsync();
+      expect(await result).toBe('ok');
+    } finally { f.dom.window.close(); vi.useRealTimers(); }
+  });
+  it.each(['missing-key', 'provider-error', 'ambiguous-callback', 'timeout', 'still-challenged'])('leaves %s unconfirmed, releases the browser, and never spends on a second task', async failure => {
+    const f = captchaFixture();
+    if (failure === 'missing-key') vi.stubEnv('CAPSOLVER_API_KEY', '');
+    if (['provider-error', 'timeout'].includes(failure)) {
+      const original = f.request.getMockImplementation()!;
+      f.request.mockImplementation(async (url, options) => {
+        if (String(url).includes('api.capsolver.com') && (failure === 'provider-error' || String(url).endsWith('/getTaskResult'))) {
+          f.requests.push({ url: String(url), options: options || {} });
+          return Response.json(failure === 'timeout' ? { errorId: 0, status: 'processing' } : { errorId: 1, errorCode: 'ERROR_ZERO_BALANCE', errorDescription: 'private-password fixture-capsolver-key' });
+        }
+        return original(url, options);
+      });
+    }
+    const originalSubmit = f.submit.getMockImplementation()!;
+    if (failure === 'ambiguous-callback') f.submit.mockImplementationOnce(async () => {
+      await originalSubmit(); runInContext("window.___grecaptcha_cfg.clients[1]={a:{b:{sitekey:'public-site-key',size:'normal',callback:function(){}}}}", f.dom.getInternalVMContext());
+    });
+    if (failure === 'still-challenged') f.submit.mockImplementationOnce(originalSubmit).mockImplementationOnce(async () => undefined);
+    vi.useFakeTimers(); const start = Date.now();
+    try {
+      const result = checkNbaLogin('fixture@example.com', 'private-password'); await vi.runAllTimersAsync();
+      expect(await result).toBe('verification');
+      expect(f.requests.filter(r => r.url.endsWith('/createTask'))).toHaveLength(failure === 'missing-key' ? 0 : 1);
+      expect(f.requests.at(-1)?.url).toMatch(/\/release$/);
+      expect(Date.now() - start).toBeLessThanOrEqual(125000);
+      if (failure !== 'still-challenged') expect(f.submit).toHaveBeenCalledOnce();
+    } finally { f.dom.window.close(); vi.useRealTimers(); }
+  });
+  it.each(['badge', 'code', 'rate-limit', 'untrusted-host'])('does not call CapSolver for %s', async kind => {
+    const f = captchaFixture(); const originalSubmit = f.submit.getMockImplementation()!;
+    f.submit.mockImplementationOnce(async () => {
+      await originalSubmit(); const frame = f.dom.window.document.querySelector('iframe')!;
+      if (kind === 'badge') frame.src = 'https://www.google.com/recaptcha/enterprise/anchor?k=public-site-key&size=invisible';
+      if (kind === 'code') { frame.remove(); f.dom.window.document.body.append(' Enter the verification code'); }
+      if (kind === 'rate-limit') f.dom.window.document.body.append(' Too many attempts. Try again later.');
+      if (kind === 'untrusted-host') frame.src = 'https://untrusted.invalid/recaptcha/api2/anchor?k=public-site-key&size=normal';
+    }); vi.useFakeTimers();
+    try {
+      const result = checkNbaLogin('fixture@example.com', 'private-password'); await vi.runAllTimersAsync();
+      expect(await result).toBe(kind === 'badge' ? 'unknown' : 'verification');
+      expect(f.requests.some(r => r.url.includes('api.capsolver.com'))).toBe(false);
+    } finally { f.dom.window.close(); vi.useRealTimers(); }
+  });
+
+  it('handles a visible challenge between the email and password forms', async () => {
+    const f = captchaFixture(); const originalWait = f.page.waitForSelector.getMockImplementation()!; let challenged = false;
+    f.page.waitForSelector.mockImplementation(async (selector: string) => {
+      if (selector === 'input[type="password"]' && !challenged) { challenged = true; await f.submit(); f.submit.mockClear(); throw new Error('WAIT_CHALLENGE'); }
+      return originalWait();
+    }); vi.useFakeTimers();
+    try {
+      const result = checkNbaLogin('fixture@example.com', 'private-password'); await vi.runAllTimersAsync();
+      expect(await result).toBe('ok'); expect(f.submit).toHaveBeenCalledOnce();
+      expect(f.requests.filter(r => r.url.endsWith('/createTask'))).toHaveLength(1);
+    } finally { f.dom.window.close(); vi.useRealTimers(); }
+  });
+
+  it('does not need CapSolver credentials or notify a healthy account without a CAPTCHA', async () => {
+    const f = captchaFixture(); vi.stubEnv('CAPSOLVER_API_KEY', '');
+    f.submit.mockImplementationOnce(async () => {
+      f.dom.window.document.body.innerHTML = '<h1>MY ACCOUNT</h1>\n<div>fixture@example.com</div>';
+      f.dom.reconfigure({ url: 'https://www.nba.com/account/nbaprofile' });
+    }); vi.useFakeTimers();
+    try {
+      const result = checkNbaLogin('fixture@example.com', 'private-password'); await vi.runAllTimersAsync();
+      expect(await result).toBe('ok'); expect(f.requests.some(r => r.url.includes('api.capsolver.com'))).toBe(false);
+    } finally { f.dom.window.close(); vi.useRealTimers(); }
+  });
+
+  it('releases the browser within the solver budget if its keepalive stalls near the deadline', async () => {
+    const f = captchaFixture(); const original = f.request.getMockImplementation()!;
+    f.request.mockImplementation(async (url, options) => String(url).endsWith('/getTaskResult') ? Response.json({ errorId: 0, status: 'processing' }) : original(url, options));
+    let titles = 0;
+    f.page.title.mockImplementation(async () => { if (++titles >= 39) return await new Promise<string>(() => {}); return 'NBA'; });
+    vi.useFakeTimers(); let settled = false;
+    try {
+      const result = checkNbaLogin('fixture@example.com', 'private-password'); void result.then(() => { settled = true; });
+      await vi.advanceTimersByTimeAsync(125000);
+      expect(settled).toBe(true); expect(await result).toBe('verification');
+      expect(f.requests.at(-1)?.url).toMatch(/\/release$/);
+      expect(f.requests.filter(r => r.url.endsWith('/createTask'))).toHaveLength(1);
+    } finally { f.dom.window.close(); vi.useRealTimers(); }
   });
 
 });

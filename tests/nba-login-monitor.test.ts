@@ -124,4 +124,19 @@ describe('NBA scheduled login checks', () => {
     expect(() => decodeNbaPartyPassword(encrypted, 124)).toThrow();
     expect(() => decodeNbaPartyPassword('broken', 123)).toThrow();
   });
+  it('alerts only the unresolved account in a mixed batch and stays quiet once all accounts recover', async () => {
+    const f = fixture();
+    const solved = { ...f.target, key: 'account:solved', email: 'solved@example.com' };
+    const failed = { ...f.target, key: 'account:failed', email: 'failed@example.com' };
+    vi.mocked(f.deps.targets).mockResolvedValue([f.target, solved, failed]);
+    vi.mocked(f.deps.check).mockResolvedValueOnce('ok').mockResolvedValueOnce('ok').mockResolvedValueOnce('verification');
+    await monitorNba(f.deps); await monitorNba(f.deps);
+    expect(f.deps.alert).toHaveBeenCalledTimes(1);
+    const notice = vi.mocked(f.deps.alert).mock.calls[0][0];
+    expect(notice.body).toContain('failed@example.com'); expect(notice.body).not.toContain('solved@example.com');
+    expect(notice.body).not.toContain(f.target.password);
+    f.advance(NBA_CHECK_INTERVAL); vi.mocked(f.deps.check).mockResolvedValue('ok');
+    await monitorNba(f.deps); expect(f.deps.alert).toHaveBeenCalledTimes(1);
+  });
+
 });

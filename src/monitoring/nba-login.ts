@@ -1,5 +1,6 @@
 import { type Page } from 'puppeteer-core';
 import { withNbaBrowser } from './nba-browser';
+import { createNbaCaptchaHandler, type NbaCaptchaHandler } from './nba-captcha';
 export { nbaBrowserPath } from './nba-browser';
 
 export type NbaLoginResult = 'ok' | 'invalid' | 'blocked' | 'verification' | 'unavailable' | 'unknown';
@@ -42,14 +43,25 @@ export async function observeNbaPage(page: Pick<Page, 'evaluate'>): Promise<Logi
     };
   });
 }
-async function waitResult(page: Page, timeout: number, expectedEmail: string): Promise<NbaLoginResult> {
-  const end = Date.now() + timeout;
+async function waitResult(page: Page, timeout: number, expectedEmail: string, captcha: NbaCaptchaHandler): Promise<NbaLoginResult> {
+  let end = Date.now() + timeout; let last: NbaLoginResult = 'unknown';
   do {
-    const result = classifyNbaLogin(await observeNbaPage(page), expectedEmail);
-    if (result !== 'unknown') return result;
+    const observation = await observeNbaPage(page);
+    const result = classifyNbaLogin(observation, expectedEmail); last = result;
+    if (result === 'verification' && observation.challengeVisible && captcha.enabled) {
+      if (!captcha.attempted) {
+        if (!await captcha.solve(page)) return 'verification';
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        if ((await observeNbaPage(page)).passwordVisible) await page.locator(findNbaPasswordSubmit).click();
+        end = Date.now() + timeout;
+        continue;
+      }
+      if (!captcha.solved) return 'verification';
+      // A solved checkbox can remain visible briefly while NBA processes the sign-in.
+    } else if (result !== 'unknown') return result;
     await new Promise(resolve => setTimeout(resolve, 1000));
   } while (Date.now() < end);
-  return 'unknown';
+  return last;
 }
 async function dismissOptionalCookies(page: Page): Promise<void> {
   const rejectCookies = await page.$('#onetrust-reject-all-handler');
@@ -70,26 +82,36 @@ export function findNbaPasswordSubmit(): HTMLButtonElement | null {
 export async function checkNbaLogin(email: string, password: string): Promise<NbaLoginResult> {
   try {
     return await withNbaBrowser(async browser => {
+      const captcha = createNbaCaptchaHandler();
       const context = await browser.createBrowserContext(); const page = await context.newPage();
       page.setDefaultTimeout(20000); page.setDefaultNavigationTimeout(40000);
       const response = await page.goto('https://www.nba.com/account/sign-in', { waitUntil: 'networkidle2', timeout: 40000 });
       const statusResult = nbaHttpResult(response?.status() || 0);
       if (statusResult) return statusResult;
-      const initialResult = classifyNbaLogin(await observeNbaPage(page));
-      if (initialResult !== 'unknown' && initialResult !== 'ok') return initialResult;
+      const initial = await observeNbaPage(page); const initialResult = classifyNbaLogin(initial);
+      if (initialResult !== 'unknown' && initialResult !== 'ok') {
+        if (initialResult !== 'verification' || !initial.challengeVisible || !await captcha.solve(page)) return initialResult;
+      }
       // Dismiss optional tracking consent without accepting it or changing account settings.
       await dismissOptionalCookies(page);
       const emailInput = await page.waitForSelector('input[type="email"]', { visible: true });
       if (!emailInput) return 'unknown';
       await emailInput.type(email); await page.click('#email-submit');
       try { await page.waitForSelector('input[type="password"]', { visible: true, timeout: 25000 }); }
-      catch { return await waitResult(page, 1000, email); }
+      catch {
+        const observation = await observeNbaPage(page);
+        if (!observation.challengeVisible || !await captcha.solve(page)) return await waitResult(page, 1000, email, captcha);
+        const emailSubmit = await page.$('#email-submit');
+        if (emailSubmit && await emailSubmit.isVisible()) await emailSubmit.click();
+        try { await page.waitForSelector('input[type="password"]', { visible: true, timeout: 25000 }); }
+        catch { return await waitResult(page, 1000, email, captcha); }
+      }
       // This is a separate hydrated step; the field can appear before its submit handler is ready.
       await page.waitForNetworkIdle({ idleTime: 500, timeout: 10000 }).catch(() => undefined);
       await dismissOptionalCookies(page);
       await page.type('input[type="password"]', password);
       await page.locator(findNbaPasswordSubmit).click();
-      return await waitResult(page, 35000, email);
+      return await waitResult(page, 35000, email, captcha);
     });
   } catch { return 'unavailable'; }
 }
