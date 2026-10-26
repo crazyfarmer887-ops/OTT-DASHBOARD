@@ -77,3 +77,18 @@ Create one isolated, short-lived Steel session for each checked credential and u
 Verify at the existing checkNbaLogin seam using mocked external browser/HTTP boundaries: fresh password submission and authenticated evidence, blocked/verification results, provider failures, cleanup and no fallback. Keep existing hourly alert tests. Review against this section, commit/push and deploy only the independent NBA monitor release. Actual Steel authentication and Telegram delivery must be verified separately with the current owner-published test account, after a key is available. Do not restart aio-dashboard.
 
 Steel verification:53focused tests and isolated TypeScript checks passed. A real stalled HTTP upgrade test confirms the transport closes and releases its owned session. Use the pinned ws8.22.0 dependency (not an older shared installation). The final full suite has1365passes/153existing unrelated failures, and the client build and two-axis re-review pass. Live activation follows separately.
+
+
+### Steel deployment verification — 2026-10-26 KST
+
+Pushed runtime commit6912a83, deployed independently to `/home/ubuntu/releases/nba-login-monitor-6912a83`; the current NBA release symlink points there. Committed archive SHA256:7bdf69fad3f7b1dc29f9a9b6ae061c7e2df464c77160e54d6c504e0489582ac8. Pinned ws8.22.0 package integrity was checked against the committed lockfile before creating a private dependency overlay; other shared dependencies were reused without modification.
+
+The already established jamkkangudok project key authenticated successfully and was copied privately to root-owned0600NBA environment, with `NBA_BROWSER_PROVIDER=steel`. No key was created, rotated or printed. The prior environment and journal were backed up privately. The original journal location, all historical records, bot/chat/topic, lock, hourly timer and unit remain unchanged. No aio-dashboard restart: its main PID remained588691 throughout verification.
+
+An initial fresh test-account check returned verification in49.7seconds. The explicit three-target production monitor check returned ok for active parties75851and76659; party76513(the supplied test account) returned verification. This establishes fresh password login for two accounts in this run, not reliable unrestricted authentication for every account. The checker leaves NBA's additional security challenge unresolved and distinguishes it from rejected credentials. All three production sessions had acknowledged creationHTTP201and scoped releaseHTTP200.
+
+The current test-account failure had already been notified in the same hourly slot, so its existing confirmed receipt was retained and the deployment check did not send a duplicate message. Successes remained quiet. Telegram dry-run is disabled and existing destination configuration is present. The retired76552record is unchanged; four historical/current journal rows remain, with three current active targets. State permissions remain0600.
+
+Mac and production Linux focused verification:53tests passed. Final full suite:1365passed/153existing unrelated failures; isolated TypeScript, build, diff check and both Standards/Spec re-review passed. The actual service invocation and timer verification are recorded below.
+
+Actual `nba-login-monitor.service` invocation completed successfully (Result=success, ExecMainStatus=0); the same-slot run reused the just-checked results, avoiding extra login attempts/alerts. The enabled/active timer next fires October26at16:00KST (displayed as15:00CST on the host). The dashboard remained active at the same PID.
