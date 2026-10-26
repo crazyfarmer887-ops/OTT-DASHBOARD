@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createCipheriv } from 'node:crypto';
 import { runInContext } from 'node:vm';
-import { classifyNbaLogin, findNbaPasswordSubmit, nbaHttpResult, observeNbaPage } from '../src/monitoring/nba-login';
+import { classifyNbaLogin, confirmNbaRejection, fillNbaInput, findNbaPasswordSubmit, nbaHttpResult, observeNbaPage } from '../src/monitoring/nba-login';
 import { JSDOM } from 'jsdom';
 import { decodeNbaPartyPassword, monitorNba, NBA_CHECK_INTERVAL, type MonitorDependencies, type NbaMonitorState, type NbaTarget } from '../src/monitoring/nba-monitor';
 function fixture() {
@@ -24,7 +24,8 @@ describe('NBA scheduled login checks', () => {
     } finally { dom.window.close(); }
   });
   it('submits the password panel instead of the identically named navigation button', () => {
-    const dom = new JSDOM('<header><button id="nav">Sign In</button></header><main><section><label><input type="password"></label><button id="submit">Sign In</button></section></main>', { url: 'https://www.nba.com/account/sign-in' });
+    const dom = new JSDOM('<div hidden><input type="password"><button>Sign In</button></div><header><button id="nav">Sign In</button></header><main><section><label><input type="password"></label><button id="submit">Sign In</button></section></main>', { url: 'https://www.nba.com/account/sign-in' });
+    Object.defineProperty(dom.window.Element.prototype, 'checkVisibility', { value() { return !this.closest('[hidden]'); } });
     vi.stubGlobal('document', dom.window.document);
     try {
       expect(findNbaPasswordSubmit()?.id).toBe('submit');
@@ -32,7 +33,7 @@ describe('NBA scheduled login checks', () => {
       expect(findNbaPasswordSubmit()).toBeNull();
       dom.window.document.querySelectorAll('section button').forEach(button => button.remove());
       expect(findNbaPasswordSubmit()).toBeNull();
-      dom.window.document.querySelector('input')?.remove();
+      dom.window.document.querySelectorAll('input').forEach(input => input.remove());
       expect(findNbaPasswordSubmit()).toBeNull();
     } finally { vi.unstubAllGlobals(); dom.window.close(); }
   });
@@ -46,6 +47,20 @@ describe('NBA scheduled login checks', () => {
     expect(classifyNbaLogin({ ...base, challengeVisible: true })).toBe('verification');
     expect(classifyNbaLogin({ ...base, text: 'Enter the verification code' })).toBe('verification');
     expect(classifyNbaLogin({ ...base, text: 'Something went wrong' })).toBe('unavailable');
+  });
+  it('prioritizes active verification and service errors over credential wording', () => {
+    const base = { text: 'Invalid email or password. Please try again.', passwordVisible: true, authenticated: false, challengeVisible: false };
+    expect(classifyNbaLogin({ ...base, challengeVisible: true })).toBe('verification');
+    expect(classifyNbaLogin({ ...base, text: base.text + '\nToo many attempts' })).toBe('verification');
+    expect(classifyNbaLogin({ ...base, text: base.text + '\nSomething went wrong' })).toBe('unavailable');
+  });
+  it('ignores credential wording outside visible login errors', async () => {
+    const dom = new JSDOM('<main><input type="password"><div hidden>Invalid email or password.</div><p>Help: wrong password troubleshooting</p></main>', { url: 'https://www.nba.com/account/sign-in', runScripts: 'outside-only' });
+    Object.defineProperty(dom.window.document.body, 'innerText', { get() { return this.textContent || ''; } });
+    Object.defineProperty(dom.window.Element.prototype, 'checkVisibility', { value() { return !this.closest('[hidden]'); } });
+    const page = { evaluate: async (fn: unknown) => runInContext(`(${String(fn)})()`, dom.getInternalVMContext()) };
+    try { expect(classifyNbaLogin(await observeNbaPage(page))).toBe('unknown'); }
+    finally { dom.window.close(); }
   });
   it('does not label a server HTTP block as a bad password', () => {
     expect(nbaHttpResult(403)).toBe('blocked');
@@ -61,6 +76,33 @@ describe('NBA scheduled login checks', () => {
     expect(classifyNbaLogin({ ...profile, url: 'https://example.com/account/nbaprofile' }, 'fixture@example.com')).toBe('unknown');
     expect(classifyNbaLogin({ ...profile, passwordVisible: true }, 'fixture@example.com')).toBe('unknown');
     expect(classifyNbaLogin({ ...profile, accountHeadingVisible: false }, 'fixture@example.com')).toBe('unknown');
+  });
+  it('confirms an explicit rejection with a second fresh attempt, but never retries a challenge', async () => {
+    const pause = vi.fn(async () => undefined);
+    const attempt = vi.fn().mockResolvedValueOnce('invalid').mockResolvedValueOnce('ok');
+    expect(await confirmNbaRejection(attempt, pause)).toBe('ok');
+    expect(attempt).toHaveBeenCalledTimes(2); expect(pause).toHaveBeenCalledOnce();
+    for (const second of ['invalid', 'verification', 'blocked', 'unavailable', 'unknown'] as const) {
+      expect(await confirmNbaRejection(vi.fn().mockResolvedValueOnce('invalid').mockResolvedValueOnce(second), pause)).toBe(second);
+    }
+    for (const first of ['ok', 'verification', 'blocked', 'unavailable', 'unknown'] as const) {
+      const check = vi.fn(async () => first);
+      expect(await confirmNbaRejection(check, pause)).toBe(first); expect(check).toHaveBeenCalledOnce();
+    }
+  });
+  it('replaces existing contents and verifies hydrated visible fields before submitting', async () => {
+    const typed: string[] = []; let current = 'stale'; let loseInput = true;
+    const input = { click: vi.fn(async () => undefined), press: vi.fn(async () => { current = ''; }),
+      type: vi.fn(async (value: string) => { typed.push(value); current = loseInput ? '' : value; loseInput = false; }),
+      evaluate: vi.fn(async (_fn: unknown, expected: string) => current === expected) };
+    const page = { waitForSelector: vi.fn(async () => input) };
+    expect(await fillNbaInput(page as never, 'input[type="password"]', 'private-password')).toBe(true);
+    expect(typed).toEqual(['private-password', 'private-password']);
+    expect(input.press).toHaveBeenCalledWith('Backspace');
+    expect(page.waitForSelector).toHaveBeenCalledWith('input[type="password"]', { visible: true });
+    input.evaluate.mockResolvedValue(false);
+    expect(await fillNbaInput(page as never, 'input[type="password"]', 'private-password')).toBe(false);
+    expect(input.type).toHaveBeenCalledTimes(4);
   });
   it('checks once every hour, remains quiet on success, and keeps scheduling across restart', async () => {
     const f = fixture(); await monitorNba(f.deps); await monitorNba(f.deps);

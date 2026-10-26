@@ -53,7 +53,7 @@ function captchaFixture() {
       (dom.window as any).testArgs = args;
       return runInContext(`(${String(fn)})(...window.testArgs)`, dom.getInternalVMContext());
     }),
-    $: vi.fn(async () => null), waitForSelector: vi.fn(async (_selector?: string, _options?: object) => ({ type: vi.fn() })),
+    $: vi.fn(async () => null), waitForSelector: vi.fn(async (_selector?: string, _options?: object) => ({ type: vi.fn(), click: vi.fn(), press: vi.fn(), evaluate: vi.fn(async () => true) })),
     click: vi.fn(), type: vi.fn(), title: vi.fn(async () => 'NBA'),
     waitForNetworkIdle: vi.fn(async () => undefined), locator: vi.fn(() => ({ click: submit })),
   });
@@ -95,7 +95,7 @@ describe('NBA login through Steel', () => {
   });
   it('submits the current password in a fresh context and requires authenticated evidence', async () => {
     const f = fixture();
-    const emailInput = { type: vi.fn() };
+    const emailInput = { type: vi.fn(), click: vi.fn(), press: vi.fn(), evaluate: vi.fn(async () => true) };
     const page = Object.assign(f.page, {
       goto: vi.fn(async () => ({ status: () => 200 })),
       evaluate: vi.fn().mockResolvedValueOnce({ text: 'Sign in', passwordVisible: false, authenticated: false, challengeVisible: false })
@@ -104,14 +104,41 @@ describe('NBA login through Steel', () => {
       click: vi.fn(), type: vi.fn(), waitForNetworkIdle: vi.fn(async () => undefined), locator: vi.fn(() => ({ click: vi.fn() })),
     });
     expect(await checkNbaLogin('fixture@example.com', 'private-password')).toBe('ok');
-    expect(emailInput.type).toHaveBeenCalledWith('fixture@example.com');
-    expect(page.type).toHaveBeenCalledWith('input[type="password"]', 'private-password');
+    expect(emailInput.type).toHaveBeenCalledWith('fixture@example.com', { delay: 20 });
+    expect(emailInput.type).toHaveBeenCalledWith('private-password', { delay: 20 });
     expect(page.locator).toHaveBeenCalledOnce();
     expect(f.requests.at(-1)?.url).toMatch(/\/release$/);
     const first = JSON.parse(String(f.requests[0].options.body)).sessionId;
     expect(await checkNbaLogin('fixture@example.com', 'private-password')).toBe('ok');
     expect(f.browser.createBrowserContext).toHaveBeenCalledTimes(2);
     expect(JSON.parse(String(f.requests[2].options.body)).sessionId).not.toBe(first);
+  });
+  it.each(['ok', 'invalid', 'verification', 'unavailable'] as const)('uses two fresh native submissions before confirming rejection (second=%s)', async second => {
+    const f = fixture(); vi.useFakeTimers();
+    const input = { type: vi.fn(), click: vi.fn(), press: vi.fn(), evaluate: vi.fn(async () => true) };
+    const base = { text: 'Sign in', passwordVisible: false, authenticated: false, challengeVisible: false };
+    const rejected = { ...base, text: 'Invalid email or password. Please try again.', passwordVisible: true, credentialErrorVisible: true };
+    const final = second === 'ok' ? { ...base, text: 'Sign out', authenticated: true }
+      : second === 'invalid' ? rejected
+      : { ...base, text: second === 'verification' ? 'Too many attempts' : 'Something went wrong' };
+    Object.assign(f.page, { goto: vi.fn(async () => ({ status: () => 200 })),
+      evaluate: vi.fn().mockResolvedValueOnce(base).mockResolvedValueOnce(rejected).mockResolvedValueOnce(base).mockResolvedValue(final),
+      $: vi.fn(async () => null), waitForSelector: vi.fn(async () => input), click: vi.fn(),
+      waitForNetworkIdle: vi.fn(async () => undefined), locator: vi.fn(() => ({ click: vi.fn() })) });
+    try {
+      const result = checkNbaLogin('fixture@example.com', 'private-password'); await vi.runAllTimersAsync();
+      expect(await result).toBe(second); expect(f.browser.createBrowserContext).toHaveBeenCalledTimes(2);
+      expect(input.type.mock.calls.filter(([value]) => value === 'private-password')).toHaveLength(2);
+      const sessions = f.requests.filter(r => !r.url.endsWith('/release')).map(r => JSON.parse(String(r.options.body)).sessionId);
+      expect(new Set(sessions).size).toBe(2); expect(f.requests.filter(r => r.url.endsWith('/release'))).toHaveLength(2);
+    } finally { vi.useRealTimers(); }
+  });
+  it('never treats pre-existing rejection text before password submission as bad credentials', async () => {
+    const f = fixture();
+    Object.assign(f.page, { goto: vi.fn(async () => ({ status: () => 200 })),
+      evaluate: vi.fn(async () => ({ text: 'Invalid email or password.', passwordVisible: true, authenticated: false, challengeVisible: false })) });
+    expect(await checkNbaLogin('fixture@example.com', 'private-password')).toBe('unknown');
+    expect(f.browser.createBrowserContext).toHaveBeenCalledOnce();
   });
   it('releases a challenge or failed navigation without converting it into an invalid password', async () => {
     const f = fixture();

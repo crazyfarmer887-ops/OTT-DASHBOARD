@@ -55,7 +55,7 @@ export async function loadNbaTargets(): Promise<NbaTarget[]> {
   return targets;
 }
 const messages: Record<Exclude<NbaLoginResult, 'ok'>, string> = {
-  invalid: 'NBA 로그인이 거부됐습니다. 계정 정보에 이상이 있으니 Gamsgo에서 확인 후 조치해주세요.',
+  invalid: '입력값을 검증한 새 로그인 2회에서 NBA가 모두 계정 정보를 거부했습니다. 링키드에 등록된 ID·비밀번호와 공급 계정을 대조해주세요.',
   blocked: 'NBA가 서버의 접속을 차단했습니다. 비밀번호를 제출하기 전에도 발생할 수 있으며 계정 정보 오류로 확정한 상태는 아닙니다. NBA 접속 제한을 확인해주세요.',
   verification: 'NBA 보안 인증 또는 접속 제한으로 자동 로그인 확인이 막혔습니다. 비밀번호 오류로 확정한 상태는 아닙니다. 직접 확인 후 조치해주세요.',
   unavailable: 'NBA 접속 또는 점검 실행에 실패했습니다. 계정 오류 여부는 확인되지 않았습니다. 서버와 NBA 접속 상태를 확인해주세요.',

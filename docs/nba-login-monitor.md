@@ -138,3 +138,12 @@ An explicit forceCheck through the deployed runtime completed all three active o
 The live journal's three active parties75851/76513/76659are all ok. The retired76552record is unchanged, four journal rows remain and file mode is0600. The subsequent actual systemd service invocation succeeded with exit0and reused the same-slot results. Installed unit bytes match committed source, with a20-minute process limit. The timer is enabled/active and next fires October26at18:00KST (17:00CST on the host).
 
 The separate aio-dashboard service remained atPID588691. Its16GButs renewal policies remain enabled, safeModefalse and no global renewal error. No dashboard process, sales listing, buyer message, profile or renewal setting was modified. Deployment receipt: calling workspace artifacts/nba-hourly-capsolver-20261026/deployment.json.
+
+
+## 2026-10-26 reliability follow-up
+
+Profile5's initially rejected check used a different password published in Linkid. Private comparison (including trimming) did not match the owner-supplied value. Native NBA submission verified exact input contents and returned the explicit message `Invalid email or password. Please try again.`. A separate fresh sign-in with the owner-supplied value succeeded. The Linkid stored password was corrected and re-read privately to confirm an exact match. The five accounts in the supplied file are untouched spares; working accounts must not be bulk replaced.
+
+The reliability change follows `docs/tickets/nba-login-reliability.md`: ordinary visible-field replacement with keyboard events and exact value verification, one bounded hydration refill, visible exact rejection messages, security/technical precedence, and a second independent native sign-in before an invalid result. Password submission is required before rejection can count; CAPTCHA resubmission re-verifies the password. Never treat pre-submission copy, hidden fields/help or a single transient rejection as confirmed invalid. Verification, blocked, unavailable and unknown remain distinct unconfirmed outcomes; zero-error classification cannot be promised.
+
+The maximum two owned300-second sessions per credential and five current targets require a55-minute oneshot ceiling; the existing hourly timer and non-blocking global lock remain unchanged. Each individual attempt keeps its existing bounded Steel lifetime and single CapSolver task. No automatic spare replacement was added.
