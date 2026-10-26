@@ -5,7 +5,7 @@ import { readLinkidStore } from '../lib/linkid-store';
 import { LinkidClient } from '../lib/linkid-client';
 import { sendSellerAlert, type SellerAlertInput, type SellerAlertResult } from '../alerts/telegram';
 import { checkNbaLogin, type NbaLoginResult } from './nba-login';
-export const NBA_CHECK_INTERVAL = 3 * 60 * 60 * 1000;
+export const NBA_CHECK_INTERVAL = 60 * 60 * 1000;
 export type NbaTarget = { key: string; label: string; email: string; password: string; actionUrl: string };
 type RecordState = { checkedAt: number; result: NbaLoginResult; credentialHash: string; incident: number; notifiedIncident?: number; notifiedAt?: number };
 export type NbaMonitorState = { version: 1; targets: Record<string, RecordState> };
@@ -56,6 +56,7 @@ export async function loadNbaTargets(): Promise<NbaTarget[]> {
 }
 const messages: Record<Exclude<NbaLoginResult, 'ok'>, string> = {
   invalid: 'NBA 로그인이 거부됐습니다. 계정 정보에 이상이 있으니 Gamsgo에서 확인 후 조치해주세요.',
+  blocked: 'NBA가 서버의 접속을 차단했습니다. 비밀번호를 제출하기 전에도 발생할 수 있으며 계정 정보 오류로 확정한 상태는 아닙니다. NBA 접속 제한을 확인해주세요.',
   verification: 'NBA 보안 인증 또는 접속 제한으로 자동 로그인 확인이 막혔습니다. 비밀번호 오류로 확정한 상태는 아닙니다. 직접 확인 후 조치해주세요.',
   unavailable: 'NBA 접속 또는 점검 실행에 실패했습니다. 계정 오류 여부는 확인되지 않았습니다. 서버와 NBA 접속 상태를 확인해주세요.',
   unknown: 'NBA 로그인 성공 여부를 확인하지 못했습니다. 보안 인증 또는 로그인 화면 변경 여부를 확인해주세요.',
@@ -75,11 +76,12 @@ export async function monitorNba(deps: MonitorDependencies): Promise<void> {
       state.targets[target.key] = record; deps.write(state);
     }
     if (record.result === 'ok') continue;
-    if (record.notifiedIncident === record.incident && now - (record.notifiedAt || 0) < 24 * 3600000) continue;
-    const sent = await deps.alert({ provider: 'linkid', category: 'system', key: `nba-login:${target.key}:${record.incident}:${Math.floor(now / 86400000)}`,
+    if (record.notifiedIncident === record.incident
+      && Math.floor((record.notifiedAt || 0) / NBA_CHECK_INTERVAL) === Math.floor(now / NBA_CHECK_INTERVAL)) continue;
+    const sent = await deps.alert({ provider: 'linkid', category: 'system', key: `nba-login:${target.key}:${record.incident}:${Math.floor(now / NBA_CHECK_INTERVAL)}`,
       title: record.result === 'invalid' ? 'NBA 계정 이상 · 조치 필요' : 'NBA 로그인 점검 · 확인 필요',
       body: `${target.label}\n계정: ${target.email}\n${messages[record.result]}\n확인 시각: ${new Date(record.checkedAt).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}`,
-      actionUrl: target.actionUrl, throttleMs: 24 * 3600000 });
+      actionUrl: target.actionUrl, throttleMs: NBA_CHECK_INTERVAL });
     if (sent.sent || sent.reason === 'throttled') { record.notifiedIncident = record.incident; record.notifiedAt = now; deps.write(state); }
   }
 }
@@ -87,7 +89,7 @@ export function nbaMonitorStatePath(): string { return process.env.NBA_MONITOR_S
 export function readNbaMonitorState(): NbaMonitorState {
   const path = nbaMonitorStatePath(); if (!existsSync(path)) return { version: 1, targets: {} };
   const raw = JSON.parse(readFileSync(path, 'utf8'));
-  if (raw.version !== 1 || !raw.targets || typeof raw.targets !== 'object' || Array.isArray(raw.targets) || Object.values(raw.targets).some((r: any) => !Number.isFinite(r?.checkedAt) || !['ok', 'invalid', 'verification', 'unavailable', 'unknown'].includes(r?.result) || typeof r?.credentialHash !== 'string' || !Number.isFinite(r?.incident))) throw new Error('NBA_STATE_FORMAT');
+  if (raw.version !== 1 || !raw.targets || typeof raw.targets !== 'object' || Array.isArray(raw.targets) || Object.values(raw.targets).some((r: any) => !Number.isFinite(r?.checkedAt) || !['ok', 'invalid', 'blocked', 'verification', 'unavailable', 'unknown'].includes(r?.result) || typeof r?.credentialHash !== 'string' || !Number.isFinite(r?.incident))) throw new Error('NBA_STATE_FORMAT');
   return raw;
 }
 export const nbaMonitorRuntime: MonitorDependencies = { targets: loadNbaTargets, check: checkNbaLogin, alert: sendSellerAlert,

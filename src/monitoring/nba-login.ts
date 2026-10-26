@@ -3,17 +3,27 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import puppeteer, { type Page } from 'puppeteer-core';
 
-export type NbaLoginResult = 'ok' | 'invalid' | 'verification' | 'unavailable' | 'unknown';
-export type LoginObservation = { text: string; passwordVisible: boolean; authenticated: boolean; challengeVisible: boolean };
-export function classifyNbaLogin(o: LoginObservation): NbaLoginResult {
+export type NbaLoginResult = 'ok' | 'invalid' | 'blocked' | 'verification' | 'unavailable' | 'unknown';
+export type LoginObservation = { text: string; passwordVisible: boolean; authenticated: boolean; challengeVisible: boolean; url?: string; accountHeadingVisible?: boolean };
+export function classifyNbaLogin(o: LoginObservation, expectedEmail?: string): NbaLoginResult {
   if (/incorrect (email|password)|invalid (email|password|credentials)|email (or|and) password.*(incorrect|invalid)|account (is |has been )?(locked|disabled)|wrong password|비밀번호.*(틀|일치하지)|계정.*잠[겨금]/i.test(o.text)) return 'invalid';
-  if (o.challengeVisible || /verify (your identity|it's you)|verification code|security code|enter.*code|보안 인증|인증 ?코드|recaptcha.*(connect|연결)|access denied|unusual activity|too many (requests|attempts)|temporarily blocked/i.test(o.text)) return 'verification';
+  if (/access denied/i.test(o.text)) return 'blocked';
+  if (o.challengeVisible || /verify (your identity|it's you)|verification code|security code|enter.*code|보안 인증|인증 ?코드|recaptcha.*(connect|연결)|unusual activity|too many (requests|attempts)|temporarily blocked/i.test(o.text)) return 'verification';
   if (/service unavailable|temporarily unavailable|something went wrong|try again later|일시.*오류/i.test(o.text)) return 'unavailable';
   if (o.authenticated && !o.passwordVisible) return 'ok';
+  if (expectedEmail && !o.passwordVisible && o.accountHeadingVisible && o.url) {
+    try {
+      const url = new URL(o.url);
+      const emails = o.text.match(/[^\s<>@]+@[^\s<>@]+\.[a-z]{2,}/gi) || [];
+      if (url.origin === 'https://www.nba.com' && url.pathname === '/account/nbaprofile'
+        && emails.some(email => email.toLowerCase() === expectedEmail.toLowerCase())) return 'ok';
+    } catch { /* An invalid or unrelated URL cannot prove authentication. */ }
+  }
   return 'unknown';
 }
 export function nbaHttpResult(status: number): NbaLoginResult | undefined {
-  if ([401, 403, 429].includes(status)) return 'verification';
+  if (status === 403) return 'blocked';
+  if ([401, 429].includes(status)) return 'verification';
   if (status >= 500 || !status) return 'unavailable';
   if (status >= 400) return 'unknown';
   return undefined;
@@ -30,19 +40,21 @@ export function nbaBrowserPath(): string {
 }
 export async function observeNbaPage(page: Page): Promise<LoginObservation> {
   return page.evaluate(() => {
-    const visible = (el: Element) => { const box = el.getBoundingClientRect(); return box.width > 0 && box.height > 0 && getComputedStyle(el).visibility !== 'hidden'; };
+    // Keep this callback self-contained: tsx injects an external __name helper for named local arrows.
     return {
       text: document.body.innerText.slice(0, 16000),
-      passwordVisible: [...document.querySelectorAll('input[type="password"]')].some(visible),
-      authenticated: [...document.querySelectorAll('a,button')].some(el => visible(el) && /^(sign out|log out)$/i.test(el.textContent?.trim() || '')),
-      challengeVisible: [...document.querySelectorAll('iframe')].some(el => visible(el) && (/bframe|challenge/i.test(el.src) || /challenge/i.test(el.title))),
+      url: location.href,
+      accountHeadingVisible: [...document.querySelectorAll('h1,h2,h3')].some(el => el.checkVisibility({ visibilityProperty: true }) && /^my account$/i.test(el.textContent?.trim() || '')),
+      passwordVisible: [...document.querySelectorAll('input[type="password"]')].some(el => el.checkVisibility({ visibilityProperty: true })),
+      authenticated: [...document.querySelectorAll('a,button')].some(el => el.checkVisibility({ visibilityProperty: true }) && /^(sign out|log out)$/i.test(el.textContent?.trim() || '')),
+      challengeVisible: [...document.querySelectorAll('iframe')].some(el => el.checkVisibility({ visibilityProperty: true }) && (/bframe|challenge/i.test(el.src) || /challenge/i.test(el.title))),
     };
   });
 }
-async function waitResult(page: Page, timeout: number): Promise<NbaLoginResult> {
+async function waitResult(page: Page, timeout: number, expectedEmail: string): Promise<NbaLoginResult> {
   const end = Date.now() + timeout;
   do {
-    const result = classifyNbaLogin(await observeNbaPage(page));
+    const result = classifyNbaLogin(await observeNbaPage(page), expectedEmail);
     if (result !== 'unknown') return result;
     await new Promise(resolve => setTimeout(resolve, 1000));
   } while (Date.now() < end);
@@ -52,20 +64,23 @@ async function waitResult(page: Page, timeout: number): Promise<NbaLoginResult> 
 export async function checkNbaLogin(email: string, password: string): Promise<NbaLoginResult> {
   let browser;
   try {
-    browser = await puppeteer.launch({ executablePath: nbaBrowserPath(), headless: true,
+    browser = await puppeteer.launch({ executablePath: nbaBrowserPath(), headless: false,
       args: ['--disable-dev-shm-usage'], timeout: 30000 });
     const context = await browser.createBrowserContext(); const page = await context.newPage();
     page.setDefaultTimeout(20000); page.setDefaultNavigationTimeout(40000);
-    const response = await page.goto('https://www.nba.com/account/sign-in', { waitUntil: 'domcontentloaded', timeout: 30000 });
+    const response = await page.goto('https://www.nba.com/account/sign-in', { waitUntil: 'networkidle2', timeout: 40000 });
     const statusResult = nbaHttpResult(response?.status() || 0);
     if (statusResult) return statusResult;
     const initialResult = classifyNbaLogin(await observeNbaPage(page));
     if (initialResult !== 'unknown' && initialResult !== 'ok') return initialResult;
+    // Dismiss optional tracking consent without accepting it or changing account settings.
+    const rejectCookies = await page.$('#onetrust-reject-all-handler');
+    if (rejectCookies && await rejectCookies.isVisible()) await rejectCookies.click();
     const emailInput = await page.waitForSelector('input[type="email"]', { visible: true });
     if (!emailInput) return 'unknown';
     await emailInput.type(email); await page.click('#email-submit');
     try { await page.waitForSelector('input[type="password"]', { visible: true, timeout: 25000 }); }
-    catch { return await waitResult(page, 1000); }
+    catch { return await waitResult(page, 1000, email); }
     await page.type('input[type="password"]', password);
     const clicked = await page.evaluate(() => {
       const password = document.querySelector('input[type="password"]'); const form = password?.closest('form');
@@ -74,7 +89,7 @@ export async function checkNbaLogin(email: string, password: string): Promise<Nb
       if (!button) return false; button.click(); return true;
     });
     if (!clicked) return 'unknown';
-    return await waitResult(page, 35000);
+    return await waitResult(page, 35000, email);
   } catch { return 'unavailable'; }
   finally { if (browser) await browser.close().catch(() => undefined); }
 }

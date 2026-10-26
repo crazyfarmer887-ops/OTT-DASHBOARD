@@ -22,28 +22,45 @@ describe('NBA scheduled login checks', () => {
     expect(classifyNbaLogin({ ...base, text: 'Something went wrong' })).toBe('unavailable');
   });
   it('does not label a server HTTP block as a bad password', () => {
-    expect(nbaHttpResult(403)).toBe('verification');
+    expect(nbaHttpResult(403)).toBe('blocked');
+    expect(classifyNbaLogin({ text: 'Access Denied', passwordVisible: false, authenticated: false, challengeVisible: false })).toBe('blocked');
     expect(nbaHttpResult(429)).toBe('verification');
     expect(nbaHttpResult(503)).toBe('unavailable');
     expect(nbaHttpResult(200)).toBeUndefined();
   });
-  it('checks once every three hours, remains quiet on success, and keeps scheduling across restart', async () => {
+  it('accepts the expected account profile only on NBA after the password form disappears', () => {
+    const profile = { text: 'MY ACCOUNT\nfixture@example.com', url: 'https://www.nba.com/account/nbaprofile', accountHeadingVisible: true, passwordVisible: false, authenticated: false, challengeVisible: false };
+    expect(classifyNbaLogin(profile, 'fixture@example.com')).toBe('ok');
+    expect(classifyNbaLogin(profile, 'other@example.com')).toBe('unknown');
+    expect(classifyNbaLogin({ ...profile, url: 'https://example.com/account/nbaprofile' }, 'fixture@example.com')).toBe('unknown');
+    expect(classifyNbaLogin({ ...profile, passwordVisible: true }, 'fixture@example.com')).toBe('unknown');
+    expect(classifyNbaLogin({ ...profile, accountHeadingVisible: false }, 'fixture@example.com')).toBe('unknown');
+  });
+  it('checks once every hour, remains quiet on success, and keeps scheduling across restart', async () => {
     const f = fixture(); await monitorNba(f.deps); await monitorNba(f.deps);
     expect(f.deps.check).toHaveBeenCalledTimes(1); expect(f.deps.alert).not.toHaveBeenCalled();
     f.advance(NBA_CHECK_INTERVAL - 1); await monitorNba(f.deps); expect(f.deps.check).toHaveBeenCalledTimes(1);
     f.advance(1); await monitorNba(f.deps); expect(f.deps.check).toHaveBeenCalledTimes(2);
+  });
+  it('runs the next requested hourly slot without waiting three hours', async () => {
+    const f = fixture(); await monitorNba(f.deps);
+    f.advance(60 * 60_000); await monitorNba(f.deps);
+    expect(f.deps.check).toHaveBeenCalledTimes(2);
   });
   it('does not skip a scheduled slot when the prior check finished a minute late', async () => {
     const f = fixture(); f.advance(60000); await monitorNba(f.deps);
     f.advance(NBA_CHECK_INTERVAL - 60000); await monitorNba(f.deps);
     expect(f.deps.check).toHaveBeenCalledTimes(2);
   });
-  it('notifies the Linkid topic on invalid login without exposing the password, once per incident', async () => {
+  it('notifies each failed hourly check once in the Linkid topic without exposing the password', async () => {
     const f = fixture(); vi.mocked(f.deps.check).mockResolvedValue('invalid'); await monitorNba(f.deps);
     expect(f.deps.alert).toHaveBeenCalledWith(expect.objectContaining({ provider: 'linkid', title: 'NBA 계정 이상 · 조치 필요' }));
     expect(JSON.stringify(vi.mocked(f.deps.alert).mock.calls)).not.toContain(f.target.password);
     expect(JSON.stringify(f.state)).not.toContain(f.target.password);
-    f.advance(NBA_CHECK_INTERVAL); await monitorNba(f.deps); expect(f.deps.alert).toHaveBeenCalledTimes(1);
+    await monitorNba(f.deps); expect(f.deps.alert).toHaveBeenCalledTimes(1);
+    f.advance(60 * 60_000); await monitorNba(f.deps); expect(f.deps.alert).toHaveBeenCalledTimes(2);
+    const calls = vi.mocked(f.deps.alert).mock.calls;
+    expect(calls[0][0].key).not.toBe(calls[1][0].key);
   });
   it('keeps unavailable/verification failures distinct from rejected credentials', async () => {
     const f = fixture(); vi.mocked(f.deps.check).mockResolvedValue('verification'); await monitorNba(f.deps);
