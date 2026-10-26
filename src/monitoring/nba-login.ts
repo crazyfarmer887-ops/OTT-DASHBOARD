@@ -38,7 +38,7 @@ export function nbaBrowserPath(): string {
   for (const path of ['/usr/bin/chromium', '/usr/bin/chromium-browser', '/usr/bin/google-chrome']) if (existsSync(path)) return path;
   throw new Error('NBA_BROWSER_UNAVAILABLE');
 }
-export async function observeNbaPage(page: Page): Promise<LoginObservation> {
+export async function observeNbaPage(page: Pick<Page, 'evaluate'>): Promise<LoginObservation> {
   return page.evaluate(() => {
     // Keep this callback self-contained: tsx injects an external __name helper for named local arrows.
     return {
@@ -47,7 +47,9 @@ export async function observeNbaPage(page: Page): Promise<LoginObservation> {
       accountHeadingVisible: [...document.querySelectorAll('h1,h2,h3')].some(el => el.checkVisibility({ visibilityProperty: true }) && /^my account$/i.test(el.textContent?.trim() || '')),
       passwordVisible: [...document.querySelectorAll('input[type="password"]')].some(el => el.checkVisibility({ visibilityProperty: true })),
       authenticated: [...document.querySelectorAll('a,button')].some(el => el.checkVisibility({ visibilityProperty: true }) && /^(sign out|log out)$/i.test(el.textContent?.trim() || '')),
-      challengeVisible: [...document.querySelectorAll('iframe')].some(el => el.checkVisibility({ visibilityProperty: true }) && (/bframe|challenge/i.test(el.src) || /challenge/i.test(el.title))),
+      challengeVisible: [...document.querySelectorAll('iframe')].some(el => el.checkVisibility({ visibilityProperty: true })
+        && (/bframe|challenge/i.test(el.src) || /challenge/i.test(el.title)
+          || (/\/recaptcha\/(api2|enterprise)\/anchor/i.test(el.src) && !/[?&]size=invisible(?:&|$)/i.test(el.src)))),
     };
   });
 }
@@ -59,6 +61,21 @@ async function waitResult(page: Page, timeout: number, expectedEmail: string): P
     await new Promise(resolve => setTimeout(resolve, 1000));
   } while (Date.now() < end);
   return 'unknown';
+}
+async function dismissOptionalCookies(page: Page): Promise<void> {
+  const rejectCookies = await page.$('#onetrust-reject-all-handler');
+  if (rejectCookies && await rejectCookies.isVisible()) await rejectCookies.click();
+}
+/** Runs in the page: choose the password panel's button, never the header's identical label. */
+export function findNbaPasswordSubmit(): HTMLButtonElement | null {
+  let scope = document.querySelector('input[type="password"]')?.parentElement;
+  while (scope && scope !== document.body) {
+    const buttons = [...scope.querySelectorAll('button')].filter(button => !button.closest('header,nav,[role="navigation"]')
+      && /^sign in$/i.test(button.textContent?.trim() || ''));
+    if (buttons.length) return buttons.length === 1 ? buttons[0] : null;
+    scope = scope.parentElement;
+  }
+  return null;
 }
 /** Fresh isolated context: proves a password login, never accepts a cached session as healthy. */
 export async function checkNbaLogin(email: string, password: string): Promise<NbaLoginResult> {
@@ -74,21 +91,17 @@ export async function checkNbaLogin(email: string, password: string): Promise<Nb
     const initialResult = classifyNbaLogin(await observeNbaPage(page));
     if (initialResult !== 'unknown' && initialResult !== 'ok') return initialResult;
     // Dismiss optional tracking consent without accepting it or changing account settings.
-    const rejectCookies = await page.$('#onetrust-reject-all-handler');
-    if (rejectCookies && await rejectCookies.isVisible()) await rejectCookies.click();
+    await dismissOptionalCookies(page);
     const emailInput = await page.waitForSelector('input[type="email"]', { visible: true });
     if (!emailInput) return 'unknown';
     await emailInput.type(email); await page.click('#email-submit');
     try { await page.waitForSelector('input[type="password"]', { visible: true, timeout: 25000 }); }
     catch { return await waitResult(page, 1000, email); }
+    // This is a separate hydrated step; the field can appear before its submit handler is ready.
+    await page.waitForNetworkIdle({ idleTime: 500, timeout: 10000 }).catch(() => undefined);
+    await dismissOptionalCookies(page);
     await page.type('input[type="password"]', password);
-    const clicked = await page.evaluate(() => {
-      const password = document.querySelector('input[type="password"]'); const form = password?.closest('form');
-      const scope = form || document;
-      const button = [...scope.querySelectorAll('button')].find(el => /^sign in$/i.test(el.textContent?.trim() || '') && !el.disabled);
-      if (!button) return false; button.click(); return true;
-    });
-    if (!clicked) return 'unknown';
+    await page.locator(findNbaPasswordSubmit).click();
     return await waitResult(page, 35000, email);
   } catch { return 'unavailable'; }
   finally { if (browser) await browser.close().catch(() => undefined); }

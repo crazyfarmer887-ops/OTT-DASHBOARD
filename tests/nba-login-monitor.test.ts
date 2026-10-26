@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createCipheriv } from 'node:crypto';
-import { classifyNbaLogin, nbaHttpResult } from '../src/monitoring/nba-login';
+import { runInContext } from 'node:vm';
+import { classifyNbaLogin, findNbaPasswordSubmit, nbaHttpResult, observeNbaPage } from '../src/monitoring/nba-login';
+import { JSDOM } from 'jsdom';
 import { decodeNbaPartyPassword, monitorNba, NBA_CHECK_INTERVAL, type MonitorDependencies, type NbaMonitorState, type NbaTarget } from '../src/monitoring/nba-monitor';
 function fixture() {
   let time = Date.parse('2026-10-23T09:00:00Z'); let state: NbaMonitorState = { version: 1, targets: {} };
@@ -10,6 +12,30 @@ function fixture() {
   return { deps, target, advance(ms: number) { time += ms; }, get state() { return state; } };
 }
 describe('NBA scheduled login checks', () => {
+  it('detects the required CAPTCHA checkbox without treating the passive badge as a challenge', async () => {
+    const dom = new JSDOM('<iframe src="https://www.google.com/recaptcha/enterprise/anchor?size=invisible"></iframe><iframe id="checkbox" src="https://www.google.com/recaptcha/api2/anchor?size=normal"></iframe>', { url: 'https://www.nba.com/account/sign-in', runScripts: 'outside-only' });
+    Object.defineProperty(dom.window.document.body, 'innerText', { value: 'ENTER YOUR PASSWORD' });
+    Object.defineProperty(dom.window.Element.prototype, 'checkVisibility', { value() { return !this.hasAttribute('hidden'); } });
+    const page = { evaluate: async (fn: unknown, ..._args: unknown[]) => runInContext(`(${String(fn)})()`, dom.getInternalVMContext()) };
+    try {
+      expect(classifyNbaLogin(await observeNbaPage(page))).toBe('verification');
+      dom.window.document.querySelector('#checkbox')?.setAttribute('hidden', '');
+      expect(classifyNbaLogin(await observeNbaPage(page))).toBe('unknown');
+    } finally { dom.window.close(); }
+  });
+  it('submits the password panel instead of the identically named navigation button', () => {
+    const dom = new JSDOM('<header><button id="nav">Sign In</button></header><main><section><label><input type="password"></label><button id="submit">Sign In</button></section></main>', { url: 'https://www.nba.com/account/sign-in' });
+    vi.stubGlobal('document', dom.window.document);
+    try {
+      expect(findNbaPasswordSubmit()?.id).toBe('submit');
+      dom.window.document.querySelector('#submit')?.insertAdjacentHTML('afterend', '<button>Sign In</button>');
+      expect(findNbaPasswordSubmit()).toBeNull();
+      dom.window.document.querySelectorAll('section button').forEach(button => button.remove());
+      expect(findNbaPasswordSubmit()).toBeNull();
+      dom.window.document.querySelector('input')?.remove();
+      expect(findNbaPasswordSubmit()).toBeNull();
+    } finally { vi.unstubAllGlobals(); dom.window.close(); }
+  });
   it('requires explicit authenticated evidence; a redirect or empty login form is not success', () => {
     const base = { text: 'NBA', passwordVisible: false, authenticated: false, challengeVisible: false };
     expect(classifyNbaLogin(base)).toBe('unknown');
@@ -46,6 +72,12 @@ describe('NBA scheduled login checks', () => {
     const f = fixture(); await monitorNba(f.deps);
     f.advance(60 * 60_000); await monitorNba(f.deps);
     expect(f.deps.check).toHaveBeenCalledTimes(2);
+  });
+  it('allows an explicit deployment check without altering the schedule or duplicating an unchanged failure notice', async () => {
+    const f = fixture(); vi.mocked(f.deps.check).mockResolvedValue('verification');
+    await monitorNba(f.deps); await monitorNba(f.deps, { forceCheck: true }); await monitorNba(f.deps);
+    expect(f.deps.check).toHaveBeenCalledTimes(2); expect(f.deps.alert).toHaveBeenCalledTimes(1);
+    expect(f.state.targets[f.target.key].checkedAt).toBe(f.deps.now());
   });
   it('does not skip a scheduled slot when the prior check finished a minute late', async () => {
     const f = fixture(); f.advance(60000); await monitorNba(f.deps);

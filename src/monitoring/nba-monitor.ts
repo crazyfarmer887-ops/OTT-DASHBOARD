@@ -61,13 +61,13 @@ const messages: Record<Exclude<NbaLoginResult, 'ok'>, string> = {
   unavailable: 'NBA 접속 또는 점검 실행에 실패했습니다. 계정 오류 여부는 확인되지 않았습니다. 서버와 NBA 접속 상태를 확인해주세요.',
   unknown: 'NBA 로그인 성공 여부를 확인하지 못했습니다. 보안 인증 또는 로그인 화면 변경 여부를 확인해주세요.',
 };
-export async function monitorNba(deps: MonitorDependencies): Promise<void> {
+export async function monitorNba(deps: MonitorDependencies, options: { forceCheck?: boolean } = {}): Promise<void> {
   const state = deps.read(); const targets = await deps.targets(); const now = deps.now();
   const checks = new Map<string, NbaLoginResult>();
   for (const target of targets) {
     const digest = createHash('sha256').update(target.email.toLowerCase() + '\0' + target.password).digest('hex');
     let record = state.targets[target.key];
-    if (!record || digest !== record.credentialHash || Math.floor(now / NBA_CHECK_INTERVAL) > Math.floor(record.checkedAt / NBA_CHECK_INTERVAL)) {
+    if (options.forceCheck || !record || digest !== record.credentialHash || Math.floor(now / NBA_CHECK_INTERVAL) > Math.floor(record.checkedAt / NBA_CHECK_INTERVAL)) {
       const result = checks.get(digest) || await deps.check(target.email, target.password); checks.set(digest, result);
       record = { checkedAt: now, result, credentialHash: digest, incident: record?.incident || 0,
         notifiedIncident: record?.notifiedIncident, notifiedAt: record?.notifiedAt };
