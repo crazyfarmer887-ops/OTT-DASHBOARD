@@ -9,3 +9,10 @@ Future new Netflix guides contain profile assignment and password-only instructi
 Verify at the existing sync/transport seams: paid new buyer receives a link-free guide and current private credentials once; restarted/uncertain sends are reconciled; no credentials for refunded/ended/mismatched buyers; prior link-guide history is reconciled without re-sending; existing older buyers are not bulk-messaged; Disney remains unchanged. Test sender byte limits and fresh provider saved-message confirmation. Follow local tests/review/commit/push, archive deployment and production smoke checks.
 
 A durable credentialDeliveryPolicy marker opts only newly submitted Netflix password-only guides into automatic credentials; behavior does not depend on exact mutable guide wording. Historical orders without this marker require a buyer request or explicit scoped seller operation.
+
+
+## Explicit one-off public-comment exception — 2026-10-26
+
+The owner specifically requested posting the current credentials in the complaining buyer's comment thread. Anonymous read access and the lack of a private-comment option were verified first; after being told that anyone could read/use the credentials, the owner explicitly approved public publication at action time. Current paid membership, profile lease and credentials were revalidated, one reply was submitted, and both authenticated saved-message comparison and anonymous readback confirmed the exact body hash. Only hashed receipts and identifiers were retained privately; credentials are absent from logs, artifacts and Git.
+
+This is a one-reply owner-authorized exception. Automatic/future delivery remains private, and no account/profile/price/expiry/renewal setting was changed. The exact buyer/order/comment mapping is in the private operational receipt and the calling task's redacted artifacts/netflix-public-comment-20261026/confirmed.json.
