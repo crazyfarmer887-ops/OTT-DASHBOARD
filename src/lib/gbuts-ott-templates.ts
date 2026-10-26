@@ -9,7 +9,8 @@ export function buildGbutsDisneyDeliveryText(_accessUrl: string, number: number,
 export const GBUTS_ACCOUNT_CHANGE_WARNING = '무단 변경으로 피해가 발생하면 이용 제한과 함께 민사상 손해배상 청구 및 형사 고소·고발 등 법적 조치를 진행할 수 있습니다.';
 export const GBUTS_NETFLIX_DESCRIPTION = `📌 넷플릭스 파티 필수 이용수칙
 
-✅ 가구 인증 / 로그인 코드 확인 방법은 파티 참여 후 안내드립니다.
+✅ 계정 ID·비밀번호는 구매 후 1:1 채팅으로 직접 안내합니다.
+반드시 비밀번호로 로그인해 주세요. 이메일 인증·로그인 코드는 제공하지 않습니다.
 
 ✅ 한 사람이 여러 기기에서 동시에 시청하지 말아 주세요.
 기기 변경 시 기존 기기에서 로그아웃 후 이용해 주세요.
@@ -79,7 +80,8 @@ export const GBUTS_DIRECT_CREDENTIAL_NOTICE = `접근 링크 접속이 부담스
 
 계정 링크에 접근하지 못해 요청하시는 환불 또는 단순 변심에 의한 환불은 벗츠 이용약관에 의해 거절될 수 있습니다.`;
 export function buildGbutsOttDeliveryText(accessUrl: string, netflixProfile?: number): string {
-  const text = netflixProfile === undefined ? buildPartyAccessDeliveryTemplate(accessUrl) : buildGbutsNetflixAccessText(accessUrl, netflixProfile);
+  if (netflixProfile !== undefined) return buildGbutsNetflixPasswordGuide(netflixProfile);
+  const text = buildPartyAccessDeliveryTemplate(accessUrl);
   return `${text}\n\n${GBUTS_DIRECT_CREDENTIAL_NOTICE}`;
 }
 
@@ -92,8 +94,28 @@ export function buildGbutsNetflixAccessText(accessUrl: string, number: number): 
     '위 링크에서 이용 동의 후 ID·비밀번호·이메일 PIN, 가구 인증·로그인 코드를 확인하세요. 이용수칙: 프로필 생성·삭제/이름·PIN 변경 금지. 계정 이메일·비밀번호·결제 설정 변경 금지. 여러 기기 동시 시청 금지.',
   ].join('\n\n');
 }
-export function buildGbutsNetflixDeliveryText(accessUrl: string, number: number): string {
-  return buildGbutsOttDeliveryText(accessUrl, number);
+export const GBUTS_NETFLIX_AFTER_ORDER_NOTICE = 'ID·비밀번호와 배정된 프로필을 1:1 채팅으로 직접 안내드립니다. 반드시 비밀번호로 로그인해 주세요. 이메일 인증·로그인 코드는 제공하지 않습니다.';
+export function netflixPasswordOnlyOrderNotice(notice?: string): string {
+  return !notice || /email-verify\.one|계정\s*확인\s*링크|접근\s*링크|이메일\s*PIN/i.test(notice)
+    ? GBUTS_NETFLIX_AFTER_ORDER_NOTICE : notice;
+}
+export function buildGbutsNetflixPasswordGuide(number: number): string {
+  if (!Number.isInteger(number) || number < 1 || number > 5) throw new Error('배정된 프로필 번호가 올바르지 않습니다.');
+  return `구매 감사합니다! 넷플릭스 ${number}번 프로필을 이용해 주세요.
+ID·PW는 이 채팅으로 직접 보내드립니다.
+
+[로그인 안내]
+안내받은 ID와 비밀번호로 로그인해 주세요.
+이메일 인증·로그인 코드는 제공하지 않습니다.
+로그인에 문제가 있으면 이 채팅으로 문의해 주세요.
+
+[이용수칙]
+배정된 ${number}번 프로필만 사용해 주세요.
+프로필 생성·삭제 및 이름·PIN 변경, 계정 이메일·비밀번호·결제 설정 변경은 금지합니다.
+여러 기기에서 동시에 시청하지 마세요.`;
+}
+export function buildGbutsNetflixDeliveryText(_accessUrl: string, number: number): string {
+  return buildGbutsNetflixPasswordGuide(number);
 }
 /** History-only compatibility for the already delivered operational recovery. */
 export function buildGbutsNetflixUnformattedDeliveryText(accessUrl: string, number: number): string {

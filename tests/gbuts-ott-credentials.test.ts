@@ -41,10 +41,12 @@ test.each(['account', 'profile', 'buyer', 'revoked', 'refunded'])(
 test('direct delivery request state survives the real private journal and contains no plaintext credentials', () => {
   const f = fixture(); const dir = mkdtempSync(join(tmpdir(), 'gbuts-direct-journal-')); const path = join(dir, 'orders.json');
   try {
+    f.order.credentialDeliveryPolicy = 'netflix-password-v1';
     f.order.directDelivery = { requestAt: new Date().toISOString(), requestKey: 'a'.repeat(64), state: 'attempted', messageHash: 'b'.repeat(64), attemptedAt: new Date().toISOString() };
     writeGbutsOttStore(f.data.inventory, path);
     const restored = readGbutsOttStore(path);
     expect(restored.orders[f.order.key].directDelivery).toEqual(f.order.directDelivery);
+    expect(restored.orders[f.order.key].credentialDeliveryPolicy).toBe('netflix-password-v1');
     expect(JSON.stringify(restored)).not.toContain('old-password');
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });

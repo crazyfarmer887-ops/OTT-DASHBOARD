@@ -22,18 +22,38 @@ describe('GButs OTT order delivery', () => {
     await expect(syncGbutsOtt(f.deps, f.client as any, f.send)).resolves.toMatchObject({ orders: 0, attempted: 0 });
     expect(f.deps.management).not.toHaveBeenCalled(); expect(f.store.lastError).toBeNull(); expect(f.store.lastSuccess).toBeTruthy();
   });
-  it('sends a separate private access link and confirms it without duplicate polling replies', async () => {
+  it('sends current Netflix credentials automatically after a link-free guide, without duplicate polling replies', async () => {
     const f = fixture(); const result = await syncGbutsOtt(f.deps, f.client as any, f.send); await syncGbutsOtt(f.deps, f.client as any, f.send);
-    expect(result).toMatchObject({ attempted: 1, confirmed: 1 }); expect(f.send).toHaveBeenCalledTimes(1);
-    expect(f.send.mock.calls[0]).toEqual(['room-10', 99, expect.stringContaining('token-100:1')]); expect(f.store.orders['100:1'].delivery).toBe('confirmed');
+    expect(result).toMatchObject({ attempted: 1, confirmed: 1 }); expect(f.send).toHaveBeenCalledTimes(2);
+    expect(f.send.mock.calls[0]).toEqual(['room-10', 99, expect.stringContaining('비밀번호로 로그인')]); expect(f.store.orders['100:1'].delivery).toBe('confirmed');
     expect(f.store.orders['100:1'].profileNumber).toBe(4);
     expect(f.send.mock.calls[0][2]).toContain('4번');
     expect(f.send.mock.calls[0][2]).toContain('이름·PIN 변경');
     expect(f.send.mock.calls[0][2]).not.toContain('private-password');
+    expect(f.send.mock.calls[0][2]).not.toContain('email-verify.one');
+    expect(f.send.mock.calls[1]).toEqual(['room-10', 99, 'ID : current@example.com\nPW : latest-private-password']);
+    expect(f.store.orders['100:1'].directDelivery?.state).toBe('confirmed');
+    expect(f.store.orders['100:1'].credentialDeliveryPolicy).toBe('netflix-password-v1');
+    expect(JSON.stringify(f.store)).not.toContain('latest-private-password');
+  });
+  it('does not bulk-migrate a previously delivered Netflix buyer or resend their historical access link', async () => {
+    const f = fixture();
+    f.deps.writeStore({ ...f.store, orders: { '100:1': fixtureOrder({ delivery: 'confirmed', profileNumber: 4, profileName: '4', roomId: 'room-10',
+      accessUrl: 'https://email-verify.one/dashboard/access/history', deliveryMessage: 'previous link-only delivery' }) } });
+    await syncGbutsOtt(f.deps, f.client as any, f.send);
+    expect(f.send).not.toHaveBeenCalled(); expect(f.deps.credentials).not.toHaveBeenCalled();
+  });
+  it('replaces an old guide only when it was never submitted, so a retry cannot send another access link', async () => {
+    const f = fixture();
+    f.deps.writeStore({ ...f.store, orders: { '100:1': fixtureOrder({ delivery: 'ready', profileNumber: 4, profileName: '4', roomId: 'room-10',
+      accessUrl: 'https://email-verify.one/dashboard/access/history', deliveryMessage: buildGbutsNetflixLegacyDeliveryText('https://email-verify.one/dashboard/access/history', 4) }) } });
+    await syncGbutsOtt(f.deps, f.client as any, f.send); await syncGbutsOtt(f.deps, f.client as any, f.send);
+    expect(f.send.mock.calls.every(call => !call[2].includes('email-verify.one'))).toBe(true);
+    expect(f.store.orders['100:1'].directDelivery?.state).toBe('confirmed');
   });
   it('offers direct delivery and answers a buyer bang once with current credentials', async () => {
     const f = fixture(); await syncGbutsOtt(f.deps, f.client as any, f.send);
-    expect(f.send.mock.calls[0][2]).toContain('"!"라고 남겨주시면 직접 전송해드립니다.');
+    expect(f.send.mock.calls[0][2]).toContain('ID·PW는 이 채팅으로 직접 보내드립니다.');
     f.messages = [{ senderSeq: 10, messageType: 'TEXT', message: ' ! ', createdAt: '2026-10-05T05:59:00Z' }];
     await syncGbutsOtt(f.deps, f.client as any, f.send);
     await syncGbutsOtt(f.deps, f.client as any, f.send);
@@ -46,7 +66,7 @@ describe('GButs OTT order delivery', () => {
     const f = fixture(); await syncGbutsOtt(f.deps, f.client as any, f.send);
     f.messages = [99, 20, 10].map(senderSeq => ({ senderSeq, messageType: 'TEXT', message: senderSeq === 10 ? '감사합니다!' : '!', createdAt: '2026-10-05T05:59:00Z' }));
     await syncGbutsOtt(f.deps, f.client as any, f.send);
-    expect(f.send).toHaveBeenCalledOnce(); expect(f.deps.credentials).not.toHaveBeenCalled();
+    expect(f.send).toHaveBeenCalledTimes(2); expect(f.deps.credentials).toHaveBeenCalledOnce();
   });
   it('does not disclose direct credentials for a refunded buyer', async () => {
     const f = fixture(); await syncGbutsOtt(f.deps, f.client as any, f.send);
@@ -109,7 +129,7 @@ describe('GButs OTT order delivery', () => {
     f.deps.management = vi.fn(async () => { throw new Error('403'); });
     await expect(syncGbutsOtt(f.deps, f.client as any, f.send)).resolves.toMatchObject({ confirmed: 1 });
     expect(f.store.orders['100:1'].delivery).toBe('confirmed');
-    expect(f.deps.management).not.toHaveBeenCalled(); expect(f.send).toHaveBeenCalledTimes(1);
+    expect(f.deps.management).not.toHaveBeenCalled(); expect(f.send).toHaveBeenCalledTimes(2);
   });
   it('retries a definite pre-SEND connection failure, while uncertain sends remain protected', async () => {
     const f = fixture(); const send = f.send.getMockImplementation()!;
@@ -165,7 +185,7 @@ ${url}
         if (frame.startsWith('CONNECT\n')) queueMicrotask(() => this.onmessage?.({ data: 'CONNECTED\n\n\0' }));
         if (!frame.startsWith('SEND\n')) return;
         frames.push(frame); const payload = JSON.parse(frame.split('\n\n')[1].replace(/\0$/, ''));
-        saved.push({ senderSeq: payload.accountSeq, messageType: 'TEXT', message: payload.payload }); f.messages = [...saved];
+        saved.push({ senderSeq: payload.accountSeq, messageType: 'TEXT', message: payload.payload, createdAt: '2026-10-05T06:00:00Z' }); f.messages = [...saved];
         queueMicrotask(() => this.onmessage?.({ data: `MESSAGE\ndestination:/sub/chat/room/room-10\n\n${JSON.stringify({ id: 1, ...payload })}\0` }));
       }
       close() {}
@@ -174,10 +194,12 @@ ${url}
     try {
       await syncGbutsOtt(f.deps, f.client as any);
       await syncGbutsOtt(f.deps, f.client as any);
-      expect(frames).toHaveLength(6); expect(frames.every(frame => Buffer.byteLength(frame) <= 1000)).toBe(true);
-      expect(saved[1].message).toBe('접근 링크: https://email-verify.one/dashboard/access/token-100:1');
+      expect(frames).toHaveLength(4); expect(frames.every(frame => Buffer.byteLength(frame) <= 1000)).toBe(true);
+      expect(saved.every(message => !message.message.includes('email-verify.one'))).toBe(true);
+      expect(saved.at(-1).message).toBe('ID : current@example.com\nPW : latest-private-password');
       expect(f.store.orders['100:1'].delivery).toBe('confirmed');
-      expect(f.store.orders['100:1'].deliveryMessage).toContain('token-100:1');
+      expect(f.store.orders['100:1'].deliveryMessage).not.toContain('token-100:1');
+      expect(f.store.orders['100:1'].directDelivery?.state).toBe('confirmed');
     } finally { vi.unstubAllGlobals(); vi.unstubAllEnvs(); }
   });
   it('does not repeat permanent preflight failures or label them connection errors', async () => {

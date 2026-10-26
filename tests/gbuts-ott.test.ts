@@ -84,5 +84,14 @@ describe('GButs buyer access', () => {
     const payload = buildGbutsOttPost(fixtureListing(), now);
     expect(payload).toMatchObject({ category: 5, priceType: 'DAY', memberLimit: 2, subscriptionType: 'SHARE', subscriptionEndsAt: '2026-12-01 23:59:59' });
     expect(JSON.stringify(payload)).not.toContain('private-password');
+    expect(String(payload.subscriptionPrincipal)).toContain('1:1 채팅');
+    expect(String(payload.subscriptionPrincipal)).not.toContain('링크');
+    expect(String(payload.noticeAfterOrder)).toContain('이메일 인증·로그인 코드는 제공하지 않습니다.');
+  });
+  it('replaces only obsolete Netflix access-link notices and preserves unrelated merchant copy', () => {
+    const old = buildGbutsOttPost(fixtureListing({ noticeAfterOrder: '계정 확인 링크: https://email-verify.one/dashboard/access/history' }), now);
+    expect(String(old.noticeAfterOrder)).not.toContain('email-verify.one');
+    const custom = '비밀번호 입력 전용. 배정받은 프로필만 사용해주세요.';
+    expect(buildGbutsOttPost(fixtureListing({ noticeAfterOrder: custom }), now).noticeAfterOrder).toBe(custom);
   });
 });

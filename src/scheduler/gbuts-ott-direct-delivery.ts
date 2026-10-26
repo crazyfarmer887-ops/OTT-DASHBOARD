@@ -53,9 +53,13 @@ export async function syncGbutsDirectCredentials(store: GbutsOttStore, orders: G
       // identical to an explicit request, without persisting the password.
       const purchasedAt = messageTime(order.purchasedAt || `${order.startDate}T00:00:00+09:00`);
       const disney = store.listings[order.listingId].deliveryMode === 'disney-numbered-password';
-      const initialKey = fingerprint(`${DISNEY_DIRECT_FORMAT}:${order.key}`);
-      const upgrade = previous && ['confirmed', 'ready'].includes(previous.state) && previous.format !== DISNEY_DIRECT_FORMAT;
-      const initial = (!previous || upgrade || (previous.state === 'ready' && previous.requestKey === initialKey)) && disney
+      // Only newly submitted password-only guides opt Netflix into automatic delivery.
+      // Historical link-guide recipients are never bulk-messaged by this policy change.
+      const netflix = store.listings[order.listingId].serviceType === '넷플릭스'
+        && order.credentialDeliveryPolicy === 'netflix-password-v1';
+      const initialKey = fingerprint(`${disney ? DISNEY_DIRECT_FORMAT : 'netflix-password-v1'}:${order.key}`);
+      const upgrade = disney && previous && ['confirmed', 'ready'].includes(previous.state) && previous.format !== DISNEY_DIRECT_FORMAT;
+      const initial = (!previous || upgrade || (previous.state === 'ready' && previous.requestKey === initialKey)) && (disney || netflix)
         && Number.isFinite(purchasedAt) && purchasedAt <= Date.now()
         ? { time: previous?.requestKey === initialKey ? Date.parse(previous.requestAt) : previous ? Date.now() : purchasedAt, key: initialKey } : undefined;
       const freshRequest = requests.find(request => !previous || (request.time >= Date.parse(previous.requestAt)

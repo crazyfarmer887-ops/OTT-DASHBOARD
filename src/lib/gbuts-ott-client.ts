@@ -3,6 +3,7 @@ import { GBUTS_OTT_CATEGORIES, koreaToday, ottDate, type GbutsOttListing } from 
 import { buildSpotifyListing, type SpotifyListingInput } from './gbuts-spotify-listings';
 import { assertGbutsOttCredentials, DISNEY_AFTER_ORDER_NOTICE, DISNEY_REFUND_NOTICE, disneyDirectDescription, type GbutsOttCredentials } from './gbuts-disney-delivery';
 import { decodeGbutsSubscriptionCredential } from './gbuts-subscription-credentials';
+import { netflixPasswordOnlyOrderNotice } from './gbuts-ott-templates';
 export interface GbutsOttMember {
   seq: number; userSeq: number; productId: string; nickname: string; status: string;
   cancelStatus: string | null; createdAt: string; subscriptionEndsAt: string;
@@ -14,12 +15,12 @@ export function buildGbutsOttPost(listing: GbutsOttListing, now = new Date(), cr
   const nativeCredentials = disney || (listing.serviceType === '넷플릭스' && Boolean(listing.repostFrom));
   if (nativeCredentials) { if (!credentials) throw new Error('판매글 계정 정보를 확인해주세요.'); assertGbutsOttCredentials(credentials); }
   return { category: GBUTS_OTT_CATEGORIES[listing.serviceType], countries: ['KR'],
-    subscriptionType: 'SHARE', subscriptionPrincipal: nativeCredentials ? credentials!.id : '1:1 채팅의 계정 확인 링크를 열어주세요', subscriptionCredential: nativeCredentials ? credentials!.password : '1:1 채팅 확인',
+    subscriptionType: 'SHARE', subscriptionPrincipal: nativeCredentials ? credentials!.id : listing.serviceType === '넷플릭스' ? '1:1 채팅으로 ID·PW를 안내드립니다' : '1:1 채팅의 계정 확인 링크를 열어주세요', subscriptionCredential: nativeCredentials ? credentials!.password : '1:1 채팅 확인',
     subscriptionStartsAt: `${koreaToday(now)} 00:00:00`, subscriptionEndsAt: `${listing.endDate} 23:59:59`,
     price: listing.dailyPrice, priceType: 'DAY', memberLimit: listing.capacity,
     title: `[${listing.serviceType}] ${listing.title}`, description: disney ? disneyDirectDescription(listing.description) : listing.description,
     noticeBeforeOrder: listing.noticeBeforeOrder ?? '1인 1회선으로 본인에게 배정된 프로필만 이용해주세요. 계정 정보와 프로필 설정을 변경하거나 타인에게 공유하지 마세요.' + (disney ? `\n\n${DISNEY_REFUND_NOTICE}` : ''),
-    noticeAfterOrder: listing.noticeAfterOrder ?? (disney ? DISNEY_AFTER_ORDER_NOTICE : '구매 감사합니다. 계정 확인 링크를 1:1 채팅으로 자동 안내드립니다. 링크에서 이용 안내에 동의한 뒤 계정 정보를 확인해주세요.') };
+    noticeAfterOrder: listing.serviceType === '넷플릭스' ? netflixPasswordOnlyOrderNotice(listing.noticeAfterOrder) : listing.noticeAfterOrder ?? (disney ? DISNEY_AFTER_ORDER_NOTICE : '구매 감사합니다. 계정 확인 링크를 1:1 채팅으로 자동 안내드립니다. 링크에서 이용 안내에 동의한 뒤 계정 정보를 확인해주세요.') };
 }
 export function createGbutsOttSellerClient(token: string, transport: typeof fetch = fetch) {
   const request = async (path: string, init?: RequestInit) => {

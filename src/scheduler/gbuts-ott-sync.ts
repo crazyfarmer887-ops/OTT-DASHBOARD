@@ -64,10 +64,19 @@ export async function syncGbutsOtt(deps: GbutsOttRuntimeDependencies,
   }
   const eligible = Object.values(store.orders).filter(order => deliverableOttOrder(order) && order.verifiedAt === now);
   const sellerSeq = eligible.length ? await client.sellerAccountSeq() : 0;
-  const deliveryText = (order: GbutsOttOrder) => order.deliveryMessage || (store.listings[order.listingId].deliveryMode === 'disney-numbered-password'
-    ? buildGbutsDisneyDeliveryText(order.accessUrl!, order.profileNumber!, disneyAccountCapacity(store, store.listings[order.listingId])) : store.listings[order.listingId].serviceType === '넷플릭스'
-    ? (order.attemptedAt || order.delivery === 'attempted' ? buildGbutsNetflixLegacyDeliveryText : buildGbutsNetflixDeliveryText)(order.accessUrl!, order.profileNumber!)
-    : buildGbutsOttDeliveryText(order.accessUrl!));
+  const deliveryText = (order: GbutsOttOrder) => {
+    const listing = store.listings[order.listingId];
+    if (listing.serviceType === '넷플릭스') {
+      // Submitted history is confirmation evidence only. A never-submitted retry
+      // must use the current password-only policy, even if it pinned an older guide.
+      const submitted = order.attemptedAt || order.delivery === 'attempted' || order.delivery === 'confirmed';
+      return submitted ? order.deliveryMessage || buildGbutsNetflixLegacyDeliveryText(order.accessUrl!, order.profileNumber!)
+        : buildGbutsNetflixDeliveryText(order.accessUrl!, order.profileNumber!);
+    }
+    return order.deliveryMessage || (listing.deliveryMode === 'disney-numbered-password'
+      ? buildGbutsDisneyDeliveryText(order.accessUrl!, order.profileNumber!, disneyAccountCapacity(store, listing))
+      : buildGbutsOttDeliveryText(order.accessUrl!));
+  };
   // Confirmation discloses nothing new: use the persisted link and profile lease,
   // after checking the paid buyer above. A GrayTag outage cannot hide a saved chat.
   for (const order of eligible) {
@@ -130,6 +139,7 @@ export async function syncGbutsOtt(deps: GbutsOttRuntimeDependencies,
     if (order.roomId && order.roomId !== roomId) throw new Error('벗츠 구매자 채팅방이 변경되었습니다.');
     order.roomId = roomId;
     const text = deliveryText(order);
+    if (listing.serviceType === '넷플릭스') order.credentialDeliveryPolicy = 'netflix-password-v1';
     const contains = (messages: any[]) => gbutsChatContainsText(messages, sellerSeq, text);
     if (contains((await client.getChat(roomId)).messages)) {
       if (order.delivery !== 'confirmed') confirmed++;

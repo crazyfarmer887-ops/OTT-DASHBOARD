@@ -23,6 +23,7 @@ export interface GbutsOttOrder {
   delivery: 'ready' | 'attempted' | 'confirmed' | 'blocked'; verifiedAt: string; error?: string;
   attemptedAt?: string;
   deliveryMessage?: string;
+  credentialDeliveryPolicy?: 'netflix-password-v1';
   directDelivery?: { requestAt: string; requestKey: string; state: 'ready' | 'attempted' | 'confirmed' | 'blocked'; messageHash?: string; attemptedAt?: string;
     format?: 'disney-mailbox-v1'; messageHashes?: string[] };
   purchasedAt?: string;
