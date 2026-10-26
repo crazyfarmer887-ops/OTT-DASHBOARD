@@ -101,3 +101,14 @@ The owner explicitly requested enabling Steel's built-in automatic CAPTCHA handl
 The real session-create request returnedHTTP403 before any NBA login attempt: Launch requires at leastUSD10in paid balance for CAPTCHA solving. No browser session was created; scoped cleanup of the allocated ID returned404as expected. The existing key remains valid for ordinary Steel sessions. The account's Wallet UI separately confirms included creditsUSD24.35and purchased creditsUSD0.00, no payment method and no purchase history. Included credits do not satisfy this API gate.
 
 Live CAPTCHA-assisted NBA login remains untested because paid credits are required. No credits were purchased, card added, plan upgraded, or billing gate bypassed. The original timer remains active and the NBA runtime remains6912a83; aio-dashboard stays active at the originalPID588691. The Wallet page was opened for owner action. The operational script and redacted result receipt are preserved in the calling task's `artifacts/nba-steel-captcha-test-20261026/` directory.
+
+
+### CapSolver-assisted fresh login test — 2026-10-26 KST
+
+The owner explicitly requested CapSolver API processing for the same supplied test account after Steel's built-in solver hit its paid-balance gate. The old running application's CapSolver value was invalid; the owner supplied a valid existing account key. It was used only in the isolated child's environment and never saved in source, the NBA environment file, journal, result receipt or logs. The CapSolver connection returnedHTTP200/errorId0, with reported balanceUSD4.3345.
+
+An isolated operational harness reused the committed Steel lifetime/cleanup and NBA login helpers, with Steel solving disabled and a300-second owned session. In a fresh private browser context it submitted the current owner-published credentials, observed the real normal-size reCAPTCHA v2 checkbox, and created exactly one ReCaptchaV2TaskProxyLess task. Only challenge metadata was sent to CapSolver, without the NBA password or account cookies. The resulting token stayed in memory and was delivered to the uniquely matching v2 callback; the password-panel submit was then clicked normally.
+
+Live result:okafter121510milliseconds. The NBA account page displayed the expected test-account email and MY ACCOUNT heading; both password form and visible challenge were absent. CapSolver token issuance alone was not treated as success. Steel session creation returned201and scoped release returned200. The redacted receipt and operational harness are in the calling workspace's artifacts/nba-capsolver-test-20261026 directory.
+
+This is one successful explicit test, not a recurring integration or a guarantee of every later attempt. No production source/configuration, hourly journal, timer or alert destination was modified. The existing hourly monitor still does not invoke CapSolver. A recurring integration is a separate implementation step if requested.

@@ -22,3 +22,13 @@ Official references: https://docs.steel.dev/overview/authentication, https://doc
 - [ ] Owner supplies at leastUSD10paid balance (or otherwise enables eligible CAPTCHA access); then repeat the real fresh-login test.
 
 This experiment did not reach NBA login and is not evidence of invalid credentials or solver failure. No source/configuration rollout was made.
+
+
+## Follow-up: CapSolver API test
+
+- [x] Owner authorized using CapSolver and supplied a valid key after the old environment value proved invalid.
+- [x] Execute one real v2 task in a fresh owned Steel session; keep credentials/tokens private.
+- [x] Verify actual expected-account authentication after token application and native password submit.
+- [x] Release the owned session and preserve existing monitoring configuration/journal.
+
+Result: requested test account successfully signed in; elapsed121510ms. CapSolver-assisted hourly operation has not been requested/applied in this test.
