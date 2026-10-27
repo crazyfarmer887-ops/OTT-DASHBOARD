@@ -1,4 +1,4 @@
-import { decodeGbutsSubscriptionCredential } from '../lib/gbuts-subscription-credentials';
+import { tryDecodeGbutsSubscriptionCredential } from '../lib/gbuts-subscription-credentials';
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { writeJsonAtomic } from '../lib/graytag-sales-session';
@@ -180,7 +180,7 @@ export async function renewSubscriptionRankings(client: InviteClient, options: {
 
 export function privateFields(post:GbutsOttPost):{subscriptionPrincipal:string|null;subscriptionCredential:string|null} {
   const decode=(value:unknown)=>{if(value==null)return null;if(typeof value!=='string')throw Error('계정 정보 형식 확인 필요');
-    if(/^(?:[a-f\d]{32})+$/i.test(value)){const decoded=decodeGbutsSubscriptionCredential(value);if(!decoded)throw Error('계정 정보 읽기 확인 필요');return decoded;}return value;};
+    if(/^(?:[a-f\d]{32})+$/i.test(value)){const decoded=tryDecodeGbutsSubscriptionCredential(value);if(decoded===null)throw Error('계정 정보 읽기 확인 필요');return decoded;}return value;};
   return {subscriptionPrincipal:decode(post.subscriptionPrincipal),subscriptionCredential:decode(post.subscriptionCredential)};
 }
 export function privateFieldsHash(post:GbutsOttPost):string {return createHash('sha256').update(JSON.stringify(Object.values(privateFields(post)).map(v=>v||''))).digest('hex');}

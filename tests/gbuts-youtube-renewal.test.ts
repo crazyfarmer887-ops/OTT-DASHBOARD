@@ -1,5 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
+import { createCipheriv, createHash } from 'node:crypto';
 import { bindYouTubeRenewal, renewYouTubeInvites, validateYouTubeRenewals, youtubeOccupied, type YouTubeRenewalStore, type InviteClient, type InvitePayload } from '../src/scheduler/gbuts-youtube-renewal';
+
+function encrypted(value: string) {
+  const ascii = Buffer.from(createHash('sha512').update('kkmouke0917').digest('hex'));
+  const key = Buffer.alloc(16);
+  for (let i = 0; i < ascii.length; i++) key[i % 16] ^= ascii[i];
+  const cipher = createCipheriv('aes-128-ecb', key, null);
+  return Buffer.concat([cipher.update(value, 'utf8'), cipher.final()]).toString('hex');
+}
 
 function fixture() {
   let now = new Date('2026-10-27T05:00:00Z');
@@ -18,6 +27,36 @@ function fixture() {
   return { s, p, post, client, posts, saved, run, setRows(value: any[]) { rows = value; }, advance(ms = 60_000) { now = new Date(now.getTime() + ms); } };
 }
 describe('YouTube INVITE rank renewal', () => {
+  it('reposts encrypted empty invitation credentials and adopts the encrypted result', async () => {
+    const f = fixture();
+    f.post.subscriptionPrincipal = encrypted('');
+    f.post.subscriptionCredential = encrypted('');
+    const create = f.client.createYouTubeInvitePost.getMockImplementation()!;
+    f.client.createYouTubeInvitePost.mockImplementation(async payload => {
+      const seq = await create(payload);
+      f.posts[seq].subscriptionPrincipal = encrypted('');
+      f.posts[seq].subscriptionCredential = encrypted('');
+      return seq;
+    });
+    await f.run();
+    expect(f.client.createYouTubeInvitePost).toHaveBeenCalledOnce();
+    expect(f.client.createYouTubeInvitePost).toHaveBeenCalledWith(expect.objectContaining({ memberLimit: 4, subscriptionPrincipal: '', subscriptionCredential: '' }));
+    f.advance(); await f.run();
+    expect(f.p.currentPostSeq).toBe(11);
+    expect(f.p.pending).toBeUndefined();
+    expect(f.p.lastError).toBeUndefined();
+    expect(f.p.members['1:10']).toMatchObject({ postSeq: 1, seq: 10 });
+  });
+  it('still blocks corrupt encrypted credentials before closing the original post', async () => {
+    const f = fixture();
+    f.post.subscriptionPrincipal = encrypted('');
+    f.post.subscriptionCredential = '0'.repeat(32);
+    await f.run();
+    expect(f.client.closePost).not.toHaveBeenCalled();
+    expect(f.client.createYouTubeInvitePost).not.toHaveBeenCalled();
+    expect(f.p.lastError).toBeTruthy();
+    expect(f.p.pending).toBeUndefined();
+  });
   it('keeps INVITE terms and only unsold seats, retaining buyer bindings on their old post', async () => {
     const f = fixture(); await f.run();
     expect(f.client.createYouTubeInvitePost).toHaveBeenCalledOnce();
