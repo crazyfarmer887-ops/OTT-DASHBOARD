@@ -1,3 +1,5 @@
+import {verifyManagedSubscriptionRank} from './gbuts-rank-adoption';
+import {syncFutureSubscriptionRank} from './gbuts-future-rank';
 import { renewYouTubeInvites } from './gbuts-youtube-renewal';
 import { renewDueGbutsOttListings } from './gbuts-ott-renewal';
 import { GbutsChatDeliveryError, gbutsChatContainsText } from '../lib/gbuts-chat-delivery';
@@ -188,6 +190,8 @@ export function startGbutsOttSync(deps: GbutsOttRuntimeDependencies): (() => voi
       }
       try { const youtube = await renewYouTubeInvites(createGbutsOttSellerClient(token),{allowed:()=>process.env.GBUTS_OTT_SYNC_ENABLED==='true'&&!loadSafeModeConfig().enabled}); if (youtube.renewed || youtube.errors) console.log('[GbutsYouTubeRenewal]', youtube); }
       catch { console.error('[GbutsYouTubeRenewal] 재등록 기록 확인 필요'); }
+      try{const future=await syncFutureSubscriptionRank(createGbutsOttSellerClient(token),{verify:p=>verifyManagedSubscriptionRank(p,deps),allowed:()=>process.env.GBUTS_OTT_SYNC_ENABLED==='true'&&!loadSafeModeConfig().enabled});if(future.discovered||future.renewed||future.errors)console.log('[GbutsSubscriptionRank]',future);}
+      catch{console.error('[GbutsSubscriptionRank] 재등록 기본 설정 확인 필요');}
     }).catch(e => console.error('[GbutsOttSync] inventory unavailable', e instanceof Error ? e.message : 'unknown'))
       .finally(() => { pending = false; });
   };

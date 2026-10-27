@@ -1,3 +1,5 @@
+import {verifyManagedSubscriptionRank} from '../scheduler/gbuts-rank-adoption';
+import {registerGbutsRankDefaultRoutes} from './gbuts-rank-defaults';
 import { registerGbutsYouTubeRenewalRoutes } from './gbuts-youtube-renewal';
 import { gbutsOttClient } from './gbuts-ott';
 import { buildGbutsRenewalInventory, resolveGbutsRenewalDealAccounts } from '../lib/gbuts-ott-renewal-inventory';
@@ -6783,6 +6785,7 @@ export const gbutsOttRuntimeDependencies: GbutsOttRuntimeDependencies = {
 };
 registerGbutsOttRoutes(app, gbutsOttRuntimeDependencies);
 registerGbutsYouTubeRenewalRoutes(app, gbutsOttClient);
+registerGbutsRankDefaultRoutes(app,gbutsOttClient,p=>verifyManagedSubscriptionRank(p,gbutsOttRuntimeDependencies));
 registerGbutsSpotifyListingRoutes(app);
 registerLinkidRoutes(app);
 

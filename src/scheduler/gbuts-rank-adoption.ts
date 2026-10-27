@@ -1,0 +1,269 @@
+import { readSubscriptionRankDefaults } from "../lib/gbuts-rank-defaults";
+import { createHash } from "node:crypto";
+import { readGbutsOttStore, writeGbutsOttStore } from "../lib/gbuts-ott-store";
+import {
+  readSpotifyListings,
+  writeSpotifyListings,
+  spotifyText,
+} from "../lib/gbuts-spotify-listings";
+import {
+  GBUTS_OTT_CATEGORIES,
+  sharedOttAccounts,
+  type GbutsOttStore,
+  type GbutsOttListing,
+} from "../lib/gbuts-ott";
+import type { GbutsOttPost } from "../lib/gbuts-ott-client";
+import { youtubeOccupied, type YouTubeRenewal } from "./gbuts-youtube-renewal";
+const fingerprint = (text: string) =>
+  createHash("sha256").update(text).digest("hex");
+const idFor = (p: YouTubeRenewal, seq = p.pending?.sourcePostSeq) =>
+  `rank-auto-${p.seedPostSeq}-from-${seq}`;
+/** Reserve uncertain replacements in the SAME inventory that publication already uses. */
+export function reserveSubscriptionRankPlaces(
+  policies: Record<string, YouTubeRenewal>,
+  now = new Date(),
+): void {
+  const store = readGbutsOttStore();
+  let changed = false;
+  for (const p of Object.values(policies)) {
+    const source = Object.values(store.listings).find(
+      (l) => l.postSeq === p.currentPostSeq,
+    );
+    if (!source) continue;
+    if (
+      GBUTS_OTT_CATEGORIES[source.serviceType] !== p.categorySeq ||
+      p.subscriptionType !== "SHARE" ||
+      source.endDate !== p.endDate ||
+      source.capacity !==
+        p.posts.find((row) => row.seq === p.currentPostSeq)?.capacity
+    )
+      throw Error("공동 재고의 서비스·기간·정원 연결 확인 필요");
+    const pending = p.pending;
+    if (!pending) {
+      for (const row of Object.values(store.listings).filter(
+        (l) =>
+          l.rankSeedPostSeq === p.seedPostSeq &&
+          !l.postSeq &&
+          l.repostPhase === "closing" &&
+          l.state === "submitting",
+      )) {
+        row.state = "failed";
+        row.error = "새 글 생성 전 자동 재등록 중단";
+        changed = true;
+      }
+      continue;
+    }
+    const id = idFor(p);
+    const existing = store.listings[id];
+    if (
+      existing &&
+      (existing.repostFrom !== source.id ||
+        existing.accountEmail !== source.accountEmail)
+    )
+      throw Error("자동 재등록 재고 연결 확인 필요");
+    if (existing?.state === "registered" || existing?.state === "closed")
+      continue;
+    const capacity =
+      pending.payload?.memberLimit ??
+      Math.max(1, p.capacity - youtubeOccupied(p, now));
+    const next: GbutsOttListing = {
+      ...source,
+      ...existing,
+      id,
+      requestHash: fingerprint(id),
+      rankSeedPostSeq: p.seedPostSeq,
+      createdAt: existing?.createdAt || now.toISOString(),
+      state: pending.phase === "publishing" ? "uncertain" : "submitting",
+      capacity,
+      postSeq: pending.postSeq,
+      repostFrom: source.id,
+      repostPhase: pending.phase,
+      beforePostSeqs: undefined,
+      replacedBy: undefined,
+      error: undefined,
+      verifiedAt: undefined,
+    };
+    store.listings[id] = next;
+    changed = true;
+  }
+  if (changed) writeGbutsOttStore(store);
+}
+export async function adoptSubscriptionRankPost(
+  p: YouTubeRenewal,
+  post: GbutsOttPost,
+): Promise<void> {
+  if (!p.pending) throw Error("재등록 제출 기록 확인 필요");
+  const store = readGbutsOttStore();
+  const source = Object.values(store.listings).find(
+    (l) => l.postSeq === p.pending!.sourcePostSeq,
+  );
+  if (source) {
+    const id = idFor(p);
+    const reserved = store.listings[id];
+    if (
+      !reserved ||
+      reserved.repostFrom !== source.id ||
+      (source.replacedBy && source.replacedBy !== id)
+    )
+      throw Error("재등록 자리 예약 확인 필요");
+    const conflict = Object.values(store.listings).find(
+      (l) => l.postSeq === post.seq && l.id !== id,
+    );
+    if (conflict) throw Error("재등록 판매글 중복 연결 확인 필요");
+    if (reserved.postSeq && reserved.postSeq !== post.seq)
+      throw Error("재등록 결과 식별자 확인 필요");
+    const prefix = `[${source.serviceType}]`;
+    const title = spotifyText(post.title);
+    store.listings[id] = {
+      ...reserved,
+      postSeq: post.seq,
+      state: post.status === "ON_SALE" ? "registered" : "closed",
+      capacity: post.memberLimit,
+      title: title.startsWith(prefix)
+        ? title.slice(prefix.length).trim()
+        : title,
+      description: spotifyText(post.description),
+      noticeBeforeOrder: spotifyText(post.noticeBeforeOrder),
+      noticeAfterOrder: spotifyText(post.noticeAfterOrder),
+      dailyPrice: Number(post.price),
+      verifiedAt: new Date().toISOString(),
+    };
+    source.state = "closed";
+    source.replacedBy = id;
+    writeGbutsOttStore(store);
+  }
+  const spotify = readSpotifyListings();
+  const original = Object.values(spotify.listings).find(
+    (l) => l.postSeq === p.pending!.sourcePostSeq,
+  );
+  if (original) {
+    if (original.deletedAt)
+      throw Error("모집 중단한 스포티파이 판매글 확인 필요");
+    const id = idFor(p);
+    const existing = spotify.listings[id];
+    if (existing && existing.postSeq !== post.seq)
+      throw Error("스포티파이 재등록 결과 확인 필요");
+    spotify.listings[id] = {
+      ...original,
+      id,
+      requestHash: fingerprint(id),
+      postSeq: post.seq,
+      state: "registered",
+      beforePostSeqs: [],
+      createdAt: existing?.createdAt || new Date().toISOString(),
+      title: spotifyText(post.title),
+      description: spotifyText(post.description),
+      noticeBeforeOrder: post.noticeBeforeOrder ?? null,
+      noticeAfterOrder: post.noticeAfterOrder ?? null,
+      startDate: String(post.subscriptionStartsAt).slice(0, 10),
+      endDate: p.endDate,
+      dailyPrice: Number(post.price),
+      capacity: post.memberLimit,
+      countries: [...post.countries],
+      deletedAt: undefined,
+      error: undefined,
+    };
+    writeSpotifyListings(spotify);
+  }
+}
+/** Only the actual existing policy's chain is excluded, never every post on an account. */
+export function existingOttRankPostSeqs(store: GbutsOttStore): Set<number> {
+  const result = new Set<number>();
+  for (const p of Object.values(store.renewals || {})) {
+    const queue = [p.listingId, ...(p.pendingId ? [p.pendingId] : [])];
+    const seen = new Set<string>();
+    while (queue.length) {
+      const id = queue.pop()!;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      const l = store.listings[id];
+      if (!l) continue;
+      if (l.postSeq) result.add(l.postSeq);
+      if (l.repostFrom) queue.push(l.repostFrom);
+      if (l.replacedBy) queue.push(l.replacedBy);
+    }
+  }
+  return result;
+}
+
+/** Keep the original marketplace quota inside the SAME verified cross-market inventory. */
+export function assertSubscriptionRankInventory(
+  p: YouTubeRenewal,
+  management: import("../lib/gbuts-ott").GbutsOttManagement,
+  manual: any[],
+) {
+  const store = readGbutsOttStore();
+  const source = Object.values(store.listings).find(
+    (l) => l.postSeq === p.currentPostSeq,
+  );
+  if (!source) return;
+  const view = structuredClone(store),
+    chain = new Set(p.posts.map((row) => row.seq));
+  const ids = new Set(
+    Object.values(view.listings)
+      .filter(
+        (l) =>
+          (l.postSeq && chain.has(l.postSeq)) ||
+          l.rankSeedPostSeq === p.seedPostSeq,
+      )
+      .map((l) => l.id),
+  );
+  for (const id of ids) view.listings[id].state = "failed";
+  for (const [key, order] of Object.entries(view.orders))
+    if (ids.has(order.listingId)) delete view.orders[key];
+  const account = sharedOttAccounts(management, manual, view).find(
+    (a) =>
+      a.serviceType === source.serviceType &&
+      a.accountEmail.toLowerCase() === source.accountEmail.toLowerCase(),
+  );
+  if (
+    !account ||
+    account.overbooked ||
+    !account.eligible ||
+    account.available < p.capacity ||
+    account.endDate < p.endDate
+  )
+    throw Error("다른 판매처의 자리 또는 계정 기간 확인 필요");
+}
+export async function verifyManagedSubscriptionRank(
+  p: YouTubeRenewal,
+  deps: import("./gbuts-ott-sync").GbutsOttRuntimeDependencies,
+) {
+  const source = Object.values(readGbutsOttStore().listings).find(
+    (l) => l.postSeq === p.currentPostSeq,
+  );
+  if (!source) return;
+  const management = await (deps.renewalManagement
+    ? deps.renewalManagement(source.serviceType)
+    : deps.management());
+  assertSubscriptionRankInventory(p, management, deps.manualMembers());
+}
+
+export function subscriptionManagedRenewalViews(store: GbutsOttStore) {
+  const defaults = readSubscriptionRankDefaults();
+  return Object.values(defaults.policies).flatMap((p) => {
+    const listing = Object.values(store.listings).find(
+      (l) => l.postSeq === p.currentPostSeq,
+    );
+    if (!listing) return [];
+    return [
+      {
+        policySource: "subscription-default",
+        serviceType: listing.serviceType,
+        accountEmail: listing.accountEmail,
+        listingId: listing.id,
+        capacity: p.capacity,
+        enabled: defaults.enabled && p.enabled,
+        trigger: p.trigger,
+        rankThreshold: p.rankThreshold,
+        nextAt: p.nextAt,
+        rankCheckedAt: p.rankCheckedAt,
+        lastRank: p.lastRank,
+        lastRepostedAt: p.lastRepostedAt,
+        lastSuccess: p.lastSuccess,
+        lastError: p.lastError,
+        pendingId: p.pending ? idFor(p) : undefined,
+      },
+    ];
+  });
+}

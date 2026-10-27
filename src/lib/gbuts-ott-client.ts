@@ -91,21 +91,25 @@ export function createGbutsOttSellerClient(token: string, transport: typeof fetc
     if (posts.some((post: GbutsOttPost, i: number) => i > 0 && postTime(posts[i - 1]) < postTime(post))) throw new Error('판매글의 최신순 정렬을 확인하지 못했습니다.');
     return posts;
   };
+  async function listSubscriptionPublicRanking(category:number):Promise<Array<{seq:number;sellerSeq:number}>> {
+    integer(category);
+    const data = await request(`/api/subscribe/share?categorySeqs=${category}&page=1&size=20`, { cache: 'no-store' });
+    const page = data.pagination;
+    if (!Array.isArray(data.response) || !page || page.currentPage !== 1 || !Number.isSafeInteger(page.totalCount)
+      || page.totalCount < 0 || data.response.length !== Math.min(20, page.totalCount)) throw new Error('구독 최신순 목록을 모두 확인하지 못했습니다.');
+    const rows = data.response.map((post: any) => {
+      if (post.category1?.seq !== category) throw new Error('구독 목록의 상품 종류를 확인해주세요.');
+      return { seq: integer(post.seq), sellerSeq: integer(post.seller?.seq) };
+    });
+    if (new Set(rows.map((row: { seq: number }) => row.seq)).size !== rows.length) throw new Error('구독 목록이 조회 중 변경되었습니다.');
+    return rows;
+  }
   return { ...createGbutsSpotifySellerClient(token, transport),
-    /** Service-specific buyer latest list, excluding separately rendered PICK/UP sections. */
-    async listOttPublicRanking(serviceType: string): Promise<Array<{ seq: number; sellerSeq: number }>> {
-      const category = serviceType === '유튜브' ? 7 : GBUTS_OTT_CATEGORIES[serviceType];
-      if (![5, 6, 7].includes(category)) throw new Error('순위 감시 서비스 종류를 확인해주세요.');
-      const data = await request(`/api/subscribe/share?categorySeqs=${category}&page=1&size=20`, { cache: 'no-store' });
-      const page = data.pagination;
-      if (!Array.isArray(data.response) || !page || page.currentPage !== 1 || !Number.isSafeInteger(page.totalCount)
-        || page.totalCount < 0 || data.response.length !== Math.min(20, page.totalCount)) throw new Error('구독 최신순 목록을 모두 확인하지 못했습니다.');
-      const rows = data.response.map((post: any) => {
-        if (post.category1?.seq !== category) throw new Error('구독 목록의 상품 종류를 확인해주세요.');
-        return { seq: integer(post.seq), sellerSeq: integer(post.seller?.seq) };
-      });
-      if (new Set(rows.map((row: { seq: number }) => row.seq)).size !== rows.length) throw new Error('구독 목록이 조회 중 변경되었습니다.');
-      return rows;
+    listSubscriptionPublicRanking,
+    async listOttPublicRanking(serviceType:string) {
+      const category=serviceType==='유튜브'?7:GBUTS_OTT_CATEGORIES[serviceType];
+      if(!category)throw Error('순위 감시 서비스 종류를 확인해주세요.');
+      return listSubscriptionPublicRanking(category);
     },
     async listPosts(): Promise<GbutsOttPost[]> {
       const posts: GbutsOttPost[] = []; const seen = new Set<number>();
@@ -168,6 +172,13 @@ export function createGbutsOttSellerClient(token: string, transport: typeof fetc
       const data = (await request('/api/subscribe/share', { method: 'POST', body: JSON.stringify(buildGbutsOttPost(listing, new Date(), credentials)) })).response;
       const seq = typeof data === 'number' ? data : data?.seq ?? data?.postSeq;
       return seq == null ? null : integer(seq);
+    },
+    async createSubscriptionPost(input:Omit<import('../scheduler/gbuts-youtube-renewal').SubscriptionPayload,'subscriptionPrincipal'|'subscriptionCredential'> & {subscriptionPrincipal:string|null;subscriptionCredential:string|null}):Promise<number|null> {
+      integer(input.category);integer(input.memberLimit);
+      if(!['INVITE','SHARE'].includes(input.subscriptionType)||input.priceType!=='DAY'||!Number.isSafeInteger(input.price)||input.price<1
+        || ![input.subscriptionPrincipal,input.subscriptionCredential].every(v=>v===null||typeof v==='string'))throw Error('구독공유 재등록 조건 확인 필요');
+      const data=(await request('/api/subscribe/share',{method:'POST',body:JSON.stringify(input)})).response;
+      const seq=typeof data==='number'?data:data?.seq??data?.postSeq;return seq==null?null:integer(seq);
     },
     async createYouTubeInvitePost(input: import('../scheduler/gbuts-youtube-renewal').InvitePayload): Promise<number | null> {
       if (input.category !== 7 || input.subscriptionType !== 'INVITE' || input.subscriptionPrincipal !== '' || input.subscriptionCredential !== '')

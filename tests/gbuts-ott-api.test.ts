@@ -1,3 +1,4 @@
+import {writeSubscriptionRankDefaults,readSubscriptionRankDefaults} from '../src/lib/gbuts-rank-defaults';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Hono } from 'hono';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -61,6 +62,15 @@ describe('shared inventory publication', () => {
     expect(response.ok).toBe(false);expect(f.posts).toHaveLength(0);expect(Object.keys(readGbutsOttStore().listings)).toHaveLength(0);
   });
 
+  it('routes a future listing toggle to its common policy without creating a competing old Netflix renewal',async()=>{
+    vi.stubEnv('GBUTS_RANK_DEFAULTS_PATH',join(directory,'defaults.json'));
+    writeSubscriptionRankDefaults({version:1,enabled:true,activatedAt:new Date().toISOString(),activatedAfterSeq:99,watermark:99,policies:{}});
+    const f=fixture();expect((await f.publish()).status).toBe(200);expect(Object.values(readGbutsOttStore().renewals||{})).toHaveLength(0);
+    const toggle=(enabled:boolean)=>f.app.request('/gbuts/ott/renewals',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({enabled,listingIds:['request-123']})});
+    expect((await toggle(true)).status).toBe(200);expect(Object.values(readGbutsOttStore().renewals||{})).toHaveLength(0);expect(readSubscriptionRankDefaults().policies['100'].enabled).toBe(true);
+    const view=await (await f.app.request('/gbuts/ott/renewals')).json();expect(view.renewals).toEqual([expect.objectContaining({listingId:'request-123',enabled:true,policySource:'subscription-default'})]);
+    expect((await toggle(false)).status).toBe(200);expect(readSubscriptionRankDefaults().policies['100'].enabled).toBe(false);
+  });
   it('omits deleted Spotify recruitment from the sales overview while retaining its local record', async () => {
     const f = fixture(); vi.stubEnv('GBUTS_SPOTIFY_LISTINGS_PATH', join(directory, 'spotify.json'));
     f.posts.push({ seq: 880, category1: { seq: 20 }, memberLimit: 5, memberCount: 2, status: 'CLOSED', subscriptionEndsAt: '2027-10-01', price: 140, priceType: 'DAY' });

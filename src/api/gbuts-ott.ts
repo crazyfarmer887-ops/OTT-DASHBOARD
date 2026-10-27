@@ -1,3 +1,6 @@
+import {futureSubscriptionRankApplies,readSubscriptionRankDefaults,writeSubscriptionRankDefaults} from '../lib/gbuts-rank-defaults';
+import {bindSubscriptionRenewal} from '../scheduler/gbuts-youtube-renewal';
+import {subscriptionManagedRenewalViews} from '../scheduler/gbuts-rank-adoption';
 import { readAaryanTelegramConfig } from '../lib/aaryan-telegram';
 import { applyGbutsDisneySaleTerms, renewDueGbutsOttListings, DISNEY_RENEWAL_INTERVAL } from '../scheduler/gbuts-ott-renewal';
 import { loadSafeModeConfig } from './safe-mode';
@@ -92,7 +95,7 @@ export function registerGbutsOttRoutes(app: Hono, deps: GbutsOttRuntimeDependenc
         }));
       } catch { unlinkedCheckError = '벗츠 판매글 연결 상태를 확인하지 못했습니다. 기존 주문은 표시하지만 미연결 글 자동 감시 상태는 확인이 필요합니다.'; }
       return c.json({ ok: true, enabled: process.env.GBUTS_OTT_SYNC_ENABLED === 'true', accounts: [], unlinked,
-        unlinkedCheckError, listings: Object.values(store.listings), orders: Object.values(store.orders), renewals: Object.values(store.renewals || {}), lastSuccess: store.lastSuccess, lastError: store.lastError });
+        unlinkedCheckError, listings: Object.values(store.listings), orders: Object.values(store.orders), renewals: [...Object.values(store.renewals || {}),...subscriptionManagedRenewalViews(store)], lastSuccess: store.lastSuccess, lastError: store.lastError });
     } catch (e) { return c.json({ ok: false, error: e instanceof Error ? e.message : '벗츠 주문 기록 조회 실패' }, 503); }
   });
   app.get('/gbuts/ott', async c => {
@@ -248,7 +251,7 @@ export function registerGbutsOttRoutes(app: Hono, deps: GbutsOttRuntimeDependenc
   app.get('/gbuts/ott/renewals', c => {
     const store = readGbutsOttStore();
     return c.json({ ok: true, enabled: process.env.GBUTS_OTT_SYNC_ENABLED === 'true', safeMode: loadSafeModeConfig().enabled,
-      renewals: Object.values(store.renewals || {}), lastSuccess: store.lastSuccess, lastError: store.lastError });
+      renewals: [...Object.values(store.renewals || {}),...subscriptionManagedRenewalViews(store)], lastSuccess: store.lastSuccess, lastError: store.lastError });
   });
   app.post('/gbuts/ott/renewals', c => withGbutsOttInventory(async () => {
     try {
@@ -258,8 +261,14 @@ export function registerGbutsOttRoutes(app: Hono, deps: GbutsOttRuntimeDependenc
       if (body.enabled && (process.env.GBUTS_OTT_SYNC_ENABLED !== 'true' || loadSafeModeConfig().enabled)) throw new Error('판매 자동화가 일시정지 상태입니다.');
       if (body.trigger !== undefined && !['hourly', 'rank'].includes(body.trigger)) throw new Error('재등록 기준을 확인해주세요.');
       const selected = body.listingIds.map(id => store.listings[id]);
-      if (selected.some(l => !l || !supportsGbutsOttRenewal(l) || !l.postSeq || !['registered', 'closed'].includes(l.state) || l.endDate <= koreaToday())) throw new Error('현재 재등록할 판매글을 확인해주세요.');
+      if (selected.some(l => !l || (!supportsGbutsOttRenewal(l)&&!futureSubscriptionRankApplies(l.postSeq!)) || !l.postSeq || !['registered', 'closed'].includes(l.state) || l.endDate <= koreaToday())) throw new Error('현재 재등록할 판매글을 확인해주세요.');
       for (const listing of selected) {
+        if(futureSubscriptionRankApplies(listing.postSeq!)){
+          const defaults=readSubscriptionRankDefaults();let policy=Object.values(defaults.policies).find(p=>p.posts.some(row=>row.seq===listing.postSeq));
+          if(policy&&policy.currentPostSeq!==listing.postSeq)throw Error('최근 재등록된 판매글을 선택해주세요.');
+          if(!policy)policy=bindSubscriptionRenewal(defaults,await gbutsOttClient().getPost(listing.postSeq!),body.enabled);
+          policy.enabled=body.enabled;writeSubscriptionRankDefaults(defaults);continue;
+        }
         const key = gbutsOttRenewalKey(listing.serviceType, listing.accountEmail); const previous = store.renewals[key];
         if (previous && previous.listingId !== listing.id) throw new Error('최근 재등록된 판매글을 선택해주세요.');
         const rank = body.trigger === 'rank' || listing.serviceType === '넷플릭스';
@@ -269,7 +278,7 @@ export function registerGbutsOttRoutes(app: Hono, deps: GbutsOttRuntimeDependenc
           nextAt: new Date(Date.now() + (rank || body.startNow === true ? 0 : DISNEY_RENEWAL_INTERVAL)).toISOString(),
         };
       }
-      writeGbutsOttStore(store); return c.json({ ok: true, renewals: Object.values(store.renewals) });
+      writeGbutsOttStore(store); return c.json({ ok: true, renewals: [...Object.values(store.renewals),...subscriptionManagedRenewalViews(store)] });
     } catch (e) { return c.json({ ok: false, error: e instanceof Error ? e.message : '자동 재등록 설정 실패' }, 409); }
   }));
   app.post('/gbuts/ott/renewals/ranking', c => withGbutsOttInventory(async () => {

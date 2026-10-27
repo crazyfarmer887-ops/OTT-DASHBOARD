@@ -1,3 +1,4 @@
+import {futureSubscriptionRankApplies} from './gbuts-rank-defaults';
 import { isGraytagAccessNoticeCredential } from './graytag-fill';
 import { calculateAccountVacancy, getPartyMax } from '../web/lib/account-slots';
 
@@ -11,6 +12,7 @@ export interface GbutsOttListing {
   beforePostSeqs?: number[];
   deliveryMode?: 'disney-numbered-password';
   emailCodeProvider?: 'aaryan';
+  rankSeedPostSeq?:number;
   replacedBy?: string;
   repostAfterSeq?: number;
   repostCredentialsHash?: string;
@@ -81,6 +83,7 @@ export function supportsGbutsOttRenewal(listing: GbutsOttListing): boolean {
 }
 export function enableNewNetflixRenewal(store: GbutsOttStore, listing: GbutsOttListing, now = new Date()): void {
   if (listing.serviceType !== '넷플릭스' || !listing.postSeq || !['registered', 'closed'].includes(listing.state) || listing.repostFrom) return;
+  if(futureSubscriptionRankApplies(listing.postSeq))return;
   const key = gbutsOttRenewalKey(listing.serviceType, listing.accountEmail);
   store.renewals ||= {};
   if (store.renewals[key]) return;

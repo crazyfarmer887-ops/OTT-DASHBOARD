@@ -1,3 +1,4 @@
+import {subscriptionRankPostChain} from '../lib/gbuts-rank-defaults';
 import { existsSync, readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { writeJsonAtomic } from '../lib/graytag-sales-session';
@@ -89,9 +90,11 @@ export function startGbutsOfficeMessages(): (() => void) | undefined {
       if (loadSafeModeConfig().enabled) return;
       const token = loadGbutsSession()?.token || process.env.GBUTS_API_TOKEN?.trim();
       if (!token) throw new Error('벗츠 판매자 연결이 필요합니다.');
-      const result = await syncGbutsOfficeMessages({ postSeq: Number(process.env.GBUTS_OFFICE_POST_SEQ || DEFAULT_POST_SEQ),
+      for(const postSeq of subscriptionRankPostChain(Number(process.env.GBUTS_OFFICE_POST_SEQ || DEFAULT_POST_SEQ))){
+      const result = await syncGbutsOfficeMessages({ postSeq,
         client: createGbutsOttSellerClient(token), read: readOfficeGuideJournal, write: writeOfficeGuideJournal, send: sendGbutsText });
       if (result.attempted || result.confirmed) console.log('[GbutsOfficeMessages]', result);
+      }
     } catch {
       try { const journal = readOfficeGuideJournal(); journal.lastError = 'MS Office 구매자 안내 확인 실패'; writeOfficeGuideJournal(journal); } catch { /* Preserve corrupt journals. */ }
       console.error('[GbutsOfficeMessages] MS Office 구매자 안내 확인 실패');

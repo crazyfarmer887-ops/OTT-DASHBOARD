@@ -1,3 +1,5 @@
+import {withGbutsOttInventory} from '../lib/gbuts-ott-store';
+import {pauseSubscriptionRank} from '../lib/gbuts-rank-defaults';
 import { Hono } from 'hono';
 import { createHash } from 'node:crypto';
 import { gbutsOttClient } from './gbuts-ott';
@@ -8,8 +10,7 @@ type Client = ReturnType<typeof gbutsOttClient>;
 export function registerGbutsSpotifyListingRoutes(app: Hono, clientFactory: () => Client = gbutsOttClient): void {
   const enabled = () => process.env.GBUTS_SPOTIFY_SYNC_ENABLED === 'true'
     && process.env.GBUTS_SPOTIFY_AUTO_MESSAGE_ENABLED === 'true' && Boolean(process.env.NOTION_API_TOKEN?.trim());
-  let queue: Promise<unknown> = Promise.resolve();
-  const serial = <T>(work: () => Promise<T>) => { const result = queue.then(work, work); queue = result.catch(() => {}); return result; };
+  const serial=withGbutsOttInventory;
   const reconcile = async (listing: SpotifyListing, client: Client) => {
     const store = readSpotifyListings();
     const bound = new Set(Object.values(store.listings).filter(x => x.id !== listing.id).map(x => x.postSeq));
@@ -82,6 +83,7 @@ export function registerGbutsSpotifyListingRoutes(app: Hono, clientFactory: () =
     try {
       const store = readSpotifyListings(); const listing = store.listings[c.req.param('id')];
       if (!listing) return c.json({ ok: false, error: '삭제할 판매글이 없습니다.' }, 404);
+      if(listing.postSeq)pauseSubscriptionRank(listing.postSeq);
       if (listing.deletedAt) return c.json({ ok: true, alreadyDeleted: true });
       if (listing.state !== 'registered' || !listing.postSeq)
         return c.json({ ok: false, error: '등록 결과를 먼저 확인한 뒤 삭제해주세요.' }, 409);
