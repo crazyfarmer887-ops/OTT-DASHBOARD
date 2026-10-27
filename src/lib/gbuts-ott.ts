@@ -168,7 +168,8 @@ export function accountGbutsInventory(store: GbutsOttStore, serviceType: string,
   const listings = Object.values(store.listings).filter(x => ottKey(x.serviceType, x.accountEmail) === key);
   const ids = new Set(listings.map(x => x.id));
   const members = Object.values(store.orders).filter(x => ids.has(x.listingId)
-    && (activeOttOrder(x, now) || holdsNetflixProfile(x, store.listings[x.listingId], now) || holdsDisneyProfile(x, store.listings[x.listingId], now)));
+    && (activeOttOrder(x, now) || holdsNetflixProfile(x, store.listings[x.listingId], now) || holdsDisneyProfile(x, store.listings[x.listingId], now)
+      || (x.status==='MISSING'&&x.cancelStatus!=='REFUNDED'&&x.endDate>=koreaToday(now))));
   const currentUsers = members.length;
   let reserved = 0;
   for (const listing of listings) {

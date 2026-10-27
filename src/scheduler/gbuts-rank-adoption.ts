@@ -9,6 +9,7 @@ import {
 import {
   GBUTS_OTT_CATEGORIES,
   sharedOttAccounts,
+  ottDate,
   type GbutsOttStore,
   type GbutsOttListing,
 } from "../lib/gbuts-ott";
@@ -38,6 +39,60 @@ export function reserveSubscriptionRankPlaces(
         p.posts.find((row) => row.seq === p.currentPostSeq)?.capacity
     )
       throw Error("공동 재고의 서비스·기간·정원 연결 확인 필요");
+    // Import final-roster buyers before releasing the old recruiting reservation.
+    // Older rank snapshots must never overwrite a newer ordinary order verification.
+    for (const member of Object.values(p.members)) {
+      const listing = Object.values(store.listings).find(
+        (l) => l.postSeq === member.postSeq,
+      );
+      if (!listing) continue;
+      const key = `${member.postSeq}:${member.seq}`,
+        previous = store.orders[key];
+      if (
+        previous &&
+        (previous.userSeq !== member.userSeq ||
+          previous.listingId !== listing.id)
+      )
+        throw Error("재등록 구매자 연결 확인 필요");
+      if (!member.observedAt) {
+        if (previous) continue;
+        throw Error("구매자 확인 시각 확인 필요");
+      }
+      if (
+        previous &&
+        Date.parse(previous.verifiedAt) > Date.parse(member.observedAt)
+      )
+        continue;
+      if (!member.createdAt || !ottDate(member.createdAt))
+        throw Error("구매 시각 확인 필요");
+      const delivery =
+        member.status === "MISSING" &&
+        (!previous || previous.delivery === "ready")
+          ? "blocked"
+          : previous?.delivery === "blocked" &&
+              previous.status === "MISSING" &&
+              member.status !== "MISSING" &&
+              !previous.attemptedAt
+            ? "ready"
+            : previous?.delivery || "ready";
+      store.orders[key] = {
+        ...previous,
+        key,
+        listingId: listing.id,
+        postSeq: member.postSeq,
+        memberSeq: member.seq,
+        userSeq: member.userSeq,
+        name: member.nickname || previous?.name || "(구매자)",
+        status: member.status,
+        cancelStatus: member.cancelStatus,
+        startDate: ottDate(member.createdAt),
+        endDate: member.endDate,
+        purchasedAt: previous?.purchasedAt || member.createdAt,
+        delivery,
+        verifiedAt: member.observedAt,
+      };
+      changed = true;
+    }
     const pending = p.pending;
     if (!pending) {
       for (const row of Object.values(store.listings).filter(
@@ -52,6 +107,10 @@ export function reserveSubscriptionRankPlaces(
         changed = true;
       }
       continue;
+    }
+    if (pending.phase === "publishing") {
+      source.state = "closed";
+      changed = true;
     }
     const id = idFor(p);
     const existing = store.listings[id];

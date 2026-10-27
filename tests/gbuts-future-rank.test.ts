@@ -25,7 +25,7 @@ import {
   existingOttRankPostSeqs,
   assertSubscriptionRankInventory,
 } from "../src/scheduler/gbuts-rank-adoption";
-import { emptyGbutsOttStore, type GbutsOttListing } from "../src/lib/gbuts-ott";
+import { emptyGbutsOttStore, accountGbutsInventory, type GbutsOttListing } from "../src/lib/gbuts-ott";
 import {
   readGbutsOttStore,
   writeGbutsOttStore,
@@ -581,3 +581,117 @@ it("keeps a failed category isolated from another displaced category", async () 
   expect(f.client.closePost).toHaveBeenCalledWith(101);
   expect(s.policies["100"].lastError).toBeTruthy();
 });
+
+it("accounts for final-roster buyers before any next polling pass and ignores older member snapshots", async () => {
+  const f = fixture(5, "SHARE");
+  const store = emptyGbutsOttStore();
+  store.listings.sale = {
+    id: "sale",
+    requestHash: "hash",
+    serviceType: "넷플릭스",
+    accountEmail: "private-id@example.com",
+    capacity: 5,
+    dailyPrice: 140,
+    endDate: "2026-12-31",
+    title: "title",
+    description: "body",
+    state: "registered",
+    postSeq: 100,
+    createdAt: "2026-10-27T07:00:00Z",
+  };
+  writeGbutsOttStore(store);
+  const deps = () => ({
+    ...f.deps(),
+    reserve: reserveSubscriptionRankPlaces,
+    adopt: adoptSubscriptionRankPost,
+    verify: async () => {},
+  });
+  await syncFutureSubscriptionRank(f.client as InviteClient, deps());
+  f.advance(360_000);
+  f.client.closePost.mockImplementation(async () => {
+    f.source.status = "CLOSED";
+    f.source.memberCount = 3;
+    f.setMembers(
+      [1, 2, 3].map((seq) => ({
+        seq,
+        userSeq: 10 + seq,
+        status: "APPLY",
+        cancelStatus: null,
+        createdAt: "2026-10-27 12:00:00",
+        subscriptionEndsAt: f.source.subscriptionEndsAt,
+      })),
+    );
+  });
+  await syncFutureSubscriptionRank(f.client as InviteClient, deps());
+  let saved = readGbutsOttStore();
+  expect(saved.orders["100:3"]).toMatchObject({
+    userSeq: 13,
+    status: "APPLY",
+    delivery: "ready",
+  });
+  expect(saved.listings.sale.state).toBe("closed");
+  expect(
+    accountGbutsInventory(
+      saved,
+      "넷플릭스",
+      "private-id@example.com",
+      new Date("2026-10-27T07:07:00Z"),
+    ),
+  ).toMatchObject({ currentUsers: 3, recruiting: 2 });
+  saved.orders["100:3"].cancelStatus = "REFUNDED";
+  saved.orders["100:3"].verifiedAt = "2026-10-27T07:08:00Z";
+  writeGbutsOttStore(saved);
+  reserveSubscriptionRankPlaces(
+    f.state.policies,
+    new Date("2026-10-27T07:09:00Z"),
+  );
+  expect(readGbutsOttStore().orders["100:3"].cancelStatus).toBe("REFUNDED");
+});
+it.each(["티빙", "웨이브"])(
+  "holds an unrefunded missing %s member after moving remaining recruitment",
+  (serviceType) => {
+    const s = emptyGbutsOttStore();
+    const base = {
+      requestHash: "hash",
+      serviceType,
+      accountEmail: "account@example.com",
+      dailyPrice: 100,
+      endDate: "2026-12-31",
+      title: "title",
+      description: "body",
+      createdAt: "2026-10-27T07:00:00Z",
+    };
+    s.listings = {
+      old: { ...base, id: "old", postSeq: 100, state: "closed", capacity: 4 },
+      next: {
+        ...base,
+        id: "next",
+        postSeq: 200,
+        state: "registered",
+        capacity: 3,
+      },
+    };
+    s.orders["100:1"] = {
+      key: "100:1",
+      listingId: "old",
+      postSeq: 100,
+      memberSeq: 1,
+      userSeq: 11,
+      name: "buyer",
+      status: "MISSING",
+      cancelStatus: null,
+      startDate: "2026-10-27",
+      endDate: "2026-12-31",
+      delivery: "confirmed",
+      verifiedAt: "2026-10-27T07:00:00Z",
+    };
+    expect(
+      accountGbutsInventory(
+        s,
+        serviceType,
+        "account@example.com",
+        new Date("2026-10-27T07:00:00Z"),
+      ),
+    ).toMatchObject({ currentUsers: 1, recruiting: 3 });
+  },
+);

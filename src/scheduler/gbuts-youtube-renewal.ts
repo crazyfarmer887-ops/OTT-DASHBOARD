@@ -10,7 +10,7 @@ export type InvitePayload = { category: 7; countries: string[]; subscriptionType
   subscriptionStartsAt: string; subscriptionEndsAt: string; price: number; priceType: 'DAY'; memberLimit: number;
   title: string; description: string; noticeBeforeOrder: string; noticeAfterOrder: string };
 export type SubscriptionPayload = Omit<InvitePayload,'category'|'subscriptionType'|'subscriptionPrincipal'|'subscriptionCredential'> & {category:number;subscriptionType:'SHARE'|'INVITE';subscriptionPrincipal:''|null;subscriptionCredential:''|null};
-type Member = { postSeq: number; seq: number; userSeq: number; status: string; cancelStatus: string | null; endDate: string };
+type Member = { postSeq: number; seq: number; userSeq: number; status: string; cancelStatus: string | null; endDate: string; createdAt?:string;nickname?:string;observedAt?:string };
 export type YouTubeRenewal = { seedPostSeq: number; currentPostSeq: number; capacity: number; categorySeq?:number; subscriptionType?:'SHARE'|'INVITE'; endDate: string; enabled: boolean;
   trigger: 'rank'; rankThreshold: 5; nextAt: string; rankCheckedAt?: string; lastRank?: number | null; lastSuccess?: string; lastError?: string; lastRepostedAt?: string;
   posts: Array<{ seq: number; capacity: number }>; members: Record<string, Member>;
@@ -37,6 +37,7 @@ export function validateYouTubeRenewals(s: YouTubeRenewalStore): YouTubeRenewalS
       || !p.posts.some(x => x.seq === p.seedPostSeq) || !p.posts.some(x => x.seq === p.currentPostSeq)) throw Error('구독공유 재등록 정책 확인 필요');
     for (const post of p.posts) { if (!positive(post.seq) || !positive(post.capacity) || post.capacity > p.capacity || all.has(post.seq)) throw Error('구독공유 판매글 중복 연결'); all.add(post.seq); }
     for (const [id, m] of Object.entries(p.members)) if (id !== `${m.postSeq}:${m.seq}` || !p.posts.some(x => x.seq === m.postSeq) || !positive(m.seq) || !positive(m.userSeq)
+      || (m.observedAt!==undefined&&!Number.isFinite(Date.parse(m.observedAt))) || (m.createdAt!==undefined&&!validDate(ottDate(m.createdAt)))
       || !validDate(m.endDate) || m.endDate > p.endDate || typeof m.status !== 'string' || (m.cancelStatus !== null && typeof m.cancelStatus !== 'string')) throw Error('구독공유 구매자 연결 확인 필요');
     if (p.pending && (p.pending.sourcePostSeq !== p.currentPostSeq || !['closing', 'publishing'].includes(p.pending.phase)
       || !Number.isSafeInteger(p.pending.afterSeq) || p.pending.afterSeq < 0 || (p.pending.phase === 'publishing' && !p.pending.payload))) throw Error('구독공유 미확인 재등록 연결 확인 필요');
@@ -76,10 +77,10 @@ function refreshMembers(p: YouTubeRenewal, post: GbutsOttPost, rows: GbutsOttMem
   const seen = new Set<string>();
   for (const row of rows) {
     const key = `${post.seq}:${row.seq}`; const old = p.members[key]; const endDate = ottDate(row.subscriptionEndsAt);
-    if (seen.has(key) || !positive(row.seq) || !positive(row.userSeq) || (old && old.userSeq !== row.userSeq) || !endDate || endDate > p.endDate) throw Error('구독공유 구매자 식별 또는 기간 확인 필요');
-    seen.add(key); p.members[key] = { postSeq: post.seq, seq: row.seq, userSeq: row.userSeq, status: row.status, cancelStatus: row.cancelStatus, endDate };
+    if (seen.has(key) || !positive(row.seq) || !positive(row.userSeq) || (old && old.userSeq !== row.userSeq) || !endDate || endDate > p.endDate || !validDate(ottDate(row.createdAt))) throw Error('구독공유 구매자 식별 또는 기간 확인 필요');
+    seen.add(key); p.members[key] = { postSeq: post.seq, seq: row.seq, userSeq: row.userSeq, status: row.status, cancelStatus: row.cancelStatus, endDate,createdAt:row.createdAt,nickname:row.nickname,observedAt:now.toISOString() };
   }
-  for (const [key, m] of Object.entries(p.members)) if (m.postSeq === post.seq && !seen.has(key)) m.status = 'MISSING';
+  for (const [key, m] of Object.entries(p.members)) if (m.postSeq === post.seq && !seen.has(key)){m.status = 'MISSING';m.observedAt=now.toISOString();}
 }
 function payload(post: GbutsOttPost, remaining: number, now: Date): SubscriptionPayload {
   return { category: post.category1.seq, countries: post.countries, subscriptionType: post.subscriptionType, subscriptionPrincipal: post.subscriptionPrincipal==null?null:'', subscriptionCredential: post.subscriptionCredential==null?null:'',
