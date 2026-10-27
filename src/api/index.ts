@@ -1,3 +1,5 @@
+import { registerGbutsYouTubeRenewalRoutes } from './gbuts-youtube-renewal';
+import { gbutsOttClient } from './gbuts-ott';
 import { buildGbutsRenewalInventory, resolveGbutsRenewalDealAccounts } from '../lib/gbuts-ott-renewal-inventory';
 import { registerLinkidRoutes } from './linkid';
 import { registerFinanceRoutes } from './finance';
@@ -6780,6 +6782,7 @@ export const gbutsOttRuntimeDependencies: GbutsOttRuntimeDependencies = {
   },
 };
 registerGbutsOttRoutes(app, gbutsOttRuntimeDependencies);
+registerGbutsYouTubeRenewalRoutes(app, gbutsOttClient);
 registerGbutsSpotifyListingRoutes(app);
 registerLinkidRoutes(app);
 

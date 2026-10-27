@@ -1,3 +1,4 @@
+import { renewYouTubeInvites } from './gbuts-youtube-renewal';
 import { renewDueGbutsOttListings } from './gbuts-ott-renewal';
 import { GbutsChatDeliveryError, gbutsChatContainsText } from '../lib/gbuts-chat-delivery';
 import { disneyAccountCapacity, holdsNetflixProfile, holdsDisneyProfile, hasGbutsOttProfileLease, koreaToday, GBUTS_OTT_CATEGORIES, activeOttOrder, deliverableOttOrder, ottDate, ottKey, sharedOttAccounts, updateGbutsOttOrders, type GbutsOttListing, type GbutsOttManagement, type GbutsOttOrder, type GbutsOttStore } from '../lib/gbuts-ott';
@@ -71,7 +72,7 @@ export async function syncGbutsOtt(deps: GbutsOttRuntimeDependencies,
       // must use the current password-only policy, even if it pinned an older guide.
       const submitted = order.attemptedAt || order.delivery === 'attempted' || order.delivery === 'confirmed';
       return submitted ? order.deliveryMessage || buildGbutsNetflixLegacyDeliveryText(order.accessUrl!, order.profileNumber!)
-        : buildGbutsNetflixDeliveryText(order.accessUrl!, order.profileNumber!);
+        : buildGbutsNetflixDeliveryText(order.accessUrl!, order.profileNumber!, listing.emailCodeProvider === 'aaryan');
     }
     return order.deliveryMessage || (listing.deliveryMode === 'disney-numbered-password'
       ? buildGbutsDisneyDeliveryText(order.accessUrl!, order.profileNumber!, disneyAccountCapacity(store, listing))
@@ -185,6 +186,8 @@ export function startGbutsOttSync(deps: GbutsOttRuntimeDependencies): (() => voi
         const store = readGbutsOttStore(); store.lastError = e instanceof Error ? e.message : '벗츠 주문 확인 실패'; writeGbutsOttStore(store);
         console.error('[GbutsOttSync]', store.lastError);
       }
+      try { const youtube = await renewYouTubeInvites(createGbutsOttSellerClient(token),{allowed:()=>process.env.GBUTS_OTT_SYNC_ENABLED==='true'&&!loadSafeModeConfig().enabled}); if (youtube.renewed || youtube.errors) console.log('[GbutsYouTubeRenewal]', youtube); }
+      catch { console.error('[GbutsYouTubeRenewal] 재등록 기록 확인 필요'); }
     }).catch(e => console.error('[GbutsOttSync] inventory unavailable', e instanceof Error ? e.message : 'unknown'))
       .finally(() => { pending = false; });
   };

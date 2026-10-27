@@ -1,0 +1,145 @@
+import { createHash } from 'node:crypto';
+import { existsSync, readFileSync } from 'node:fs';
+import { writeJsonAtomic } from '../lib/graytag-sales-session';
+import { activeOttOrder, koreaToday, ottDate } from '../lib/gbuts-ott';
+import type { createGbutsOttSellerClient, GbutsOttMember, GbutsOttPost } from '../lib/gbuts-ott-client';
+import { OTT_RANK_CHECK_INTERVAL, OTT_RANK_COOLDOWN } from './gbuts-ott-renewal';
+
+export type InvitePayload = { category: 7; countries: string[]; subscriptionType: 'INVITE'; subscriptionPrincipal: ''; subscriptionCredential: '';
+  subscriptionStartsAt: string; subscriptionEndsAt: string; price: number; priceType: 'DAY'; memberLimit: number;
+  title: string; description: string; noticeBeforeOrder: string; noticeAfterOrder: string };
+type Member = { postSeq: number; seq: number; userSeq: number; status: string; cancelStatus: string | null; endDate: string };
+export type YouTubeRenewal = { seedPostSeq: number; currentPostSeq: number; capacity: number; endDate: string; enabled: boolean;
+  trigger: 'rank'; rankThreshold: 5; nextAt: string; rankCheckedAt?: string; lastRank?: number | null; lastSuccess?: string; lastError?: string; lastRepostedAt?: string;
+  posts: Array<{ seq: number; capacity: number }>; members: Record<string, Member>;
+  pending?: { phase: 'closing' | 'publishing'; sourcePostSeq: number; afterSeq: number; payload?: InvitePayload; postSeq?: number } };
+export type YouTubeRenewalStore = { version: 1; policies: Record<string, YouTubeRenewal> };
+export type InviteClient = Pick<ReturnType<typeof createGbutsOttSellerClient>, 'getPost' | 'listOttMembers' | 'listOttPublicRanking' | 'sellerAccountSeq' | 'latestPostSeq' | 'listPostsAfter' | 'closePost' | 'createYouTubeInvitePost'>;
+const file = () => process.env.GBUTS_YOUTUBE_RENEWALS_PATH || '/home/ubuntu/.hermes/hermes-agent/graytag-aio-manager-0606/data/gbuts-youtube-renewals.json';
+const positive = (n: unknown): n is number => Number.isSafeInteger(n) && Number(n) > 0;
+const localized = (value: unknown): string => { if (typeof value === 'object' && value) return String((value as { ko?: unknown }).ko || '');
+  try { return String(JSON.parse(String(value)).ko || ''); } catch { return String(value || ''); } };
+export function readYouTubeRenewals(): YouTubeRenewalStore {
+  if (!existsSync(file())) return { version: 1, policies: {} };
+  return validateYouTubeRenewals(JSON.parse(readFileSync(file(), 'utf8')));
+}
+export function validateYouTubeRenewals(s: YouTubeRenewalStore): YouTubeRenewalStore {
+  if (s?.version !== 1 || !s.policies || typeof s.policies !== 'object' || Array.isArray(s.policies)) throw Error('유튜브 재등록 기록 확인 필요');
+  const all = new Set<number>();
+  for (const [key, p] of Object.entries(s.policies)) {
+    if (key !== String(p.seedPostSeq) || !positive(p.seedPostSeq) || !positive(p.currentPostSeq) || !positive(p.capacity) || p.capacity > 5
+      || typeof p.enabled !== 'boolean' || p.trigger !== 'rank' || p.rankThreshold !== 5 || !Number.isFinite(Date.parse(p.nextAt))
+      || !/^\d{4}-\d{2}-\d{2}$/.test(p.endDate) || !Array.isArray(p.posts) || !p.posts.length || !p.members || Array.isArray(p.members)
+      || !p.posts.some(x => x.seq === p.seedPostSeq) || !p.posts.some(x => x.seq === p.currentPostSeq)) throw Error('유튜브 재등록 정책 확인 필요');
+    for (const post of p.posts) { if (!positive(post.seq) || !positive(post.capacity) || post.capacity > p.capacity || all.has(post.seq)) throw Error('유튜브 판매글 중복 연결'); all.add(post.seq); }
+    for (const [id, m] of Object.entries(p.members)) if (id !== `${m.postSeq}:${m.seq}` || !p.posts.some(x => x.seq === m.postSeq) || !positive(m.seq) || !positive(m.userSeq)
+      || !m.endDate || m.endDate > p.endDate || typeof m.status !== 'string' || (m.cancelStatus !== null && typeof m.cancelStatus !== 'string')) throw Error('유튜브 구매자 연결 확인 필요');
+    if (p.pending && (p.pending.sourcePostSeq !== p.currentPostSeq || !['closing', 'publishing'].includes(p.pending.phase)
+      || !Number.isSafeInteger(p.pending.afterSeq) || p.pending.afterSeq < 0 || (p.pending.phase === 'publishing' && !p.pending.payload))) throw Error('유튜브 미확인 재등록 연결 확인 필요');
+    if (p.pending?.payload && !validPayload(p.pending.payload, p.endDate, p.capacity)) throw Error('유튜브 재등록 제출 조건 확인 필요');
+  }
+  return s;
+}
+export function writeYouTubeRenewals(s: YouTubeRenewalStore): void { writeJsonAtomic(file(), validateYouTubeRenewals(s)); }
+function validPayload(p: InvitePayload, endDate: string, capacity: number): boolean {
+  return p.category === 7 && p.subscriptionType === 'INVITE' && p.subscriptionPrincipal === '' && p.subscriptionCredential === ''
+    && p.priceType === 'DAY' && positive(p.price) && positive(p.memberLimit) && p.memberLimit <= capacity && ottDate(p.subscriptionEndsAt) === endDate
+    && !!p.title.trim() && p.title.length <= 100 && !!p.description.trim() && Array.isArray(p.countries) && p.countries.length > 0;
+}
+function assertSource(post: GbutsOttPost, p: YouTubeRenewal, expectedCapacity: number): void {
+  if (post.category1.seq !== 7 || post.subscriptionType !== 'INVITE' || post.priceType !== 'DAY' || post.memberLimit !== expectedCapacity
+    || ottDate(post.subscriptionEndsAt) !== p.endDate || !['ON_SALE', 'CLOSED'].includes(post.status)) throw Error('유튜브 기존 판매 조건 확인 필요');
+}
+export function bindYouTubeRenewal(s: YouTubeRenewalStore, post: GbutsOttPost, enabled: boolean, now = new Date()): YouTubeRenewal {
+  const existing = Object.values(s.policies).find(p => p.posts.some(x => x.seq === post.seq) || p.pending?.postSeq === post.seq);
+  if (existing) { if (existing.currentPostSeq !== post.seq) throw Error('최근 유튜브 판매글을 선택해주세요.'); existing.enabled = enabled; return existing; }
+  if (!positive(post.seq) || !positive(post.memberLimit) || post.memberLimit > 5 || post.status !== 'ON_SALE' || ottDate(post.subscriptionEndsAt) <= koreaToday(now)) throw Error('현재 유튜브 초대 판매글을 확인해주세요.');
+  const p: YouTubeRenewal = { seedPostSeq: post.seq, currentPostSeq: post.seq, capacity: post.memberLimit, endDate: ottDate(post.subscriptionEndsAt), enabled,
+    trigger: 'rank', rankThreshold: 5, nextAt: now.toISOString(), lastRepostedAt: now.toISOString(), posts: [{ seq: post.seq, capacity: post.memberLimit }], members: {} };
+  assertSource(post, p, post.memberLimit); s.policies[String(post.seq)] = p; return p;
+}
+function holds(m: Member, now: Date): boolean { return (m.status === 'APPLY' || m.status === 'MISSING') && m.cancelStatus !== 'REFUNDED' && m.endDate >= koreaToday(now); }
+export function youtubeOccupied(p: YouTubeRenewal, now = new Date()): number { return Object.values(p.members).filter(m => holds(m, now)).length; }
+function refreshMembers(p: YouTubeRenewal, post: GbutsOttPost, rows: GbutsOttMember[], now: Date): void {
+  if (rows.filter(m => activeOttOrder({ ...m, endDate: ottDate(m.subscriptionEndsAt) }, now)).length < post.memberCount) throw Error('유튜브 최종 구매자 목록 확인 중');
+  const seen = new Set<string>();
+  for (const row of rows) {
+    const key = `${post.seq}:${row.seq}`; const old = p.members[key]; const endDate = ottDate(row.subscriptionEndsAt);
+    if (seen.has(key) || !positive(row.seq) || !positive(row.userSeq) || (old && old.userSeq !== row.userSeq) || !endDate || endDate > p.endDate) throw Error('유튜브 구매자 식별 또는 기간 확인 필요');
+    seen.add(key); p.members[key] = { postSeq: post.seq, seq: row.seq, userSeq: row.userSeq, status: row.status, cancelStatus: row.cancelStatus, endDate };
+  }
+  for (const [key, m] of Object.entries(p.members)) if (m.postSeq === post.seq && !seen.has(key)) m.status = 'MISSING';
+}
+function payload(post: GbutsOttPost, remaining: number, now: Date): InvitePayload {
+  return { category: 7, countries: post.countries, subscriptionType: 'INVITE', subscriptionPrincipal: '', subscriptionCredential: '',
+    subscriptionStartsAt: `${koreaToday(now)} 00:00:00`, subscriptionEndsAt: post.subscriptionEndsAt, price: Number(post.price), priceType: 'DAY', memberLimit: remaining,
+    title: localized(post.title), description: localized(post.description), noticeBeforeOrder: String(post.noticeBeforeOrder || ''), noticeAfterOrder: String(post.noticeAfterOrder || '') };
+}
+function matches(post: GbutsOttPost, v: InvitePayload): boolean {
+  return post.category1.seq === 7 && post.subscriptionType === 'INVITE' && post.priceType === v.priceType && Number(post.price) === v.price
+    && post.memberLimit === v.memberLimit && post.subscriptionEndsAt === v.subscriptionEndsAt && post.subscriptionStartsAt === v.subscriptionStartsAt
+    && localized(post.title) === v.title && localized(post.description) === v.description && String(post.noticeBeforeOrder || '') === v.noticeBeforeOrder
+    && String(post.noticeAfterOrder || '') === v.noticeAfterOrder && JSON.stringify(post.countries) === JSON.stringify(v.countries);
+}
+export async function renewYouTubeInvites(client: InviteClient, options: { read?: () => YouTubeRenewalStore; write?: (s: YouTubeRenewalStore) => void; now?: Date; allowed?: () => boolean } = {}) {
+  const s = (options.read || readYouTubeRenewals)(); const write = options.write || writeYouTubeRenewals; const now = options.now || new Date();
+  const next = new Date(now.getTime() + OTT_RANK_CHECK_INTERVAL).toISOString(); let renewed = 0; let errors = 0;
+  const due = Object.values(s.policies).filter(p => (p.enabled || p.pending) && Date.parse(p.nextAt) <= now.getTime());
+  const pending = Object.values(s.policies).filter(p => p.pending);
+  if (pending.length > 1) throw Error('유튜브 미확인 재등록은 한 건씩 복구해야 합니다.');
+  let chosen = pending[0];
+  if (!chosen && due.length) {
+    try {
+      const [rows, seller] = await Promise.all([client.listOttPublicRanking('유튜브'), client.sellerAccountSeq()]);
+      const foreign = rows.findIndex(r => r.sellerSeq !== seller); const candidates: YouTubeRenewal[] = [];
+      for (const p of due) {
+        const index = rows.findIndex(r => r.seq === p.currentPostSeq); if (index >= 0 && rows[index].sellerSeq !== seller) throw Error('유튜브 판매자 연결 확인 필요');
+        p.rankCheckedAt = now.toISOString(); p.lastRank = index < 0 ? null : index + 1; p.nextAt = next; delete p.lastError;
+        if (p.endDate <= koreaToday(now)) { p.enabled = false; continue; }
+        const rank = index < 0 ? 21 : index + 1;
+        if (rank >= 5 && foreign >= 0 && foreign < rank - 1 && (index >= 0 || rows.length === 20)
+          && (!p.lastRepostedAt || now.getTime() - Date.parse(p.lastRepostedAt) >= OTT_RANK_COOLDOWN)) candidates.push(p);
+      }
+      chosen = candidates.sort((a,b) => (b.lastRank || 21) - (a.lastRank || 21))[0];
+    } catch { for (const p of due) { p.lastError = '유튜브 최신순 목록 확인 실패'; p.nextAt = next; } errors++; }
+    write(s);
+  }
+  if (!chosen || !due.includes(chosen)) return { renewed, errors };
+  const p = chosen;
+  try {
+    // Uncertain CREATE is lookup-only, including after an explicit pause.
+    if (p.pending?.phase === 'publishing') {
+      const frozen = p.pending.payload!;
+      const candidates = p.pending.postSeq ? [await client.getPost(p.pending.postSeq)] : await client.listPostsAfter(p.pending.afterSeq);
+      const found: GbutsOttPost[] = [];
+      for (const candidate of candidates) { const actual = await client.getPost(candidate.seq); if (matches(actual, frozen)) found.push(actual); }
+      if (found.length !== 1 || !['ON_SALE','CLOSED'].includes(found[0].status)) throw Error('유튜브 제출 결과 조회 확인 중');
+      p.currentPostSeq = found[0].seq; p.posts.push({ seq: found[0].seq, capacity: frozen.memberLimit }); delete p.pending;
+      p.lastSuccess = now.toISOString(); p.lastRepostedAt = now.toISOString(); p.nextAt = next; delete p.lastError; renewed++; write(s);
+      return { renewed, errors };
+    }
+    if (!p.enabled || p.endDate <= koreaToday(now)) { p.enabled = false; delete p.pending; p.nextAt = next; write(s); return { renewed, errors }; }
+    let source: GbutsOttPost | undefined;
+    for (const entry of p.posts.filter(x => x.seq === p.currentPostSeq || Object.values(p.members).some(m => m.postSeq === x.seq && holds(m, now)))) {
+      const [post, members] = await Promise.all([client.getPost(entry.seq), client.listOttMembers(entry.seq)]);
+      assertSource(post, p, entry.capacity); refreshMembers(p, post, members, now); if (entry.seq === p.currentPostSeq) source = post;
+    }
+    write(s); if (!source) throw Error('유튜브 원본 연결 확인 필요');
+    let remaining = p.capacity - youtubeOccupied(p, now); if (remaining < 0) throw Error('유튜브 정원 초과 확인 필요');
+    if (!remaining) { delete p.pending; p.nextAt = next; p.lastSuccess = now.toISOString(); write(s); return { renewed, errors }; }
+    if(options.allowed&&!options.allowed())return {renewed,errors};
+    if (!p.pending) { p.pending = { phase: 'closing', sourcePostSeq: source.seq, afterSeq: await client.latestPostSeq() }; write(s); }
+    if (source.status === 'ON_SALE') { try { await client.closePost(source.seq); } catch { /* Read closure, never assume failure/success. */ } }
+    const [closed, final] = await Promise.all([client.getPost(source.seq), client.listOttMembers(source.seq)]);
+    assertSource(closed, p, source.memberLimit); if (closed.status !== 'CLOSED') throw Error('유튜브 모집 종료 확인 중');
+    refreshMembers(p, closed, final, now); remaining = p.capacity - youtubeOccupied(p, now); write(s);
+    if (remaining < 0) throw Error('유튜브 최종 정원 초과 확인 필요');
+    if (!remaining) { delete p.pending; p.nextAt = next; p.lastSuccess = now.toISOString(); write(s); return { renewed, errors }; }
+    if(options.allowed&&!options.allowed()){p.nextAt=next;write(s);return {renewed,errors};}
+    const frozen = payload(closed, remaining, now); if (!validPayload(frozen, p.endDate, p.capacity)) throw Error('유튜브 공개 판매 조건 확인 필요');
+    p.pending.payload = frozen; p.pending.phase = 'publishing'; write(s);
+    // Never replay this mutation, even if no response arrives.
+    p.pending.postSeq = (await client.createYouTubeInvitePost(frozen)) || undefined; write(s);
+    return renewYouTubeInvites(client, { read: () => s, write, now, allowed: options.allowed });
+  } catch { p.lastError = '유튜브 재등록 결과 또는 구매자 확인 필요'; p.nextAt = next; write(s); return { renewed, errors: errors + 1 }; }
+}

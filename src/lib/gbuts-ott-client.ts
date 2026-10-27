@@ -3,7 +3,7 @@ import { GBUTS_OTT_CATEGORIES, koreaToday, ottDate, type GbutsOttListing } from 
 import { buildSpotifyListing, type SpotifyListingInput } from './gbuts-spotify-listings';
 import { assertGbutsOttCredentials, DISNEY_AFTER_ORDER_NOTICE, DISNEY_REFUND_NOTICE, disneyDirectDescription, type GbutsOttCredentials } from './gbuts-disney-delivery';
 import { decodeGbutsSubscriptionCredential } from './gbuts-subscription-credentials';
-import { netflixPasswordOnlyOrderNotice } from './gbuts-ott-templates';
+import { netflixPasswordOnlyOrderNotice, GBUTS_NETFLIX_CODE_AFTER_ORDER_NOTICE } from './gbuts-ott-templates';
 export interface GbutsOttMember {
   seq: number; userSeq: number; productId: string; nickname: string; status: string;
   cancelStatus: string | null; createdAt: string; subscriptionEndsAt: string;
@@ -20,7 +20,7 @@ export function buildGbutsOttPost(listing: GbutsOttListing, now = new Date(), cr
     price: listing.dailyPrice, priceType: 'DAY', memberLimit: listing.capacity,
     title: `[${listing.serviceType}] ${listing.title}`, description: disney ? disneyDirectDescription(listing.description) : listing.description,
     noticeBeforeOrder: listing.noticeBeforeOrder ?? '1인 1회선으로 본인에게 배정된 프로필만 이용해주세요. 계정 정보와 프로필 설정을 변경하거나 타인에게 공유하지 마세요.' + (disney ? `\n\n${DISNEY_REFUND_NOTICE}` : ''),
-    noticeAfterOrder: listing.serviceType === '넷플릭스' ? netflixPasswordOnlyOrderNotice(listing.noticeAfterOrder) : listing.noticeAfterOrder ?? (disney ? DISNEY_AFTER_ORDER_NOTICE : '구매 감사합니다. 계정 확인 링크를 1:1 채팅으로 자동 안내드립니다. 링크에서 이용 안내에 동의한 뒤 계정 정보를 확인해주세요.') };
+    noticeAfterOrder: listing.serviceType === '넷플릭스' ? listing.emailCodeProvider === 'aaryan' ? GBUTS_NETFLIX_CODE_AFTER_ORDER_NOTICE : netflixPasswordOnlyOrderNotice(listing.noticeAfterOrder) : listing.noticeAfterOrder ?? (disney ? DISNEY_AFTER_ORDER_NOTICE : '구매 감사합니다. 계정 확인 링크를 1:1 채팅으로 자동 안내드립니다. 링크에서 이용 안내에 동의한 뒤 계정 정보를 확인해주세요.') };
 }
 export function createGbutsOttSellerClient(token: string, transport: typeof fetch = fetch) {
   const request = async (path: string, init?: RequestInit) => {
@@ -94,8 +94,8 @@ export function createGbutsOttSellerClient(token: string, transport: typeof fetc
   return { ...createGbutsSpotifySellerClient(token, transport),
     /** Service-specific buyer latest list, excluding separately rendered PICK/UP sections. */
     async listOttPublicRanking(serviceType: string): Promise<Array<{ seq: number; sellerSeq: number }>> {
-      const category = GBUTS_OTT_CATEGORIES[serviceType];
-      if (![5, 6].includes(category)) throw new Error('순위 감시 서비스 종류를 확인해주세요.');
+      const category = serviceType === '유튜브' ? 7 : GBUTS_OTT_CATEGORIES[serviceType];
+      if (![5, 6, 7].includes(category)) throw new Error('순위 감시 서비스 종류를 확인해주세요.');
       const data = await request(`/api/subscribe/share?categorySeqs=${category}&page=1&size=20`, { cache: 'no-store' });
       const page = data.pagination;
       if (!Array.isArray(data.response) || !page || page.currentPage !== 1 || !Number.isSafeInteger(page.totalCount)
@@ -166,6 +166,13 @@ export function createGbutsOttSellerClient(token: string, transport: typeof fetc
     },
     async createPost(listing: GbutsOttListing, credentials?: GbutsOttCredentials): Promise<number | null> {
       const data = (await request('/api/subscribe/share', { method: 'POST', body: JSON.stringify(buildGbutsOttPost(listing, new Date(), credentials)) })).response;
+      const seq = typeof data === 'number' ? data : data?.seq ?? data?.postSeq;
+      return seq == null ? null : integer(seq);
+    },
+    async createYouTubeInvitePost(input: import('../scheduler/gbuts-youtube-renewal').InvitePayload): Promise<number | null> {
+      if (input.category !== 7 || input.subscriptionType !== 'INVITE' || input.subscriptionPrincipal !== '' || input.subscriptionCredential !== '')
+        throw new Error('유튜브 초대형 판매글만 등록할 수 있습니다.');
+      const data = (await request('/api/subscribe/share', { method: 'POST', body: JSON.stringify(input) })).response;
       const seq = typeof data === 'number' ? data : data?.seq ?? data?.postSeq;
       return seq == null ? null : integer(seq);
     },

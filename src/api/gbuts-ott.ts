@@ -1,6 +1,7 @@
+import { readAaryanTelegramConfig } from '../lib/aaryan-telegram';
 import { applyGbutsDisneySaleTerms, renewDueGbutsOttListings, DISNEY_RENEWAL_INTERVAL } from '../scheduler/gbuts-ott-renewal';
 import { loadSafeModeConfig } from './safe-mode';
-import { makeGbutsOttDescription } from '../lib/gbuts-ott-templates';
+import { makeGbutsOttDescription, GBUTS_NETFLIX_CODE_DESCRIPTION } from '../lib/gbuts-ott-templates';
 import { Hono } from 'hono';
 import { createHash, randomUUID } from 'node:crypto';
 import { GBUTS_OTT_CATEGORIES, gbutsOttRenewalKey, supportsGbutsOttRenewal, enableNewNetflixRenewal, activeOttOrder, holdsDisneyProfile, koreaToday, ottKey, ottDate, sharedOttAccounts, updateGbutsOttOrders, type GbutsOttListing, type GbutsOttManagement, type GbutsOttStore } from '../lib/gbuts-ott';
@@ -172,14 +173,20 @@ export function registerGbutsOttRoutes(app: Hono, deps: GbutsOttRuntimeDependenc
         const serviceType = String(body.serviceType || ''); const accountEmail = String(body.accountEmail || '').trim();
         const endDate = String(body.endDate || ''); const capacity = Number(body.capacity); const dailyPrice = Number(body.dailyPrice);
         const id = String(body.requestId || ''); const title = String(body.title || `${serviceType} 프리미엄 · 계정 자동 안내`).trim();
-        const description = String(body.description || makeGbutsOttDescription(serviceType)).trim();
+        const description = String(body.description || (body.emailCodeProvider === 'aaryan' ? GBUTS_NETFLIX_CODE_DESCRIPTION : makeGbutsOttDescription(serviceType))).trim();
         const deliveryMode = serviceType === '디즈니플러스' ? 'disney-numbered-password' as const : undefined;
+        const emailCodeProvider = body.emailCodeProvider;
+        if (emailCodeProvider !== undefined) {
+          if (emailCodeProvider !== 'aaryan' || serviceType !== '넷플릭스') throw new Error('코드 전달 서비스 연결을 확인해주세요.');
+          const provider = readAaryanTelegramConfig();
+          if (!provider.allowedEmails.includes(accountEmail.toLowerCase()) || provider.expiresAt.slice(0,10) < endDate || Date.parse(provider.expiresAt) <= Date.now()) throw new Error('인증 코드 조회 권한 또는 기간을 확인해주세요.');
+        }
         if (!GBUTS_OTT_CATEGORIES[serviceType] || !accountEmail || !/^[A-Za-z0-9_-]{8,100}$/.test(id)
           || !Number.isSafeInteger(capacity) || capacity < 1 || !Number.isSafeInteger(dailyPrice) || dailyPrice < 1 || dailyPrice > 100000
           || !/^\d{4}-\d{2}-\d{2}$/.test(endDate) || !Number.isFinite(Date.parse(endDate)) || new Date(endDate).toISOString().slice(0, 10) !== endDate
           || endDate <= koreaToday() || !title || title.length > 80 || !description || description.length > 5000)
           return c.json({ ok: false, error: '계정·기간·하루 요금·모집 인원을 확인해주세요.' }, 400);
-        const requestHash = createHash('sha256').update(JSON.stringify([serviceType, accountEmail.toLowerCase(), endDate, capacity, dailyPrice, title, description])).digest('hex');
+        const requestHash = createHash('sha256').update(JSON.stringify([serviceType, accountEmail.toLowerCase(), endDate, capacity, dailyPrice, title, description, ...(emailCodeProvider ? [emailCodeProvider] : [])])).digest('hex');
         const store = readGbutsOttStore(); const previous = store.listings[id];
         if (previous) return c.json({ ok: previous.state === 'registered', listing: previous,
           error: previous.requestHash !== requestHash ? '이미 사용한 등록 요청입니다.' : '기존 등록 결과를 확인해주세요.' }, previous.requestHash !== requestHash ? 409 : 200);
@@ -202,7 +209,7 @@ export function registerGbutsOttRoutes(app: Hono, deps: GbutsOttRuntimeDependenc
           delivery: 'ready', verifiedAt: new Date().toISOString() },
           { id, serviceType, accountEmail: rawAccount.email } as GbutsOttListing, '미리보기', management);
         const listing: GbutsOttListing = { id, requestHash, serviceType, accountEmail: rawAccount.email, endDate, capacity, dailyPrice,
-          title, description, deliveryMode, state: 'submitting', createdAt: new Date().toISOString(), beforePostSeqs: posts.map(x => x.seq) };
+          title, description, deliveryMode, ...(emailCodeProvider ? { emailCodeProvider } : {}), state: 'submitting', createdAt: new Date().toISOString(), beforePostSeqs: posts.map(x => x.seq) };
         const credentials = deliveryMode ? await deps.listingCredentials?.(listing) : undefined;
         if (deliveryMode && !credentials) throw new Error('디즈니 판매글 계정 정보를 확인해주세요.');
         store.listings[id] = listing; writeGbutsOttStore(store);

@@ -46,6 +46,21 @@ function fixture() {
   return { app, deps, transport, posts, body, publish, set members(value: any[]) { members = value; }, set creationResponse(value: any) { creationResponse = value; } };
 }
 describe('shared inventory publication', () => {
+  it('opts only an authorized Netflix email into fresh-code instructions and persists the provider through publication', async () => {
+    vi.stubEnv('AARYAN_TELEGRAM_CONFIG_PATH', join(directory,'aaryan.json'));
+    writeFileSync(process.env.AARYAN_TELEGRAM_CONFIG_PATH!, JSON.stringify({apiId:123,apiHash:'a'.repeat(32),session:'private-fixture',userId:'1148538638',allowedEmails:['account@example.com'],expiresAt:'2026-12-01T23:59:59+09:00'}),{mode:0o600});
+    const f=fixture();expect((await f.publish({emailCodeProvider:'aaryan',description:undefined})).status).toBe(200);
+    expect(readGbutsOttStore().listings['request-123'].emailCodeProvider).toBe('aaryan');
+    expect(f.posts[0].description).toContain('4자리 로그인 코드');expect(f.posts[0].noticeAfterOrder).toContain('6자리 인증 코드');
+    expect(f.posts[0].description).not.toContain('코드는 제공하지 않습니다');
+  });
+  it.each(['wrong-email','expired','short-validity','wrong-service'])('rejects %s code-provider activation before writing any sale',async type=>{
+    vi.stubEnv('AARYAN_TELEGRAM_CONFIG_PATH',join(directory,'aaryan.json'));
+    writeFileSync(process.env.AARYAN_TELEGRAM_CONFIG_PATH!,JSON.stringify({apiId:123,apiHash:'a'.repeat(32),session:'private-fixture',userId:'1148538638',allowedEmails:[type==='wrong-email'?'other@example.com':'account@example.com'],expiresAt:type==='expired'?'2026-10-01T23:59:59+09:00':type==='short-validity'?'2026-11-25T23:59:59+09:00':'2026-12-01T23:59:59+09:00'}),{mode:0o600});
+    const f=fixture();const response=await f.publish({emailCodeProvider:'aaryan',...(type==='wrong-service'?{serviceType:'디즈니플러스'}:{})});
+    expect(response.ok).toBe(false);expect(f.posts).toHaveLength(0);expect(Object.keys(readGbutsOttStore().listings)).toHaveLength(0);
+  });
+
   it('omits deleted Spotify recruitment from the sales overview while retaining its local record', async () => {
     const f = fixture(); vi.stubEnv('GBUTS_SPOTIFY_LISTINGS_PATH', join(directory, 'spotify.json'));
     f.posts.push({ seq: 880, category1: { seq: 20 }, memberLimit: 5, memberCount: 2, status: 'CLOSED', subscriptionEndsAt: '2027-10-01', price: 140, priceType: 'DAY' });

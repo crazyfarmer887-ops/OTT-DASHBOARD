@@ -1,3 +1,4 @@
+import { startGbutsNetflixCodes } from './src/scheduler/gbuts-netflix-codes.ts';
 import { startLinkidSync } from './src/scheduler/linkid-sync.ts';
 import { Hono } from 'hono';
 import { serve } from '@hono/node-server';
@@ -288,6 +289,7 @@ startGbutsOfficeMessages();
 startGbutsSpotifySync();
 startGbutsChatAlerts();
 startGbutsOttSync(gbutsOttRuntimeDependencies);
+if (gbutsOttRuntimeDependencies.credentials) startGbutsNetflixCodes(gbutsOttRuntimeDependencies.credentials);
 startLinkidSync();
 startYouTubeBuyerGuide({
   listDeals: fetchNotionDeliveryDeals,

@@ -10,6 +10,7 @@ export interface GbutsOttListing {
   state: GbutsOttListingState; postSeq?: number; createdAt: string; verifiedAt?: string; error?: string;
   beforePostSeqs?: number[];
   deliveryMode?: 'disney-numbered-password';
+  emailCodeProvider?: 'aaryan';
   replacedBy?: string;
   repostAfterSeq?: number;
   repostCredentialsHash?: string;

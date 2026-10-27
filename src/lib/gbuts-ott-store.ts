@@ -12,6 +12,7 @@ export function readGbutsOttStore(path = process.env.GBUTS_OTT_STORE_PATH || DEF
     if (listing?.id !== id || !Number.isSafeInteger(listing.capacity) || listing.capacity < 1
       || !GBUTS_OTT_CATEGORIES[listing.serviceType] || typeof listing.accountEmail !== 'string' || !listing.accountEmail.trim()
       || !['submitting', 'registered', 'uncertain', 'failed', 'closed'].includes(listing.state)
+      || (listing.emailCodeProvider !== undefined && (listing.emailCodeProvider !== 'aaryan' || listing.serviceType !== '넷플릭스'))
       || (listing.deliveryMode !== undefined && (listing.deliveryMode !== 'disney-numbered-password' || listing.serviceType !== '디즈니플러스' || listing.capacity > 6))
       || !/^\d{4}-\d{2}-\d{2}$/.test(listing.endDate)) throw new Error('벗츠 판매 재고 기록이 올바르지 않습니다.');
   }

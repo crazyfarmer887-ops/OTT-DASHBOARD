@@ -27,6 +27,8 @@ https://www.netflix.com/verifyage
 ⚠️ 계정 이메일·비밀번호·PIN·결제 설정을 임의로 변경하지 마세요.
 ${GBUTS_ACCOUNT_CHANGE_WARNING}`;
 
+export const GBUTS_NETFLIX_CODE_DESCRIPTION = GBUTS_NETFLIX_DESCRIPTION.replace('반드시 비밀번호로 로그인해 주세요. 이메일 인증·로그인 코드는 제공하지 않습니다.', '기본 로그인은 비밀번호로 진행해 주세요. 추가 이메일 코드가 필요하면 1:1 채팅에 4자리 로그인 코드 또는 6자리 계정 인증 코드를 요청해 주세요.');
+
 export function makeGbutsOttDescription(serviceType: string): string {
   if (serviceType === '디즈니플러스') return `디즈니플러스 · 1인 1프로필 이용
 
@@ -99,14 +101,15 @@ export function netflixPasswordOnlyOrderNotice(notice?: string): string {
   return !notice || /email-verify\.one|계정\s*확인\s*링크|접근\s*링크|이메일\s*PIN/i.test(notice)
     ? GBUTS_NETFLIX_AFTER_ORDER_NOTICE : notice;
 }
-export function buildGbutsNetflixPasswordGuide(number: number): string {
+export const GBUTS_NETFLIX_CODE_AFTER_ORDER_NOTICE = 'ID·비밀번호와 배정 프로필은 1:1 채팅으로 직접 안내합니다. 코드가 필요하면 4자리 로그인 코드 또는 6자리 인증 코드라고 요청해 주세요.';
+export function buildGbutsNetflixPasswordGuide(number: number, emailCodeSupport = false): string {
   if (!Number.isInteger(number) || number < 1 || number > 5) throw new Error('배정된 프로필 번호가 올바르지 않습니다.');
   return `구매 감사합니다! 넷플릭스 ${number}번 프로필을 이용해 주세요.
 ID·PW는 이 채팅으로 직접 보내드립니다.
 
 [로그인 안내]
 안내받은 ID와 비밀번호로 로그인해 주세요.
-이메일 인증·로그인 코드는 제공하지 않습니다.
+${emailCodeSupport ? '추가 코드가 필요하면 이 채팅에 “4자리 로그인 코드” 또는 “6자리 인증 코드”라고 요청해주세요. 확인한 최신 코드를 이 채팅으로 보내드립니다.' : '이메일 인증·로그인 코드는 제공하지 않습니다.'}
 로그인에 문제가 있으면 이 채팅으로 문의해 주세요.
 
 [이용수칙]
@@ -114,8 +117,8 @@ ID·PW는 이 채팅으로 직접 보내드립니다.
 프로필 생성·삭제 및 이름·PIN 변경, 계정 이메일·비밀번호·결제 설정 변경은 금지합니다.
 여러 기기에서 동시에 시청하지 마세요.`;
 }
-export function buildGbutsNetflixDeliveryText(_accessUrl: string, number: number): string {
-  return buildGbutsNetflixPasswordGuide(number);
+export function buildGbutsNetflixDeliveryText(_accessUrl: string, number: number, emailCodeSupport = false): string {
+  return buildGbutsNetflixPasswordGuide(number, emailCodeSupport);
 }
 /** History-only compatibility for the already delivered operational recovery. */
 export function buildGbutsNetflixUnformattedDeliveryText(accessUrl: string, number: number): string {
