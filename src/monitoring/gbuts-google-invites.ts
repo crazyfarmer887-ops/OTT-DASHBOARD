@@ -13,6 +13,14 @@ export type FamilyDriver = {
   inspect(): Promise<FamilyView>;
   invite(email: string, beforeSend: () => Promise<void>): Promise<void>;
 };
+/** Renew ordinary browser authentication regularly even while buyers are quiet. */
+export function familyRunPlan(j: FamilyJournal, orders: InviteOrder[], lastGoogleCheckAt: unknown, force = false, now = new Date()) {
+  const hasWork = Object.values(j.orders).some(x => x.state === 'attempted')
+    || orders.some(x => x.conflict || x.email && (!j.orders[x.key] || canonicalGoogleEmail(j.orders[x.key].email) !== canonicalGoogleEmail(x.email)));
+  const previous = typeof lastGoogleCheckAt === 'string' ? Date.parse(lastGoogleCheckAt) : NaN;
+  const refresh = force || !Number.isFinite(previous) || previous > now.getTime() || now.getTime() - previous >= 15 * 60_000;
+  return { browserRequired: hasWork || refresh, checkOnly: force || !hasWork && refresh };
+}
 export function canonicalGoogleEmail(email: string): string {
   const parsed = parseYouTubeInviteEmailCandidates(email);
   if (parsed.kind !== 'single_candidate' || parsed.candidate !== email.trim().toLowerCase()) throw Error('EMAIL_INVALID');

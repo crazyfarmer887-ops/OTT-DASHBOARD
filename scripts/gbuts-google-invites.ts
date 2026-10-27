@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { loadGbutsSession } from '../src/lib/gbuts-session';
 import { createGbutsOttSellerClient } from '../src/lib/gbuts-ott-client';
 import { readYouTubeRenewals } from '../src/scheduler/gbuts-youtube-renewal';
-import { collectFamilyOrders, runFamilyInvites, validateFamilyJournal, type FamilyJournal } from '../src/monitoring/gbuts-google-invites';
+import { collectFamilyOrders, runFamilyInvites, validateFamilyJournal, familyRunPlan, type FamilyJournal } from '../src/monitoring/gbuts-google-invites';
 import { googleCookieImport, googleFamilyDriver, withSteelFamilyBrowser } from '../src/monitoring/google-family-steel';
 
 const root = process.env.GBUTS_GOOGLE_INVITE_ROOT;
@@ -35,15 +35,15 @@ try {
   if (!session) throw Error('GBUTS_SESSION_REQUIRED');
   const scan = () => collectFamilyOrders(createGbutsOttSellerClient(session.token), readYouTubeRenewals());
   const orders = allowed() && j.enabled ? await scan() : [];
-  const needsBrowser = process.argv.includes('--check-google') || Object.values(j.orders).some(x => x.state === 'attempted') || orders.some(x => x.conflict || x.email && (!j.orders[x.key] || j.orders[x.key].email !== x.email));
-  const deps = { journal: j, save: (value: FamilyJournal) => durable(journalPath, value), allowed, scan, checkOnly: process.argv.includes('--check-google') };
-  const result = needsBrowser && allowed() && j.enabled
+  const prior = (() => { try { return JSON.parse(readFileSync(statusPath, 'utf8')); } catch { return {}; } })();
+  const plan = familyRunPlan(j, orders, prior.lastGoogleCheckAt, process.argv.includes('--check-google'));
+  const deps = { journal: j, save: (value: FamilyJournal) => durable(journalPath, value), allowed, scan, checkOnly: plan.checkOnly };
+  const result = plan.browserRequired && allowed() && j.enabled
     ? await withSteelFamilyBrowser(googleCookieImport(JSON.parse(readFileSync(cookiePath, 'utf8'))), async browser => {
       const page = await browser.newPage(); await page.emulateTimezone('Asia/Seoul');
       return runFamilyInvites({ ...deps, driver: googleFamilyDriver(page) });
     }, cookies => durable(cookiePath, cookies))
     : await runFamilyInvites({ ...deps, driver: { inspect: async () => { throw Error('BROWSER_REQUIRED'); }, invite: async () => { throw Error('BROWSER_REQUIRED'); } } });
-  const prior = (() => { try { return JSON.parse(readFileSync(statusPath, 'utf8')); } catch { return {}; } })();
   durable(statusPath, { ...result, checkedAt, completedAt: new Date().toISOString(), lastError: null, consecutiveErrors: 0,
     lastInviteAt: result.sent ? new Date().toISOString() : prior.lastInviteAt || null,
     lastGoogleCheckAt: result.state === 'checked' || result.sent || result.adopted ? new Date().toISOString() : prior.lastGoogleCheckAt || null });

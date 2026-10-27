@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { FAMILY_MANAGER, FAMILY_SEED, canonicalGoogleEmail, collectFamilyOrders, runFamilyInvites, type FamilyJournal, type FamilyView, type InviteOrder } from '../src/monitoring/gbuts-google-invites';
+import { FAMILY_MANAGER, FAMILY_SEED, canonicalGoogleEmail, collectFamilyOrders, runFamilyInvites, familyRunPlan, type FamilyJournal, type FamilyView, type InviteOrder } from '../src/monitoring/gbuts-google-invites';
 import { googleCookieImport, membershipBenefitsDate } from '../src/monitoring/google-family-steel';
 import { createGbutsOttSellerClient } from '../src/lib/gbuts-ott-client';
 import type { YouTubeRenewalStore } from '../src/scheduler/gbuts-youtube-renewal';
@@ -13,6 +13,18 @@ function setup() {
   return { journal, order, save, allowed, scan, driver: { inspect, invite }, now, setView: (value: Partial<FamilyView>) => { view = { ...view, ...value }; } };
 }
 describe('verified paid buyer invitation transaction', () => {
+  it('refreshes a quiet saved cookie profile every fifteen minutes without turning a check into an invitation', () => {
+    const f = setup();
+    expect(familyRunPlan(f.journal, [], '2026-10-27T07:45:00Z', false, now())).toEqual({ browserRequired: true, checkOnly: true });
+    expect(familyRunPlan(f.journal, [], '2026-10-27T07:46:00Z', false, now())).toEqual({ browserRequired: false, checkOnly: false });
+    expect(familyRunPlan(f.journal, [f.order], '2026-10-27T07:46:00Z', false, now())).toEqual({ browserRequired: true, checkOnly: false });
+    expect(familyRunPlan(f.journal, [f.order], '2026-10-27T07:46:00Z', true, now())).toEqual({ browserRequired: true, checkOnly: true });
+  });
+  it('does not treat a recorded Gmail alias as a new send request during keepalive planning', () => {
+    const f = setup(); f.journal.orders[f.order.key] = { email: 'b.u.yer+old@googlemail.com', state: 'confirmed', updatedAt: now().toISOString() };
+    expect(familyRunPlan(f.journal, [f.order], now().toISOString(), false, now())).toEqual({ browserRequired: false, checkOnly: false });
+    expect(familyRunPlan(f.journal, [], 'invalid', false, now())).toEqual({ browserRequired: true, checkOnly: true });
+  });
   it('persists an attempt before sending and confirms one recipient only', async () => {
     const f = setup();
     f.driver.invite.mockImplementation(async (email, before) => {
