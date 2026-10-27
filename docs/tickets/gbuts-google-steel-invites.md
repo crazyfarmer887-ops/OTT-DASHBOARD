@@ -18,3 +18,12 @@ Dedicated server oneshot/timer every five minutes; no AIO/NBA code or service ch
 - [ ] Replace previous local sender heartbeat with server status monitoring and verify idle execution.
 
 Official provider references: https://docs.steel.dev/overview/sessions-api/configuration and https://docs.steel.dev/overview/sessions-api/reusing-auth-context . No authentication values are included in this ticket or application logs.
+
+
+## Authentication reuse follow-up
+
+Local read-only Steel check succeeded, but two independent server cookie-only sessions returned the ordinary Google sign-in identifier page (`GOOGLE_SIGNIN_REQUIRED`). No invitation was attempted. A dedicated persistent Steel profile and an interactive Google sign-in session were created for owner login. The authenticated Steel app viewer rendered black when embedded; opening its observed live-player URL directly in Chrome displays the remote Google sign-in form. Do not expose its capability URL in public logs. Owner login is pending; do not mark server scheduling active before verifying a released/READY profile in a fresh server session.
+
+Persistent-profile support restores that exact profile and never overwrites it with old exported cookies. The before-send safety check now rereads the current AIO worker flag and safe-mode path from the live process and the current private invitation enable flag. If any read fails, new sends are blocked. AIO/NBA runtimes are unchanged. Existing local heartbeat `google` is paused only during migration and must be restored if this turn remains blocked on login; pause it again and merge the latest local journal before final server activation.
+
+Candidate71a3c3c was archived and verified with478 tests on Linux. Private server cookie/journal staging exists; server timer is not enabled or installed. No server success or automatic delivery has been claimed. The persistent-profile follow-up adds two lifecycle tests.

@@ -20,6 +20,8 @@ export function googleCookieImport(raw: unknown): CookieData[] {
 export async function withSteelFamilyBrowser<T>(cookies: CookieData[], work: (browser: Browser) => Promise<T>, saveCookies: (cookies: CookieData[]) => void): Promise<T> {
   const key = process.env.STEEL_API_KEY?.trim();
   if (!key || /\s/.test(key)) throw Error('STEEL_KEY_REQUIRED');
+  const profileId = process.env.GBUTS_GOOGLE_STEEL_PROFILE_ID?.trim();
+  if (profileId && !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(profileId)) throw Error('STEEL_PROFILE_INVALID');
   const id = randomUUID(); let browser: Browser | undefined, socket: WebSocket | undefined;
   const request = async (suffix: string, body?: object) => {
     const r = await fetch(`https://api.steel.dev/v1/sessions${suffix}`, { method: 'POST', redirect: 'error', signal: AbortSignal.timeout(30000),
@@ -29,7 +31,7 @@ export async function withSteelFamilyBrowser<T>(cookies: CookieData[], work: (br
   };
   try {
     const session = await (await request('', { sessionId: id, timeout: 360000, inactivityTimeout: 60000, headless: false,
-      useProxy: false, solveCaptcha: false, persistProfile: false,
+      useProxy: false, solveCaptcha: false, persistProfile: Boolean(profileId), ...(profileId ? { profileId } : {}),
       stealthConfig: { skipFingerprintInjection: true, humanizeInteractions: false }, debugConfig: { interactive: false } })).json() as { id?: string };
     if (session.id !== id) throw Error('STEEL_SESSION_INVALID');
     const url = new URL('wss://connect.steel.dev'); url.searchParams.set('apiKey', key); url.searchParams.set('sessionId', id);
@@ -41,7 +43,9 @@ export async function withSteelFamilyBrowser<T>(cookies: CookieData[], work: (br
     try { browser = await Promise.race([puppeteer.connect({ transport, protocolTimeout: 30000 }), new Promise<never>((_, reject) => {
       timeout = setTimeout(() => { socket!.terminate(); reject(Error('STEEL_CONNECTION_TIMEOUT')); }, 30000);
     })]); } finally { clearTimeout(timeout); }
-    await browser.defaultBrowserContext().setCookie(...cookies);
+    // A full profile preserves browser-bound Google login state. Do not overwrite it
+    // with an old exported cookie set or fall back to another identity on failure.
+    if (!profileId) await browser.defaultBrowserContext().setCookie(...cookies);
     const result = await work(browser);
     saveCookies((await browser.defaultBrowserContext().cookies()).filter(x => cookieDomains.has(x.domain)));
     return result;

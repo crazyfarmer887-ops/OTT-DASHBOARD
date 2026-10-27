@@ -1,5 +1,6 @@
 import { readFileSync, mkdirSync, openSync, writeFileSync, fsyncSync, closeSync, renameSync, unlinkSync, chmodSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { loadGbutsSession } from '../src/lib/gbuts-session';
 import { createGbutsOttSellerClient } from '../src/lib/gbuts-ott-client';
 import { readYouTubeRenewals } from '../src/scheduler/gbuts-youtube-renewal';
@@ -17,9 +18,13 @@ function durable(path: string, value: unknown) {
   catch (e) { try { unlinkSync(tmp); } catch {} throw e; }
 }
 function allowed(): boolean {
-  if (process.env.GBUTS_OTT_SYNC_ENABLED !== 'true') return false;
   try {
-    const p = process.env.SAFE_MODE_PATH || '/home/ubuntu/.hermes/hermes-agent/graytag-aio-manager-0606/data/safe-mode.json';
+    if (!validateFamilyJournal(JSON.parse(readFileSync(journalPath, 'utf8'))).enabled) return false;
+    const pid = execFileSync('/usr/bin/systemctl', ['show', 'aio-dashboard', '-p', 'MainPID', '--value'], { encoding: 'utf8', timeout: 5000 }).trim();
+    if (!/^\d+$/.test(pid) || Number(pid) < 1) return false;
+    const env = Object.fromEntries(readFileSync(`/proc/${pid}/environ`, 'utf8').split('\0').filter(x => x.includes('=')).map(x => [x.slice(0, x.indexOf('=')), x.slice(x.indexOf('=') + 1)]));
+    if (env.GBUTS_OTT_SYNC_ENABLED !== 'true') return false;
+    const p = env.SAFE_MODE_PATH || '/home/ubuntu/.hermes/hermes-agent/graytag-aio-manager-0606/data/safe-mode.json';
     return JSON.parse(readFileSync(p, 'utf8')).enabled === false;
   } catch { return false; }
 }

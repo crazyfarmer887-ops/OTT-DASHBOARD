@@ -9,6 +9,7 @@ vi.mock('ws', () => ({ default: class {
 import { withSteelFamilyBrowser } from '../src/monitoring/google-family-steel';
 beforeEach(() => {
   vi.clearAllMocks(); vi.stubEnv('STEEL_API_KEY', 'private-test-provider-key');
+  vi.stubEnv('GBUTS_GOOGLE_STEEL_PROFILE_ID', '');
   mocks.cookies.mockResolvedValue([{ name: 'cookie', value: 'private', domain: '.google.com', path: '/' }, { name: 'other', value: 'private', domain: '.other.com', path: '/' }]);
   mocks.connect.mockResolvedValue({ disconnect: mocks.disconnect, defaultBrowserContext: () => ({ setCookie: mocks.setCookie, cookies: mocks.cookies }) });
 });
@@ -30,4 +31,15 @@ it('rejects an unrelated create response but still cleans up its preallocated se
   const fetch = vi.fn(async () => new Response(JSON.stringify({ id: 'unrelated-session' }), { status: 200 })); vi.stubGlobal('fetch', fetch);
   await expect(withSteelFamilyBrowser([], async () => {}, vi.fn())).rejects.toThrow('STEEL_SESSION_INVALID');
   expect(fetch).toHaveBeenCalledTimes(2); expect(String(fetch.mock.calls[1][0])).not.toContain('unrelated-session'); expect(mocks.connect).not.toHaveBeenCalled();
+});
+it('reuses only the configured persistent profile without injecting stale exported cookies', async () => {
+  vi.stubEnv('GBUTS_GOOGLE_STEEL_PROFILE_ID', '11111111-2222-3333-4444-555555555555');
+  const fetch = vi.fn(async (_url, init) => new Response(JSON.stringify({ id: init.body ? JSON.parse(init.body).sessionId : null }), { status: 200 })); vi.stubGlobal('fetch', fetch);
+  await withSteelFamilyBrowser([{ name: 'old', value: 'private', domain: '.google.com' }], async () => 'checked', vi.fn());
+  expect(JSON.parse(fetch.mock.calls[0][1].body)).toMatchObject({ profileId: '11111111-2222-3333-4444-555555555555', persistProfile: true });
+  expect(mocks.setCookie).not.toHaveBeenCalled();
+});
+it('fails closed on an invalid profile binding without allocating any session', async () => {
+  vi.stubEnv('GBUTS_GOOGLE_STEEL_PROFILE_ID', 'not-a-profile'); const fetch = vi.fn(); vi.stubGlobal('fetch', fetch);
+  await expect(withSteelFamilyBrowser([], async () => {}, vi.fn())).rejects.toThrow('STEEL_PROFILE_INVALID'); expect(fetch).not.toHaveBeenCalled();
 });
