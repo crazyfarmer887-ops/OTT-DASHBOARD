@@ -1,0 +1,10 @@
+[Unit]
+Description=Check GButs Google family invitation requests every five minutes
+
+[Timer]
+OnCalendar=*-*-* *:0/5:00
+AccuracySec=10s
+Unit=gbuts-google-invites.service
+
+[Install]
+WantedBy=timers.target

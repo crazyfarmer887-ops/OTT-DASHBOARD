@@ -1,0 +1,11 @@
+[Unit]
+Description=GButs verified purchaser Google family invitations through Steel
+After=network-online.target aio-dashboard.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/ubuntu/gbuts-google-invites-current
+ExecStart=/usr/bin/flock -n /home/ubuntu/.config/gbuts/google-invites/run.lock /usr/bin/python3 deploy/run-gbuts-google-invites.py
+TimeoutStartSec=7min
+UMask=0077
