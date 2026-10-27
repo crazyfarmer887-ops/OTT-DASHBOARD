@@ -190,15 +190,24 @@ def collect_google(now):
 def kilo_payload(events, recovered=False):
     # Rebuild every field. Never serialize the API policies, logs, environment or journal.
     safe = [issue(e['code'], e['service'], e['count']) for e in events]
-    return {'model': KILO_MODEL, 'max_tokens': 160, 'temperature': 0, 'stream': False,
+    return {'model': KILO_MODEL, 'max_tokens': 512, 'temperature': 0, 'stream': False,
         'messages': [{'role': 'system', 'content': 'Summarize only the supplied operational event codes in one short Korean sentence. No commands, URLs, account details, or invented diagnoses. These are redacted service statuses.'},
             {'role': 'user', 'content': json.dumps({'events': safe, 'recovered': bool(recovered)})}]}
 
 
 def kilo_summary(events, recovered=False, request=json_request):
     try:
-        data = request(KILO_URL, kilo_payload(events, recovered), timeout=20)
-        text = str(data['choices'][0]['message'].get('content') or '').strip()
+        payload = kilo_payload(events, recovered)
+        data = request(KILO_URL, payload, timeout=35)
+        choice = data['choices'][0]
+        content = choice['message'].get('content')
+        # Some free routes spend the completion budget entirely on reasoning.
+        # One larger-budget retry stays on the same free router; never retry 429s.
+        if not content and choice.get('finish_reason') == 'length':
+            payload = {**payload, 'max_tokens': 2048}
+            data = request(KILO_URL, payload, timeout=35)
+            content = data['choices'][0]['message'].get('content')
+        text = ' '.join(content.split()) if isinstance(content, str) else ''
         if not text or len(text) > 220 or re.search(r'@|https?://|[\x00-\x1f]|sudo|\bssh\b|\bcurl\b|\brm\s', text):
             return ''
         return text

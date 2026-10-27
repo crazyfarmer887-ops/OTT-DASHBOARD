@@ -95,6 +95,18 @@ class OperationsMonitorTests(unittest.TestCase):
         self.assertEqual(calls, [m.KILO_URL])
         self.assertIn('쿠키', m.decide(events, {}, {}, False, NOW)[0])
 
+    def test_reasoning_only_free_response_gets_one_larger_free_retry(self):
+        calls = []
+        def request(url, payload, **kwargs):
+            calls.append((url, payload))
+            if len(calls) == 1:
+                return {'choices': [{'finish_reason': 'length', 'message': {'content': None, 'reasoning': 'internal'}}]}
+            return {'choices': [{'finish_reason': 'stop', 'message': {'content': '쿠키 세션\n확인이 필요합니다.'}}]}
+        self.assertEqual(m.kilo_summary([m.issue('YOUTUBE_SIGNIN_REQUIRED')], request=request), '쿠키 세션 확인이 필요합니다.')
+        self.assertEqual(len(calls), 2)
+        self.assertGreater(calls[1][1]['max_tokens'], calls[0][1]['max_tokens'])
+        self.assertTrue(all(url == m.KILO_URL and payload['model'] == 'kilo-auto/free' for url, payload in calls))
+
     def test_healthy_main_never_calls_kilo(self):
         with tempfile.TemporaryDirectory() as folder, patch.dict(m.os.environ, {'GBUTS_OPS_MONITOR_ROOT': folder}), \
             patch.object(m, 'collect_google', return_value=([], {}, False)), \
