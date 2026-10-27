@@ -44,7 +44,15 @@ export async function requestAaryanNetflixCode(email: string, kind: NetflixCodeK
         if (!callbackUsed) {
           const buttons = m.replyMarkup instanceof Api.ReplyInlineMarkup ? m.replyMarkup.rows.flatMap(r=>r.buttons) : [];
           const button = buttons.find(b => b.type instanceof Api.InlineButtonTypeCallback && (kind==='login' ? /^(?:🔢\s*)?Sign-in Code$|Try Sign.?in Code|로그인 코드/i : /^(?:⚠️?\s*)?Verification Code$|Try (?:Verification|Account) Code|계정 인증 코드/i).test(b.text));
-          if (button?.type instanceof Api.InlineButtonTypeCallback) { callbackUsed=true;edited.add(m.id); await client.invoke(new Api.messages.GetBotCallbackAnswer({peer:bot,msgId:m.id,data:button.type.data})); }
+          if (button?.type instanceof Api.InlineButtonTypeCallback) {
+            callbackUsed=true;edited.add(m.id);
+            // A bot can deliver the code but omit answering the callback RPC.
+            // Click once, then read its correlated reply even if that acknowledgement stalls.
+            let callbackTimeout: ReturnType<typeof setTimeout> | undefined;
+            try { await Promise.race([client.invoke(new Api.messages.GetBotCallbackAnswer({peer:bot,msgId:m.id,data:button.type.data})).catch(()=>undefined),
+              new Promise<void>(resolve=>{callbackTimeout=setTimeout(resolve,3000);callbackTimeout.unref();})]); }
+            finally {if(callbackTimeout)clearTimeout(callbackTimeout);}
+          }
         }
       }
       await new Promise(resolve=>setTimeout(resolve,2000));
