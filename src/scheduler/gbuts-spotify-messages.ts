@@ -18,6 +18,15 @@ export function spotifyRegisteredAccountInvitedReply(email: string, password: st
   return `ID : ${email}\n비밀번호 : ${password}\n접속하신 뒤 이메일, 비밀번호 바꾸시고 사용하시면 됩니다!`;
 }
 
+/** Explicit partner-issued fields take precedence; empty fields retain the legacy workflow. */
+export function spotifyRegisteredLogin(row: SpotifyNotionRow): { email: string; password: string } | null {
+  const email = row.registeredEmail?.trim() || jamkkangudokSpotifyEmail(row.email);
+  const password = row.registeredPassword || row.password;
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+    || password.length < 6 || password.length > 128 || /[\r\n]/.test(password)) return null;
+  return { email, password };
+}
+
 type MessageState = 'attempted' | 'confirmed';
 interface MessageRecord { state: MessageState; text?: string; textHash?: string; roomId: string; updatedAt: string }
 export interface GbutsSpotifyMessageJournal { version: 1; records: Record<string, MessageRecord> }
@@ -112,7 +121,8 @@ export async function syncGbutsSpotifyMessages(deps: GbutsSpotifyMessageDependen
       && (!newAccountRequestedAt || newAccountRequestedAt <= buyerCredentials.receivedAt));
     // The partner's Registered check confirms creation under the agreed domain.
     // The Notion ID may remain the buyer's original address.
-    const deliveryEmail = row?.registered ? jamkkangudokSpotifyEmail(row.email) : row?.email;
+    const issuedLogin = row?.registered ? spotifyRegisteredLogin(row) : null;
+    const deliveryEmail = row?.registered ? issuedLogin?.email : row?.email;
     const manuallyIssuedLogin = Boolean(row?.registered && newAccountRequestedAt
       && (!buyerCredentials || newAccountRequestedAt > buyerCredentials.receivedAt)
       && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.email) && row.password.length >= 6);
@@ -123,9 +133,10 @@ export async function syncGbutsSpotifyMessages(deps: GbutsSpotifyMessageDependen
       && (ackStart === null || Date.parse(buyerChoiceAt) >= ackStart))
       desired.push({ suffix: 'request-received', text: SPOTIFY_REQUEST_ACK });
     if (invitedMatches && row && deliveryEmail) {
-      const fingerprint = createHash('sha256').update(`${deliveryEmail}\0${row.password}`).digest('hex').slice(0, 16);
+      const deliveryPassword = issuedLogin?.password ?? row.password;
+      const fingerprint = createHash('sha256').update(`${deliveryEmail}\0${deliveryPassword}`).digest('hex').slice(0, 16);
       desired.push({ suffix: row.registered ? `registered-invited:${fingerprint}` : `invited:${fingerprint}`,
-        text: row.registered ? spotifyRegisteredAccountInvitedReply(deliveryEmail, row.password) : SPOTIFY_INVITED_REPLY });
+        text: row.registered ? spotifyRegisteredAccountInvitedReply(deliveryEmail, deliveryPassword) : SPOTIFY_INVITED_REPLY });
     }
     for (const item of desired) {
       const key = `${orderKey}:${item.suffix}`;
@@ -148,6 +159,7 @@ export async function syncGbutsSpotifyMessages(deps: GbutsSpotifyMessageDependen
         const freshRows = (await deps.listRows()).filter(value => value.orderKey === orderKey);
         const fresh = freshRows.length === 1 ? freshRows[0] : null;
         if (!fresh || fresh.id !== row.id || fresh.email !== row.email || fresh.password !== row.password
+          || fresh.registeredEmail !== row.registeredEmail || fresh.registeredPassword !== row.registeredPassword
           || fresh.registered !== row.registered || !fresh.invited || fresh.cancelled) continue;
         const latestChat = await deps.getChat(roomId);
         const latestCredentials = await (deps.extractCredentials || extractGbutsSpotifyCredentials)(latestChat.messages, member.userSeq);

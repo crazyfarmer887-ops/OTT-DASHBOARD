@@ -22,6 +22,8 @@ export interface SpotifyNotionRow {
   emailHistory: string[];
   password: string;
   registered?: boolean;
+  registeredEmail?: string;
+  registeredPassword?: string;
   invited: boolean;
   cancelled: boolean;
 }
@@ -133,6 +135,7 @@ export async function syncGbutsSpotifyCredentials(deps: GbutsSpotifySyncDependen
     const current = await deps.getRow(matches[0].id);
     if (!current || current.orderKey !== orderKey || current.email !== matches[0].email
       || current.password !== matches[0].password || current.registered !== matches[0].registered
+      || current.registeredEmail !== matches[0].registeredEmail || current.registeredPassword !== matches[0].registeredPassword
       || current.invited !== matches[0].invited
       || current.cancelled !== matches[0].cancelled || current.cancelled) {
       conflicts += 1;
@@ -221,6 +224,10 @@ function parseNotionRow(value: unknown): SpotifyNotionRow | null {
     emailHistory,
     password: richTextValue(page.properties?.Password?.rich_text),
     registered: page.properties?.Registered?.checkbox === true,
+    ...(page.properties?.['registered email'] ? { registeredEmail: String(
+      page.properties['registered email'].email ?? richTextValue(page.properties['registered email'].rich_text)).trim() } : {}),
+    ...(page.properties?.['registered password'] ? { registeredPassword:
+      richTextValue(page.properties['registered password'].rich_text) } : {}),
     invited: page.properties?.Invited?.checkbox === true,
     cancelled: (active.length === 0 && emailParts.length > 0) || Boolean(cancelledRequest),
   };
@@ -313,6 +320,8 @@ export function createGbutsSpotifyNotionClient(token: string, dataSourceId = SPO
           'Spotify account': { title: notionTitle(credentials.email) },
           Password: { rich_text: [{ text: { content: credentials.password } }] },
           ...(row.email !== credentials.email ? { Registered: { checkbox: false } } : {}),
+          ...(row.registeredEmail !== undefined ? { 'registered email': { email: null } } : {}),
+          ...(row.registeredPassword !== undefined ? { 'registered password': { rich_text: [] } } : {}),
           Invited: { checkbox: false },
         } }),
       });
