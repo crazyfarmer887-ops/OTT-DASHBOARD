@@ -188,6 +188,7 @@ async function run() {
     sent: 0,
     handoffs: 0,
     errors: 0,
+    unavailable: 0,
   };
   try {
     const cfg = read<Config>("config.json");
@@ -244,15 +245,38 @@ async function run() {
             fresh: () => fresh(c),
             send: (t) => sendGbutsSingleText(c.roomId, seller, t),
             allowed: () =>
-              safe() && read<Config>("config.json").mode === cfg.mode,
-            alert: async (reason, plans) => {
+              safe() &&
+              JSON.stringify(read<Config>("config.json")) ===
+                JSON.stringify(cfg),
+            alert: async (reason, plans, incident) => {
               const out = await sendSellerAlert({
                 provider: "gbuts",
                 category: "inquiry",
                 key:
-                  "gbuts-support-" + hash([c.postSeq, c.memberSeq, c.roomId]),
+                  "gbuts-support-" +
+                  hash([c.postSeq, c.memberSeq, c.roomId, incident]),
                 title: `벗츠 ${c.service} 상담 확인 필요`,
-                body: `주문: ${c.postSeq}:${c.memberSeq}\n사유: ${reason}\n진행 단계: ${plans.join(", ")}\n자동상담을 멈췄습니다. 해당 1:1 채팅에서 확인해주세요.`,
+                body: `주문: ${c.postSeq}:${c.memberSeq}\n사유: ${
+                  (
+                    {
+                      refund_requested: "환불 요청 — 승인 여부 판단 필요",
+                      replacement_requested:
+                        "계정 교체 요청 — 승인 여부 판단 필요",
+                      dispute: "신고 또는 분쟁 관련 문의",
+                      guidance_failed:
+                        "문제 해결 안내 후 실패 또는 추가 확인 필요",
+                      operator_decision: "판매자 판단 필요",
+                      draft_not_approved: "답변 검증 불일치",
+                      inference_unavailable: "AI 연결 확인 필요",
+                      delivery_uncertain: "답변 저장 여부 확인 필요",
+                      previous_delivery_uncertain:
+                        "이전 답변 저장 여부 확인 필요",
+                      purchase_review: "구매 상태 확인 필요",
+                      operator_review: "판매자 확인 대기",
+                      operator_review_retry: "알림 재전달",
+                    } as Record<string, string>
+                  )[reason] || "확인 필요"
+                }\n진행 단계: ${plans.join(", ")}\n자동상담을 멈췄습니다. 해당 1:1 채팅에서 확인해주세요.`,
                 actionUrl: "https://gbuts.com/seller/chats",
                 statePath: root + "/telegram-receipts.json",
                 throttleMs: 30 * 24 * 3600000,
@@ -265,8 +289,15 @@ async function run() {
           if (result === "sent") status.sent = Number(status.sent) + 1;
           if (result === "handoff")
             status.handoffs = Number(status.handoffs) + 1;
-        } catch {
-          status.errors = Number(status.errors) + 1;
+        } catch (error) {
+          if (
+            error &&
+            typeof error === "object" &&
+            "status" in error &&
+            error.status === 400
+          )
+            status.unavailable = Number(status.unavailable) + 1;
+          else status.errors = Number(status.errors) + 1;
         }
       }
     }
@@ -274,6 +305,39 @@ async function run() {
   } catch {
     status.state = "error";
   } finally {
+    const prior = existsSync(root + "/status.json")
+      ? read<Record<string, unknown>>("status.json")
+      : {};
+    status.consecutiveErrors =
+      status.state === "error" || status.state === "partial"
+        ? Number(prior.consecutiveErrors || 0) + 1
+        : 0;
+    try {
+      if (read<Config>("config.json").mode === "auto" && safe()) {
+        if (Number(status.unavailable) > 0)
+          await sendSellerAlert({
+            provider: "gbuts",
+            category: "system",
+            key: "gbuts-support-unavailable-rooms",
+            title: "벗츠 상담 조회 제외",
+            body: `기존 구매자 채팅 ${status.unavailable}개를 플랫폼에서 조회할 수 없어 자동상담에서 제외했습니다. 조회 가능한 방의 상담은 계속합니다.`,
+            statePath: root + "/telegram-receipts.json",
+            throttleMs: 24 * 3600000,
+          });
+        if (Number(status.consecutiveErrors) >= 2)
+          await sendSellerAlert({
+            provider: "gbuts",
+            category: "system",
+            key: "gbuts-support-worker-error",
+            title: "벗츠 자동상담 연결 확인 필요",
+            body: "상담 조회 또는 처리 오류가 반복됩니다. 잘못된 답변을 보내지 않도록 해당 처리는 중단했습니다.",
+            statePath: root + "/telegram-receipts.json",
+            throttleMs: 3600000,
+          });
+      }
+    } catch {
+      status.notificationError = true;
+    }
     status.completedAt = new Date().toISOString();
     durable("status.json", status);
     running = false;

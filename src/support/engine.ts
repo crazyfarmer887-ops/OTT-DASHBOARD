@@ -35,6 +35,7 @@ export type Receipt = {
   reply?: string;
   at: string;
   notified?: boolean;
+  reason?: string;
 };
 export type RoomState = {
   rounds: number;
@@ -86,7 +87,7 @@ export async function processInquiry(
     infer(f: Features): Promise<unknown>;
     fresh(): Promise<Context>;
     send(text: string): Promise<void>;
-    alert(reason: string, plans: Plan[]): Promise<boolean>;
+    alert(reason: string, plans: Plan[], incident: string): Promise<boolean>;
     allowed(): boolean;
     now?: () => Date;
   },
@@ -113,8 +114,9 @@ export async function processInquiry(
       (r) => r.state === "handoff" && !r.notified,
     )) {
       r.notified = await deps.alert(
-        "operator_review_retry",
+        r.reason || "operator_review_retry",
         Object.values(priorRoom.receipts).map((r) => r.plan),
+        r.event,
       );
       deps.save();
     }
@@ -127,6 +129,11 @@ export async function processInquiry(
     !latest ||
     latest.senderSeq !== c.buyerSeq ||
     latest.messageType !== "TEXT" ||
+    ordered.some(
+      (m) =>
+        m.senderSeq === c.sellerSeq &&
+        time(m.createdAt) === time(latest.createdAt),
+    ) ||
     !Number.isFinite(time(latest.createdAt)) ||
     time(latest.createdAt) < time(cfg.startAt) ||
     time(latest.createdAt) > now.getTime() ||
@@ -152,11 +159,13 @@ export async function processInquiry(
     const r = room.receipts[event];
     r.state = "handoff";
     r.plan = "handoff";
+    r.reason = reason;
     deps.save();
     if (!r.notified) {
       r.notified = await deps.alert(
         reason,
         Object.values(room.receipts).map((x) => x.plan),
+        event,
       );
       deps.save();
     }
@@ -166,7 +175,7 @@ export async function processInquiry(
     if (cfg.mode === "auto") return handoff("purchase_review");
     return "ineligible";
   }
-  if (old?.state === "handoff") return handoff("operator_review");
+  if (old?.state === "handoff") return handoff(old.reason || "operator_review");
   if (room.paused) return "human_owned";
   if (old?.state === "attempted") {
     if (
@@ -176,7 +185,7 @@ export async function processInquiry(
           m.senderSeq === c.sellerSeq &&
           m.messageType === "TEXT" &&
           m.message === old.reply &&
-          time(m.createdAt) >= time(old.at),
+          time(m.createdAt) >= Math.floor(time(old.at) / 1000) * 1000,
       )
     ) {
       old.state = "confirmed";
@@ -252,7 +261,17 @@ export async function processInquiry(
   if (cfg.mode === "draft") return "draft";
   if (plan === "handoff")
     return handoff(
-      allowedPlan(f) === "handoff" ? "operator_decision" : "draft_not_approved",
+      allowedPlan(f) === "handoff"
+        ? f.intents.includes("refund")
+          ? "refund_requested"
+          : f.intents.includes("replace")
+            ? "replacement_requested"
+            : f.intents.includes("dispute")
+              ? "dispute"
+              : f.intents.includes("failed")
+                ? "guidance_failed"
+                : "operator_decision"
+        : "draft_not_approved",
     );
   if (plan === "delegate") {
     rec.state = "delegated";
@@ -308,7 +327,7 @@ export async function processInquiry(
         m.senderSeq === c.sellerSeq &&
         m.messageType === "TEXT" &&
         m.message === rec.reply &&
-        time(m.createdAt) >= time(rec.at),
+        time(m.createdAt) >= Math.floor(time(rec.at) / 1000) * 1000,
     )
   ) {
     rec.state = "confirmed";

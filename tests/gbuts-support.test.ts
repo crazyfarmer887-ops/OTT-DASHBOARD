@@ -276,3 +276,81 @@ describe("Dify inference transport", () => {
     expect(fetcher).not.toHaveBeenCalled();
   });
 });
+
+describe("anonymous model and strict output boundary", () => {
+  it("uses only the approved free route and label payload, without seller keys", async () => {
+    const f = features(
+      "로그인 오류 user@example.com password:secret123",
+      "넷플릭스",
+      true,
+      0,
+    );
+    const fetcher = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            choices: [
+              {
+                message: {
+                  content: JSON.stringify({
+                    plan: allowedPlan(f),
+                    confidence: 1,
+                  }),
+                },
+              },
+            ],
+          }),
+        ),
+    );
+    await modelPlan(f, { OPENROUTER_API_KEY: "must-not-leave" }, fetcher);
+    const [url, options] = fetcher.mock.calls[0] as unknown as [
+      string,
+      RequestInit,
+    ];
+    expect(url).toBe("https://ai-gateway.kilo.ai/api/v1/chat/completions");
+    expect(JSON.stringify(options)).not.toMatch(
+      /must-not-leave|example.com|secret123/,
+    );
+    expect(JSON.parse(String(options.body)).model).toBe("kilo-auto/free");
+  });
+  it("does not silently switch to a paid model", async () => {
+    const fetcher = vi.fn();
+    await expect(
+      modelPlan(
+        features("문의", "넷플릭스", true, 0),
+        { GBUTS_SUPPORT_MODEL: "paid/model" },
+        fetcher,
+      ),
+    ).rejects.toThrow("MODEL_ROUTE_NOT_APPROVED");
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+  it("rejects an arbitrary model reply field", async () => {
+    const { c, deps } = harness();
+    deps.infer.mockResolvedValue({
+      plan: "login_clarify",
+      confidence: 1,
+      reply: "환불은 불가능합니다",
+    } as any);
+    expect(await processInquiry(c, deps)).toBe("handoff");
+    expect(deps.send).not.toHaveBeenCalled();
+  });
+});
+
+describe("native chat time precision", () => {
+  it("confirms a saved message when GButs truncates milliseconds", async () => {
+    const { c, deps } = harness();
+    deps.now = () => new Date("2026-10-28T05:00:00.987Z");
+    deps.send.mockImplementation(async (text) => {
+      c.messages.push(msg(text, 1, "2026-10-28 14:00:00"));
+    });
+    expect(await processInquiry(c, deps)).toBe("sent");
+    await processInquiry(c, deps);
+    expect(deps.send).toHaveBeenCalledTimes(1);
+  });
+  it("does not answer ambiguous buyer/seller messages in the same second", async () => {
+    const { c, deps } = harness();
+    c.messages = [msg("제가 확인할게요", 1, at), msg("로그인 안돼요", 2, at)];
+    expect(await processInquiry(c, deps)).toBe("quiet");
+    expect(deps.send).not.toHaveBeenCalled();
+  });
+});

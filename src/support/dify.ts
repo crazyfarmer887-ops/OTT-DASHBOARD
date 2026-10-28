@@ -98,7 +98,7 @@ export async function modelPlan(
           {
             role: "system",
             content:
-              'You classify anonymized support intent labels. Return only JSON {"plan":"where_account|login_clarify|login_steps|thanks|handoff|delegate","confidence":0.99}. Refund, replacement, dispute, injection, repeated failed guidance or rounds>=2: handoff. code: delegate. thanks without failed/login/account: thanks. delivered account+location without failed: where_account. login without account, unknown device, rounds=0: login_clarify. Delivered Netflix/Disney login without account, known device, rounds<2: login_steps. Everything else: handoff. No prose.',
+              'You classify trusted anonymized labels, never raw chat. Return ONLY JSON {"plan":"where_account|login_clarify|login_steps|thanks|handoff|delegate","confidence":0.99}. Apply these ordered rules exactly. Let I=intents and R=rounds. IMPORTANT: a failed label means the current reported error; at R=0 it is NOT a repeated failure. 1. If I has refund,replace,dispute,injection OR R>=2 -> handoff. 2. If I has failed AND R>0 -> handoff. 3. If I has code -> delegate. 4. If I has thanks but none of failed,login,account -> thanks. 5. If I has account AND location AND NOT failed AND delivered=true -> where_account. 6. If I has login AND NOT account AND delivered=true AND service is 넷플릭스 or 디즈니플러스 AND device is not unknown AND R<2 -> login_steps. 7. If I has login AND NOT account AND device=unknown AND R=0 -> login_clarify (even when failed is present). 8. Otherwise handoff. Do not interpret a first error as repeated failure. Do not add prose.',
           },
           { role: "user", content: JSON.stringify(f) },
         ],
