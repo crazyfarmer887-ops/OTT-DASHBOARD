@@ -4,7 +4,7 @@ import { gbutsChatContainsText } from '../lib/gbuts-chat-delivery';
 import { extractGbutsSpotifyCredentials, isActiveGbutsSpotifyMember, isSpotifyAccountForBuyer,
   type GbutsChatMessage, type GbutsSpotifyMember } from '../lib/gbuts-spotify';
 import { requestedSpotifyNewAccount, spotifyRegisteredAccountInvitedReply, spotifyRegisteredLogin,
-  SPOTIFY_INVITED_REPLY } from './gbuts-spotify-messages';
+  SPOTIFY_INVITED_REPLY, spotifyChatContainsIssuedLogin } from './gbuts-spotify-messages';
 import type { SpotifyNotionRow } from './gbuts-spotify-sync';
 
 export type SpotifyPlatform = 'gbuts' | 'everyview';
@@ -62,7 +62,8 @@ export function assessSpotifyBuyerDelivery(s: SpotifyBuyerDeliverySnapshot): Spo
     return { ...issueBase, code: 'identity_mismatch' };
   const expected = row.registered && issued ? spotifyRegisteredAccountInvitedReply(issued.email, issued.password)
     : SPOTIFY_INVITED_REPLY;
-  if (gbutsChatContainsText([...s.messages], s.sellerSeq, expected)) return null;
+  if (gbutsChatContainsText([...s.messages], s.sellerSeq, expected)
+    || (issued && spotifyChatContainsIssuedLogin(s.messages, s.sellerSeq, issued))) return null;
   return { ...issueBase, code: s.uncertainDelivery ? 'delivery_uncertain' : 'delivery_missing' };
 }
 

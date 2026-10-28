@@ -37,6 +37,13 @@ describe('Spotify completion/read-only delivery assessment', () => {
       message: spotifyRegisteredAccountInvitedReply('issued@example.net', 'Issued456!') }];
     expect(assessSpotifyBuyerDelivery({ ...s, uncertainDelivery: true })).toBeNull();
   });
+  it('recognizes legacy manual delivery of the exact issued pair without requiring a canned template', () => {
+    const s = buyer();
+    s.messages = [...s.messages, { senderSeq: 7, messageType: 'TEXT', createdAt: '2026-10-28T03:03:00Z',
+      message: 'issued@example.net PW : Issued456! 입니다. 계정 정보를 변경해서 이용해주세요.' }];
+    expect(assessSpotifyBuyerDelivery(s)).toBeNull();
+    expect(assessSpotifyBuyerDelivery({ ...s, messages: s.messages.map(m => ({ ...m, senderSeq: 42 })) })?.code).toBe('delivery_missing');
+  });
   it('stays quiet while partner fulfillment is incomplete or a buyer is refunded', () => {
     expect(assessSpotifyBuyerDelivery({ ...buyer(), rows: [{ ...row, invited: false }] })).toBeNull();
     expect(assessSpotifyBuyerDelivery({ ...buyer(), rows: [{ ...row, registered: false, invited: false }] })).toBeNull();

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createGbutsSpotifyNotionClient } from '../src/scheduler/gbuts-spotify-sync';
-import { spotifyRegisteredAccountInvitedReply, spotifyRegisteredLogin, syncGbutsSpotifyMessages } from '../src/scheduler/gbuts-spotify-messages';
+import { spotifyChatContainsIssuedLogin, spotifyRegisteredAccountInvitedReply, spotifyRegisteredLogin, syncGbutsSpotifyMessages } from '../src/scheduler/gbuts-spotify-messages';
 
 describe('Spotify partner-issued login delivery', () => {
   it('retains the Notion edit timestamp for future unbound-completion monitoring', async () => {
@@ -40,6 +40,38 @@ describe('Spotify partner-issued login delivery', () => {
     expect(JSON.stringify(journal)).not.toContain(issuedPassword || 'Original123!');
   });
 
+  it.each([false, true])('adopts an old manually saved issued pair without another SEND (Everyview=%s)', async everyview => {
+    const journal = { version: 1 as const, records: {} };
+    const sendText = vi.fn();
+    const orderKey = `${everyview ? 'everyview:' : ''}15557:91`;
+    await syncGbutsSpotifyMessages({
+      orderKey: () => orderKey,
+      listMembers: async () => [{ seq: 91, userSeq: 42, productId: 'SPOT1', status: 'APPLY', cancelStatus: null }],
+      openPrivateRoom: async () => '777', sellerAccountSeq: async () => 7,
+      getChat: async () => ({ messages: [{ senderSeq: 42, messageType: 'TEXT', message: '새 계정 발급 부탁합니다', createdAt: '2026-10-27T00:00:00Z' },
+        { senderSeq: 7, messageType: 'TEXT', message: 'ID : issued@example.net PW : Issued456! 입니다!', createdAt: '2026-10-27T00:01:00Z' }] }),
+      listRows: async () => [{ id: 'p', orderKey, email: 'original@example.com', password: 'Original123!', emailHistory: [],
+        registered: true, invited: true, cancelled: false, registeredEmail: 'issued@example.net', registeredPassword: 'Issued456!' }],
+      sendText, readJournal: () => journal, writeJournal: vi.fn(),
+    }, 15557);
+    expect(sendText).not.toHaveBeenCalled();
+    expect(Object.values(journal.records)).toEqual([expect.objectContaining({ state: 'confirmed', roomId: '777' })]);
+  });
+  it('requires the exact email and whole password in one saved seller message', () => {
+    const login = { email: 'issued@example.net', password: 'Issued456!' };
+    const matches = (text: string, sender = 7) => spotifyChatContainsIssuedLogin([{ senderSeq: sender, messageType: 'TEXT', message: text, createdAt: '2026-10-28T00:00:00Z' }], 7, login);
+    expect(matches('issued@example.net PW : Issued456! 입니다!')).toBe(true);
+    expect(matches('notissued@example.net PW : Issued456!')).toBe(false);
+    expect(matches('issued@example.net PW : XIssued456!')).toBe(false);
+    expect(matches('issued@example.net PW : Issued456!X')).toBe(false);
+    expect(matches('issued@example.net PW : Issued456!', 42)).toBe(false);
+    const special = { email: 'issued@example.net', password: 'A+b.c[9]$!' };
+    expect(spotifyChatContainsIssuedLogin([{ senderSeq: 7, messageType: 'TEXT', createdAt: '2026-10-28T00:00:00Z',
+      message: 'issued@example.net PW : A+b.c[9]$!' }], 7, special)).toBe(true);
+    expect(spotifyChatContainsIssuedLogin([{ senderSeq: 7, messageType: 'TEXT', createdAt: '2026-10-28T00:00:00Z',
+      message: 'issued@example.net PW : Abxc9' }], 7, special)).toBe(false);
+
+  });
   it('does not fall back from a malformed explicit issued login', () => {
     expect(spotifyRegisteredLogin({ id: 'p', orderKey: '15557:91', email: 'buyer@example.com',
       password: 'Original123!', emailHistory: [], registered: true, invited: true, cancelled: false,

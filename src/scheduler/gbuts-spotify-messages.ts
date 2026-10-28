@@ -18,6 +18,16 @@ export function spotifyRegisteredAccountInvitedReply(email: string, password: st
   return `ID : ${email}\n비밀번호 : ${password}\n접속하신 뒤 이메일, 비밀번호 바꾸시고 사용하시면 됩니다!`;
 }
 
+/** Historical seller messages may deliver the same issued pair without today's template. */
+export function spotifyChatContainsIssuedLogin(messages: readonly GbutsChatMessage[], sellerSeq: number,
+  login: { email: string; password: string }): boolean {
+  const escaped = login.password.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const passwordToken = new RegExp(`(?:^|[\\s:：=])${escaped}(?=$|[\\s,;])`);
+  return messages.some(m => m.senderSeq === sellerSeq && m.messageType === 'TEXT'
+    && explicitYouTubeBuyerEmails(m.message).some(email => email.toLowerCase() === login.email.toLowerCase())
+    && passwordToken.test(m.message));
+}
+
 /** Explicit partner-issued fields take precedence; empty fields retain the legacy workflow. */
 export function spotifyRegisteredLogin(row: SpotifyNotionRow): { email: string; password: string } | null {
   const explicit = row.registeredEmail?.trim();
@@ -148,7 +158,9 @@ export async function syncGbutsSpotifyMessages(deps: GbutsSpotifyMessageDependen
       const textHash = createHash('sha256').update(item.text).digest('hex');
       if (existing && (existing.roomId !== roomId || (existing.textHash || (existing.text
         ? createHash('sha256').update(existing.text).digest('hex') : '')) !== textHash)) continue;
-      if (gbutsChatContainsText(chat.messages, sellerSeq, item.text)) {
+      if (gbutsChatContainsText(chat.messages, sellerSeq, item.text)
+        || (item.suffix.startsWith('registered-invited:') && issuedLogin
+          && spotifyChatContainsIssuedLogin(chat.messages, sellerSeq, issuedLogin))) {
         if (!existing || existing.state !== 'confirmed') {
           journal.records[key] = { state: 'confirmed', textHash, roomId,
             updatedAt: deps.now?.() ?? new Date().toISOString() };
