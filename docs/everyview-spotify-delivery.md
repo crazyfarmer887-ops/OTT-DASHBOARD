@@ -10,12 +10,12 @@ Activation is explicit in a private `everyview-spotify-config.json` beside exist
 
 `GET /api/everyview/spotify/status` requires the existing administrator authentication. It returns only operational state/counts/timestamps, never credentials, chat text or buyer access links. Existing Google invitations, NBA monitoring, repost policies and prices are not changed.
 
-Validation:101 tests across eight relevant suites, including real provider HTML shape, distinct identity IDs, namespace isolation, historical/held orders, issued local-part resolution, fresh-read guards, single SEND and uncertain creation/delivery recovery. Client build and focused new-library TypeScript checks passed. Existing repository-wide TypeScript errors remain; one broad check was interrupted under local resource pressure. Re-running tests with one worker passed without increasing test timeouts.
+Initial validation:101 tests across eight relevant suites, including real provider HTML shape, distinct identity IDs, namespace isolation, historical/held orders, issued local-part resolution, fresh-read guards, single SEND and uncertain creation/delivery recovery. Client build and focused new-library TypeScript checks passed. Existing repository-wide TypeScript errors remain; one broad check was interrupted under local resource pressure. Re-running tests with one worker passed without increasing test timeouts.
 
 ## Current legacy reconciliation
 
 - Party554/member1877 is an older resolved conversation. Its historical supplied pair matches one unassigned Notion row, and later buyer/seller messages say access returned. It must not receive a duplicate completion message.
-- Party554/member2070 is an active new-account request without a saved completion reply. An unassigned completed Notion row was created near the acknowledgement, but there is no explicit buyer/order link. Keep it held rather than transmitting an account based on timestamp proximity. This exception does not prevent future buyers in parties554/618 from entering the automatic workflow.
+- Party554/member2070 is an active new-account request without a saved completion reply. An unassigned completed Notion row was created near the acknowledgement, but there is no explicit buyer/order link. That original row remains unassigned. A canonical recovery row now binds the real request explicitly and waits for partner verification; its creation released the held request without inferring an account from timestamp proximity. Future buyers in parties554/618 use the automatic workflow.
 
 ## Live-list discovery regression and legacy recovery inbox
 
@@ -24,3 +24,27 @@ The first real client preflight reproduced an additional defect: the existing Ev
 An old unmapped new-account request may be backfilled as an explicitly order-linked recovery row with empty account/password and both completion flags false. This records the real buyer request without allocating an uncertain account or generating a duplicate account. Partner verification supplies the actual issued information on that row; only the ordinary completion guards release delivery. `acknowledgementsAfter` prevents a second acknowledgement for the older manually acknowledged request. Operational status distinguishes `awaiting_partner` from a failed worker. This is a normal pending fulfillment state, not proof that account credentials have already been delivered.
 
 Current focused suite:113 tests in ten suites. The real server HTML shapes, official WebSocket handshake (no SEND), private session renewal and Notion property addition were verified before deployment. Existing completed conversations and all original unassigned rows remain intact.
+
+## Production release 2026-10-28
+
+User-exported `everyview.json.rtf` restored the server session through an authenticated provider read. Release `828b01a` includes the complete integration and administrator protection for its metadata endpoint. Exact committed archive SHA256: `272468560a5b974e8dda1b3c8615a510176359039e70279e5f82d2a5a894a6b2`. Linux release validation passed107 tests across ten suites including API authentication, plus the client build. Earlier adapter/related suites also passed; repository-wide TypeScript validation is not claimed.
+
+The actual unresolved s554/member2070 request was restored as a canonical Everyview order-linked recovery row with empty account/password and unchecked completion flags. This explicit binding releases its historical hold. Existing unassigned rows were preserved and no account was guessed by timestamp proximity. The legacy resolved member1877 conversation remains historical. The configured owned parties are554 and618. The recovery request is awaiting partner verification/issued information; it is not an already completed buyer delivery. Partner completion will use the same guarded delivery path as future requests.
+
+### Shared worker fairness follow-up
+
+Runtime observation after initial activation showed GButs cycles completing while Everyview's timestamp did not advance. Both workers used a non-blocking file lock; their staggered timer phases could repeatedly skip the Everyview turn. A controlled contention regression reproduced dropped turns (`true,false,false`). The shared admission helper now queues each single-flight worker in FIFO order while retaining the file lock for cross-process operational tools. Failed work releases the queue. The same test passes with all three turns completed in order. Follow-up release `03bb24d` includes this fix; its exact archive SHA256 is `1bbb47852cd7170fa76c89f78c8e7e03575d6224bdff45c53ede143e2badbb68`.
+
+The30-second timer schedules checks; a complete turn can take longer while reconciling provider histories or waiting for the other platform. It is not a promise of delivery within30 seconds.
+
+### Slow external extraction isolation
+
+A server probe authenticated successfully to OpenRouter, while a synthetic non-sensitive model completion exceeded25 seconds. Some initial cold-cache extraction calls timed out. Whole-cycle admission therefore still delayed the other platform. The final follow-up `f8e9c38` admits GButs welcome/import/delivery phases separately for each listing, rechecking safe mode after queue admission. Each phase retains exclusive Notion access; another platform can run between phases. A regression failed before this change and passed after it. Everyview starts its initial check after5 seconds; subsequent scheduling remains30 seconds. The final committed archive SHA256 is `479bf9c6885bfa18ae3fc25bee42d42f45fac83fab20bcc2de024040bd4521c1`.
+
+Before the final follow-up, release03bb24d did complete one real cycle for both platforms with no worker-level failure. Everyview advanced to `awaiting_partner`, held0, historical1, pending partner1, parties2. External extraction delays remain a provider dependency; uncertain interpretation never authorizes account delivery.
+
+## Final deployed verification
+
+Release `f8e9c38` passed110 tests in11 focused suites on Linux and the client build, then replaced only AIO's existing service override. Shared journals/configuration were backed up privately and retained in place. During the controlled stop/start, only the unchanged temporary lock belonging to a confirmed-dead process from that stopped service was removed; no live/uncertain transaction journal was reset.
+
+Actual scheduled Everyview completion advanced `checkedAt` to2026-10-28T01:45:38.670Z. Administrator status returned `workerHealthy=true`, `state=awaiting_partner`, held0, historical1, parties2 and awaitingPartner1. Unauthenticated status reads returned403. The recovery row remains unique with empty credentials and both flags false. Buyer room history remains four messages; the separate Everyview message journal has zero records, so no acknowledgement/account message was duplicated. GButs started with no worker-level failure; both workers had also completed one real cycle on the preceding release. Provider-model timeouts observed during cold-cache reconciliation are recorded above and are not represented as successful account interpretation or delivery.
