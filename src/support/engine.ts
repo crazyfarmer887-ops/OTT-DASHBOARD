@@ -31,7 +31,7 @@ export async function processInquiry(c:Context, deps:{config:Config;journal:Jour
  if(cfg.mode==='auto'&&(!cfg.autoSince||!Number.isFinite(time(cfg.autoSince))||time(latest.createdAt)<time(cfg.autoSince)))return 'historical';
  // A later human seller response takes ownership; routine workers get a full minute first.
  if(room.lastSentAt&&ordered.some(m=>m.senderSeq===c.sellerSeq&&time(m.createdAt)>time(room.lastSentAt!)&&!Object.values(room.receipts).some(r=>r.reply===m.message&&r.state==='confirmed'))){room.paused=true;deps.save();return 'human_owned';}
- const f=features(latest.message,c.service,c.delivered,room.rounds);if(f.device!=='unknown'&&Object.values(room.receipts).at(-1)?.plan==='login_clarify'&&!f.intents.includes('login'))f.intents.push('login');let plan:Plan;
+ const f=features(latest.message,c.service,c.delivered,room.rounds);if(f.device!=='unknown'&&Object.values(room.receipts).filter(r=>r.state==='confirmed').at(-1)?.plan==='login_clarify'&&!f.intents.includes('login'))f.intents.push('login');let plan:Plan;
  try{plan=approvedPlan(f,await deps.infer(f));}catch{if(cfg.mode==='draft'){room.receipts[event]={event,state:'draft',plan:'handoff',at:now.toISOString()};deps.save();return 'draft';}return handoff('inference_unavailable');}
  const rec:Receipt={event,state:'draft',plan,at:now.toISOString(),...(plan in TEMPLATES?{reply:TEMPLATES[plan as keyof typeof TEMPLATES]}:{})};room.receipts[event]=rec;deps.save();
  if(cfg.mode==='draft')return 'draft';
