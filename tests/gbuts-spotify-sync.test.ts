@@ -9,6 +9,20 @@ const generatedCredentials = { email: 'spabcdefgh23@jamkkangudok.com', password:
   receivedAt: '2026-10-20T00:00:00Z' };
 
 describe('GButs Spotify Notion sync', () => {
+  it('admits each listing phase separately so another platform can run between slow reads', async () => {
+    let locked = false;
+    const admit = vi.fn(async (work: () => Promise<void>) => {
+      locked = true;
+      try { await work(); } finally { locked = false; }
+    });
+    const deps = { listMembers: async () => { expect(locked).toBe(true); return []; },
+      listRows: async () => [], openPrivateRoom: vi.fn(), getChat: vi.fn(), getRow: vi.fn(),
+      createRow: vi.fn(), replaceCredentials: vi.fn(), cancelRow: vi.fn() };
+    const phase = async () => { expect(locked).toBe(true); };
+    const result = await syncGbutsSpotifyPosts(deps, [15557, 17124], phase, phase, admit);
+    expect(result.errors).toEqual([]);
+    expect(admit).toHaveBeenCalledTimes(6);
+  });
   it('runs buyer delivery even when Notion credential import fails', async () => {
     const delivery = vi.fn(async () => undefined);
     const deps = { listMembers: async () => [], listRows: async () => { throw new Error('Notion unavailable'); },

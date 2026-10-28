@@ -151,5 +151,5 @@ export function startEveryviewSpotifySync(): void {
       console.error('[EveryviewSpotifySync] sync failed', code);
     }
   });
-  setTimeout(() => { void run(); setInterval(() => { void run(); }, 30_000); }, 15_000);
+  setTimeout(() => { void run(); setInterval(() => { void run(); }, 30_000); }, 5_000);
 }

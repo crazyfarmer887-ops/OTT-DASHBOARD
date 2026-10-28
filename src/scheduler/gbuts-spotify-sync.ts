@@ -404,13 +404,14 @@ export function createGbutsSpotifySellerClient(token: string, transport: typeof 
 }
 
 export async function syncGbutsSpotifyPosts(deps: GbutsSpotifySyncDependencies, postSeqs: number[],
-  afterSync?: (postSeq: number) => Promise<void>, beforeSync?: (postSeq: number) => Promise<void>) {
+  afterSync?: (postSeq: number) => Promise<void>, beforeSync?: (postSeq: number) => Promise<void>,
+  admit: (work: () => Promise<void>) => Promise<unknown> = async work => work()) {
   const failures = new Map<number, string[]>();
   const posts: Array<{ postSeq: number; members: number; created: number; updated: number;
     cancelled: number; waitingForCredentials: number; conflicts: number }> = [];
   const uniquePosts = [...new Set(postSeqs)];
   const attempt = async (postSeq: number, work: () => Promise<void>) => {
-    try { await work(); }
+    try { await admit(work); }
     catch (e) {
       const errors = failures.get(postSeq) || [];
       errors.push(e instanceof Error ? e.message : '스포티파이 주문 처리 실패');
@@ -442,27 +443,29 @@ export function startGbutsSpotifySync(): void {
   const intervalMs = Math.max(30_000, Number(process.env.GBUTS_SPOTIFY_SYNC_INTERVAL_MS) || 30_000);
   const run = createSingleFlightRunner(async () => {
     try {
-      await runWithSpotifyNotionLock(async () => {
-        if (loadSafeModeConfig().enabled) return;
-        const gbutsToken = loadGbutsSession()?.token || process.env.GBUTS_API_TOKEN?.trim();
-        if (!gbutsToken) return;
-        const deps = { ...notion, ...createGbutsSpotifySellerClient(gbutsToken), extractCredentials: extractGbutsCredentialsWithOpenRouter };
-        const messagesFor = async (postSeq: number, guidesOnly = false) => {
-          if (process.env.GBUTS_SPOTIFY_AUTO_MESSAGE_ENABLED !== 'true') return;
-          const messages = await syncGbutsSpotifyMessages({ ...deps, sendText: sendGbutsText,
-            readJournal: readGbutsSpotifyMessageJournal,
-            writeJournal: writeGbutsSpotifyMessageJournal,
-            requestAckStartAt: process.env.GBUTS_SPOTIFY_ACK_START_AT }, postSeq, { guidesOnly });
-          if (messages.guidesAttempted || messages.acknowledgementsAttempted
-            || messages.invitedRepliesAttempted || messages.confirmed)
-            console.log('[GbutsSpotifySync] messages', { postSeq, ...messages });
-        };
-        const result = await syncGbutsSpotifyPosts(deps, spotifyPostSeqs(),
-          postSeq => messagesFor(postSeq), postSeq => messagesFor(postSeq, true));
-        console.log('[GbutsSpotifySync] completed', result.posts);
+      if (loadSafeModeConfig().enabled) return;
+      const gbutsToken = loadGbutsSession()?.token || process.env.GBUTS_API_TOKEN?.trim();
+      if (!gbutsToken) return;
+      const deps = { ...notion, ...createGbutsSpotifySellerClient(gbutsToken), extractCredentials: extractGbutsCredentialsWithOpenRouter };
+      const messagesFor = async (postSeq: number, guidesOnly = false) => {
+        if (process.env.GBUTS_SPOTIFY_AUTO_MESSAGE_ENABLED !== 'true') return;
+        const messages = await syncGbutsSpotifyMessages({ ...deps, sendText: sendGbutsText,
+          readJournal: readGbutsSpotifyMessageJournal,
+          writeJournal: writeGbutsSpotifyMessageJournal,
+          requestAckStartAt: process.env.GBUTS_SPOTIFY_ACK_START_AT }, postSeq, { guidesOnly });
+        if (messages.guidesAttempted || messages.acknowledgementsAttempted
+          || messages.invitedRepliesAttempted || messages.confirmed)
+          console.log('[GbutsSpotifySync] messages', { postSeq, ...messages });
+      };
+      const result = await syncGbutsSpotifyPosts(deps, spotifyPostSeqs(),
+        postSeq => messagesFor(postSeq), postSeq => messagesFor(postSeq, true),
+        work => runWithSpotifyNotionLock(async () => {
+          if (loadSafeModeConfig().enabled) return;
+          await work();
+        }));
+      console.log('[GbutsSpotifySync] completed', result.posts);
 
-        for (const failure of result.errors) console.error('[GbutsSpotifySync]', failure.postSeq, failure.error);
-      });
+      for (const failure of result.errors) console.error('[GbutsSpotifySync]', failure.postSeq, failure.error);
     } catch (error) {
       console.error('[GbutsSpotifySync] sync failed', error instanceof Error ? error.message : 'unknown error');
     }
