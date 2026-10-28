@@ -4,14 +4,15 @@ import { loadEveryviewCookieHeader } from '../lib/everyview-api';
 import { writeJsonAtomic } from '../lib/graytag-sales-session';
 import { loadSafeModeConfig } from '../api/safe-mode';
 import { extractGbutsCredentialsWithOpenRouter } from '../api/notion-chat-extraction';
-import { createSingleFlightRunner, runWithExclusivePollLock } from './poll-daemon';
+import { createSingleFlightRunner } from './poll-daemon';
+import { runWithSpotifyNotionLock } from './spotify-notion-lock';
+export { spotifySyncLockPath } from './spotify-notion-lock';
 import { createGbutsSpotifyNotionClient, syncGbutsSpotifyPosts, type SpotifyNotionRow } from './gbuts-spotify-sync';
 import { readGbutsSpotifyMessageJournal, syncGbutsSpotifyMessages, writeGbutsSpotifyMessageJournal, spotifyRegisteredLogin } from './gbuts-spotify-messages';
 import { getOrCreateSpotifyNewAccountCredentials } from './spotify-new-account-credentials';
 import type { GbutsChatMessage, GbutsSpotifyMember } from '../lib/gbuts-spotify';
 
 const directory = '/home/ubuntu/.hermes/hermes-agent/graytag-aio-manager-0606/data';
-export const spotifySyncLockPath = () => process.env.SPOTIFY_NOTION_SYNC_LOCK_PATH || `${directory}/spotify-notion-sync.lock`;
 import { readEveryviewSpotifyConfig, everyviewSpotifyConfigPath as configPath, everyviewSpotifyStatusPath as statusPath, type EveryviewSpotifyConfig } from '../lib/everyview-spotify-store';
 export type { EveryviewSpotifyConfig } from '../lib/everyview-spotify-store';
 const journalPath = () => process.env.EVERYVIEW_SPOTIFY_MESSAGE_JOURNAL_PATH || `${directory}/everyview-spotify-messages.json`;
@@ -138,7 +139,7 @@ export function startEveryviewSpotifySync(): void {
   if (!existsSync(configPath())) return;
   const run = createSingleFlightRunner(async () => {
     try {
-      await runWithExclusivePollLock(spotifySyncLockPath(), async () => {
+      await runWithSpotifyNotionLock(async () => {
         const status = await runEveryviewSpotifyCycle();
         console.log('[EveryviewSpotifySync] completed', { state: status.state, held: status.held, historical: status.historical });
       });

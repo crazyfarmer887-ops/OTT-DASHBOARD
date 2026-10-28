@@ -1,5 +1,6 @@
 import { extractGbutsCredentialsWithOpenRouter } from '../api/notion-chat-extraction';
-import { createSingleFlightRunner, runWithExclusivePollLock } from './poll-daemon';
+import { createSingleFlightRunner } from './poll-daemon';
+import { runWithSpotifyNotionLock } from './spotify-notion-lock';
 import { loadGbutsSession } from '../lib/gbuts-session';
 import { loadSafeModeConfig } from '../api/safe-mode';
 import { getOrCreateSpotifyNewAccountCredentials, isGeneratedSpotifyLogin } from './spotify-new-account-credentials';
@@ -441,8 +442,7 @@ export function startGbutsSpotifySync(): void {
   const intervalMs = Math.max(30_000, Number(process.env.GBUTS_SPOTIFY_SYNC_INTERVAL_MS) || 30_000);
   const run = createSingleFlightRunner(async () => {
     try {
-      await runWithExclusivePollLock(process.env.SPOTIFY_NOTION_SYNC_LOCK_PATH
-        || '/home/ubuntu/.hermes/hermes-agent/graytag-aio-manager-0606/data/spotify-notion-sync.lock', async () => {
+      await runWithSpotifyNotionLock(async () => {
         if (loadSafeModeConfig().enabled) return;
         const gbutsToken = loadGbutsSession()?.token || process.env.GBUTS_API_TOKEN?.trim();
         if (!gbutsToken) return;
