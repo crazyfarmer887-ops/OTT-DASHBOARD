@@ -1,5 +1,5 @@
 import { GBUTS_ACCOUNT_CHANGE_WARNING } from './gbuts-ott-templates';
-import { safeTinyhostEmailAccessUrl } from './disney-mailbox';
+import { safeDisneyEmailAccessUrl } from './disney-mailbox';
 
 function jsonForScript(value: string): string {
   return JSON.stringify(value).replace(/</g, '\\u003c').replace(/>/g, '\\u003e').replace(/&/g, '\\u0026');
@@ -57,7 +57,7 @@ export function buildPartyAccessHtml(token: string, nonce = ''): string {
       };
       const safeEmailVerifyUrl = (value) => { try { const parsed=new URL(String(value||'').trim()); if(parsed.origin!=='https://email-verify.one'||!(new RegExp('^/email/mail/[^/]+/?$')).test(parsed.pathname)) return ''; parsed.username=''; parsed.password=''; parsed.search=''; parsed.hash=''; return parsed.toString(); } catch (_) { return ''; } };
       const isWavveService = (value) => { const v = String(value || '').trim().toLowerCase().replace(/\\s+/g, ''); return v === '웨이브' || v === 'wavve'; };
-      const safeDisneyEmailUrl = ${safeTinyhostEmailAccessUrl.toString()};
+      const safeDisneyEmailUrl = ${safeDisneyEmailAccessUrl.toString()};
       const getAdminToken = () => {
         try {
           const queryToken = new URLSearchParams(window.location.search).get('admin_token') || '';

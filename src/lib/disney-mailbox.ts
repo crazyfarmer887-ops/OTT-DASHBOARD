@@ -15,3 +15,19 @@ export function safeTinyhostEmailAccessUrl(value: unknown, accountEmail: unknown
     return url.toString();
   } catch { return ''; }
 }
+
+/** Exact-address mailbox only: never accept the admin dashboard or a different alias. */
+export function safeDisneyEmailAccessUrl(value: unknown, accountEmail: unknown): string {
+  try {
+    const url = new URL(String(value || '').trim());
+    const email = String(accountEmail || '').trim().toLowerCase();
+    if (!email || url.username || url.password || url.search || url.hash) return '';
+    const path = decodeURIComponent(url.pathname);
+    if (url.origin === 'https://tinyhost.shop' && path === `/${email}`) return url.toString();
+    if (url.origin === 'https://email-verify.one' && path === `/email/mail/${email}`) return url.toString();
+    return '';
+  } catch { return ''; }
+}
+export function emailVerifyDisneyMailboxUrl(email: string): string {
+  return safeDisneyEmailAccessUrl(`https://email-verify.one/email/mail/${encodeURIComponent(email.trim().toLowerCase())}`, email);
+}

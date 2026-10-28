@@ -1,7 +1,7 @@
 import { deliverableOttOrder, hasGbutsOttProfileLease, ottKey, type GbutsOttListing, type GbutsOttOrder, type GbutsOttStore } from './gbuts-ott';
 import { buildPartyAccessPublicPayload, createPartyAccessLinkRecord, enrichPartyAccessRecordWithKnownCredentials, resolvePartyAccessCredentials, type PartyAccessLinkStore } from './party-access';
 import { assertGbutsOttCredentials, type GbutsOttCredentials } from './gbuts-disney-delivery';
-import { tinyhostMailboxUrl } from './disney-mailbox';
+import { tinyhostMailboxUrl, emailVerifyDisneyMailboxUrl } from './disney-mailbox';
 import type { PartyMaintenanceChecklistStore } from './party-maintenance-checklist';
 import type { GeneratedAccountStore } from './generated-accounts';
 
@@ -29,12 +29,16 @@ export function resolveGbutsDisneyListingCredentials(listing: GbutsOttListing, d
 }): GbutsOttCredentials {
   if (listing.serviceType !== '디즈니플러스' || listing.deliveryMode !== 'disney-numbered-password') throw new Error('디즈니 계정 연결을 확인해주세요.');
   const accounts = Object.values(data.generated).filter(x => ottKey(x.serviceType, x.email) === ottKey(listing.serviceType, listing.accountEmail));
-  if (accounts.length !== 1 || accounts[0].emailAccessProvider !== 'tinyhost') throw new Error('디즈니 계정의 이메일 인증 연결을 확인해주세요.');
+  if (accounts.length !== 1 || !['tinyhost', 'emailverify'].includes(accounts[0].emailAccessProvider || '')) throw new Error('디즈니 계정의 이메일 인증 연결을 확인해주세요.');
   const record = createPartyAccessLinkRecord({ token: 'admin-disney-publication-preview', serviceType: listing.serviceType, accountEmail: listing.accountEmail, fallbackPassword: accounts[0].password,
     profileName: '1', member: { kind: 'gbuts', memberId: `preview:${listing.id}`, memberName: '(판매글 계정 확인)', status: 'active', endDateTime: listing.endDate } });
   const enriched = enrichPartyAccessRecordWithKnownCredentials(record, data.accessRecords, data.maintenance, data.generated);
   const credentials = resolvePartyAccessCredentials(enriched, data.maintenance, data.generated);
-  const result = { id: credentials.id, password: credentials.password, emailAccessUrl: tinyhostMailboxUrl(credentials.id) };
+  const emailverify = accounts[0].emailAccessProvider === 'emailverify';
+  if (emailverify && (credentials.id.trim().toLowerCase() !== accounts[0].email.trim().toLowerCase() || !/^\d{6}$/.test(credentials.pin))) throw new Error('이메일 인증 PIN을 확인해주세요.');
+  const result = { id: credentials.id, password: credentials.password,
+    emailAccessUrl: emailverify ? emailVerifyDisneyMailboxUrl(credentials.id) : tinyhostMailboxUrl(credentials.id),
+    ...(emailverify ? { emailAccessPin: credentials.pin } : {}) };
   assertGbutsOttCredentials(result);
   if (!result.emailAccessUrl) throw new Error('이메일 인증 주소를 확인해주세요.');
   return result;

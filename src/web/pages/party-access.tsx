@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { AlertTriangle, CheckCircle2, Copy, ExternalLink, KeyRound, Loader2, Lock, Mail, ShieldCheck, X } from "lucide-react";
 import { getProfileAvatarTheme } from "../../lib/profile-avatar-theme";
 import { safeEmailVerifyUrl } from "../lib/email-verify-url";
-import { safeTinyhostEmailAccessUrl } from '../../lib/disney-mailbox';
+import { safeDisneyEmailAccessUrl } from '../../lib/disney-mailbox';
 
 import GbutsNetflixEmailPanel from '../components/gbuts-netflix-email-panel';
 import { GBUTS_ACCOUNT_CHANGE_WARNING } from '../../lib/gbuts-ott-templates';
@@ -172,7 +172,7 @@ export default function PartyAccessPage() {
     } catch {}
   };
   const emailAccessUrl = safeEmailVerifyUrl(payload.emailAccessUrl);
-  const disneyMailboxUrl = payload.serviceType === '디즈니플러스' ? safeTinyhostEmailAccessUrl(payload.emailAccessUrl, payload.accountEmail || payload.credentials?.id) : '';
+  const disneyMailboxUrl = payload.serviceType === '디즈니플러스' ? safeDisneyEmailAccessUrl(payload.emailAccessUrl, payload.accountEmail || payload.credentials?.id) : '';
   const showEmailAccess = !numberedNetflix && !numberedDisney && Boolean(emailAccessUrl) && !isWavveService(payload.serviceType);
   const displayProfiles = partyProfiles.length > 0 ? partyProfiles : [{
     profileName,

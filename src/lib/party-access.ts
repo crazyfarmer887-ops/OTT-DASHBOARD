@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { tinyhostMailboxUrl } from './disney-mailbox';
+import { tinyhostMailboxUrl, emailVerifyDisneyMailboxUrl } from './disney-mailbox';
 import type { GeneratedAccountStore } from './generated-accounts';
 import { isGraytagAccessNoticeCredential } from './graytag-fill';
 import type { PartyMaintenanceChecklistStore } from './party-maintenance-checklist';
@@ -906,7 +906,9 @@ export function buildPartyAccessPublicPayload(
   const numberedDisney = record.member.kind === 'gbuts' && record.serviceType === '디즈니플러스' && /^[1-6]$/.test(record.profileName);
   const disneyMailboxUrl = record.serviceType === '디즈니플러스'
     && findGeneratedAccount(generatedStore, record.serviceType, record.accountEmail)?.emailAccessProvider === 'tinyhost'
-    ? tinyhostMailboxUrl(credentialRecord.accountEmail) : '';
+    ? tinyhostMailboxUrl(credentialRecord.accountEmail)
+    : record.serviceType === '디즈니플러스' && findGeneratedAccount(generatedStore, record.serviceType, record.accountEmail)?.emailAccessProvider === 'emailverify'
+      ? emailVerifyDisneyMailboxUrl(credentialRecord.accountEmail) : '';
   const base = {
     presentation: numberedNetflix ? 'gbuts-netflix-numbered' as const : numberedDisney ? 'gbuts-disney-numbered' as const : undefined,
     serviceType: record.serviceType,

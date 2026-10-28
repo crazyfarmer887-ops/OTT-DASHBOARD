@@ -24,7 +24,7 @@ export interface GeneratedAccount {
   registrationKind?: 'manual';
   expiryDate?: string | null;
   tvingLoginId?: string;
-  emailAccessProvider?: 'tinyhost' | null;
+  emailAccessProvider?: 'tinyhost' | 'emailverify' | null;
 }
 
 export interface SimpleLoginAliasRef {
@@ -230,8 +230,12 @@ export function normalizeGeneratedAccountPatch(input: Partial<GeneratedAccount>)
   }
   if (input.expiryDate !== undefined) patch.expiryDate = validateAccountExpiry(input.expiryDate);
   if (input.emailAccessProvider !== undefined) {
-    if (input.emailAccessProvider !== null && input.emailAccessProvider !== 'tinyhost') throw new Error('이메일 확인 서비스를 확인해주세요.');
+    if (input.emailAccessProvider !== null && input.emailAccessProvider !== 'tinyhost' && input.emailAccessProvider !== 'emailverify') throw new Error('이메일 확인 서비스를 확인해주세요.');
     patch.emailAccessProvider = input.emailAccessProvider;
+    if (input.emailAccessProvider === 'emailverify') {
+      if (!/^\d{6}$/.test(String(input.pin || ''))) throw new Error('이메일 인증 PIN 6자리를 입력해주세요.');
+      patch.pin = input.pin;
+    }
   }
   return patch;
 }
