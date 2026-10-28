@@ -1,0 +1,75 @@
+name: gbuts-dify-support
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    mem_limit: 160m
+    cpus: 0.3
+    environment:
+      POSTGRES_DB: dify
+      POSTGRES_USER: dify
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?}
+    command: [postgres, -c, shared_buffers=32MB, -c, max_connections=30]
+    volumes: ["${DIFY_DATA:?}/postgres:/var/lib/postgresql/data"]
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U dify -d dify]
+      interval: 5s
+      retries: 12
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    mem_limit: 96m
+    cpus: 0.2
+    command: [redis-server, --requirepass, "${REDIS_PASSWORD:?}", --maxmemory, 48mb, --maxmemory-policy, noeviction]
+    volumes: ["${DIFY_DATA:?}/redis:/data"]
+  api:
+    image: langgenius/dify-api:1.18.0
+    restart: unless-stopped
+    mem_limit: 1024m
+    cpus: 0.8
+    ports: ["127.0.0.1:18081:5001"]
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    environment:
+      MODE: api
+      MIGRATION_ENABLED: "true"
+      SECRET_KEY: ${SECRET_KEY:?}
+      INIT_PASSWORD: ${INIT_PASSWORD:?}
+      DB_TYPE: postgresql
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_USERNAME: dify
+      DB_PASSWORD: ${DB_PASSWORD:?}
+      DB_DATABASE: dify
+      SQLALCHEMY_POOL_SIZE: "3"
+      SQLALCHEMY_MAX_OVERFLOW: "3"
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?}
+      CELERY_BROKER_URL: redis://:${REDIS_PASSWORD:?}@redis:6379/1
+      STORAGE_TYPE: opendal
+      OPENDAL_SCHEME: fs
+      OPENDAL_FS_ROOT: storage
+      VECTOR_STORE: pgvector
+      SERVER_WORKER_AMOUNT: "1"
+      SERVER_WORKER_CLASS: gevent
+      SERVER_WORKER_CONNECTIONS: "10"
+      GUNICORN_TIMEOUT: "120"
+      LOG_LEVEL: WARNING
+      ENABLE_REQUEST_LOGGING: "false"
+      ENABLE_COLLABORATION_MODE: "false"
+      SSRF_PROXY_HTTP_URL: ""
+      SSRF_PROXY_HTTPS_URL: ""
+      SSRF_DEFAULT_MAX_RETRIES: "0"
+      PLUGIN_DAEMON_URL: http://127.0.0.1:5999
+      PLUGIN_DAEMON_KEY: ${SECRET_KEY:?}
+      CHECK_UPDATE_URL: ""
+      CONSOLE_WEB_URL: http://localhost:18081
+      WEB_API_CORS_ALLOW_ORIGINS: http://localhost:18081
+      CONSOLE_CORS_ALLOW_ORIGINS: http://localhost:18081
+    volumes: ["${DIFY_DATA:?}/storage:/app/api/storage"]
+    depends_on:
+      db: {condition: service_healthy}
+      redis: {condition: service_started}
+    logging:
+      driver: json-file
+      options: {max-size: 5m, max-file: "2"}

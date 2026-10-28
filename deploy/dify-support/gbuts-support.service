@@ -1,0 +1,15 @@
+[Unit]
+Description=GButs verified Dify customer support
+After=network-online.target aio-dashboard.service docker.service
+Wants=network-online.target
+[Service]
+Type=simple
+WorkingDirectory=/home/ubuntu/gbuts-support-current
+ExecStart=/usr/bin/python3 deploy/dify-support/run.py
+Restart=on-failure
+RestartSec=15
+MemoryMax=320M
+CPUQuota=30%
+UMask=0077
+[Install]
+WantedBy=multi-user.target
