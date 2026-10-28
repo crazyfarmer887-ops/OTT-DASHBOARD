@@ -86,7 +86,7 @@ for (const c of cases) {
     prediction,
     valid,
   });
-  await new Promise((r) => setTimeout(r, 3500));
+  await new Promise((r) => setTimeout(r, 500));
 }
 report.testedAt = new Date().toISOString();
 writeFileSync(root + "/validation.json", JSON.stringify(report, null, 2), {

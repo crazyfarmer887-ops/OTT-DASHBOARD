@@ -12,31 +12,39 @@ export async function difyPlan(
     !env.GBUTS_SUPPORT_DIFY_KEY
   )
     throw Error("DIFY_CONFIG_INVALID");
-  const response = await fetcher(base + "/v1/workflows/run", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${env.GBUTS_SUPPORT_DIFY_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      inputs: { context: JSON.stringify(f) },
-      response_mode: "blocking",
-      user: "gbuts-support",
-    }),
-    signal: AbortSignal.timeout(45000),
-  });
-  if (!response.ok) throw Error("DIFY_UNAVAILABLE");
-  const d = (await response.json()) as any;
-  if (
-    d.data?.status !== "succeeded" ||
-    typeof d.data.outputs?.plan !== "string"
-  )
-    throw Error("DIFY_WORKFLOW_FAILED");
-  try {
-    return parsePlan(JSON.parse(d.data.outputs.plan));
-  } catch {
-    throw Error("DIFY_OUTPUT_INVALID");
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const response = await fetcher(base + "/v1/workflows/run", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${env.GBUTS_SUPPORT_DIFY_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          inputs: { context: JSON.stringify(f) },
+          response_mode: "blocking",
+          user: "gbuts-support",
+        }),
+        signal: AbortSignal.timeout(45000),
+      });
+      if (!response.ok) throw Error("DIFY_UNAVAILABLE");
+      const d = (await response.json()) as any;
+      if (
+        d.data?.status !== "succeeded" ||
+        typeof d.data.outputs?.plan !== "string"
+      )
+        throw Error("DIFY_WORKFLOW_FAILED");
+      try {
+        return parsePlan(JSON.parse(d.data.outputs.plan));
+      } catch {
+        throw Error("DIFY_OUTPUT_INVALID");
+      }
+    } catch (error) {
+      if (attempt === 1) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 750));
+    }
   }
+  throw Error("DIFY_UNAVAILABLE");
 }
 /** Free model sees only bounded allowlisted labels; no chat, buyer/order IDs or secret data. */
 export async function modelPlan(

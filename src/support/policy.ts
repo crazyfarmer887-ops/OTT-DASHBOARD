@@ -28,8 +28,14 @@ export const TEMPLATES = {
   thanks:
     "해결되셨다니 다행입니다. 이용 중 문제가 생기면 이 채팅에 남겨주세요!",
 } as const;
-export const time = (s: string): number =>
-  Date.parse(s.includes("T") ? s : s.replace(" ", "T") + "+09:00");
+export const time = (s: string): number => {
+  const normalized = s.replace(" ", "T");
+  return Date.parse(
+    /(?:Z|[+-]\d{2}:\d{2})$/i.test(normalized)
+      ? normalized
+      : normalized + "+09:00",
+  );
+};
 export const hash = (s: unknown): string =>
   createHash("sha256").update(JSON.stringify(s)).digest("hex");
 export const fingerprint = (room: string, m: GbutsChatMessage) =>

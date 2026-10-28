@@ -5,6 +5,7 @@ import {
   approvedPlan,
   POLICY_VERSION,
   TEMPLATES,
+  time,
 } from "../src/support/policy";
 import {
   processInquiry,
@@ -353,4 +354,34 @@ describe("native chat time precision", () => {
     expect(await processInquiry(c, deps)).toBe("quiet");
     expect(deps.send).not.toHaveBeenCalled();
   });
+});
+
+it("parses native Korean timestamps independently of the host timezone", () => {
+  const expected = Date.parse("2026-10-28T05:00:00Z");
+  expect(time("2026-10-28 14:00:00")).toBe(expected);
+  expect(time("2026-10-28T14:00:00")).toBe(expected);
+  expect(time("2026-10-28T05:00:00Z")).toBe(expected);
+});
+
+it("retries only the read-only Dify classification after a transient failure", async () => {
+  const f = features("로그인 오류", "넷플릭스", true, 0);
+  const fetcher = vi
+    .fn()
+    .mockResolvedValueOnce(new Response("{}", { status: 503 }))
+    .mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          data: {
+            status: "succeeded",
+            outputs: {
+              plan: JSON.stringify({ plan: "login_clarify", confidence: 1 }),
+            },
+          },
+        }),
+      ),
+    );
+  expect(await difyPlan(f, { GBUTS_SUPPORT_DIFY_KEY: "key" }, fetcher)).toEqual(
+    { plan: "login_clarify", confidence: 1 },
+  );
+  expect(fetcher).toHaveBeenCalledTimes(2);
 });
