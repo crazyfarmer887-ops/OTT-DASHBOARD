@@ -39,7 +39,7 @@ export function validateFamilyJournal(j: FamilyJournal, expectedManager = FAMILY
   }
   return j;
 }
-function chatCandidate(messages: Array<{ senderSeq: number; messageType: string; message: string; createdAt: string }>, buyer: number) {
+function chatCandidate(messages: Array<{ senderSeq: number; messageType: string; message: string; createdAt: string }>, buyer: number): { email?: string; conflict?: boolean; requestedAt?: string } {
   const rows = messages.filter(x => x.senderSeq === buyer && x.messageType === 'TEXT');
   if (rows.some(x => !/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}/.test(x.createdAt))) throw Error('CHAT_TIME_INVALID');
   rows.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
