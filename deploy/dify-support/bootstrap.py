@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Bootstrap a private local Dify workflow. Never print credentials or response bodies."""
-import json,pathlib,os,secrets,urllib.request,http.cookiejar,time
+import json,pathlib,os,secrets,urllib.request,http.cookiejar,time,base64
 root=pathlib.Path('/home/ubuntu/.config/gbuts/support');root.mkdir(parents=True,exist_ok=True);os.chmod(root,0o700)
 secret_path=root/'bootstrap-private.json'
 if secret_path.exists():secret=json.loads(secret_path.read_text())
@@ -20,9 +20,10 @@ try:
   env=dict(line.split('=',1)for line in(root/'dify.env').read_text().splitlines()if '='in line)
   request('/init',{'password':env['INIT_PASSWORD']})
   request('/setup',{'email':secret['email'],'name':'GButs Support','password':secret['password'],'language':'ko-KR'})
- request('/login',{'email':secret['email'],'password':secret['password'],'remember_me':True})
+ request('/login',{'email':secret['email'],'password':base64.b64encode(secret['password'].encode()).decode(),'remember_me':True})
  workflow_path=root/'workflow-private.json'
- if workflow_path.exists():workflow=json.loads(workflow_path.read_text())
+ if workflow_path.exists():
+  workflow=json.loads(workflow_path.read_text());workflow.pop('environment_variables',None)
  else:
   # Three native workflow nodes: start -> authenticated private inference HTTP tool -> end.
   nodes=[]
@@ -32,7 +33,7 @@ try:
    ('end',{'type':'end','title':'Reply plan only','outputs':[{'variable':'plan','value_selector':['plan','body'],'value_type':'string'}]})]):
    nodes.append({'id':id,'type':'custom','data':data,'position':{'x':i*300,'y':0},'width':244,'height':100,'sourcePosition':'right','targetPosition':'left'})
   edges=[{'id':a+'-'+b,'type':'custom','source':a,'sourceHandle':'source','target':b,'targetHandle':'target','data':{'sourceType':ta,'targetType':tb}}for a,b,ta,tb in[('start','plan','start','http-request'),('plan','end','http-request','end')]]
-  workflow={'graph':{'nodes':nodes,'edges':edges},'features':{},'environment_variables':[],'conversation_variables':[]}
+  workflow={'graph':{'nodes':nodes,'edges':edges},'features':{},'conversation_variables':[]}
   workflow_path.write_text(json.dumps(workflow));os.chmod(workflow_path,0o600)
  if not secret.get('app_id'):
   app=request('/apps',{'name':'GButs verified customer support','mode':'workflow','description':'Anonymized intent plans; verified backend owns delivery and escalation.'});secret['app_id']=app['id'];secret_path.write_text(json.dumps(secret))
