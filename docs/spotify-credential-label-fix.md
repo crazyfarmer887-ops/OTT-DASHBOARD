@@ -1,0 +1,3 @@
+# Spotify credential labels — 2026-10-28
+
+A buyer sent ID and Pw in separate bubbles. The deterministic parser did not recognize pw and accepted the entire labeled bubble through the standalone-password fallback. Reproduced with synthetic credentials before changing the parser. Recognize case-insensitive PW/PW-space/P-W-slash, ASCII/full-width colon/equal labels and Korean password labels at a token boundary. Strip exactly the label delimiter, preserving the complete captured password including case, digits and punctuation; label-like content after an explicit password label remains real password data. Do not alter unrelated rows or reset vendor completion flags when correcting this incident. General AI support remains explicitly paused by the owner.

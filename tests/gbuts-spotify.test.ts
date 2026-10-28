@@ -90,3 +90,20 @@ describe('GButs Spotify invitation matching', () => {
     expect(isSpotifyAccountForBuyer('other@jamkkangudok.com', 'abc123@gmail.com')).toBe(false);
   });
 });
+
+describe('credential labels are syntax, not part of passwords', () => {
+  for (const label of ['Pw:', 'PW : ', 'pw：', 'P/W=', '비번:', '비밀번호 : ']) {
+    it(`extracts the value after ${label} from separate buyer replies`, () => {
+      expect(extractGbutsSpotifyCredentials([
+        message(7, '아이디와 비밀번호를 남겨주세요.', '2026-10-28T00:00:00Z'),
+        message(buyer, 'Id:buyer@example.com', '2026-10-28T00:01:00Z'),
+        message(buyer, label + 'aB0cd123!!', '2026-10-28T00:02:00Z'),
+      ], buyer)).toEqual({email:'buyer@example.com', password:'aB0cd123!!', receivedAt:'2026-10-28T00:02:00Z'});
+    });
+  }
+  it('preserves a label-like prefix inside an explicitly labeled real password', () => {
+    expect(extractGbutsSpotifyCredentials([
+      message(buyer, 'ID:buyer@example.com\nPW:Pw:aB0cd123!!', '2026-10-28T00:01:00Z'),
+    ], buyer)?.password).toBe('Pw:aB0cd123!!');
+  });
+});
