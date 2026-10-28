@@ -108,10 +108,23 @@ const bridge = createServer(async (req, res) => {
     }
     const value = JSON.parse(body);
     const result = await modelPlan(value);
+    durable("inference-status.json", {
+      state: "healthy",
+      checkedAt: new Date().toISOString(),
+    });
     res.end(JSON.stringify(result));
-  } catch {
+  } catch (error) {
+    const code =
+      error instanceof Error && /^[A-Z_]{3,64}$/.test(error.message)
+        ? error.message
+        : "INFERENCE_UNAVAILABLE";
+    durable("inference-status.json", {
+      state: "error",
+      code,
+      checkedAt: new Date().toISOString(),
+    });
     res.writeHead(503);
-    res.end("{}");
+    res.end(JSON.stringify({ error: code }));
   } finally {
     inferenceRunning = false;
   }
@@ -354,11 +367,15 @@ createServer((req, res) => {
   }
   res.setHeader("Content-Type", "application/json");
   res.end(
-    JSON.stringify(
-      existsSync(root + "/status.json")
-        ? read("status.json")
-        : { state: "starting" },
-    ),
+    JSON.stringify({
+      ...(existsSync(root + "/status.json")
+        ? read<Record<string, unknown>>("status.json")
+        : { state: "starting" }),
+      mode: read<Config>("config.json").mode,
+      inference: existsSync(root + "/inference-status.json")
+        ? read("inference-status.json")
+        : { state: "unknown" },
+    }),
   );
 }).listen(18083, "127.0.0.1");
 if (!process.argv.includes("--bridge-only")) {

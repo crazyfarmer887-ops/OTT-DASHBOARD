@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, it, expect, vi } from "vitest";
 import {
   allowedPlan,
@@ -303,7 +306,16 @@ describe("anonymous model and strict output boundary", () => {
           }),
         ),
     );
-    await modelPlan(f, { OPENROUTER_API_KEY: "must-not-leave" }, fetcher);
+    const root = mkdtempSync(join(tmpdir(), "support-model-"));
+    try {
+      await modelPlan(
+        f,
+        { OPENROUTER_API_KEY: "must-not-leave", GBUTS_SUPPORT_ROOT: root },
+        fetcher,
+      );
+    } finally {
+      rmSync(root, { recursive: true });
+    }
     const [url, options] = fetcher.mock.calls[0] as unknown as [
       string,
       RequestInit,
@@ -405,4 +417,33 @@ it("keeps attachment-only historical shadow review silent", async () => {
   expect(deps.infer).not.toHaveBeenCalled();
   expect(deps.send).not.toHaveBeenCalled();
   expect(deps.alert).not.toHaveBeenCalled();
+});
+
+it("does not retry a provider quota error envelope", async () => {
+  const { c } = harness();
+  const fetcher = vi.fn(
+    async () =>
+      new Response(
+        JSON.stringify({
+          data: {
+            status: "succeeded",
+            outputs: { plan: JSON.stringify({ error: "MODEL_RATE_LIMIT" }) },
+          },
+        }),
+      ),
+  );
+  await expect(
+    difyPlan(
+      features(c.messages[0].message, c.service, true, 0),
+      { GBUTS_SUPPORT_DIFY_KEY: "key" },
+      fetcher,
+    ),
+  ).rejects.toThrow("MODEL_RATE_LIMIT");
+  expect(fetcher).toHaveBeenCalledTimes(1);
+});
+it("refund review works without contacting a model", async () => {
+  const { c, deps } = harness();
+  c.messages = [msg("환불해주세요")];
+  expect(await processInquiry(c, deps)).toBe("handoff");
+  expect(deps.infer).not.toHaveBeenCalled();
 });

@@ -1,4 +1,15 @@
-import { allowedPlan, parsePlan, type Features } from "./policy";
+import { cachedPlan, cachePlan, permitModelRequest, blockModel } from "./cache";
+import {
+  supportRoute,
+  verifyRoutePrice,
+  reserveSupportBudget,
+} from "./provider";
+import {
+  allowedPlan,
+  parsePlan,
+  MODEL_INSTRUCTIONS,
+  type Features,
+} from "./policy";
 export async function difyPlan(
   f: Features,
   env = process.env,
@@ -35,23 +46,33 @@ export async function difyPlan(
       )
         throw Error("DIFY_WORKFLOW_FAILED");
       try {
-        return parsePlan(JSON.parse(d.data.outputs.plan));
-      } catch {
+        const result = JSON.parse(d.data.outputs.plan);
+        if (result?.error && /^(MODEL_|SUPPORT_|PAID_)/.test(result.error))
+          throw Error(result.error);
+        return parsePlan(result);
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          /^(MODEL_|SUPPORT_|PAID_)/.test(error.message)
+        )
+          throw error;
         throw Error("DIFY_OUTPUT_INVALID");
       }
     } catch (error) {
-      if (attempt === 1) throw error;
+      if (
+        attempt === 1 ||
+        (error instanceof Error &&
+          /^(MODEL_RATE_LIMIT|MODEL_BACKOFF|MODEL_CREDIT_REQUIRED|SUPPORT_DAILY_BUDGET_EXHAUSTED)$/.test(
+            error.message,
+          ))
+      )
+        throw error;
       await new Promise((resolve) => setTimeout(resolve, 750));
     }
   }
   throw Error("DIFY_UNAVAILABLE");
 }
-/** Free model sees only bounded allowlisted labels; no chat, buyer/order IDs or secret data. */
-export async function modelPlan(
-  input: unknown,
-  env = process.env,
-  fetcher: typeof fetch = fetch,
-) {
+export function validateFeatures(input: unknown): Features {
   if (!input || typeof input !== "object") throw Error("FEATURES_INVALID");
   const f = input as Features;
   const labels = [
@@ -89,34 +110,57 @@ export async function modelPlan(
     f.rounds > 20
   )
     throw Error("FEATURES_INVALID");
-  if (env.GBUTS_SUPPORT_MODEL && env.GBUTS_SUPPORT_MODEL !== "kilo-auto/free")
-    throw Error("MODEL_ROUTE_NOT_APPROVED");
+  return f;
+}
+/** Free model sees only bounded allowlisted labels; no chat, buyer/order IDs or secret data. */
+export async function modelPlan(
+  input: unknown,
+  env = process.env,
+  fetcher: typeof fetch = fetch,
+) {
+  const f = validateFeatures(input);
+  const route = supportRoute(env);
+  const root = env.GBUTS_SUPPORT_ROOT || "/home/ubuntu/.config/gbuts/support";
+  const cached = cachedPlan(root, f, route);
+  if (cached) return cached;
+  permitModelRequest(root, route);
+  await verifyRoutePrice(route, fetcher);
   const expected = allowedPlan(f);
-  const r = await fetcher(
-    "https://ai-gateway.kilo.ai/api/v1/chat/completions",
-    {
-      method: "POST",
-      headers: {
-        Authorization: "Bearer anonymous",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "kilo-auto/free",
-        messages: [
-          {
-            role: "system",
-            content:
-              'You classify trusted anonymized labels, never raw chat. Return ONLY JSON {"plan":"where_account|login_clarify|login_steps|thanks|handoff|delegate","confidence":0.99}. Apply these ordered rules exactly. Let I=intents and R=rounds. IMPORTANT: a failed label means the current reported error; at R=0 it is NOT a repeated failure. 1. If I has refund,replace,dispute,injection OR R>=2 -> handoff. 2. If I has failed AND R>0 -> handoff. 3. If I has code -> delegate. 4. If I has thanks but none of failed,login,account -> thanks. 5. If I has account AND location AND NOT failed AND delivered=true -> where_account. 6. If I has login AND NOT account AND delivered=true AND service is 넷플릭스 or 디즈니플러스 AND device is not unknown AND R<2 -> login_steps. 7. If I has login AND NOT account AND device=unknown AND R=0 -> login_clarify (even when failed is present). 8. Otherwise handoff. Do not interpret a first error as repeated failure. Do not add prose.',
-          },
-          { role: "user", content: JSON.stringify(f) },
-        ],
-        temperature: 0,
-        max_tokens: 3000,
-      }),
-      signal: AbortSignal.timeout(25000),
+  if (route.paid)
+    reserveSupportBudget(
+      (env.GBUTS_SUPPORT_ROOT || "/home/ubuntu/.config/gbuts/support") +
+        "/budget.json",
+      Number(env.GBUTS_SUPPORT_DAILY_USD || "0.25"),
+    );
+  const r = await fetcher(route.url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${route.key}`,
+      "Content-Type": "application/json",
     },
-  );
-  if (!r.ok) throw Error("MODEL_UNAVAILABLE");
+    body: JSON.stringify({
+      model: route.model,
+      messages: [
+        {
+          role: "system",
+          content: MODEL_INSTRUCTIONS,
+        },
+        { role: "user", content: JSON.stringify(f) },
+      ],
+      temperature: 0,
+      max_tokens: route.maxTokens,
+    }),
+    signal: AbortSignal.timeout(25000),
+  });
+  if (!r.ok) {
+    if (r.status === 429) {
+      blockModel(root);
+      throw Error("MODEL_RATE_LIMIT");
+    }
+    throw Error(
+      r.status === 402 ? "MODEL_CREDIT_REQUIRED" : "MODEL_UNAVAILABLE",
+    );
+  }
   const d = (await r.json()) as any;
   const text = d.choices?.[0]?.message?.content || "";
   let parsed;
@@ -127,6 +171,7 @@ export async function modelPlan(
   } catch {
     throw Error("MODEL_OUTPUT_INVALID");
   }
+  cachePlan(root, f, route, parsed);
   // The deterministic policy overrides permissive outputs; disagreements fail closed.
   return parsed.plan === expected ? parsed : { plan: "handoff", confidence: 1 };
 }

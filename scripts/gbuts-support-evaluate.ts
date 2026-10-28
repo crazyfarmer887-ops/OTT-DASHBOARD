@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, chmodSync } from "node:fs";
+import { readFileSync, writeFileSync, chmodSync, existsSync } from "node:fs";
 import { difyPlan } from "../src/support/dify";
 import {
   features,
@@ -10,6 +10,12 @@ import {
 } from "../src/support/policy";
 const root =
   process.env.GBUTS_SUPPORT_ROOT || "/home/ubuntu/.config/gbuts/support";
+const inferenceCounts = () => {
+  const p = root + "/inference-cache.json";
+  const c = existsSync(p) ? JSON.parse(readFileSync(p, "utf8")) : {};
+  return { hits: c.hits || 0, requests: c.requests || 0 };
+};
+const before = inferenceCounts();
 const cases: Array<{ features: Features; source: "fixture" | "real" }> = [];
 for (const text of [
   "환불해주세요",
@@ -55,6 +61,10 @@ const report = {
   invalid: 0,
   safeCorrect: 0,
   safeTotal: 0,
+  policyCases: 0,
+  difyCases: 0,
+  cacheHits: 0,
+  providerAttempts: 0,
   caseResults: [] as unknown[],
 };
 for (const c of cases) {
@@ -62,7 +72,12 @@ for (const c of cases) {
   let prediction = "error",
     valid = false;
   try {
-    const p = parsePlan(await difyPlan(c.features));
+    const policyOnly = ["handoff", "delegate"].includes(expected);
+    if (policyOnly) report.policyCases++;
+    else report.difyCases++;
+    const p = policyOnly
+      ? { plan: expected, confidence: 1 }
+      : parsePlan(await difyPlan(c.features));
     prediction = p.plan;
     valid = true;
     if (expected === prediction && p.confidence >= 0.9) {
@@ -88,6 +103,9 @@ for (const c of cases) {
   });
   await new Promise((r) => setTimeout(r, 500));
 }
+const after = inferenceCounts();
+report.cacheHits = after.hits - before.hits;
+report.providerAttempts = after.requests - before.requests;
 report.testedAt = new Date().toISOString();
 writeFileSync(root + "/validation.json", JSON.stringify(report, null, 2), {
   mode: 0o600,

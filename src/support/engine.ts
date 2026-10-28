@@ -246,7 +246,11 @@ export async function processInquiry(
     f.intents.push("login");
   let plan: Plan;
   try {
-    plan = approvedPlan(f, await deps.infer(f));
+    const deterministic = allowedPlan(f);
+    plan =
+      deterministic === "handoff" || deterministic === "delegate"
+        ? deterministic
+        : approvedPlan(f, await deps.infer(f));
   } catch {
     if (cfg.mode === "draft") {
       room.receipts[event] = {
