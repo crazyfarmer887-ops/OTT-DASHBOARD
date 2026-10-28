@@ -12,5 +12,5 @@ secrets=json.loads(pathlib.Path('/home/ubuntu/.config/gbuts/support/runtime.json
 for k,v in secrets.items():
  if k.startswith('GBUTS_SUPPORT_'):env[k]=str(v)
 u=pwd.getpwnam('ubuntu');os.initgroups('ubuntu',u.pw_gid);os.setgid(u.pw_gid);os.setuid(u.pw_uid)
-os.chdir(pathlib.Path(__file__).resolve().parent.parent)
+os.chdir(pathlib.Path(__file__).resolve().parents[2])
 os.execve(node,[node,'--import','tsx','scripts/gbuts-support.ts'],env)
