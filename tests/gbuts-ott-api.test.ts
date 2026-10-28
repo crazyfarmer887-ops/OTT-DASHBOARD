@@ -48,13 +48,13 @@ function fixture() {
 }
 describe('shared inventory publication', () => {
   it('validates the exact Netflix mailbox before publication and preserves email/PIN instructions',async()=>{
-    const f=fixture();Object.assign(f.deps,{listingCredentials:async()=>({id:'account@example.com',password:'fixture-only',emailAccessUrl:'https://email-verify.one/email/mail/account%40example.com',emailAccessPin:'123456'})});
+    const f=fixture();Object.assign(f.deps,{listingCredentials:async()=>({id:'account@example.com',password:'fixture-only',emailAccessUrl:'https://email-verify.one/email/mail/account@example.com',emailAccessPin:'123456'})});
     const response=await f.publish({emailCodeProvider:'emailverify',description:undefined});expect(response.status).toBe(200);
     expect(readGbutsOttStore().listings['request-123'].emailCodeProvider).toBe('emailverify');expect(f.posts[0].description).toContain('이메일 접근 주소와 PIN');
     expect(f.posts[0].noticeAfterOrder).toContain('이메일 인증 주소·PIN');
   });
   it.each(['missing','other-address','missing-pin'])('rejects %s email mailbox before any external CREATE',async type=>{
-    const f=fixture();if(type!=='missing')Object.assign(f.deps,{listingCredentials:async()=>({id:type==='other-address'?'other@example.com':'account@example.com',password:'fixture-only',emailAccessUrl:'https://email-verify.one/email/mail/account%40example.com',emailAccessPin:type==='missing-pin'?undefined:'123456'})});
+    const f=fixture();if(type!=='missing')Object.assign(f.deps,{listingCredentials:async()=>({id:type==='other-address'?'other@example.com':'account@example.com',password:'fixture-only',emailAccessUrl:'https://email-verify.one/email/mail/account@example.com',emailAccessPin:type==='missing-pin'?undefined:'123456'})});
     expect((await f.publish({emailCodeProvider:'emailverify'})).ok).toBe(false);expect(f.posts).toHaveLength(0);expect(Object.keys(readGbutsOttStore().listings)).toHaveLength(0);
   });
   it('opts only an authorized Netflix email into fresh-code instructions and persists the provider through publication', async () => {

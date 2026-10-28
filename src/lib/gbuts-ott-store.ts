@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
+import { validNetflixGuideDelivery } from './gbuts-netflix-guide';
 import { writeJsonAtomic } from './graytag-sales-session';
 import { GBUTS_OTT_CATEGORIES, emptyGbutsOttStore, gbutsOttRenewalKey, supportsGbutsOttRenewal, type GbutsOttStore } from './gbuts-ott';
 const DEFAULT_PATH = '/home/ubuntu/.hermes/hermes-agent/graytag-aio-manager-0606/data/gbuts-ott-sales.json';
@@ -33,6 +34,9 @@ export function readGbutsOttStore(path = process.env.GBUTS_OTT_STORE_PATH || DEF
         || (['attempted', 'confirmed'].includes(order.directDelivery.state) && (!order.directDelivery.messageHash
           || !Number.isFinite(Date.parse(order.directDelivery.attemptedAt))))))
       || (order.deliveryMessage !== undefined && (typeof order.deliveryMessage !== 'string' || !order.deliveryMessage.trim() || order.deliveryMessage.length > 2000))
+      || (order.guideImage !== undefined && (!validNetflixGuideDelivery(order.guideImage)
+        || data.listings[order.listingId].serviceType !== '넷플릭스' || data.listings[order.listingId].emailCodeProvider !== 'emailverify'
+        || order.guideImage.roomId !== order.roomId))
       || (order.credentialDeliveryPolicy !== undefined && (order.credentialDeliveryPolicy !== 'netflix-password-v1' || data.listings[order.listingId].serviceType !== '넷플릭스'))
       || (order.profileNumber !== undefined && ((data.listings[order.listingId].serviceType !== '넷플릭스' && data.listings[order.listingId].deliveryMode !== 'disney-numbered-password') || !Number.isInteger(order.profileNumber) || order.profileNumber < 1 || order.profileNumber > (data.listings[order.listingId].deliveryMode === 'disney-numbered-password' ? 6 : 5) || order.profileName !== String(order.profileNumber)))
       || (order.profileReleasedAt !== undefined && (order.profileNumber === undefined || !Number.isFinite(Date.parse(order.profileReleasedAt)) || !['refunded', 'expired'].includes(order.profileReleaseReason)))) throw new Error('벗츠 구매자 기록이 올바르지 않습니다.');

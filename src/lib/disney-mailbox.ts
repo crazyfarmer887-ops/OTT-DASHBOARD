@@ -29,5 +29,5 @@ export function safeDisneyEmailAccessUrl(value: unknown, accountEmail: unknown):
   } catch { return ''; }
 }
 export function emailVerifyDisneyMailboxUrl(email: string): string {
-  return safeDisneyEmailAccessUrl(`https://email-verify.one/email/mail/${encodeURIComponent(email.trim().toLowerCase())}`, email);
+  return safeDisneyEmailAccessUrl(`https://email-verify.one/email/mail/${encodeURIComponent(email.trim().toLowerCase()).replace(/%40/gi,'@')}`, email);
 }

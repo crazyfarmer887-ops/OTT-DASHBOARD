@@ -16,6 +16,7 @@ export interface GbutsChatMessage {
   message: string;
   messageType: string;
   createdAt: string;
+  images?: string[];
 }
 
 export interface SpotifyCredentials {

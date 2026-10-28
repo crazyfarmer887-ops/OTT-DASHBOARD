@@ -7,6 +7,7 @@ import type { GbutsOttRuntimeDependencies } from './gbuts-ott-sync';
 import { sendGbutsText } from './gbuts-spotify-messages';
 import { buildGbutsDisneyDirectText, DISNEY_DIRECT_FORMAT } from '../lib/gbuts-disney-delivery';
 import { buildGbutsNetflixMailboxText, NETFLIX_MAILBOX_FORMAT } from '../lib/gbuts-netflix-mailbox';
+import { netflixGuideRuntime, prepareNetflixGuide, syncNetflixGuide, type NetflixGuideRuntime } from './gbuts-ott-guide-image';
 
 const fingerprint = (text: string) => createHash('sha256').update(text.trim()).digest('hex');
 // GButs also returns local Korean timestamps without a UTC offset.
@@ -26,7 +27,8 @@ function savedDirectMessage(messages: Array<GbutsTextMessage & { createdAt: stri
 
 export async function syncGbutsDirectCredentials(store: GbutsOttStore, orders: GbutsOttOrder[], sellerSeq: number,
   deps: GbutsOttRuntimeDependencies, client: ReturnType<typeof createGbutsOttSellerClient>,
-  write: (store: GbutsOttStore) => void, send: typeof sendGbutsText = sendGbutsText): Promise<void> {
+  write: (store: GbutsOttStore) => void, send: typeof sendGbutsText = sendGbutsText,
+  guide: NetflixGuideRuntime = netflixGuideRuntime): Promise<void> {
   if (!deps.credentials) return;
   for (const order of orders) {
     if (!deliverableOttOrder(order) || order.delivery !== 'confirmed' || !order.profileName
@@ -45,6 +47,9 @@ export async function syncGbutsDirectCredentials(store: GbutsOttStore, orders: G
         write(store);
         if (previous.state === 'attempted') continue;
       }
+      // Image recovery is independent of another buyer request, and only applies
+      // to an already reserved initial delivery. Historical orders get no image.
+      await syncNetflixGuide(store, order, sellerSeq, () => client.getChat(roomId), write, guide);
       const requests = messages.filter(m => m.senderSeq === order.userSeq && m.messageType === 'TEXT' && m.message.trim() === '!')
         .map(m => ({ time: messageTime(m.createdAt), key: fingerprint(`${m.senderSeq}:${m.createdAt}:!`) }))
         .filter(m => Number.isFinite(m.time) && m.time >= messageTime(order.purchasedAt || `${order.startDate}T00:00:00+09:00`)
@@ -75,6 +80,12 @@ export async function syncGbutsDirectCredentials(store: GbutsOttStore, orders: G
       if (!request) continue;
       if (previous && (request.time < Date.parse(previous.requestAt)
         || (request.key === previous.requestKey && previous.state !== 'ready'))) continue;
+      let guideConfigurationError = false;
+      if (netflixMailbox && !previous) {
+        // A broken optional image config must never prevent account fulfillment.
+        try { prepareNetflixGuide(store, order, guide.config()); write(store); }
+        catch { guideConfigurationError = true; }
+      }
       const delivery = order.directDelivery = previous?.requestKey === request.key ? previous
         : { requestAt: new Date(request.time).toISOString(), requestKey: request.key, state: 'ready' };
       const credentials = await deps.credentials(order, store.listings[order.listingId]);
@@ -98,7 +109,10 @@ export async function syncGbutsDirectCredentials(store: GbutsOttStore, orders: G
           order.error = error.retryable ? '직접 계정 전달 연결 실패 — 다음 확인 때 자동 재시도합니다.' : '직접 계정 전달 전송 제한을 확인해주세요.';
         } else order.error = '직접 계정 전달 발송 결과 확인 중';
       }
+      if (guideConfigurationError && delivery.state === 'confirmed')
+        order.error = '계정 안내는 전달됐으나 사용법 이미지 설정을 확인해야 합니다.';
       write(store);
+      if (delivery.state === 'confirmed') await syncNetflixGuide(store, order, sellerSeq, () => client.getChat(roomId), write, guide);
     } catch {
       // Provider errors can contain account data. Only this generic error reaches the journal/UI.
       order.error = '직접 계정 전달에 필요한 구매자·계정·채팅 연결을 확인하지 못했습니다.'; write(store);

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { buildGbutsNetflixDeliveryText, buildGbutsNetflixLegacyDeliveryText } from '../src/lib/gbuts-ott-templates';
-import { sendGbutsText, sendGbutsSingleText } from '../src/scheduler/gbuts-spotify-messages';
+import { sendGbutsText, sendGbutsSingleText, sendGbutsImage } from '../src/scheduler/gbuts-spotify-messages';
+import { NETFLIX_GUIDE_ASSET } from '../src/lib/gbuts-netflix-guide';
 import { GbutsChatDeliveryError, gbutsChatContainsText, splitGbutsChatText } from '../src/lib/gbuts-chat-delivery';
 
 beforeEach(() => {
@@ -9,7 +10,7 @@ beforeEach(() => {
 });
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.useRealTimers(); });
 const guide = buildGbutsNetflixLegacyDeliveryText('https://email-verify.one/dashboard/access/test-buyer', 1);
-function broker({ echo = true, failConnect = false, frameBudget = false } = {}) {
+function broker({ echo = true, failConnect = false, frameBudget = false, image = false } = {}) {
   const accepted: string[] = [];
   class Socket {
     onopen?: () => void; onmessage?: (event: { data: string }) => void; onerror?: () => void; onclose?: () => void;
@@ -23,15 +24,32 @@ function broker({ echo = true, failConnect = false, frameBudget = false } = {}) 
       if (!frame.startsWith('SEND\n')) return;
       const payload = JSON.parse(frame.split('\n\n')[1].replace(/\0$/, ''));
       // Reproduces the observed silent rejection of long multibyte messages.
-      if (frameBudget ? Buffer.byteLength(frame) > 1000 : Buffer.byteLength(payload.payload) > 500) return;
+      if (image) {
+        expect(frame).toContain('destination:/pub/chat/images\n');
+        expect(payload.type).toBe('IMAGE'); expect(payload.payload).toEqual([NETFLIX_GUIDE_ASSET.url]);
+      } else if (frameBudget ? Buffer.byteLength(frame) > 1000 : Buffer.byteLength(payload.payload) > 500) return;
       accepted.push(payload.payload);
-      if (echo) queueMicrotask(() => this.onmessage?.({ data: `MESSAGE\ndestination:/sub/chat/room/${payload.roomId}\n\n${JSON.stringify({ id: accepted.length, accountSeq: payload.accountSeq, type: 'TEXT', payload: payload.payload })}\0` }));
+      if (echo) queueMicrotask(() => this.onmessage?.({ data: `MESSAGE\ndestination:/sub/chat/room/${payload.roomId}\n\n${JSON.stringify({ id: accepted.length, accountSeq: payload.accountSeq, type: image ? 'IMAGE' : 'TEXT', payload: payload.payload })}\0` }));
     }
     close() {}
   }
   vi.stubGlobal('WebSocket', Socket);
   return accepted;
 }
+test('image delivery uses the authenticated official image destination and saved IMAGE echo', async () => {
+  const accepted = broker({ image: true }); await sendGbutsImage('test-room', 99, NETFLIX_GUIDE_ASSET.url);
+  expect(accepted).toEqual([[NETFLIX_GUIDE_ASSET.url]]);
+});
+test('image delivery rejects arbitrary URLs, missing authentication and uncertain saved results', async () => {
+  const socket = vi.fn(); vi.stubGlobal('WebSocket', socket);
+  await expect(sendGbutsImage('test-room', 99, 'https://example.com/image.jpg')).rejects.toMatchObject({submitted:false,retryable:false});
+  expect(socket).not.toHaveBeenCalled();
+  vi.stubEnv('GBUTS_API_TOKEN', '');
+  await expect(sendGbutsImage('test-room',99,NETFLIX_GUIDE_ASSET.url)).rejects.toMatchObject({submitted:false});
+  vi.stubEnv('GBUTS_API_TOKEN','test-chat-token'); vi.useFakeTimers(); broker({image:true,echo:false});
+  const outcome = expect(sendGbutsImage('test-room',99,NETFLIX_GUIDE_ASSET.url)).rejects.toMatchObject({submitted:true});
+  await vi.advanceTimersByTimeAsync(12_000); await outcome;
+});
 test('authenticates the chat connection before sending the Spotify buyer guide', async () => {
   const accepted = broker();
   const { SPOTIFY_BUYER_GUIDE } = await import('../src/scheduler/gbuts-spotify-messages');

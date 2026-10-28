@@ -22,7 +22,7 @@ function fixture(){
  return {listing,account,data,credentials:()=>resolveGbutsNetflixListingCredentials(listing,data)};
 }
 test('only configured Netflix gets the exact mailbox and PIN in guide, access and seller notice',()=>{
- const f=fixture(),c=f.credentials();expect(c.emailAccessUrl).toBe('https://email-verify.one/email/mail/account%40example.com');
+ const f=fixture(),c=f.credentials();expect(c.emailAccessUrl).toBe('https://email-verify.one/email/mail/account@example.com');
  expect(buildGbutsNetflixMailboxText(c,2)).toContain('이메일 PIN : 123456');
  for(const patch of [{emailAccessPin:undefined},{emailAccessUrl:'https://email-verify.one/dashboard'},{emailAccessUrl:'https://email-verify.one/email/mail/other%40example.com'}]) expect(()=>buildGbutsNetflixMailboxText({...c,...patch},2)).toThrow();
  const r=createPartyAccessLinkRecord({token:'fixture',serviceType:'넷플릭스',accountEmail:f.account.email,profileName:'2',member:{kind:'gbuts',memberId:'100:1',memberName:'fixture',status:'active',endDateTime:'2026-12-01',verifiedAt:new Date().toISOString()}});

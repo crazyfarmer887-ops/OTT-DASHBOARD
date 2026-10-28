@@ -447,6 +447,7 @@ export function createGbutsSpotifySellerClient(token: string, transport: typeof 
       return { roomId, members: chat.members, messages: chat.messages.map((item: Record<string, unknown>) => ({
         senderSeq: Number(item.senderSeq), message: String(item.message ?? ''),
         messageType: String(item.messageType ?? ''), createdAt: String(item.createdAt ?? ''),
+        ...(Array.isArray(item.images) ? { images: item.images.filter((value): value is string => typeof value === 'string') } : {}),
       })) };
     },
     async sellerAccountSeq(): Promise<number> {

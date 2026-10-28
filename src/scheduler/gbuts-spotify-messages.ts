@@ -1,4 +1,5 @@
 import { spotifyExistingDetailsPrompt } from './spotify-fulfillment-choice';
+import { isGbutsGuideImageUrl } from '../lib/gbuts-netflix-guide';
 import { GbutsChatDeliveryError, gbutsChatContainsText, splitGbutsChatText } from '../lib/gbuts-chat-delivery';
 import { explicitYouTubeBuyerEmails } from '../lib/youtube-buyer-email';
 import { existsSync, readFileSync } from 'node:fs';
@@ -234,11 +235,16 @@ export async function sendGbutsSingleText(roomId: string, accountSeq: number, te
     throw new GbutsChatDeliveryError('단일 안내문이 전송 크기 제한을 초과했습니다. 링크와 문구 길이를 확인해주세요.', false, false);
   return sendGbutsChatParts(roomId, accountSeq, [text.trim()]);
 }
-function gbutsTextSendFrame(roomId: string, accountSeq: number, text: string): string {
-  const payload = JSON.stringify({ accountSeq, payload: text, roomId, type: 'TEXT' });
-  return `SEND\ndestination:/pub/chat/text\ncontent-length:${Buffer.byteLength(payload)}\n\n${payload}\0`;
+export async function sendGbutsImage(roomId: string, accountSeq: number, url: string): Promise<void> {
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(roomId) || !Number.isSafeInteger(accountSeq) || accountSeq <= 0
+    || !isGbutsGuideImageUrl(url)) throw new GbutsChatDeliveryError('벗츠 안내 이미지 연결을 확인해주세요.',false,false);
+  return sendGbutsChatParts(roomId,accountSeq,[url],'IMAGE');
 }
-async function sendGbutsChatParts(roomId: string, accountSeq: number, parts: string[]): Promise<void> {
+function gbutsTextSendFrame(roomId: string, accountSeq: number, text: string, type: 'TEXT' | 'IMAGE' = 'TEXT'): string {
+  const payload = JSON.stringify({ accountSeq, payload: type === 'IMAGE' ? [text] : text, roomId, type });
+  return `SEND\ndestination:/pub/chat/${type === 'IMAGE' ? 'images' : 'text'}\ncontent-length:${Buffer.byteLength(payload)}\n\n${payload}\0`;
+}
+async function sendGbutsChatParts(roomId: string, accountSeq: number, parts: string[], type: 'TEXT' | 'IMAGE' = 'TEXT'): Promise<void> {
   let token: string;
   try { token = parseGbutsToken(loadGbutsSession()?.token || process.env.GBUTS_API_TOKEN); }
   catch { throw new GbutsChatDeliveryError('GButs chat seller session unavailable', false); }
@@ -257,7 +263,7 @@ async function sendGbutsChatParts(roomId: string, accountSeq: number, parts: str
     const sendNext = () => {
       if (index === parts.length) { finish(); return; }
       submitted = true;
-      try { socket.send(gbutsTextSendFrame(roomId, accountSeq, parts[index])); }
+      try { socket.send(gbutsTextSendFrame(roomId, accountSeq, parts[index],type)); }
       catch { finish('GButs chat socket send failed'); }
     };
     socket.onopen = () => {
@@ -281,7 +287,9 @@ async function sendGbutsChatParts(roomId: string, accountSeq: number, parts: str
           try {
             const message = JSON.parse(frame.slice(frame.indexOf('\n\n') + 2));
             if (Number(message.id) > 0 && Number(message.accountSeq) === accountSeq
-              && message.type === 'TEXT' && message.payload === parts[index]) { index++; sendNext(); }
+              && message.type === type && (type === 'IMAGE'
+                ? Array.isArray(message.payload) && message.payload.length === 1 && message.payload[0] === parts[index]
+                : message.payload === parts[index])) { index++; sendNext(); }
           } catch { /* Unrelated or malformed events cannot confirm delivery. */ }
         }
       }

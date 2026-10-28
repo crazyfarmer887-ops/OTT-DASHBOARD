@@ -1,4 +1,5 @@
 import {futureSubscriptionRankApplies} from './gbuts-rank-defaults';
+import type { NetflixGuideDelivery } from './gbuts-netflix-guide';
 import { isGraytagAccessNoticeCredential } from './graytag-fill';
 import { calculateAccountVacancy, getPartyMax } from '../web/lib/account-slots';
 
@@ -27,6 +28,7 @@ export interface GbutsOttOrder {
   attemptedAt?: string;
   deliveryMessage?: string;
   credentialDeliveryPolicy?: 'netflix-password-v1';
+  guideImage?: NetflixGuideDelivery;
   directDelivery?: { requestAt: string; requestKey: string; state: 'ready' | 'attempted' | 'confirmed' | 'blocked'; messageHash?: string; attemptedAt?: string;
     format?: 'disney-mailbox-v1' | 'netflix-mailbox-v1'; messageHashes?: string[] };
   purchasedAt?: string;
