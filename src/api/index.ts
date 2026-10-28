@@ -106,6 +106,7 @@ const ADMIN_REQUIRED_GET_PREFIXES = [
   '/session/status',
   '/session/accounts',
   '/everyview/session/status',
+  '/everyview/spotify',
   '/chat/rooms',
   '/chat/messages',
   '/chat/poll',

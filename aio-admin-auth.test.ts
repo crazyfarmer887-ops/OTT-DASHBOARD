@@ -99,6 +99,14 @@ describe('AIO admin auth guard', () => {
     await expect(apiApp.request('/api/chat/rooms')).resolves.toHaveProperty('status', 503);
   });
 
+  it('guards Everyview Spotify metadata for both mounted and direct routes', async () => {
+    process.env.AIO_ADMIN_TOKEN = 'test-admin-token';
+    for (const path of ['/everyview/spotify/status', '/api/everyview/spotify/status']) {
+      await expect(apiApp.request(path)).resolves.toHaveProperty('status', 403);
+    }
+    await expect(apiApp.request('/everyview/spotify/status', { headers: { 'x-admin-token': 'test-admin-token' } })).resolves.toHaveProperty('status', 200);
+  });
+
   it('allows sensitive GET APIs only with a valid admin token', async () => {
     process.env.AIO_ADMIN_TOKEN='test-admin-token';
 
