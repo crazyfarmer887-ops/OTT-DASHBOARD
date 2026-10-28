@@ -52,10 +52,15 @@ async function deliverPending(store: LinkidStore, account: LinkidAccount, deps: 
         if (!message?.text) continue; // Keep legacy events pending until their text can be read.
         event.message = splitTelegramChatText(message.text).join(''); event.buyerName = room?.name; deps.write(store);
       }
-      result = await sendChatContentAlert({ provider: 'linkid', key, title: `링키드 · ${event.title}`, body: [...context,
+      result = await sendChatContentAlert({ provider: 'linkid', key, attention: 'action-required', nextAction: '이 구매자 채팅을 열어 직접 답변해주세요. 링키드 문의는 자동 답변하지 않습니다.', title: `링키드 · ${event.title}`, body: [...context,
         `구매자: ${(event.buyerName || '파티 채팅').slice(0, 80)}`].join('\n'), message: event.message,
         actionUrl, category: 'inquiry', throttleMs: 365 * 86400000 }, deps.alert);
-    } else result = await deps.alert({ provider: 'linkid', key, title: `링키드 · ${event.title}`,
+    } else result = await deps.alert({ provider: 'linkid', key,
+      attention: /초대 요청|채팅 확인 요청/.test(event.title) ? 'action-required' : 'notice',
+      nextAction: /초대 요청/.test(event.title) ? '해당 파티에서 초대 요청과 이미 처리한 내역을 대조하고 필요한 초대를 직접 진행해주세요.'
+        : /채팅 확인 요청/.test(event.title) ? '해당 구매자 채팅을 열어 직접 확인해주세요. 링키드 문의는 자동 답변하지 않습니다.'
+        : '즉시 조치 요청 없음 · 링키드에서 발생한 상태 알림입니다. 처리 완료 여부는 원본 화면에서 확인할 수 있습니다.',
+      title: `링키드 · ${event.title}`,
       category: /가입|파티원|매칭|구매/.test(event.title) ? 'purchase' : 'system',
       body: [...context, '링키드에 새 알림이 도착했습니다.', actionUrl].join('\n'), actionUrl, throttleMs: 365 * 86400000 });
     if (result.sent || result.reason === 'throttled') {
@@ -109,7 +114,7 @@ export async function syncLinkid(deps: LinkidSyncDependencies = linkidRuntime, o
       account.retryAfter = failedAt + (e instanceof LinkidError && e.kind === 'rate' ? 5 * 60000 : 90000);
       const sustained = account.consecutiveFailures >= 3 && failedAt - Date.parse(account.firstFailureAt) >= 15 * 60000;
       if ((e instanceof LinkidError && e.kind === 'auth') || sustained) {
-        await deps.alert({ provider: 'linkid', key: `linkid-connection-${account.id}`, category: 'system', title: '링키드 연결 확인 필요',
+        await deps.alert({ provider: 'linkid', key: `linkid-connection-${account.id}`, category: 'system', attention: 'action-required', nextAction: '링키드 대시보드에서 해당 로그인 계정을 다시 연결해주세요.', automationStatus: '이 계정의 조회가 중단되어 새 요청을 놓칠 수 있습니다.', title: '링키드 연결 확인 필요',
           body: `${account.label}\n${account.lastError}\nhttps://email-verify.one/dashboard/linkid`, throttleMs: 60 * 60000 });
       }
     }

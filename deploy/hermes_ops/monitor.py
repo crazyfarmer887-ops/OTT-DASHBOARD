@@ -243,13 +243,42 @@ def decide(events, state, metadata, pending, now):
         return '', False
     state['last_alert_codes'] = codes
     state['last_alert_at'] = now
-    lines = ['서버 자동화 점검:']
-    if new_invite:
-        lines.append('Google 가족 초대 1건이 실제 발송 완료로 확인됐습니다.')
+    lines = ['🔴 [조치 필요] 서버 자동화' if codes else '🟢 [처리 완료] 서버 자동화']
     if codes:
+        actions = []
+        for e in events:
+            code = e['code']
+            if code in {'GOOGLE_SIGNIN_REQUIRED', 'YOUTUBE_SIGNIN_REQUIRED'}:
+                action = 'Google·YouTube 가족 관리자 로그인 연결을 복구해주세요. 복구 전에는 자동 초대가 멈춥니다.'
+            elif code in {'GOOGLE_ACCOUNT_MISMATCH', 'YOUTUBE_ACCOUNT_MISMATCH', 'FAMILY_BENEFITS_PERIOD_REQUIRED', 'FAMILY_FULL'}:
+                action = '가족 관리자 계정·남은 자리·프리미엄 기간을 확인해주세요. 기존 가족 구성원을 임의로 삭제하지 마세요.'
+            elif code in {'INVITATION_UNCERTAIN', 'CHAIN_RECOVERY_PENDING'}:
+                action = '이미 초대·등록됐는지 원본 화면에서 확인해주세요. 확인 전에는 재전송·재등록하지 마세요.'
+            elif code.startswith('BUYER_EMAIL'):
+                action = '구매자의 최신 1:1 채팅을 확인하고 초대받을 주소를 확정해주세요.'
+            elif e['service'] == 'rank':
+                action = '재등록 대시보드에서 오류와 현재 판매글을 확인해주세요. 기존 구매자·재등록 결과를 확인하기 전에는 새 글을 만들지 마세요.'
+            elif e['service'] == 'spotify':
+                action = '해당 플랫폼 로그인 연결과 노션 발급·초대 상태를 확인해주세요.'
+            elif e['service'] == 'netflix':
+                action = '넷플릭스 코드 조회 봇의 로그인 연결을 확인해주세요. 구매자에게 코드가 전달됐다고 단정하지 마세요.'
+            else:
+                action = '대시보드에서 해당 서비스의 연결 상태와 최근 오류를 확인해주세요.'
+            if action not in actions:
+                actions.append(action)
+        lines.append('내 할 일: ' + ' / '.join(actions))
+        lines.append('자동 처리: 감시와 안전한 조회 복구는 계속합니다. 사용자 인증·계정 변경·환불은 대신 실행하지 않습니다.')
         lines.extend(dict.fromkeys(LABELS[e['code']] for e in events))
-    elif previous:
-        lines.append('앞서 감지한 점검 오류가 해소됐습니다.')
+        if any(e['service'] == 'google' for e in events):
+            lines.append('확인 화면: https://email-verify.one/dashboard')
+        if any(e['service'] in {'ott', 'youtube', 'rank'} for e in events):
+            lines.append('재등록 확인: https://email-verify.one/dashboard/renewals')
+    else:
+        lines.append('내 할 일: 없음 · 완료 결과 안내입니다.')
+        if new_invite:
+            lines.append('Google 가족 초대 1건이 실제 발송 완료로 확인됐습니다.')
+        elif previous:
+            lines.append('앞서 감지한 점검 오류가 해소됐습니다.')
     return '\n'.join(lines), not codes and bool(previous)
 
 
@@ -281,11 +310,10 @@ def _run_locked(kind, root):
     except Exception:
         events, meta, pending = [issue('INSPECTION_FAILED', 'google' if kind == 'google' else 'rank')], {}, False
     message, recovered = decide(events, state, meta, pending, now)
-    if message:
-        summary = kilo_summary(events, recovered)
-        if summary:
-            message += '\n요약: ' + summary
-        state['last_kilo_ok'] = bool(summary)
+    # The owner's action instructions are deterministic. A freeform summary must
+    # never contradict them (for example, claim automatic recovery/no action).
+    # Keep the separately configured Kilo provider available for other jobs.
+    state['summary_mode'] = 'deterministic'
     state['last_recovery_calls'] = meta.get('repairs', [])
     atomic_json(path, state)
     print(message or SILENT)

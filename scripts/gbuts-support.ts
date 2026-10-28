@@ -288,6 +288,13 @@ async function run() {
                 key:
                   "gbuts-support-" +
                   hash([c.postSeq, c.memberSeq, c.roomId, incident]),
+                attention: 'action-required',
+                nextAction: reason === 'invite_auth_required' ? 'Google 가족 관리자 인증을 복구하고 이 구매자에게 이미 초대했는지 확인해주세요.'
+                  : reason === 'invite_not_bound' ? '현재 판매글과 Google 가족 계정을 대조하고 이 구매자의 초대 처리 여부를 확인해주세요.'
+                  : reason === 'refund_requested' ? '구매자 채팅과 이용 내역을 확인하고 환불 승인 여부를 직접 결정해주세요.'
+                  : reason === 'replacement_requested' ? '구매자 채팅과 로그인 문제를 확인하고 계정 교체 여부를 직접 결정해주세요.'
+                  : '이 구매자 채팅을 열어 상황을 확인하고 직접 답변해주세요.',
+                automationStatus: '이 상담방의 AI 답변은 멈췄습니다. 다른 상담방은 계속 운영합니다. 알림 확인만으로 자동 재개되지는 않습니다.',
                 title: `벗츠 ${c.service} 상담 확인 필요`,
                 body: `주문: ${c.postSeq}:${c.memberSeq}\n사유: ${
                   (
@@ -364,6 +371,7 @@ async function run() {
             provider: "gbuts",
             category: "system",
             key: "gbuts-support-unavailable-rooms",
+            attention: "notice", nextAction: "조회 제외 현황입니다. 필요하면 대시보드에서 해당 채팅의 접근 상태를 확인해주세요.",
             title: "벗츠 상담 조회 제외",
             body: `기존 구매자 채팅 ${status.unavailable}개를 플랫폼에서 조회할 수 없어 자동상담에서 제외했습니다. 조회 가능한 방의 상담은 계속합니다.`,
             statePath: root + "/telegram-receipts.json",
@@ -374,6 +382,7 @@ async function run() {
             provider: "gbuts",
             category: "system",
             key: "gbuts-support-worker-error",
+            attention: "action-required", nextAction: "대시보드의 상담 연결과 서버 상태를 확인해주세요.", automationStatus: "오류가 난 처리는 보류 중이며, 이 알림은 자동 복구 완료가 아닙니다.",
             title: "벗츠 자동상담 연결 확인 필요",
             body: "상담 조회 또는 처리 오류가 반복됩니다. 잘못된 답변을 보내지 않도록 해당 처리는 중단했습니다.",
             statePath: root + "/telegram-receipts.json",

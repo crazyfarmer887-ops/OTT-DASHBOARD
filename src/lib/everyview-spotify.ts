@@ -4,6 +4,15 @@ import { everyviewFetch, fetchEveryviewHostParties } from './everyview-api';
 import { GbutsChatDeliveryError } from './gbuts-chat-delivery';
 import type { GbutsChatMessage, GbutsSpotifyMember } from './gbuts-spotify';
 
+export class EveryviewSpotifyReadError extends Error {
+  constructor(readonly code: 'SESSION_REQUIRED' | 'CHAT_SCHEMA_CHANGED' | 'CHAT_IDENTITY_MISMATCH' | 'OWNED_PARTY_UNAVAILABLE' | 'PROVIDER_READ_FAILED', message: string) { super(message); }
+}
+function assertEveryviewRead(response: Response, area: 'party' | 'chat'): void {
+  if ([401,403].includes(response.status) || (response.redirected && /\/(?:login|signin)(?:[/?#]|$)/i.test(response.url)))
+    throw new EveryviewSpotifyReadError('SESSION_REQUIRED', 'Everyview login session required');
+  if (!response.ok || response.redirected) throw new EveryviewSpotifyReadError('PROVIDER_READ_FAILED', `Everyview ${area} read failed`);
+}
+
 type Node = DefaultTreeAdapterMap['node'];
 const children = (n: Node): Node[] => 'childNodes' in n ? n.childNodes : [];
 const attr = (n: Node, name: string): string => 'attrs' in n ? n.attrs.find(a => a.name === name)?.value || '' : '';
@@ -62,23 +71,25 @@ export function parseEveryviewSpotifyChat(html: string, buyerSeq: number, expect
   const root = parseFragment(html), nodes = all(root);
   const scripts = nodes.filter(n => n.nodeName === 'script').map(text).join('\n');
   const seller = Number(scripts.match(/var my_user_id\s*=\s*"(\d+)"/)?.[1]);
-  const room = scripts.match(/let talkMsg\s*=\s*\{"room_id":\s*(\d+),\s*"user_idx":\s*my_user_id,\s*"content":\s*content\}/)?.[1];
+  const room = scripts.match(/let talkMsg\s*=\s*\{"room_id":\s*(\d+),\s*"user_idx":\s*my_user_id,\s*"content":\s*content(?:,\s*"client_msg_id":\s*cmid)?\}/)?.[1];
   const socket = attr(nodes.find(n => attr(n, 'id') === 'websock_url') || root, 'value');
   if (expected && (Number(scripts.match(/var party_id\s*=\s*"(\d+)"/)?.[1]) !== expected.partyId
     || Number(scripts.match(/enterMsg=\{"type"\s*:\s*"ENTER","roomId":\d+,"userId":(\d+),/)?.[1]) !== expected.memberSeq))
-    throw new Error('Everyview chat counterparty identity changed');
-  if (seller !== expectedSeller || !room || socket !== 'wss://everyview.kr/ws'
-    || !nodes.some(n => cls(n, 'chat-content'))) throw new Error('Everyview authenticated chat identity invalid');
+    throw new EveryviewSpotifyReadError('CHAT_IDENTITY_MISMATCH', 'Everyview chat counterparty identity changed');
+  if (!seller || !room || !socket || !nodes.some(n => cls(n, 'chat-content')))
+    throw new EveryviewSpotifyReadError('CHAT_SCHEMA_CHANGED', 'Everyview chat schema changed');
+  if (seller !== expectedSeller || socket !== 'wss://everyview.kr/ws')
+    throw new EveryviewSpotifyReadError('CHAT_IDENTITY_MISMATCH', 'Everyview chat identity invalid');
   const rows = nodes.filter(n => cls(n, 'bubble-row') && (cls(n, 'me') || cls(n, 'other')));
   const messages = rows.map(row => {
     const entries = all(row), bubbles = entries.filter(n => cls(n, 'chat-bubble')), bubble = bubbles[0], stamp = entries.find(n => cls(n, 'time'));
     if (!bubble || !stamp || bubbles.length !== 1 || cls(row, 'me') === cls(row, 'other')
-      || !cls(bubble, cls(row, 'me') ? 'right' : 'left')) throw new Error('Everyview chat history incomplete');
+      || !cls(bubble, cls(row, 'me') ? 'right' : 'left')) throw new EveryviewSpotifyReadError('CHAT_SCHEMA_CHANGED', 'Everyview chat history incomplete');
     return { senderSeq: cls(row, 'me') ? seller : buyerSeq,
       messageType: all(bubble).some(n => n.nodeName === 'img') ? 'IMAGE' : 'TEXT',
       message: text(bubble).trim(), createdAt: chatTime(text(stamp), now) };
   });
-  if (nodes.filter(n => cls(n, 'chat-bubble')).length !== messages.length) throw new Error('Everyview chat history incomplete');
+  if (nodes.filter(n => cls(n, 'chat-bubble')).length !== messages.length) throw new EveryviewSpotifyReadError('CHAT_SCHEMA_CHANGED', 'Everyview chat history incomplete');
   return { roomId: room, sellerSeq: seller, buyerSeq, socketUrl: `${socket}/${room}/${seller}`, messages };
 }
 
@@ -118,9 +129,9 @@ export function createEveryviewSpotifyClient(cookie: string, expectedSeller: num
   const listMembers = async (partyId: number): Promise<GbutsSpotifyMember[]> => {
     const owned = (await fetchEveryviewHostParties(cookie)).filter(p => p.partyId === partyId && p.partyType === 'free'
       && /스포티파이|spotify/i.test(p.serviceName || p.title));
-    if (owned.length !== 1) throw new Error('Everyview Spotify owned listing unavailable');
+    if (owned.length !== 1) throw new EveryviewSpotifyReadError('OWNED_PARTY_UNAVAILABLE', 'Everyview Spotify owned listing unavailable');
     const r = await everyviewFetch(`https://everyview.kr/partyLeader_free_detail_type1?id=${partyId}`, { cookieStr: cookie });
-    if (!r.ok || r.redirected) throw new Error('Everyview party read failed');
+    assertEveryviewRead(r, 'party');
     return parseEveryviewSpotifyMembers(await r.text(), partyId, today());
   };
   const fetchChat = async (partyId: number, member: GbutsSpotifyMember) => {
@@ -128,7 +139,7 @@ export function createEveryviewSpotifyClient(cookie: string, expectedSeller: num
       cookieStr: cookie, method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({ partyId: String(partyId), targetId: String(member.seq) }),
     });
-    if (!r.ok || r.redirected) throw new Error('Everyview chat read failed');
+    assertEveryviewRead(r, 'chat');
     return parseEveryviewSpotifyChat(await r.text(), member.userSeq, expectedSeller, now(), { partyId, memberSeq: member.seq });
   };
   const getChat = async (roomId: string) => {

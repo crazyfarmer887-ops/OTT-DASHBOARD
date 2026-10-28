@@ -14,7 +14,13 @@ export type SellerAlertProvider = 'gbuts' | 'linkid' | 'graytag';
 
 export type SellerAlertCategory = 'purchase' | 'inquiry' | 'auto-reply' | 'system';
 
+export type SellerAlertAttention = 'action-required' | 'processing' | 'completed' | 'notice';
+
 export type SellerAlertInput = {
+  /** Trusted workflow state, never inferred from customer text. */
+  attention?: SellerAlertAttention;
+  nextAction?: string;
+  automationStatus?: string;
   key: string;
   title: string;
   body: string;
@@ -90,12 +96,22 @@ function extractFirstUrl(text: string): string {
   return String(text || '').match(/https?:\/\/[^\s)]+/)?.[0] || '';
 }
 
-function buildText(input: SellerAlertInput): string {
+export function buildSellerAlertText(input: SellerAlertInput): string {
   const icon = input.severity === 'critical' ? '🚨' : '⚠️';
   const label = categoryLabel(input.category);
   const title = sanitizeAlertText(input.title).replace(/[<>]/g, '');
   const body = sanitizeAlertText(input.body);
-  return `${icon} [${label}] ${title}\n${body}`.trim();
+  // Leave the owner's existing GrayTag service presentation unchanged.
+  if ((input.provider === 'graytag' || !input.provider) && !input.attention) return `${icon} [${label}] ${title}\n${body}`.trim();
+  const attention = input.attention || (input.category === 'system' || input.category === 'inquiry' ? 'action-required' : 'notice');
+  const headers = { 'action-required': '🔴 [조치 필요]', processing: '🟡 [자동 처리 중]', completed: '🟢 [처리 완료]', notice: '🔵 [참고 알림]' };
+  const next = input.nextAction || (attention === 'action-required' ? (input.category === 'inquiry' ? '구매자 채팅을 직접 확인해주세요. 자동 처리 담당이 확인되지 않은 문의입니다.' : '연결된 화면에서 아래 문제를 확인해주세요.')
+    : attention === 'processing' ? '지금 할 일 없음 · 자동 처리 결과를 기다려주세요.'
+    : attention === 'completed' ? '지금 할 일 없음 · 완료 결과 안내입니다.' : '즉시 조치 요청 없음 · 접수/상태 참고용입니다. 자동 처리 완료를 뜻하지 않습니다.');
+  const provider = input.provider === 'gbuts' ? '벗츠' : input.provider === 'linkid' ? '링키드' : '';
+  return [`${headers[attention]} ${provider && !title.startsWith(provider) ? provider + ' · ' : ''}${title.slice(0, 140)}`,
+    `내 할 일: ${sanitizeAlertText(next).slice(0, 300)}`,
+    input.automationStatus ? `자동 처리: ${sanitizeAlertText(input.automationStatus).slice(0, 240)}` : '', body.slice(0, 2800)].filter(Boolean).join('\n');
 }
 
 export async function sendSellerAlert(input: SellerAlertInput): Promise<SellerAlertResult> {
@@ -116,14 +132,19 @@ export async function sendSellerAlert(input: SellerAlertInput): Promise<SellerAl
   }
 
   const fetcher = input.fetchImpl || (globalThis.fetch as unknown as FetchLike | undefined);
-  const text = buildText(input);
+  const text = buildSellerAlertText(input);
   const payload: Record<string, any> = { chat_id: chatId, text, disable_web_page_preview: true };
+  // Only action-required notifications make a sound. Never silence unclassified legacy alerts.
+  if (input.attention || input.provider === 'gbuts' || input.provider === 'linkid') {
+    const attention = input.attention || (input.category === 'system' || input.category === 'inquiry' ? 'action-required' : 'notice');
+    payload.disable_notification = attention !== 'action-required';
+  }
   const threadId = alertThreadId(input);
   if (threadId) payload.message_thread_id = Number(threadId) || threadId;
   const url = input.actionUrl || extractFirstUrl(input.body);
   if (url) {
     payload.reply_markup = {
-      inline_keyboard: [[{ text: input.category === 'purchase' ? '계정 구매 확인' : input.category === 'inquiry' ? '문의 바로보기' : '대시보드 열기', url }]],
+      inline_keyboard: [[{ text: input.attention === 'action-required' ? (input.category === 'inquiry' ? '구매자 채팅 열기' : '조치할 화면 열기') : input.category === 'purchase' ? '계정 구매 확인' : input.category === 'inquiry' ? '문의 바로보기' : '대시보드 열기', url }]],
     };
   }
   const body = JSON.stringify(payload);

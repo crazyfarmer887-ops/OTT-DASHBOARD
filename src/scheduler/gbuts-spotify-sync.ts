@@ -1,3 +1,4 @@
+import { extractSpotifyFulfillmentCredentials } from './spotify-fulfillment-choice';
 import { extractGbutsCredentialsWithOpenRouter } from '../api/notion-chat-extraction';
 import { createSingleFlightRunner } from './poll-daemon';
 import { runWithSpotifyNotionLock } from './spotify-notion-lock';
@@ -46,6 +47,7 @@ export interface GbutsSpotifySyncDependencies {
   getRow(id: string): Promise<SpotifyNotionRow | null>;
   createRow(orderKey: string, credentials: SpotifyCredentials): Promise<SpotifyNotionRow>;
   createNewAccountRequestRow?(orderKey: string): Promise<SpotifyNotionRow>;
+  replaceWithNewAccountRequestRow?(row: SpotifyNotionRow, orderKey: string): Promise<SpotifyNotionRow>;
   claimRow?(row: SpotifyNotionRow, orderKey: string): Promise<SpotifyNotionRow>;
   replaceCredentials(row: SpotifyNotionRow, credentials: SpotifyCredentials): Promise<SpotifyNotionRow>;
   cancelRow(row: SpotifyNotionRow): Promise<SpotifyNotionRow>;
@@ -97,6 +99,16 @@ export async function syncGbutsSpotifyCredentials(deps: GbutsSpotifySyncDependen
           throw new Error('Spotify Notion new-account request response invalid');
         rows.push(row);
         created += 1;
+      } else if (newAccountRequestsByOrder.get(orderKey) && matches.length === 1 && matches[0].email && matches[0].password && deps.replaceWithNewAccountRequestRow && !isGeneratedSpotifyLogin(matches[0])) {
+        const previous = matches[0];
+        const current = await deps.getRow(previous.id);
+        if (!deps.replaceWithNewAccountRequestRow || !current || current.orderKey !== orderKey || current.cancelled
+          || current.registered || current.invited || current.email !== previous.email || current.password !== previous.password
+          || current.registeredEmail !== previous.registeredEmail || current.registeredPassword !== previous.registeredPassword) { conflicts += 1; continue; }
+        const row = await deps.replaceWithNewAccountRequestRow(current, orderKey);
+        if (row.id !== current.id || row.orderKey !== orderKey || !isGeneratedSpotifyLogin(row)
+          || row.registered || row.invited || row.cancelled) throw new Error('Spotify Notion new-account replacement response invalid');
+        rows.splice(rows.indexOf(previous), 1, row); updated += 1;
       } else waitingForCredentials += 1;
       continue;
     }
@@ -312,6 +324,27 @@ export function createGbutsSpotifyNotionClient(token: string, dataSourceId = SPO
         || row.registered || row.invited || row.cancelled) throw new Error('Spotify Notion new-account request response invalid');
       return row;
     },
+    async replaceWithNewAccountRequestRow(row: SpotifyNotionRow, orderKey: string): Promise<SpotifyNotionRow> {
+      if (row.orderKey !== orderKey || row.registered || row.invited || row.cancelled) throw new Error('Spotify pending request changed');
+      const credentials = newAccountCredentials(orderKey);
+      if (!isGeneratedSpotifyLogin(credentials)) throw new Error('Spotify generated credentials invalid');
+      const history = [...new Set([...row.emailHistory, row.email])].flatMap(email => [
+        ...notionTitle(email, true), { text: { content: '\n↓\n' } },
+      ]);
+      const response = await transport(`https://api.notion.com/v1/pages/${encodeURIComponent(row.id)}`, {
+        method: 'PATCH', headers, signal: AbortSignal.timeout(15_000), body: JSON.stringify({properties: {
+          'Spotify account': {title: [...history, ...notionTitle(credentials.email)]},
+          Password: {rich_text: [{text: {content: credentials.password}}]}, Registered: {checkbox:false}, Invited: {checkbox:false},
+          ...(row.registeredEmail !== undefined ? {'registered email': {email:null}} : {}),
+          ...(row.registeredPassword !== undefined ? {'registered password': {rich_text:[]}} : {}),
+        }}),
+      });
+      if (!response.ok) throw new Error(`Spotify Notion new-account replacement failed: HTTP ${response.status}`);
+      const changed = parseNotionRow(await response.json());
+      if (!changed || changed.orderKey !== orderKey || changed.email !== credentials.email || changed.password !== credentials.password
+        || changed.registered || changed.invited || changed.cancelled) throw new Error('Spotify Notion new-account replacement invalid');
+      return changed;
+    },
     async claimRow(row: SpotifyNotionRow, orderKey: string): Promise<SpotifyNotionRow> {
       const response = await transport(`https://api.notion.com/v1/pages/${encodeURIComponent(row.id)}`, {
         method: 'PATCH', headers, signal: AbortSignal.timeout(15_000),
@@ -448,7 +481,7 @@ export function startGbutsSpotifySync(): void {
       if (loadSafeModeConfig().enabled) return;
       const gbutsToken = loadGbutsSession()?.token || process.env.GBUTS_API_TOKEN?.trim();
       if (!gbutsToken) return;
-      const deps = { ...notion, ...createGbutsSpotifySellerClient(gbutsToken), extractCredentials: extractGbutsCredentialsWithOpenRouter };
+      const deps = { ...notion, ...createGbutsSpotifySellerClient(gbutsToken), extractCredentials: (messages: readonly GbutsChatMessage[], buyer: number) => extractSpotifyFulfillmentCredentials(messages, buyer, extractGbutsCredentialsWithOpenRouter) };
       const messagesFor = async (postSeq: number, guidesOnly = false) => {
         if (process.env.GBUTS_SPOTIFY_AUTO_MESSAGE_ENABLED !== 'true') return;
         const messages = await syncGbutsSpotifyMessages({ ...deps, sendText: sendGbutsText,

@@ -82,6 +82,7 @@ export function startSpotifyDeliveryMonitor(): void {
     catch {
       console.error('[SpotifyDeliveryMonitor] check failed');
       if (!loadSafeModeConfig().enabled) await sendAlert({ key: 'spotify-delivery-monitor-unavailable',
+        attention: 'action-required', nextAction: '에브리뷰·벗츠 로그인 연결과 노션 접근을 확인해주세요.', automationStatus: '누락 여부를 확인하지 못하고 있습니다. 처리 완료를 뜻하지 않습니다.',
         title: 'Spotify 자동 전달 감시 확인 필요', body: '에브리뷰·벗츠 전달 누락 감시를 완료하지 못했습니다. 서버 연결과 감시 기록을 확인해주세요.',
         category: 'system', severity: 'warning', throttleMs: 30 * 24 * 60 * 60_000 });
     }

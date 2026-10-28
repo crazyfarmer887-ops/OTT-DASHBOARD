@@ -1,3 +1,4 @@
+import { spotifyExistingDetailsPrompt } from './spotify-fulfillment-choice';
 import { GbutsChatDeliveryError, gbutsChatContainsText, splitGbutsChatText } from '../lib/gbuts-chat-delivery';
 import { explicitYouTubeBuyerEmails } from '../lib/youtube-buyer-email';
 import { existsSync, readFileSync } from 'node:fs';
@@ -87,13 +88,16 @@ export function requestedSpotifyNewAccount(messages: readonly GbutsChatMessage[]
     .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
   let selectedAt: string | null = null;
   for (const entry of buyerMessages) {
-    const content = entry.message.trim();
+    let content = entry.message.trim();
+    if (/말고|아니라/.test(content)) content = content.split(/말고|아니라/).at(-1)!.trim();
+    if (/^(?:①|1(?:\s*번)?|기존\s*계정|내\s*계정)(?:\s*으로)?(?:\s*(?:이요|요|할게요|부탁드립니다|초대해주세요|해주세요|선택))?[.!~\s]*$/.test(content)) { selectedAt = null; continue; }
     if (/(?:말고|아니|취소|안\s*(?:할|받|원)|필요\s*없)/.test(content)) { selectedAt = null; continue; }
     if (/[?？]/.test(content) || /(?:가능한가요|되나요|어떻게|뭔가요|무엇인가요|있나요)/.test(content)) continue;
-    const numberedChoice = hasOptions && /^(?:②|2\s*번)(?:\s*(?:으로|을|를))?(?:\s*(?:요|이요|선택|부탁|해주세요|해줘|할게요|원해요))?[.!~\s]*$/.test(content);
+    const numberedChoice = hasOptions && /^(?:②|2(?:\s*번)?)(?:\s*(?:으로|을|를))?(?:\s*(?:요|이요|선택|부탁|해주세요|해줘|할게요|원해요))?[.!~\s]*$/.test(content);
     const namedChoice = /(?:새|신규)\s*(?:계정|아이디)/.test(content)
       && /(?:발급|만들|생성|원해|원합|부탁|해주세요|해줘|할게|할래|선택)/.test(content);
-    if (numberedChoice || namedChoice) selectedAt = entry.createdAt;
+    const shortNamedChoice = /^(?:새|신규)\s*(?:계정|아이디)(?:\s*(?:이요|요|으로|으로요|부탁드립니다))?[.!~\s]*$/.test(content);
+    if (numberedChoice || namedChoice || shortNamedChoice) selectedAt = entry.createdAt;
   }
   return selectedAt;
 }
@@ -128,15 +132,17 @@ export async function syncGbutsSpotifyMessages(deps: GbutsSpotifyMessageDependen
     const newAccountRequestedAt = requestedSpotifyNewAccount(chat.messages, member.userSeq);
     // A submitted account waiting for model interpretation is not a missing submission.
     if (!options.guidesOnly && deps.extractCredentials && !buyerCredentials && !newAccountRequestedAt
-      && chat.messages.some(message => message.senderSeq === member.userSeq && message.messageType === 'TEXT'
-        && explicitYouTubeBuyerEmails(message.message).length > 0)) continue;
+      && extractGbutsSpotifyCredentials(chat.messages, member.userSeq)) continue;
     const buyerChoiceAt = [buyerCredentials?.receivedAt, newAccountRequestedAt]
       .filter((value): value is string => Boolean(value)).sort().at(-1);
     const matches = rows.filter((row) => row.orderKey === orderKey);
     if (matches.length > 1) continue;
     const row = matches.length === 1 ? matches[0] : null;
     const desired: Array<{ suffix: string; text: string }> = [];
-    if (!buyerCredentials && !newAccountRequestedAt) desired.push({ suffix: 'guide', text: SPOTIFY_BUYER_GUIDE });
+    if (!buyerCredentials && !newAccountRequestedAt && !row?.invited && !row?.registered) {
+      const details = spotifyExistingDetailsPrompt(chat.messages, member.userSeq);
+      desired.push(details || { suffix: 'guide', text: SPOTIFY_BUYER_GUIDE });
+    }
     const matchesBuyerCredentials = Boolean(row && buyerCredentials
       && isSpotifyAccountForBuyer(row.email, buyerCredentials.email)
       && row.password === buyerCredentials.password
@@ -198,7 +204,7 @@ export async function syncGbutsSpotifyMessages(deps: GbutsSpotifyMessageDependen
       journal.records[key] = { state: 'attempted', textHash, roomId,
         updatedAt: deps.now?.() ?? new Date().toISOString() };
       deps.writeJournal(journal);
-      if (item.suffix === 'guide') guidesAttempted += 1;
+      if (item.suffix === 'guide' || item.suffix.startsWith('existing-')) guidesAttempted += 1;
       else if (item.suffix === 'request-received') acknowledgementsAttempted += 1;
       else invitedRepliesAttempted += 1;
       try { await deps.sendText(roomId, sellerSeq, item.text); } catch (error) {

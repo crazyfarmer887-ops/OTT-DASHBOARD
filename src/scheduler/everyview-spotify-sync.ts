@@ -1,5 +1,6 @@
+import { extractSpotifyFulfillmentCredentials } from './spotify-fulfillment-choice';
 import { existsSync, readFileSync } from 'node:fs';
-import { createEveryviewSpotifyClient, everyviewSpotifyOrderKey } from '../lib/everyview-spotify';
+import { createEveryviewSpotifyClient, everyviewSpotifyOrderKey, EveryviewSpotifyReadError } from '../lib/everyview-spotify';
 import { loadEveryviewCookieHeader } from '../lib/everyview-api';
 import { writeJsonAtomic } from '../lib/graytag-sales-session';
 import { loadSafeModeConfig } from '../api/safe-mode';
@@ -54,7 +55,8 @@ export async function runEveryviewSpotifyCycle() {
     writeJsonAtomic(statusPath(), status); return status;
   }
   const cookie = loadEveryviewCookieHeader(), token = process.env.NOTION_API_TOKEN?.trim();
-  if (!cookie || !token) throw new Error('Everyview Spotify session or Notion connection unavailable');
+  if (!cookie) throw new EveryviewSpotifyReadError('SESSION_REQUIRED', 'Everyview login session required');
+  if (!token) throw new Error('Notion connection unavailable');
   const assertSendingAllowed = () => {
     if (loadSafeModeConfig().enabled || JSON.stringify(readEveryviewSpotifyConfig()) !== JSON.stringify(config))
       throw new Error('Everyview Spotify sending paused');
@@ -102,10 +104,14 @@ export async function runEveryviewSpotifyCycle() {
     }
   }
   if (reconciled) creationDeps.write(creations);
-  const deps = { ...notion, ...provider, extractCredentials: extractGbutsCredentialsWithOpenRouter,
+  const deps = { ...notion, ...provider, extractCredentials: (messages: readonly GbutsChatMessage[], buyer: number) => extractSpotifyFulfillmentCredentials(messages, buyer, extractGbutsCredentialsWithOpenRouter),
     createRow: (key: string, credentials: Parameters<typeof notion.createRow>[1]) => {
       assertSendingAllowed();
       return guardEveryviewNotionCreation(key, () => notion.createRow(key, credentials), creationDeps);
+    },
+    replaceWithNewAccountRequestRow: (row: SpotifyNotionRow, key: string) => {
+      assertSendingAllowed();
+      return notion.replaceWithNewAccountRequestRow(row, key);
     },
     createNewAccountRequestRow: (key: string) => {
       assertSendingAllowed();
@@ -134,6 +140,15 @@ export async function runEveryviewSpotifyCycle() {
   return status;
 }
 
+export function everyviewSpotifyFailureCode(error: unknown): string {
+  if (error instanceof EveryviewSpotifyReadError) return error.code;
+  const message = error instanceof Error ? error.message : '';
+  if (/creation uncertain/i.test(message)) return 'CREATION_UNCERTAIN';
+  if (/쿠키가 만료|login session required/i.test(message)) return 'SESSION_REQUIRED';
+  if (/identity|ambiguous/i.test(message)) return 'IDENTITY_REQUIRED';
+  if (/Notion/i.test(message)) return 'NOTION_UNAVAILABLE';
+  return 'SYNC_UNAVAILABLE';
+}
 export function startEveryviewSpotifySync(): void {
   // Explicit persisted activation only. No historical/manual order is inferred during startup.
   if (!existsSync(configPath())) return;
@@ -144,9 +159,7 @@ export function startEveryviewSpotifySync(): void {
         console.log('[EveryviewSpotifySync] completed', { state: status.state, held: status.held, historical: status.historical });
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : '';
-      const code = /creation uncertain/i.test(message) ? 'CREATION_UNCERTAIN' : /session|authenticated|owned/i.test(message) ? 'SESSION_REQUIRED'
-        : /identity|ambiguous/i.test(message) ? 'IDENTITY_REQUIRED' : /Notion/i.test(message) ? 'NOTION_UNAVAILABLE' : 'SYNC_UNAVAILABLE';
+      const code = everyviewSpotifyFailureCode(error);
       writeJsonAtomic(statusPath(), { state: 'error', checkedAt: new Date().toISOString(), error: code });
       console.error('[EveryviewSpotifySync] sync failed', code);
     }

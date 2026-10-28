@@ -110,6 +110,12 @@ export function spotifyDeliveryAlertInput(incident: DeliveryIncident): SellerAle
     : i.platform === 'gbuts' ? 'https://gbuts.com/seller/chats' : 'https://everyview.kr/myParty';
   // Only trusted identifiers/static descriptions enter Telegram, never account/chat/error text.
   return { key: `spotify-delivery-${createHash('sha256').update(`${i.key}:${i.code}:${incident.firstSeenAt}`).digest('hex').slice(0,24)}`,
+    attention: 'action-required',
+    nextAction: i.code === 'source_unavailable' ? '해당 플랫폼 로그인 연결과 노션 접근을 확인해주세요. 세션이 만료됐다면 다시 연결해주세요.'
+      : i.code === 'identity_mismatch' ? '노션 발급 계정과 구매자에게 이미 보낸 계정을 대조해 정확한 계정을 확인해주세요. 다시 보내기 전에 기존 채팅을 확인하세요.'
+      : i.code === 'delivery_uncertain' ? '구매자 채팅에서 이미 전송됐는지 확인해주세요. 확인 전에는 중복 전송하지 마세요.'
+      : '노션의 주문 연결·발급 정보·완료 표시를 확인하고 구매자 채팅과 대조해주세요.',
+    automationStatus: '감시에서 전달 완료를 확인하지 못했습니다. 원본 노션·채팅을 확인해주세요. 이 감시 알림이 전달 작업 자체를 중지시킨 것은 아닙니다.',
     title: `${platform} Spotify 자동 전달 확인 필요`,
     body: [descriptions[i.code], i.orderKey ? `주문: ${i.orderKey}` : '',
       i.postSeq ? `판매글/파티: ${i.postSeq}` : '', '계정 정보·비밀번호는 알림에 포함하지 않습니다.'].filter(Boolean).join('\n'),

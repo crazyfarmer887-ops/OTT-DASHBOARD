@@ -79,6 +79,7 @@ export async function monitorNba(deps: MonitorDependencies, options: { forceChec
     if (record.notifiedIncident === record.incident
       && Math.floor((record.notifiedAt || 0) / NBA_CHECK_INTERVAL) === Math.floor(now / NBA_CHECK_INTERVAL)) continue;
     const sent = await deps.alert({ provider: 'linkid', category: 'system', key: `nba-login:${target.key}:${record.incident}:${Math.floor(now / NBA_CHECK_INTERVAL)}`,
+      attention: 'action-required', nextAction: record.result === 'invalid' ? '링키드 등록 비밀번호와 NBA 로그인을 확인한 뒤 필요하면 백업 계정으로 직접 교체해주세요.' : 'NBA 로그인 상태와 보안 인증을 확인해주세요. 이 알림만으로 비밀번호 오류라고 확정하지 마세요.', automationStatus: '로그인 점검만 수행합니다. 비밀번호 변경·계정 교체는 자동 실행하지 않습니다.',
       title: record.result === 'invalid' ? 'NBA 계정 이상 · 조치 필요' : 'NBA 로그인 점검 · 확인 필요',
       body: `${target.label}\n계정: ${target.email}\n${messages[record.result]}\n확인 시각: ${new Date(record.checkedAt).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}`,
       actionUrl: target.actionUrl, throttleMs: NBA_CHECK_INTERVAL });

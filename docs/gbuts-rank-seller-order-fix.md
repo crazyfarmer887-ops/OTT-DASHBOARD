@@ -1,0 +1,11 @@
+# Seller discovery ordering failure — 2026-10-28
+
+The live rank worker was enabled with safe mode off and fresh rank checks, but future discovery had stopped at watermark19079. Its error was `신규 구독공유 판매글 또는 재등록 연결 확인 필요`; a Netflix renewal also reported `판매글의 최신순 정렬을 확인하지 못했습니다.`. No uncertain CREATE or pending renewal was present. Post19158's active PICK remained intentionally held until2026-10-29 17:13:27 KST.
+
+A read-only seller API probe identified the failed assumption: `status=COMPLETED` does not provide a single newest-first creation-time stream. Its first row was an ON_SALE fully subscribed post18268 createdOctober25, followed by newer CLOSED post19070 createdOctober28. The previous filtered-stream timestamp check therefore threw before discovery or the pre-publication high-water calculation could complete. Turning off safe mode or making another CREATE cannot repair this.
+
+`createGbutsOttSellerClient` now shares a bounded complete seller-page enumeration for ordinary history, latestPostSeq and listPostsAfter. It does not stop at an assumed timestamp boundary or infer max ID from the first timestamp group. Every row is schema validated; duplicate rows within/across pages and incomplete traversal still fail closed. Private credentials remain confined to the existing sender path, and no actual create/close/invite/send was performed by this investigation.
+
+A real-path regression first failed with the live error. Five focused suites then passed93 tests, including mixed-state ordering, same-second ties, complete traversal, duplicate rejection, future-rank discovery, renewal recovery and publication. A read-only bundled production query with the patched client found the two actual posts after19079 (19158 and19088), completed in4641ms, and confirmed that19158 was no longer missed. The deployed service still needs the committed release and a guarded queue recovery run from the coordinating agent. Existing safety modes, buyer/capacity/account bindings, minimum interval and active PICK protections are unchanged.
+
+Performance tradeoff: current history requires roughly65 pages and this measured4.6-second complete read; this is preferable to silently skipping state groups. No unverified sort API parameter, incomplete page cache or mutation replay was introduced.

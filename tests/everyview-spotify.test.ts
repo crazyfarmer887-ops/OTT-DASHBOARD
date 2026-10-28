@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { EventEmitter } from 'node:events';
 import { everyviewSpotifyOrderKey, parseEveryviewSpotifyChat, parseEveryviewSpotifyMembers, sendEveryviewSpotifyText } from '../src/lib/everyview-spotify';
-import { everyviewOrderEligibility, guardEveryviewNotionCreation, type EveryviewSpotifyConfig } from '../src/scheduler/everyview-spotify-sync';
+import { everyviewOrderEligibility, guardEveryviewNotionCreation, everyviewSpotifyFailureCode, type EveryviewSpotifyConfig } from '../src/scheduler/everyview-spotify-sync';
 import { createGbutsSpotifyNotionClient, syncGbutsSpotifyCredentials } from '../src/scheduler/gbuts-spotify-sync';
 import { spotifyRegisteredLogin, syncGbutsSpotifyMessages } from '../src/scheduler/gbuts-spotify-messages';
 import type WebSocket from 'ws';
@@ -63,6 +63,11 @@ describe('Everyview Spotify provider boundary', () => {
     expect(c).toMatchObject({ roomId: '4204', buyerSeq: 30227, sellerSeq: 32322, socketUrl: 'wss://everyview.kr/ws/4204/32322' });
     expect(c.messages.map(m => m.senderSeq)).toEqual([30227, 32322]);
     expect(c.messages[0].createdAt).toBe('2026-10-27T07:05:00.000Z');
+  });
+  it('accepts the current official client message-id field while retaining identity checks', () => {
+    const current = html.replace('\"content\": content}', '\"content\": content, \"client_msg_id\": cmid}');
+    expect(parseEveryviewSpotifyChat(current,30227,32322,now).roomId).toBe('4204');
+    expect(()=>parseEveryviewSpotifyChat(current,30227,99,now)).toThrow('identity');
   });
   it('blocks a changed seller, socket host, or truncated history', () => {
     expect(() => parseEveryviewSpotifyChat(html, 30227, 99, now)).toThrow('identity');
@@ -141,4 +146,11 @@ describe('Everyview Spotify provider boundary', () => {
     await expect(sendEveryviewSpotifyText('test', c, 'reply', AfterSend as unknown as typeof WebSocket)).rejects.toMatchObject({ submitted: true, retryable: false });
     await expect(sendEveryviewSpotifyText('test', c, 'reply', BeforeSend as unknown as typeof WebSocket)).rejects.toMatchObject({ submitted: false, retryable: true });
   });
+});
+
+it('reports schema and counterparty failures separately from a real expired login',()=>{
+ try {parseEveryviewSpotifyChat(html.replace('let talkMsg','let changedTalk'),30227,32322,now);} catch(error) {expect(everyviewSpotifyFailureCode(error)).toBe('CHAT_SCHEMA_CHANGED');}
+ try {parseEveryviewSpotifyChat(html,30227,99,now);} catch(error) {expect(everyviewSpotifyFailureCode(error)).toBe('CHAT_IDENTITY_MISMATCH');}
+ expect(everyviewSpotifyFailureCode(new Error('에브리뷰 쿠키가 만료됐어요.'))).toBe('SESSION_REQUIRED');
+ expect(everyviewSpotifyFailureCode(new Error('Everyview authenticated chat identity invalid'))).toBe('IDENTITY_REQUIRED');
 });
