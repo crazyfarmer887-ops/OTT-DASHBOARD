@@ -11,3 +11,11 @@ Focused validation: 86 tests in six suites; client build passed. Repository-wide
 There is no Everyview Spotify chat/Notion worker in the current source or active service inventory. The server's Everyview cookie is expired, while the user's Chrome is authenticated. Party s554 has two members; the latest buyer requested a new account on October 27 and has an acknowledgement but no completion reply. Its sharing description incorrectly refers buyers to GButs chat. Do not treat GButs worker completion counts as Everyview coverage.
 
 One unassigned Notion completed row was created near that request and has an explicit registered email, but timestamp proximity is not proof of recipient identity. User confirmation of the mapping and current session renewal are pending. No account has been sent to an inferred buyer, no completion box has been asserted, and no uncertain send has been retried.
+
+## Deployed verification
+
+Code release `6349c48` was committed/pushed, archived and checksum-verified, prepared with unchanged dependencies, tested on Linux (86 passing), built and deployed through the existing AIO systemd override. Authenticated local API smoke passed. The worker subsequently logged one startup and nine completed cycles with no Spotify sync failure or new message batch. Journals and prior service configuration were backed up privately; unrelated Google/NBA services were untouched.
+
+Actual Notion re-read: 16 rows, three unassigned, two bound pending completions. One unassigned row has a non-empty `registered email`, but its value contains no at-sign and is not an email. The new reader sees it and correctly refuses to derive or deliver an invented identity. Its original Password is populated. The partner must provide a real issued address before this row can be delivered, in addition to confirming its buyer binding.
+
+Everyview s554 and s618 sharingDescription/additionalInfo were updated through the authenticated official seller screen: only `GButs 1:1 채팅` was replaced with `에브리뷰 파티원과 채팅`. Both were saved without sending a login-change notification, then reloaded and visually verified. All dates, prices, capacity and member records were preserved. Browser cookie refresh was interrupted by concurrent foreground tab changes; a brief Chrome pause was requested. No Everyview worker or buyer delivery is claimed complete.
