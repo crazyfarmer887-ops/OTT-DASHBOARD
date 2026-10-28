@@ -28,6 +28,8 @@ export interface GbutsOttOrder {
   attemptedAt?: string;
   deliveryMessage?: string;
   credentialDeliveryPolicy?: 'netflix-password-v1';
+  replacement?: { accountEmail: string; sourceAccountEmail: string; sourceProfileNumber: number; assignedAt: string;
+    emailCodeProvider?: 'aaryan' | 'emailverify' };
   guideImage?: NetflixGuideDelivery;
   directDelivery?: { requestAt: string; requestKey: string; state: 'ready' | 'attempted' | 'confirmed' | 'blocked'; messageHash?: string; attemptedAt?: string;
     format?: 'disney-mailbox-v1' | 'netflix-mailbox-v1'; messageHashes?: string[] };
@@ -113,6 +115,12 @@ export function holdsDisneyProfile(order: GbutsOttOrder, listing: GbutsOttListin
   return listing.deliveryMode === 'disney-numbered-password' && order.profileNumber !== undefined && !order.profileReleasedAt
     && order.cancelStatus !== 'REFUNDED' && !!order.endDate && order.endDate >= koreaToday(now);
 }
+/** Purchase identity stays on the original post; only this buyer's fulfillment moves. */
+export function gbutsOrderListing(store: GbutsOttStore, order: GbutsOttOrder): GbutsOttListing {
+  const listing = store.listings[order.listingId];
+  return order.replacement ? { ...listing, accountEmail: order.replacement.accountEmail,
+    emailCodeProvider: order.replacement.emailCodeProvider } : listing;
+}
 export function updateGbutsOttOrders(store: GbutsOttStore, listing: GbutsOttListing,
   members: Array<{ seq: number; userSeq: number; nickname: string; status: string; cancelStatus: string | null; createdAt: string; subscriptionEndsAt: string }>, now: string): void {
   const seen = new Set<string>();
@@ -133,7 +141,7 @@ export function updateGbutsOttOrders(store: GbutsOttStore, listing: GbutsOttList
   }
 }
 export function hasGbutsOttProfileLease(store: GbutsOttStore, order: GbutsOttOrder, expectedProfileName?: string, now = new Date()): boolean {
-  const listing = store.listings[order.listingId];
+  const listing = gbutsOrderListing(store, order);
   if (!listing || order.profileReleasedAt) return false;
   if (listing.deliveryMode === 'disney-numbered-password') {
     if (!activeOttOrder(order, now) || !Number.isInteger(order.profileNumber) || order.profileNumber! < 1 || order.profileNumber! > 6
@@ -145,7 +153,7 @@ export function hasGbutsOttProfileLease(store: GbutsOttStore, order: GbutsOttOrd
   if (!holdsNetflixProfile(order, listing, now) || order.profileName !== String(order.profileNumber)
     || (expectedProfileName !== undefined && expectedProfileName !== order.profileName)) return false;
   return !Object.values(store.orders).some(other => other.key !== order.key && other.profileNumber === order.profileNumber
-    && ottKey(store.listings[other.listingId].serviceType, store.listings[other.listingId].accountEmail) === ottKey(listing.serviceType, listing.accountEmail)
+    && ottKey(gbutsOrderListing(store, other).serviceType, gbutsOrderListing(store, other).accountEmail) === ottKey(listing.serviceType, listing.accountEmail)
     && holdsNetflixProfile(other, store.listings[other.listingId], now));
 }
 export function manualOttMembersWithProfiles(members: any[], accessRecords: Array<{ member: { kind: string; memberId: string }; serviceType: string; accountEmail: string; createdAt: string; profileName: string }>): any[] {
@@ -158,7 +166,7 @@ export function manualOttMembersWithProfiles(members: any[], accessRecords: Arra
 }
 export function isGbutsOttBuyerMatch(store: GbutsOttStore, record: { serviceType: string; accountEmail: string; profileName?: string; member: { memberId: string } },
   member: { seq: number; userSeq: number; subscriptionEndsAt: string } | undefined): boolean {
-  const order = store.orders[record.member.memberId]; const listing = order && store.listings[order.listingId];
+  const order = store.orders[record.member.memberId]; const listing = order && gbutsOrderListing(store, order);
   return Boolean(order && listing && member && order.memberSeq === member.seq && order.userSeq === member.userSeq
     && hasGbutsOttProfileLease(store, order, record.profileName)
     && `${listing.postSeq}:${member.seq}` === record.member.memberId
@@ -169,7 +177,7 @@ export function accountGbutsInventory(store: GbutsOttStore, serviceType: string,
   const key = ottKey(serviceType, email);
   const listings = Object.values(store.listings).filter(x => ottKey(x.serviceType, x.accountEmail) === key);
   const ids = new Set(listings.map(x => x.id));
-  const members = Object.values(store.orders).filter(x => ids.has(x.listingId)
+  const members = Object.values(store.orders).filter(x => ottKey(gbutsOrderListing(store, x).serviceType, gbutsOrderListing(store, x).accountEmail) === key
     && (activeOttOrder(x, now) || holdsNetflixProfile(x, store.listings[x.listingId], now) || holdsDisneyProfile(x, store.listings[x.listingId], now)
       || (x.status==='MISSING'&&x.cancelStatus!=='REFUNDED'&&x.endDate>=koreaToday(now))));
   const currentUsers = members.length;
@@ -179,6 +187,9 @@ export function accountGbutsInventory(store: GbutsOttStore, serviceType: string,
     reserved += listing.state === 'failed' || listing.state === 'closed' || listing.endDate < koreaToday(now)
       ? active : Math.max(listing.capacity, active);
   }
+  // A buyer moved from another post consumes a separate place, not one of this
+  // account's remaining public recruitment places.
+  reserved += members.filter(x => !ids.has(x.listingId)).length;
   return { currentUsers, recruiting: Math.max(0, reserved - currentUsers), members, claims: 0 };
 }
 export function pendingGraytagClaims(store: GbutsOttStore, account: GbutsOttAccount, management: GbutsOttManagement): number {

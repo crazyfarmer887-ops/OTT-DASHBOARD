@@ -14,7 +14,7 @@ import {
   type GbutsOttListing,
 } from "../lib/gbuts-ott";
 import type { GbutsOttPost } from "../lib/gbuts-ott-client";
-import { youtubeOccupied, type YouTubeRenewal } from "./gbuts-youtube-renewal";
+import { subscriptionExternalOccupancy, youtubeOccupied, type YouTubeRenewal } from "./gbuts-youtube-renewal";
 const fingerprint = (text: string) =>
   createHash("sha256").update(text).digest("hex");
 const idFor = (p: YouTubeRenewal, seq = p.pending?.sourcePostSeq) =>
@@ -279,7 +279,7 @@ export function assertSubscriptionRankInventory(
     !account ||
     account.overbooked ||
     !account.eligible ||
-    account.available < p.capacity ||
+    account.available < p.capacity - subscriptionExternalOccupancy(p) ||
     account.endDate < p.endDate
   )
     throw Error("다른 판매처의 자리 또는 계정 기간 확인 필요");

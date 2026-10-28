@@ -1,4 +1,4 @@
-import { deliverableOttOrder, hasGbutsOttProfileLease, ottKey, type GbutsOttListing, type GbutsOttOrder, type GbutsOttStore } from './gbuts-ott';
+import { deliverableOttOrder, gbutsOrderListing, hasGbutsOttProfileLease, ottKey, type GbutsOttListing, type GbutsOttOrder, type GbutsOttStore } from './gbuts-ott';
 import { buildPartyAccessPublicPayload, createPartyAccessLinkRecord, enrichPartyAccessRecordWithKnownCredentials, resolvePartyAccessCredentials, type PartyAccessLinkStore } from './party-access';
 import { assertGbutsOttCredentials, type GbutsOttCredentials } from './gbuts-disney-delivery';
 import { tinyhostMailboxUrl, emailVerifyDisneyMailboxUrl } from './disney-mailbox';
@@ -9,6 +9,7 @@ export function resolveGbutsOttDirectCredentials(order: GbutsOttOrder, listing: 
   accessRecords: PartyAccessLinkStore; inventory: GbutsOttStore;
   maintenance: PartyMaintenanceChecklistStore; generated: GeneratedAccountStore;
 }): GbutsOttCredentials {
+  listing = gbutsOrderListing(data.inventory, order);
   const record = Object.values(data.accessRecords).filter(x => x.member.kind === 'gbuts' && x.member.memberId === order.key)
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
   if (!deliverableOttOrder(order) || !record || ottKey(record.serviceType, record.accountEmail) !== ottKey(listing.serviceType, listing.accountEmail)

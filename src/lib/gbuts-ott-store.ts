@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { validNetflixGuideDelivery } from './gbuts-netflix-guide';
 import { writeJsonAtomic } from './graytag-sales-session';
-import { GBUTS_OTT_CATEGORIES, emptyGbutsOttStore, gbutsOttRenewalKey, supportsGbutsOttRenewal, type GbutsOttStore } from './gbuts-ott';
+import { GBUTS_OTT_CATEGORIES, emptyGbutsOttStore, gbutsOrderListing, gbutsOttRenewalKey, supportsGbutsOttRenewal, type GbutsOttStore } from './gbuts-ott';
 const DEFAULT_PATH = '/home/ubuntu/.hermes/hermes-agent/graytag-aio-manager-0606/data/gbuts-ott-sales.json';
 export function readGbutsOttStore(path = process.env.GBUTS_OTT_STORE_PATH || DEFAULT_PATH): GbutsOttStore {
   if (!existsSync(path)) return emptyGbutsOttStore();
@@ -23,19 +23,26 @@ export function readGbutsOttStore(path = process.env.GBUTS_OTT_STORE_PATH || DEF
       || order.memberSeq < 1 || !Number.isSafeInteger(order.userSeq) || order.userSeq < 1
       || key !== `${order.postSeq}:${order.memberSeq}` || order.postSeq !== data.listings[order.listingId].postSeq
       || !['ready', 'attempted', 'confirmed', 'blocked'].includes(order.delivery) || typeof order.endDate !== 'string'
+      || (order.replacement !== undefined && (!order.replacement || data.listings[order.listingId].serviceType !== '넷플릭스'
+        || typeof order.replacement.accountEmail !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(order.replacement.accountEmail)
+        || order.replacement.sourceAccountEmail !== data.listings[order.listingId].accountEmail
+        || order.replacement.accountEmail.toLowerCase() === order.replacement.sourceAccountEmail.toLowerCase()
+        || !Number.isInteger(order.replacement.sourceProfileNumber) || order.replacement.sourceProfileNumber < 1 || order.replacement.sourceProfileNumber > 5
+        || !Number.isInteger(order.profileNumber) || !Number.isFinite(Date.parse(order.replacement.assignedAt))
+        || (order.replacement.emailCodeProvider !== undefined && !['aaryan','emailverify'].includes(order.replacement.emailCodeProvider))))
       || (order.directDelivery !== undefined && (!order.directDelivery || typeof order.directDelivery !== 'object'
         || !['ready', 'attempted', 'confirmed', 'blocked'].includes(order.directDelivery.state)
         || !Number.isFinite(Date.parse(order.directDelivery.requestAt)) || !/^[a-f0-9]{64}$/.test(order.directDelivery.requestKey)
         || (order.directDelivery.messageHash !== undefined && !/^[a-f0-9]{64}$/.test(order.directDelivery.messageHash))
         || (order.directDelivery.format !== undefined && !((order.directDelivery.format === 'disney-mailbox-v1' && data.listings[order.listingId].deliveryMode === 'disney-numbered-password')
-          || (order.directDelivery.format === 'netflix-mailbox-v1' && data.listings[order.listingId].emailCodeProvider === 'emailverify')))
+          || (order.directDelivery.format === 'netflix-mailbox-v1' && gbutsOrderListing(data, order).emailCodeProvider === 'emailverify')))
         || (order.directDelivery.messageHashes !== undefined && (!Array.isArray(order.directDelivery.messageHashes) || !order.directDelivery.messageHashes.length
           || order.directDelivery.messageHashes.some((hash: unknown) => typeof hash !== 'string' || !/^[a-f0-9]{64}$/.test(hash))))
         || (['attempted', 'confirmed'].includes(order.directDelivery.state) && (!order.directDelivery.messageHash
           || !Number.isFinite(Date.parse(order.directDelivery.attemptedAt))))))
       || (order.deliveryMessage !== undefined && (typeof order.deliveryMessage !== 'string' || !order.deliveryMessage.trim() || order.deliveryMessage.length > 2000))
       || (order.guideImage !== undefined && (!validNetflixGuideDelivery(order.guideImage)
-        || data.listings[order.listingId].serviceType !== '넷플릭스' || data.listings[order.listingId].emailCodeProvider !== 'emailverify'
+        || data.listings[order.listingId].serviceType !== '넷플릭스' || gbutsOrderListing(data, order).emailCodeProvider !== 'emailverify'
         || order.guideImage.roomId !== order.roomId))
       || (order.credentialDeliveryPolicy !== undefined && (order.credentialDeliveryPolicy !== 'netflix-password-v1' || data.listings[order.listingId].serviceType !== '넷플릭스'))
       || (order.profileNumber !== undefined && ((data.listings[order.listingId].serviceType !== '넷플릭스' && data.listings[order.listingId].deliveryMode !== 'disney-numbered-password') || !Number.isInteger(order.profileNumber) || order.profileNumber < 1 || order.profileNumber > (data.listings[order.listingId].deliveryMode === 'disney-numbered-password' ? 6 : 5) || order.profileName !== String(order.profileNumber)))

@@ -1,3 +1,4 @@
+import { gbutsOrderListing } from '../lib/gbuts-ott';
 import { createHash } from 'node:crypto';
 import { GbutsChatDeliveryError, splitGbutsChatText, type GbutsTextMessage } from '../lib/gbuts-chat-delivery';
 import { deliverableOttOrder, hasGbutsOttProfileLease, type GbutsOttOrder, type GbutsOttStore } from '../lib/gbuts-ott';
@@ -33,7 +34,7 @@ export async function syncGbutsDirectCredentials(store: GbutsOttStore, orders: G
   for (const order of orders) {
     if (!deliverableOttOrder(order) || order.delivery !== 'confirmed' || !order.profileName
       || !hasGbutsOttProfileLease(store, order)
-      || (store.listings[order.listingId].serviceType === '넷플릭스' && order.profileNumber === undefined)) continue;
+      || (gbutsOrderListing(store, order).serviceType === '넷플릭스' && order.profileNumber === undefined)) continue;
     try {
       const roomId = await client.openPrivateRoom(order.postSeq, order.userSeq);
       if (order.roomId !== roomId) throw new Error('구매자 채팅방 연결을 확인하지 못했습니다.');
@@ -58,11 +59,11 @@ export async function syncGbutsDirectCredentials(store: GbutsOttStore, orders: G
       // Reuse the hashed delivery journal so restart/uncertain-send handling is
       // identical to an explicit request, without persisting the password.
       const purchasedAt = messageTime(order.purchasedAt || `${order.startDate}T00:00:00+09:00`);
-      const disney = store.listings[order.listingId].deliveryMode === 'disney-numbered-password';
-      const netflixMailbox = store.listings[order.listingId].serviceType === '넷플릭스' && store.listings[order.listingId].emailCodeProvider === 'emailverify';
+      const disney = gbutsOrderListing(store, order).deliveryMode === 'disney-numbered-password';
+      const netflixMailbox = gbutsOrderListing(store, order).serviceType === '넷플릭스' && gbutsOrderListing(store, order).emailCodeProvider === 'emailverify';
       // Only newly submitted password-only guides opt Netflix into automatic delivery.
       // Historical link-guide recipients are never bulk-messaged by this policy change.
-      const netflix = store.listings[order.listingId].serviceType === '넷플릭스'
+      const netflix = gbutsOrderListing(store, order).serviceType === '넷플릭스'
         && order.credentialDeliveryPolicy === 'netflix-password-v1';
       const initialKey = fingerprint(`${disney ? DISNEY_DIRECT_FORMAT : netflixMailbox ? NETFLIX_MAILBOX_FORMAT : 'netflix-password-v1'}:${order.key}`);
       const upgrade = disney && previous && ['confirmed', 'ready'].includes(previous.state) && previous.format !== DISNEY_DIRECT_FORMAT;
@@ -88,7 +89,7 @@ export async function syncGbutsDirectCredentials(store: GbutsOttStore, orders: G
       }
       const delivery = order.directDelivery = previous?.requestKey === request.key ? previous
         : { requestAt: new Date(request.time).toISOString(), requestKey: request.key, state: 'ready' };
-      const credentials = await deps.credentials(order, store.listings[order.listingId]);
+      const credentials = await deps.credentials(order, gbutsOrderListing(store, order));
       const { id, password } = credentials;
       if (![id, password].every(value => value.trim() && !/[\r\n]/.test(value) && !isGraytagAccessNoticeCredential(value)))
         throw new Error('최신 ID·비밀번호가 올바르지 않습니다.');

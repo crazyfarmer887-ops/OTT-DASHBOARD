@@ -2,7 +2,8 @@ import { tryDecodeGbutsSubscriptionCredential } from '../lib/gbuts-subscription-
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { writeJsonAtomic } from '../lib/graytag-sales-session';
-import { activeOttOrder, koreaToday, ottDate } from '../lib/gbuts-ott';
+import { activeOttOrder, gbutsOrderListing, holdsNetflixProfile, koreaToday, ottDate, ottKey } from '../lib/gbuts-ott';
+import { readGbutsOttStore } from '../lib/gbuts-ott-store';
 import type { createGbutsOttSellerClient, GbutsOttMember, GbutsOttPost } from '../lib/gbuts-ott-client';
 import { OTT_RANK_CHECK_INTERVAL, OTT_RANK_COOLDOWN } from './gbuts-ott-renewal';
 
@@ -79,7 +80,19 @@ export function bindYouTubeRenewal(s: YouTubeRenewalStore,post:GbutsOttPost,enab
   return bindSubscriptionRenewal(s,post,enabled,now);
 }
 function holds(m: Member, now: Date): boolean { return (m.status === 'APPLY' || m.status === 'MISSING') && m.cancelStatus !== 'REFUNDED' && m.endDate >= koreaToday(now); }
-export function youtubeOccupied(p: YouTubeRenewal, now = new Date()): number { return Object.values(p.members).filter(m => holds(m, now)).length; }
+export function youtubeOccupied(p: YouTubeRenewal, now = new Date()): number {
+  return Object.values(p.members).filter(m => holds(m, now)).length + subscriptionExternalOccupancy(p, now);
+}
+export function subscriptionExternalOccupancy(p: YouTubeRenewal, now = new Date()): number {
+  if (p.categorySeq !== 5 || p.subscriptionType !== 'SHARE') return 0;
+  const store = readGbutsOttStore();
+  const listing = Object.values(store.listings).find(l => l.postSeq === p.currentPostSeq);
+  if (!listing) return 0;
+  const chain = new Set(p.posts.map(x => x.seq));
+  return Object.values(store.orders).filter(o => o.replacement && !chain.has(o.postSeq)
+    && holdsNetflixProfile(o, gbutsOrderListing(store, o), now)
+    && ottKey('넷플릭스', o.replacement.accountEmail) === ottKey(listing.serviceType, listing.accountEmail)).length;
+}
 function refreshMembers(p: YouTubeRenewal, post: GbutsOttPost, rows: GbutsOttMember[], now: Date): void {
   if (rows.filter(m => activeOttOrder({ ...m, endDate: ottDate(m.subscriptionEndsAt) }, now)).length < post.memberCount) throw Error('구독공유 최종 구매자 목록 확인 중');
   const seen = new Set<string>();

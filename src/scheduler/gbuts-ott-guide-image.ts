@@ -1,3 +1,4 @@
+import { gbutsOrderListing } from '../lib/gbuts-ott';
 import { GbutsChatDeliveryError } from '../lib/gbuts-chat-delivery';
 import { deliverableOttOrder, hasGbutsOttProfileLease, type GbutsOttOrder, type GbutsOttStore } from '../lib/gbuts-ott';
 import { NETFLIX_GUIDE_ASSET, readNetflixGuideConfig, type NetflixGuideConfig } from '../lib/gbuts-netflix-guide';
@@ -11,7 +12,7 @@ export interface NetflixGuideRuntime {
 export const netflixGuideRuntime: NetflixGuideRuntime = { config: readNetflixGuideConfig, send: sendGbutsImage };
 const pendingError = '계정 안내는 전달됐으나 사용법 이미지 발송 결과 확인 중 — 중복 발송을 보류합니다.';
 export function prepareNetflixGuide(store: GbutsOttStore, order: GbutsOttOrder, config: NetflixGuideConfig | null): void {
-  const listing = store.listings[order.listingId];
+  const listing = gbutsOrderListing(store, order);
   // Never migrate historical recipients or attach a guide to an explicit repeat request.
   if (order.guideImage || order.directDelivery || !order.roomId || !config?.enabled
     || listing.serviceType !== '넷플릭스' || listing.emailCodeProvider !== 'emailverify'
@@ -24,7 +25,7 @@ export function prepareNetflixGuide(store: GbutsOttStore, order: GbutsOttOrder, 
 export async function syncNetflixGuide(store: GbutsOttStore, order: GbutsOttOrder, seller: number,
   getChat: () => Promise<{ messages: GbutsChatMessage[] }>, write: (store: GbutsOttStore) => void,
   runtime: NetflixGuideRuntime = netflixGuideRuntime): Promise<void> {
-  const d = order.guideImage, listing = store.listings[order.listingId];
+  const d = order.guideImage, listing = gbutsOrderListing(store, order);
   if (!d || d.state === 'confirmed' || d.state === 'blocked' || !deliverableOttOrder(order)
     || order.delivery !== 'confirmed' || order.directDelivery?.state !== 'confirmed'
     || listing.serviceType !== '넷플릭스' || listing.emailCodeProvider !== 'emailverify'

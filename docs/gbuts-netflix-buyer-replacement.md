@@ -1,0 +1,9 @@
+# Individual Netflix buyer replacement
+
+The seller explicitly requested moving the buyer in room1290Y9BQ337XX from an unusable old account to one existing shared place and reducing public recruitment by one. Keep the original paid order/post/member/room/end date. Store only this buyer's replacement account plus original account/profile metadata; keep credentials in the established private account/access stores. No other original buyer moves.
+
+The effective fulfillment account must be used for profile leases, duplicate detection, shared inventory, current credential resolution and public buyer-match checks. A replacement stays a GButs buyer: live paid/refund verification and original expiry remain enforced. Reuse the existing access token with corrected account/profile, preserving the historical snapshot privately. Never reset the whole account or alter another buyer.
+
+The target account remains five physical places. Reduce only the current public post limit by one and its exact rank-chain current-post snapshot. Historical post capacities remain truthful. Rank occupancy includes the active replacement from outside the chain, so future reposts exclude it; a confirmed refund/expiry later releases it through the existing paid-order rules. No automatic replacement decision or new subscription purchase is introduced.
+
+Operational transfer uses an owner-only durable receipt: inspect exact paid order/room and final target roster; stop the single writer briefly; reserve/update inventory, edit existing GButs post without creating a new post, update only this buyer's access records; persist attempted before chat SEND and query history after unknown outcomes. Send current target credentials/mailbox/PIN and the existing real guide once. Restart the worker and verify inventory, live access and unchanged other buyers. Code follows local commit/push/archive deployment; no production source edits.

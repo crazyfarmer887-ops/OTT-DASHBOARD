@@ -1,3 +1,4 @@
+import { gbutsOrderListing } from '../lib/gbuts-ott';
 import { createHash } from 'node:crypto';
 import { GBUTS_OTT_CATEGORIES, activeOttOrder, holdsDisneyProfile, holdsNetflixProfile, supportsGbutsOttRenewal, koreaToday, ottDate, ottKey, updateGbutsOttOrders, type GbutsOttListing, type GbutsOttOrder, type GbutsOttStore, type GbutsOttRenewal, type GbutsOttManagement } from '../lib/gbuts-ott';
 import { readGbutsOttStore, writeGbutsOttStore } from '../lib/gbuts-ott-store';
@@ -11,7 +12,7 @@ export const OTT_RANK_COOLDOWN = 5 * 60_000;
 
 function accountOrders(store: GbutsOttStore, serviceType: string, email: string, now: Date): GbutsOttOrder[] {
   return Object.values(store.orders).filter(order => {
-    const listing = store.listings[order.listingId];
+    const listing = gbutsOrderListing(store, order);
     return ottKey(listing.serviceType, listing.accountEmail) === ottKey(serviceType, email)
       && (activeOttOrder(order, now) || holdsDisneyProfile(order, listing, now) || holdsNetflixProfile(order, listing, now)
         || (order.status === 'MISSING' && order.cancelStatus !== 'REFUNDED' && order.endDate >= koreaToday(now)));

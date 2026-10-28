@@ -1,3 +1,4 @@
+import { gbutsOrderListing } from '../lib/gbuts-ott';
 import {verifyManagedSubscriptionRank} from './gbuts-rank-adoption';
 import {syncFutureSubscriptionRank} from './gbuts-future-rank';
 import { renewYouTubeInvites } from './gbuts-youtube-renewal';
@@ -68,7 +69,7 @@ export async function syncGbutsOtt(deps: GbutsOttRuntimeDependencies,
   const eligible = Object.values(store.orders).filter(order => deliverableOttOrder(order) && order.verifiedAt === now);
   const sellerSeq = eligible.length ? await client.sellerAccountSeq() : 0;
   const deliveryText = (order: GbutsOttOrder) => {
-    const listing = store.listings[order.listingId];
+    const listing = gbutsOrderListing(store, order);
     if (listing.serviceType === '넷플릭스') {
       // Submitted history is confirmation evidence only. A never-submitted retry
       // must use the current password-only policy, even if it pinned an older guide.
@@ -85,7 +86,7 @@ export async function syncGbutsOtt(deps: GbutsOttRuntimeDependencies,
   for (const order of eligible) {
     if (!order.attemptedAt && order.delivery !== 'attempted') continue;
     if (order.delivery === 'confirmed') continue;
-    const listing = store.listings[order.listingId];
+    const listing = gbutsOrderListing(store, order);
     if (!order.accessUrl || !order.profileName || !hasGbutsOttProfileLease(store, order)
       || (listing.serviceType === '넷플릭스' && order.profileNumber === undefined)) continue;
     const roomId = await client.openPrivateRoom(order.postSeq, order.userSeq);
@@ -121,7 +122,7 @@ export async function syncGbutsOtt(deps: GbutsOttRuntimeDependencies,
   for (const pending of pendingOrders) {
     const order = store.orders[pending.key];
     if (!deliverableOttOrder(order) || order.verifiedAt !== now) continue;
-    const listing = store.listings[order.listingId];
+    const listing = gbutsOrderListing(store, order);
     const profileError = profileErrors.get(ottKey(listing.serviceType, listing.accountEmail));
     if (profileError) { order.error = profileError; write(store); continue; }
     const account = inventory.find(x => x.serviceType === listing.serviceType && x.accountEmail.toLowerCase() === listing.accountEmail.toLowerCase());
@@ -134,7 +135,7 @@ export async function syncGbutsOtt(deps: GbutsOttRuntimeDependencies,
       ...manualMembers.filter(x => x.serviceType === listing.serviceType && String(x.accountEmail || '').toLowerCase() === listing.accountEmail.toLowerCase()
         && x.status === 'active').map(x => x.profileName || x.memberName || x.name || ''),
       ...Object.values(store.orders).filter(x => x.key !== order.key && activeOttOrder(x)
-        && store.listings[x.listingId]?.accountEmail === listing.accountEmail).map(x => x.profileName || '')];
+        && gbutsOrderListing(store, x)?.accountEmail === listing.accountEmail).map(x => x.profileName || '')];
     if (listing.serviceType !== '넷플릭스') order.profileName ||= generateUniqueProfileNicknames(1, '', stableRandomFromSeed(order.key), excluded)[0];
     order.accessUrl = await deps.access(order, listing, order.profileName!);
     write(store);

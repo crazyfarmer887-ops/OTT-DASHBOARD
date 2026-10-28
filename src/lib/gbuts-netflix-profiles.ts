@@ -1,3 +1,4 @@
+import { gbutsOrderListing } from './gbuts-ott';
 import { deliverableOttOrder, holdsNetflixProfile, koreaToday, ottDate, ottKey, type GbutsOttManagement, type GbutsOttOrder, type GbutsOttStore } from './gbuts-ott';
 import { isActiveRecruitingSlot, isCurrentAccountMember } from '../web/lib/account-slots';
 
@@ -32,7 +33,7 @@ export function availableNetflixProfiles(store: GbutsOttStore, management: Gbuts
     occupy(used, profileNumber(member.profileName || member.memberName), `manual:${member.id || `unknown-${index}`}`);
   }
   for (const order of Object.values(store.orders)) {
-    const listing = store.listings[order.listingId];
+    const listing = gbutsOrderListing(store, order);
     if (ottKey(listing.serviceType, listing.accountEmail) !== key || !holdsNetflixProfile(order, listing, now)) continue;
     occupy(used, order.profileNumber!, `gbuts:${order.key}`);
   }
@@ -47,31 +48,31 @@ function purchaseTime(order: GbutsOttOrder): number {
 /** Refund/expiry release needs only the freshly verified GButs order state. */
 export function releaseCompletedNetflixProfiles(store: GbutsOttStore, now = new Date()): void {
   for (const order of Object.values(store.orders)) {
-    if (store.listings[order.listingId]?.serviceType === '넷플릭스' && order.profileNumber !== undefined && !order.profileReleasedAt && (order.cancelStatus === 'REFUNDED' || order.endDate < koreaToday(now))) {
+    if (gbutsOrderListing(store, order)?.serviceType === '넷플릭스' && order.profileNumber !== undefined && !order.profileReleasedAt && (order.cancelStatus === 'REFUNDED' || order.endDate < koreaToday(now))) {
       order.profileReleasedAt = now.toISOString(); order.profileReleaseReason = order.cancelStatus === 'REFUNDED' ? 'refunded' : 'expired';
     }
   }
 }
 export function allocateNetflixProfiles(store: GbutsOttStore, management: GbutsOttManagement, manualMembers: any[], now = new Date()): void {
-  const orders = Object.values(store.orders).filter(order => store.listings[order.listingId].serviceType === '넷플릭스');
+  const orders = Object.values(store.orders).filter(order => gbutsOrderListing(store, order).serviceType === '넷플릭스');
   releaseCompletedNetflixProfiles(store, now);
   const eligible = orders.filter(order => deliverableOttOrder(order, now)).sort((a, b) => purchaseTime(a) - purchaseTime(b) || a.postSeq - b.postSeq || a.memberSeq - b.memberSeq);
   for (const order of eligible) {
     if (order.profileReleasedAt) throw new Error('이미 반환된 프로필의 주문이 다시 활성화되어 확인이 필요합니다.');
     if (order.profileNumber !== undefined) continue;
     if (order.profileName || order.attemptedAt || order.delivery === 'confirmed') throw new Error('기존 안내된 프로필은 자동으로 번호를 변경하지 않습니다. 먼저 프로필 번호를 확인해주세요.');
-    const number = availableNetflixProfiles(store, management, manualMembers, store.listings[order.listingId].accountEmail, now)[0];
+    const number = availableNetflixProfiles(store, management, manualMembers, gbutsOrderListing(store, order).accountEmail, now)[0];
     if (!number) throw new Error('사용 가능한 1~5번 프로필이 없습니다. 중복 배정을 보류합니다.');
     order.profileNumber = number; order.profileName = String(number);
   }
-  for (const email of new Set(eligible.map(order => store.listings[order.listingId].accountEmail.toLowerCase()))) availableNetflixProfiles(store, management, manualMembers, email, now);
+  for (const email of new Set(eligible.map(order => gbutsOrderListing(store, order).accountEmail.toLowerCase()))) availableNetflixProfiles(store, management, manualMembers, email, now);
 }
 
 export function assertUnclaimedGbutsNetflixProfile(store: GbutsOttStore, serviceType: string, accountEmail: string, name: string, now = new Date()): void {
   if (serviceType !== '넷플릭스') return;
   const key = ottKey(serviceType, accountEmail);
   const held = Object.values(store.orders).filter(order => {
-    const listing = store.listings[order.listingId];
+    const listing = gbutsOrderListing(store, order);
     return ottKey(listing.serviceType, listing.accountEmail) === key && holdsNetflixProfile(order, listing, now);
   });
   if (!held.length) return;
@@ -82,12 +83,12 @@ export function assertUnclaimedGbutsNetflixProfile(store: GbutsOttStore, service
 
 export function allocateNetflixProfilesForSync(store: GbutsOttStore, management: GbutsOttManagement, manualMembers: any[], now = new Date()): Map<string, string> {
   const errors = new Map<string, string>();
-  const accounts = new Set(Object.values(store.orders).map(order => store.listings[order.listingId])
+  const accounts = new Set(Object.values(store.orders).map(order => gbutsOrderListing(store, order))
     .filter(listing => listing.serviceType === '넷플릭스').map(listing => ottKey(listing.serviceType, listing.accountEmail)));
   for (const account of accounts) {
     const candidate = structuredClone(store);
     candidate.orders = Object.fromEntries(Object.entries(candidate.orders).filter(([, order]) => {
-      const listing = candidate.listings[order.listingId]; return ottKey(listing.serviceType, listing.accountEmail) === account;
+      const listing = gbutsOrderListing(candidate, order); return ottKey(listing.serviceType, listing.accountEmail) === account;
     }));
     try {
       allocateNetflixProfiles(candidate, management, manualMembers, now);
