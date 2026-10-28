@@ -1189,6 +1189,11 @@ app.post('/gbuts/session', async (c) => {
 // ─── 에브리뷰 세션 상태 (everyview session-keeper v1 상태 파일) ──
 const EVERYVIEW_SESSION_COOKIE_PATH = '/home/ubuntu/everyview-session/cookies.json';
 const EVERYVIEW_SESSION_STATUS_PATH = '/tmp/everyview-session-status.json';
+import { getEveryviewSpotifyStatus } from '../lib/everyview-spotify-store';
+app.get('/everyview/spotify/status', (c) => {
+  try { return c.json(getEveryviewSpotifyStatus()); }
+  catch { return c.json({ enabled: false, state: 'error', workerHealthy: false }, 503); }
+});
 
 function loadEveryviewCookieHeader(): string | null {
   try {

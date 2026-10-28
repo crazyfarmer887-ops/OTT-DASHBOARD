@@ -20,7 +20,9 @@ export function spotifyRegisteredAccountInvitedReply(email: string, password: st
 
 /** Explicit partner-issued fields take precedence; empty fields retain the legacy workflow. */
 export function spotifyRegisteredLogin(row: SpotifyNotionRow): { email: string; password: string } | null {
-  const email = row.registeredEmail?.trim() || jamkkangudokSpotifyEmail(row.email);
+  const explicit = row.registeredEmail?.trim();
+  const email = explicit && /^[a-z0-9][a-z0-9._-]{0,63}$/i.test(explicit)
+    ? `${explicit}@jamkkangudok.com` : explicit || jamkkangudokSpotifyEmail(row.email);
   const password = row.registeredPassword || row.password;
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
     || password.length < 6 || password.length > 128 || /[\r\n]/.test(password)) return null;
@@ -45,6 +47,7 @@ export function writeGbutsSpotifyMessageJournal(journal: GbutsSpotifyMessageJour
 }
 
 export interface GbutsSpotifyMessageDependencies {
+  orderKey?(postSeq: number, member: GbutsSpotifyMember): string;
   extractCredentials?(messages: readonly GbutsChatMessage[], buyer: number): Promise<SpotifyCredentials | null>;
   listMembers(postSeq: number): Promise<GbutsSpotifyMember[]>;
   openPrivateRoom(postSeq: number, userSeq: number): Promise<string>;
@@ -81,6 +84,7 @@ export async function syncGbutsSpotifyMessages(deps: GbutsSpotifyMessageDependen
   options: { guidesOnly?: boolean } = {}): Promise<{
   guidesAttempted: number; acknowledgementsAttempted: number; invitedRepliesAttempted: number; confirmed: number;
 }> {
+  const orderKeyFor = deps.orderKey || gbutsSpotifyOrderKey;
   const ackStart = deps.requestAckStartAt == null ? null : Date.parse(deps.requestAckStartAt);
   if (ackStart !== null && !Number.isFinite(ackStart)) throw new Error('GButs Spotify acknowledgment start time invalid');
   const [members, rows] = await Promise.all([deps.listMembers(postSeq), options.guidesOnly ? [] : deps.listRows()]);
@@ -92,8 +96,8 @@ export async function syncGbutsSpotifyMessages(deps: GbutsSpotifyMessageDependen
   let invitedRepliesAttempted = 0;
   let confirmed = 0;
   for (const member of active) {
-    const orderKey = gbutsSpotifyOrderKey(postSeq, member);
-    if (active.filter((candidate) => gbutsSpotifyOrderKey(postSeq, candidate) === orderKey).length !== 1) continue;
+    const orderKey = orderKeyFor(postSeq, member);
+    if (active.filter((candidate) => orderKeyFor(postSeq, candidate) === orderKey).length !== 1) continue;
     const roomId = await deps.openPrivateRoom(postSeq, member.userSeq);
     const chat = await deps.getChat(roomId);
     // Welcome messages do not depend on Notion or an AI provider. Submitted accounts

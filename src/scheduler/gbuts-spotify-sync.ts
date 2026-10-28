@@ -1,5 +1,5 @@
 import { extractGbutsCredentialsWithOpenRouter } from '../api/notion-chat-extraction';
-import { createSingleFlightRunner } from './poll-daemon';
+import { createSingleFlightRunner, runWithExclusivePollLock } from './poll-daemon';
 import { loadGbutsSession } from '../lib/gbuts-session';
 import { loadSafeModeConfig } from '../api/safe-mode';
 import { getOrCreateSpotifyNewAccountCredentials, isGeneratedSpotifyLogin } from './spotify-new-account-credentials';
@@ -35,10 +35,11 @@ interface GbutsChatRoom {
 }
 
 export interface GbutsSpotifySyncDependencies {
+  orderKey?(postSeq: number, member: GbutsSpotifyMember): string;
   extractCredentials?(messages: readonly GbutsChatMessage[], buyer: number): Promise<SpotifyCredentials | null>;
   listMembers(postSeq: number): Promise<GbutsSpotifyMember[]>;
   openPrivateRoom(postSeq: number, userSeq: number): Promise<string>;
-  getChat(roomId: string): Promise<GbutsChatRoom>;
+  getChat(roomId: string): Promise<{ messages: GbutsChatMessage[] }>;
   listRows(): Promise<SpotifyNotionRow[]>;
   getRow(id: string): Promise<SpotifyNotionRow | null>;
   createRow(orderKey: string, credentials: SpotifyCredentials): Promise<SpotifyNotionRow>;
@@ -51,13 +52,14 @@ export interface GbutsSpotifySyncDependencies {
 export async function syncGbutsSpotifyCredentials(deps: GbutsSpotifySyncDependencies, postSeq: number): Promise<{
   members: number; created: number; updated: number; cancelled: number; waitingForCredentials: number; conflicts: number;
 }> {
+  const orderKeyFor = deps.orderKey || gbutsSpotifyOrderKey;
   const [members, rows] = await Promise.all([deps.listMembers(postSeq), deps.listRows()]);
   const active = members.filter(isActiveGbutsSpotifyMember);
   const credentialsByOrder = new Map<string, SpotifyCredentials | null>();
   const newAccountRequestsByOrder = new Map<string, boolean>();
   const credentialCounts = new Map<string, number>();
   for (const member of active) {
-    const orderKey = gbutsSpotifyOrderKey(postSeq, member);
+    const orderKey = orderKeyFor(postSeq, member);
     const roomId = await deps.openPrivateRoom(postSeq, member.userSeq);
     const chat = await deps.getChat(roomId);
     const submitted = await (deps.extractCredentials || extractGbutsSpotifyCredentials)(chat.messages, member.userSeq);
@@ -77,9 +79,9 @@ export async function syncGbutsSpotifyCredentials(deps: GbutsSpotifySyncDependen
   let waitingForCredentials = 0;
   let conflicts = 0;
   for (const member of active) {
-    const orderKey = gbutsSpotifyOrderKey(postSeq, member);
+    const orderKey = orderKeyFor(postSeq, member);
     const matches = rows.filter((row) => row.orderKey === orderKey);
-    if (matches.length > 1 || active.filter((candidate) => gbutsSpotifyOrderKey(postSeq, candidate) === orderKey).length > 1) {
+    if (matches.length > 1 || active.filter((candidate) => orderKeyFor(postSeq, candidate) === orderKey).length > 1) {
       conflicts += 1;
       continue;
     }
@@ -161,7 +163,7 @@ export async function syncGbutsSpotifyCredentials(deps: GbutsSpotifySyncDependen
     updated += 1;
   }
   for (const member of members.filter((item) => item.cancelStatus === 'REFUNDED')) {
-    const orderKey = gbutsSpotifyOrderKey(postSeq, member);
+    const orderKey = orderKeyFor(postSeq, member);
     const matches = rows.filter((row) => row.orderKey === orderKey);
     if (matches.length !== 1 || matches[0].cancelled) continue;
     const current = await deps.getRow(matches[0].id);
@@ -217,9 +219,14 @@ function parseNotionRow(value: unknown): SpotifyNotionRow | null {
     .map((item: { email: string }) => item.email.toLowerCase());
   const cancelledRequest = emailParts.length === 0 && title.some((part: any) =>
     part?.annotations?.strikethrough === true && String(part?.plain_text ?? part?.text?.content ?? '').trim());
+  const gbutsOrder = richTextValue(page.properties?.['GButs order ID']?.rich_text).trim();
+  const everyviewOrder = richTextValue(page.properties?.['Everyview order ID']?.rich_text).trim();
+  if (gbutsOrder && everyviewOrder) throw new Error('Spotify Notion platform identity ambiguous');
+  if (everyviewOrder && !/^everyview:[1-9]\d*:[1-9]\d*$/.test(everyviewOrder))
+    throw new Error('Spotify Notion Everyview identity invalid');
   return {
     id: page.id,
-    orderKey: richTextValue(page.properties?.['GButs order ID']?.rich_text).trim(),
+    orderKey: everyviewOrder || gbutsOrder,
     email,
     emailHistory,
     password: richTextValue(page.properties?.Password?.rich_text),
@@ -239,7 +246,8 @@ function notionTitle(email: string, cancelled = false) {
 
 export function createGbutsSpotifyNotionClient(token: string, dataSourceId = SPOTIFY_NOTION_DATA_SOURCE_ID,
   transport: typeof fetch = fetch,
-  newAccountCredentials: (orderKey: string) => SpotifyCredentials = getOrCreateSpotifyNewAccountCredentials) {
+  newAccountCredentials: (orderKey: string) => SpotifyCredentials = getOrCreateSpotifyNewAccountCredentials,
+  orderProperty: 'GButs order ID' | 'Everyview order ID' = 'GButs order ID') {
   const headers = { Authorization: `Bearer ${token}`, 'Notion-Version': NOTION_VERSION, 'Content-Type': 'application/json' };
   const listRows = async (): Promise<SpotifyNotionRow[]> => {
     const rows: SpotifyNotionRow[] = [];
@@ -275,7 +283,7 @@ export function createGbutsSpotifyNotionClient(token: string, dataSourceId = SPO
           Password: { rich_text: [{ text: { content: credentials.password } }] },
           Registered: { checkbox: false },
           Invited: { checkbox: false },
-          'GButs order ID': { rich_text: [{ text: { content: orderKey } }] },
+          [orderProperty]: { rich_text: [{ text: { content: orderKey } }] },
         } }),
       });
       if (!response.ok) throw new Error(`Spotify Notion create failed: HTTP ${response.status}`);
@@ -292,7 +300,7 @@ export function createGbutsSpotifyNotionClient(token: string, dataSourceId = SPO
           'Spotify account': { title: notionTitle(credentials.email) },
           Password: { rich_text: [{ text: { content: credentials.password } }] },
           Registered: { checkbox: false }, Invited: { checkbox: false },
-          'GButs order ID': { rich_text: [{ text: { content: orderKey } }] },
+          [orderProperty]: { rich_text: [{ text: { content: orderKey } }] },
         } }),
       });
       if (!response.ok) throw new Error(`Spotify Notion new-account request failed: HTTP ${response.status}`);
@@ -305,7 +313,7 @@ export function createGbutsSpotifyNotionClient(token: string, dataSourceId = SPO
       const response = await transport(`https://api.notion.com/v1/pages/${encodeURIComponent(row.id)}`, {
         method: 'PATCH', headers, signal: AbortSignal.timeout(15_000),
         body: JSON.stringify({ properties: {
-          'GButs order ID': { rich_text: [{ text: { content: orderKey } }] },
+          [orderProperty]: { rich_text: [{ text: { content: orderKey } }] },
         } }),
       });
       if (!response.ok) throw new Error(`Spotify Notion order claim failed: HTTP ${response.status}`);
@@ -433,25 +441,28 @@ export function startGbutsSpotifySync(): void {
   const intervalMs = Math.max(30_000, Number(process.env.GBUTS_SPOTIFY_SYNC_INTERVAL_MS) || 30_000);
   const run = createSingleFlightRunner(async () => {
     try {
-      if (loadSafeModeConfig().enabled) return;
-      const gbutsToken = loadGbutsSession()?.token || process.env.GBUTS_API_TOKEN?.trim();
-      if (!gbutsToken) return;
-      const deps = { ...notion, ...createGbutsSpotifySellerClient(gbutsToken), extractCredentials: extractGbutsCredentialsWithOpenRouter };
-      const messagesFor = async (postSeq: number, guidesOnly = false) => {
-        if (process.env.GBUTS_SPOTIFY_AUTO_MESSAGE_ENABLED !== 'true') return;
-        const messages = await syncGbutsSpotifyMessages({ ...deps, sendText: sendGbutsText,
-          readJournal: readGbutsSpotifyMessageJournal,
-          writeJournal: writeGbutsSpotifyMessageJournal,
-          requestAckStartAt: process.env.GBUTS_SPOTIFY_ACK_START_AT }, postSeq, { guidesOnly });
-        if (messages.guidesAttempted || messages.acknowledgementsAttempted
-          || messages.invitedRepliesAttempted || messages.confirmed)
-          console.log('[GbutsSpotifySync] messages', { postSeq, ...messages });
-      };
-      const result = await syncGbutsSpotifyPosts(deps, spotifyPostSeqs(),
-        postSeq => messagesFor(postSeq), postSeq => messagesFor(postSeq, true));
-      console.log('[GbutsSpotifySync] completed', result.posts);
+      await runWithExclusivePollLock(process.env.SPOTIFY_NOTION_SYNC_LOCK_PATH
+        || '/home/ubuntu/.hermes/hermes-agent/graytag-aio-manager-0606/data/spotify-notion-sync.lock', async () => {
+        if (loadSafeModeConfig().enabled) return;
+        const gbutsToken = loadGbutsSession()?.token || process.env.GBUTS_API_TOKEN?.trim();
+        if (!gbutsToken) return;
+        const deps = { ...notion, ...createGbutsSpotifySellerClient(gbutsToken), extractCredentials: extractGbutsCredentialsWithOpenRouter };
+        const messagesFor = async (postSeq: number, guidesOnly = false) => {
+          if (process.env.GBUTS_SPOTIFY_AUTO_MESSAGE_ENABLED !== 'true') return;
+          const messages = await syncGbutsSpotifyMessages({ ...deps, sendText: sendGbutsText,
+            readJournal: readGbutsSpotifyMessageJournal,
+            writeJournal: writeGbutsSpotifyMessageJournal,
+            requestAckStartAt: process.env.GBUTS_SPOTIFY_ACK_START_AT }, postSeq, { guidesOnly });
+          if (messages.guidesAttempted || messages.acknowledgementsAttempted
+            || messages.invitedRepliesAttempted || messages.confirmed)
+            console.log('[GbutsSpotifySync] messages', { postSeq, ...messages });
+        };
+        const result = await syncGbutsSpotifyPosts(deps, spotifyPostSeqs(),
+          postSeq => messagesFor(postSeq), postSeq => messagesFor(postSeq, true));
+        console.log('[GbutsSpotifySync] completed', result.posts);
 
-      for (const failure of result.errors) console.error('[GbutsSpotifySync]', failure.postSeq, failure.error);
+        for (const failure of result.errors) console.error('[GbutsSpotifySync]', failure.postSeq, failure.error);
+      });
     } catch (error) {
       console.error('[GbutsSpotifySync] sync failed', error instanceof Error ? error.message : 'unknown error');
     }

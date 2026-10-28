@@ -17,3 +17,7 @@ Deletion (2026-10-18): GButs's observed seller UI offers recruitment closure (`P
 - Credential import and completion delivery are independent attempts. An import failure must not suppress delivery of an already verified vendor completion. Preserve order joins, fresh account checks and uncertain-send journals.
 - A model abstention with one buyer email and a supplied password is retryable after one minute. Incomplete/ambiguous credential abstentions retain the existing cache; successful decisions remain cached. No provider substitution or credential logging.
 - Log scheduler startup and completed per-listing counts so enabled configuration can be distinguished from actual execution. Recover current missed orders once through the normal idempotent worker and verify Notion + saved private chat history.
+
+## Everyview delivery integration (2026-10-28)
+
+Everyview uses the same partner checklist with a distinct `Everyview order ID` namespace and separately verified seller/member/user/room identities. Run its configured parties from AIO every30 seconds, preserve existing GButs identities and use one shared Notion lock. Read back saved private messages; never repeat an uncertain SEND or uncertain Notion creation. Leave historical resolved conversations quiet and unresolved legacy mappings held. New buyers of the configured parties are imported and delivered through the existing Registered/Invited guards. See `docs/everyview-spotify-delivery.md` for activation and verification.
