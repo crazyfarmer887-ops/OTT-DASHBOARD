@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { FAMILY_MANAGER, FAMILY_SEED, canonicalGoogleEmail, collectFamilyOrders, runFamilyInvites, familyRunPlan, type FamilyJournal, type FamilyView, type InviteOrder } from '../src/monitoring/gbuts-google-invites';
+import { FAMILY_MANAGER, FAMILY_SEED, canonicalGoogleEmail, collectFamilyOrders, runFamilyInvites, familyRunPlan, validateFamilyJournal, type FamilyJournal, type FamilyView, type InviteOrder } from '../src/monitoring/gbuts-google-invites';
 import { googleCookieImport, membershipBenefitsDate } from '../src/monitoring/google-family-steel';
 import { createGbutsOttSellerClient } from '../src/lib/gbuts-ott-client';
 import type { YouTubeRenewalStore } from '../src/scheduler/gbuts-youtube-renewal';
@@ -52,6 +52,19 @@ describe('verified paid buyer invitation transaction', () => {
     const f = setup(); f.setView({ members: ['buyer@gmail.com'], remaining: 4 });
     expect(await runFamilyInvites(f)).toMatchObject({ adopted: 1, sent: 0 });
     expect(f.journal.orders[f.order.key].state).toBe('observed_existing');
+    expect(f.driver.invite).not.toHaveBeenCalled();
+  });
+  it('adopts an owner-sent second invitation without resending or altering the earlier buyer record', async () => {
+    const f = setup();
+    const earlier = { email: 'earlier@gmail.com', state: 'observed_existing' as const, updatedAt: '2026-10-27T07:00:00Z' };
+    f.journal.orders['18864:50179'] = { ...earlier };
+    f.scan.mockResolvedValue([{ ...f.order, key: '18864:50179', email: earlier.email }, f.order]);
+    f.setView({ members: [earlier.email, 'b.u.yer+tag@googlemail.com'], remaining: 3 });
+    expect(await runFamilyInvites(f)).toMatchObject({ orders: 2, adopted: 1, sent: 0, remaining: 3 });
+    expect(f.journal.orders['18864:50179']).toEqual(earlier);
+    expect(f.journal.orders[f.order.key].state).toBe('observed_existing');
+    expect(await runFamilyInvites(f)).toMatchObject({ state: 'idle', sent: 0, adopted: 0 });
+    expect(f.driver.invite).not.toHaveBeenCalled();
   });
   it.each(['cancelled', 'different-email', 'safety'])('blocks a %s change detected immediately before sending', async mode => {
     const f = setup();
@@ -129,4 +142,14 @@ describe('cloud authentication and membership parsing', () => {
     expect(membershipBenefitsDate('Benefits end: Nov 27', now())).toBeUndefined();
     expect(canonicalGoogleEmail('B.u.yer+tag@googlemail.com')).toBe('buyer@gmail.com');
   });
+});
+
+it('requires an explicit approved manager binding when changing the invitation family', async () => {
+  const { validateFamilyJournal } = await import('../src/monitoring/gbuts-google-invites');
+  const f = setup(); f.journal.target = 'new-manager@gmail.com';
+  expect(() => validateFamilyJournal(f.journal)).toThrow();
+  expect(validateFamilyJournal(f.journal, 'new-manager@gmail.com')).toBe(f.journal);
+  f.journal.orders[f.order.key] = { email: f.order.email!, state: 'historical_completed', updatedAt: now().toISOString() };
+  expect(await runFamilyInvites({ ...f, expectedManager: 'new-manager@gmail.com' })).toMatchObject({ state: 'idle', sent: 0 });
+  expect(f.driver.invite).not.toHaveBeenCalled();
 });

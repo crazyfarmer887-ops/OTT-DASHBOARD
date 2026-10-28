@@ -17,7 +17,7 @@ export function googleCookieImport(raw: unknown): CookieData[] {
   });
 }
 /** This owns a separate Steel session; it never touches NBA sessions or local Chrome. */
-export async function withSteelFamilyBrowser<T>(cookies: CookieData[], work: (browser: Browser) => Promise<T>, saveCookies: (cookies: CookieData[]) => void): Promise<T> {
+export async function withSteelFamilyBrowser<T>(cookies: CookieData[], work: (browser: Browser) => Promise<T>, saveCookies: (cookies: CookieData[]) => void, options: { createProfile?: boolean; saveProfile?: (id: string) => void } = {}): Promise<T> {
   const key = process.env.STEEL_API_KEY?.trim();
   if (!key || /\s/.test(key)) throw Error('STEEL_KEY_REQUIRED');
   const profileId = process.env.GBUTS_GOOGLE_STEEL_PROFILE_ID?.trim();
@@ -31,9 +31,9 @@ export async function withSteelFamilyBrowser<T>(cookies: CookieData[], work: (br
   };
   try {
     const session = await (await request('', { sessionId: id, timeout: 360000, inactivityTimeout: 60000, headless: false,
-      useProxy: false, solveCaptcha: false, persistProfile: Boolean(profileId), ...(profileId ? { profileId } : {}),
-      stealthConfig: { skipFingerprintInjection: true, humanizeInteractions: false }, debugConfig: { interactive: false } })).json() as { id?: string };
-    if (session.id !== id) throw Error('STEEL_SESSION_INVALID');
+      useProxy: false, solveCaptcha: false, persistProfile: Boolean(profileId || options.createProfile), ...(profileId ? { profileId } : {}),
+      stealthConfig: { skipFingerprintInjection: true, humanizeInteractions: false }, debugConfig: { interactive: false } })).json() as { id?: string; profileId?: string };
+    if (session.id !== id || (options.createProfile && (!session.profileId || !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(session.profileId)))) throw Error('STEEL_SESSION_INVALID');
     const url = new URL('wss://connect.steel.dev'); url.searchParams.set('apiKey', key); url.searchParams.set('sessionId', id);
     socket = new WebSocket(url, { handshakeTimeout: 30000, followRedirects: false, perMessageDeflate: false });
     const transport: ConnectionTransport = { send: m => socket!.send(m), close: () => socket!.terminate() };
@@ -48,6 +48,7 @@ export async function withSteelFamilyBrowser<T>(cookies: CookieData[], work: (br
     if (!profileId) await browser.defaultBrowserContext().setCookie(...cookies);
     const result = await work(browser);
     saveCookies((await browser.defaultBrowserContext().cookies()).filter(x => cookieDomains.has(x.domain)));
+    if (options.createProfile) options.saveProfile?.(session.profileId!);
     return result;
   } finally {
     browser?.disconnect(); socket?.terminate();
@@ -76,16 +77,17 @@ async function visibleButton(page: Page, names: string[]) {
   if (buttons.length !== 1) throw Error('GOOGLE_UI_BUTTON_CHANGED');
   return buttons[0];
 }
-async function identity(page: Page): Promise<void> {
+async function identity(page: Page, expectedManager: string): Promise<void> {
   if (new URL(page.url()).origin !== 'https://myaccount.google.com') throw Error('GOOGLE_SIGNIN_REQUIRED');
   const labels = await page.$$eval('[aria-label]', nodes => nodes.map(x => x.getAttribute('aria-label') || '').filter(x => x.startsWith('Google Account:')));
-  if (labels.length !== 1 || !labels[0].includes(`(${FAMILY_MANAGER})`)) throw Error('GOOGLE_ACCOUNT_MISMATCH');
+  if (labels.length !== 1 || !labels[0].includes(`(${expectedManager})`)) throw Error('GOOGLE_ACCOUNT_MISMATCH');
 }
-export function googleFamilyDriver(page: Page): FamilyDriver {
+export function googleFamilyDriver(page: Page, expectedManager = FAMILY_MANAGER): FamilyDriver {
+  canonicalGoogleEmail(expectedManager);
   let previous: FamilyView | undefined;
   let membership: { through?: string; checkedAt: number } | undefined;
   async function family() {
-    await page.goto(familyURL, { waitUntil: 'networkidle2', timeout: 45000 }); await identity(page);
+    await page.goto(familyURL, { waitUntil: 'networkidle2', timeout: 45000 }); await identity(page, expectedManager);
     const data = await page.evaluate(() => ({ text: document.body.innerText,
       invite: document.querySelector('a[href="family/invitemembers"]')?.getAttribute('aria-label'),
       entries: [...document.querySelectorAll<HTMLAnchorElement>('a[href^="family/member/"]')].map(x => ({ href: x.getAttribute('href')!, text: x.innerText })),
@@ -101,11 +103,11 @@ export function googleFamilyDriver(page: Page): FamilyDriver {
     async inspect() {
       const initial = await family(), members: string[] = [];
       for (const entry of initial.entries) {
-        await page.goto(`https://myaccount.google.com/${entry.href}?hl=en`, { waitUntil: 'networkidle2', timeout: 45000 }); await identity(page);
+        await page.goto(`https://myaccount.google.com/${entry.href}?hl=en`, { waitUntil: 'networkidle2', timeout: 45000 }); await identity(page, expectedManager);
         const text = await page.$eval('body', x => x.innerText);
         if (!text.includes('Family member details')) throw Error('GOOGLE_MEMBER_DETAIL_CHANGED');
         const emails = [...new Set(text.match(/[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}/g) || [])];
-        if (emails.length !== 1 || canonicalGoogleEmail(emails[0]) === canonicalGoogleEmail(FAMILY_MANAGER)) throw Error('GOOGLE_MEMBER_EMAIL_REQUIRED');
+        if (emails.length !== 1 || canonicalGoogleEmail(emails[0]) === canonicalGoogleEmail(expectedManager)) throw Error('GOOGLE_MEMBER_EMAIL_REQUIRED');
         members.push(emails[0]);
       }
       const fresh = await family();
@@ -114,15 +116,15 @@ export function googleFamilyDriver(page: Page): FamilyDriver {
       await page.goto('https://www.youtube.com/paid_memberships?hl=en', { waitUntil: 'networkidle2', timeout: 45000 });
       if (new URL(page.url()).origin !== 'https://www.youtube.com') throw Error('YOUTUBE_SIGNIN_REQUIRED');
       const menu = await visibleButton(page, ['Account menu', 'Menu akun']); await menu.click();
-      await page.waitForFunction(email => document.body.innerText.includes(email), { timeout: 10000 }, FAMILY_MANAGER);
+      await page.waitForFunction(email => document.body.innerText.includes(email), { timeout: 10000 }, expectedManager);
       const accountEmails = await page.$$eval('ytd-multi-page-menu-renderer #email', nodes => nodes.map(x => x.textContent?.trim()).filter(Boolean));
-      if (accountEmails.length !== 1 || accountEmails[0] !== FAMILY_MANAGER) throw Error('YOUTUBE_ACCOUNT_MISMATCH');
+      if (accountEmails.length !== 1 || accountEmails[0] !== expectedManager) throw Error('YOUTUBE_ACCOUNT_MISMATCH');
       await page.keyboard.press('Escape');
       await (await visibleButton(page, ['Manage membership', 'Kelola langganan'])).click();
       await page.waitForFunction(() => /Langganan keluarga:|Family membership:/.test(document.body.innerText), { timeout: 10000 });
       membership = { through: membershipBenefitsDate(await page.$eval('body', x => x.innerText)), checkedAt: Date.now() };
       }
-      previous = { manager: FAMILY_MANAGER, members, remaining: fresh.remaining, subscribed: fresh.subscribed, benefitsThrough: membership.through };
+      previous = { manager: expectedManager, members, remaining: fresh.remaining, subscribed: fresh.subscribed, benefitsThrough: membership.through };
       return previous;
     },
     async invite(email, beforeSend) {
@@ -134,7 +136,7 @@ export function googleFamilyDriver(page: Page): FamilyDriver {
       await family();
       await page.click('a[href="family/invitemembers"]');
       const input = 'input[placeholder="Type a name or email"]';
-      await page.waitForSelector(input, { visible: true, timeout: 10000 }); await identity(page);
+      await page.waitForSelector(input, { visible: true, timeout: 10000 }); await identity(page, expectedManager);
       await page.type(input, email);
       await page.waitForFunction(value => [...document.querySelectorAll('[role="option"][pkd-target]')].some(x => x.getAttribute('pkd-target') === `1:${value};${value}`), { timeout: 10000 }, email);
       const options = await page.$$('[role="option"][pkd-target]');
@@ -146,7 +148,7 @@ export function googleFamilyDriver(page: Page): FamilyDriver {
       if (selected.length !== 1 || selected[0] !== email || await page.$eval(input, x => x.value) !== '') throw Error('GOOGLE_RECIPIENT_MISMATCH');
       const send = await visibleButton(page, ['Send']);
       if (await send.evaluate(x => x.disabled || x.getAttribute('aria-disabled') === 'true')) throw Error('GOOGLE_SEND_DISABLED');
-      await identity(page);
+      await identity(page, expectedManager);
       if (new URL(page.url()).pathname !== '/family/invitemembers') throw Error('GOOGLE_INVITE_PAGE_CHANGED');
       await beforeSend(); // durable reservation plus latest buyer/safe-mode validation
       await send.click(); // exactly one external send; all failures are lookup-only afterwards

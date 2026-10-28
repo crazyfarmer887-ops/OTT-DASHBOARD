@@ -22,8 +22,10 @@ for name in ['GBUTS_SESSION_PATH', 'GBUTS_YOUTUBE_RENEWALS_PATH', 'SAFE_MODE_PAT
 profile_file = pathlib.Path('/home/ubuntu/.config/gbuts/google-invites/profile.json')
 if profile_file.exists():
     profile = json.loads(profile_file.read_text())
-    if profile.get('target') != 'johnleabezf102@gmail.com':
+    state = json.loads(pathlib.Path('/home/ubuntu/.config/gbuts/google-invites/state.json').read_text())
+    if not isinstance(profile.get('target'), str) or profile.get('target') != state.get('target'):
         raise SystemExit('STEEL_PROFILE_BINDING_INVALID')
+    env['GBUTS_GOOGLE_EXPECTED_MANAGER'] = profile['target']
     env['GBUTS_GOOGLE_STEEL_PROFILE_ID'] = str(uuid.UUID(profile['profileId']))
 user = pwd.getpwnam('ubuntu')
 os.initgroups(user.pw_name, user.pw_gid); os.setgid(user.pw_gid); os.setuid(user.pw_uid)

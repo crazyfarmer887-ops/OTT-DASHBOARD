@@ -43,3 +43,14 @@ it('fails closed on an invalid profile binding without allocating any session', 
   vi.stubEnv('GBUTS_GOOGLE_STEEL_PROFILE_ID', 'not-a-profile'); const fetch = vi.fn(); vi.stubGlobal('fetch', fetch);
   await expect(withSteelFamilyBrowser([], async () => {}, vi.fn())).rejects.toThrow('STEEL_PROFILE_INVALID'); expect(fetch).not.toHaveBeenCalled();
 });
+
+it('creates a separate persistent cookie-seeded profile and commits its binding only after verification', async () => {
+  const id = '11111111-2222-3333-4444-555555555555';
+  vi.stubGlobal('fetch', vi.fn(async (_url, init) => new Response(JSON.stringify({ id: init.body ? JSON.parse(init.body).sessionId : null, profileId: id }), { status: 200 })));
+  const saveProfile = vi.fn();
+  await withSteelFamilyBrowser([{ name: 'new', value: 'private', domain: '.google.com' }], async () => 'verified', vi.fn(), { createProfile: true, saveProfile });
+  expect(mocks.setCookie).toHaveBeenCalled(); expect(saveProfile).toHaveBeenCalledWith(id);
+  saveProfile.mockClear();
+  await expect(withSteelFamilyBrowser([], async () => { throw Error('WRONG_FAMILY'); }, vi.fn(), { createProfile: true, saveProfile })).rejects.toThrow('WRONG_FAMILY');
+  expect(saveProfile).not.toHaveBeenCalled();
+});

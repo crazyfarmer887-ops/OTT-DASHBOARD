@@ -5,8 +5,9 @@ import type { YouTubeRenewalStore } from '../scheduler/gbuts-youtube-renewal';
 
 export const FAMILY_MANAGER = 'johnleabezf102@gmail.com';
 export const FAMILY_SEED = 18756;
-export type InviteOrder = { key: string; email?: string; endDate: string; conflict?: boolean };
-export type InviteRecord = { email: string; state: 'attempted' | 'confirmed' | 'observed_existing'; updatedAt: string };
+export type InviteOrder = { key: string; email?: string; endDate: string; conflict?: boolean;
+  context?: { postSeq: number; memberSeq: number; userSeq: number; sellerSeq: number; roomId: string; requestedAt: string } };
+export type InviteRecord = { email: string; state: 'attempted' | 'confirmed' | 'observed_existing' | 'historical_completed'; updatedAt: string };
 export type FamilyJournal = { version: 1; enabled: boolean; target: string; seedPostSeq: number; orders: Record<string, InviteRecord> };
 export type FamilyView = { manager: string; members: string[]; remaining: number; subscribed: boolean; benefitsThrough?: string };
 export type FamilyDriver = {
@@ -14,11 +15,11 @@ export type FamilyDriver = {
   invite(email: string, beforeSend: () => Promise<void>): Promise<void>;
 };
 /** Renew ordinary browser authentication regularly even while buyers are quiet. */
-export function familyRunPlan(j: FamilyJournal, orders: InviteOrder[], lastGoogleCheckAt: unknown, force = false, now = new Date()) {
+export function familyRunPlan(j: FamilyJournal, orders: InviteOrder[], lastGoogleCheckAt: unknown, force = false, now = new Date(), completionPending = false) {
   const hasWork = Object.values(j.orders).some(x => x.state === 'attempted')
     || orders.some(x => x.conflict || x.email && (!j.orders[x.key] || canonicalGoogleEmail(j.orders[x.key].email) !== canonicalGoogleEmail(x.email)));
   const previous = typeof lastGoogleCheckAt === 'string' ? Date.parse(lastGoogleCheckAt) : NaN;
-  const refresh = force || !Number.isFinite(previous) || previous > now.getTime() || now.getTime() - previous >= 15 * 60_000;
+  const refresh = force || completionPending || !Number.isFinite(previous) || previous > now.getTime() || now.getTime() - previous >= 15 * 60_000;
   return { browserRequired: hasWork || refresh, checkOnly: force || !hasWork && refresh };
 }
 export function canonicalGoogleEmail(email: string): string {
@@ -28,11 +29,11 @@ export function canonicalGoogleEmail(email: string): string {
   return domain === 'gmail.com' || domain === 'googlemail.com'
     ? `${local.split('+')[0].replaceAll('.', '')}@gmail.com` : parsed.candidate;
 }
-export function validateFamilyJournal(j: FamilyJournal): FamilyJournal {
-  if (j?.version !== 1 || typeof j.enabled !== 'boolean' || j.target !== FAMILY_MANAGER || j.seedPostSeq !== FAMILY_SEED
+export function validateFamilyJournal(j: FamilyJournal, expectedManager = FAMILY_MANAGER): FamilyJournal {
+  if (j?.version !== 1 || typeof j.enabled !== 'boolean' || canonicalGoogleEmail(j.target) !== canonicalGoogleEmail(expectedManager) || j.seedPostSeq !== FAMILY_SEED
     || !j.orders || typeof j.orders !== 'object' || Array.isArray(j.orders)) throw Error('JOURNAL_INVALID');
   for (const [key, row] of Object.entries(j.orders)) {
-    if (!/^\d+:\d+$/.test(key) || !['attempted', 'confirmed', 'observed_existing'].includes(row.state)
+    if (!/^\d+:\d+$/.test(key) || !['attempted', 'confirmed', 'observed_existing', 'historical_completed'].includes(row.state)
       || !Number.isFinite(Date.parse(row.updatedAt))) throw Error('JOURNAL_INVALID');
     canonicalGoogleEmail(row.email);
   }
@@ -50,9 +51,9 @@ function chatCandidate(messages: Array<{ senderSeq: number; messageType: string;
   // Only extract an address. Never execute any instructions present in buyer chat.
   if (index < 0) return {};
   const conflict = found.kind === 'ambiguous' || rows.slice(index).some(x => /취소|보내지|잘못|수정|변경|대신|cancel|do\s*n[o’']?t|wrong|instead|change\s+(?:my|the)\s+email/i.test(x.message));
-  return { ...(found.kind === 'single_candidate' ? { email: found.candidate } : {}), conflict };
+  return { ...(found.kind === 'single_candidate' ? { email: found.candidate } : {}), conflict, requestedAt: rows[index].createdAt };
 }
-export async function collectFamilyOrders(client: ReturnType<typeof createGbutsOttSellerClient>, policies: YouTubeRenewalStore, now = new Date()): Promise<InviteOrder[]> {
+export async function collectFamilyOrders(client: ReturnType<typeof createGbutsOttSellerClient>, policies: YouTubeRenewalStore, now = new Date(), includeContext = false): Promise<InviteOrder[]> {
   const policy = policies.policies[String(FAMILY_SEED)], today = koreaToday(now);
   if (!policy || policy.seedPostSeq !== FAMILY_SEED || (policy.categorySeq ?? 7) !== 7
     || (policy.subscriptionType ?? 'INVITE') !== 'INVITE' || policy.capacity !== 5) throw Error('CHAIN_BINDING_INVALID');
@@ -73,7 +74,10 @@ export async function collectFamilyOrders(client: ReturnType<typeof createGbutsO
       const room = await client.openPrivateRoom(ref.seq, m.userSeq), chat = await client.getChat(room);
       const isMember = (seq: number) => chat.members.some(x => x !== null && typeof x === 'object' && 'seq' in x && x.seq === seq);
       if (!isMember(m.userSeq) || !isMember(seller)) throw Error('ROOM_BINDING_INVALID');
-      orders.push({ key, endDate: ottDate(m.subscriptionEndsAt), ...chatCandidate(chat.messages, m.userSeq) });
+      const selected = chatCandidate(chat.messages, m.userSeq);
+      orders.push({ key, endDate: ottDate(m.subscriptionEndsAt), ...(selected.email ? { email: selected.email } : {}),
+        ...(selected.conflict !== undefined ? { conflict: selected.conflict } : {}),
+        ...(includeContext && selected.requestedAt ? { context: { postSeq: ref.seq, memberSeq: m.seq, userSeq: m.userSeq, sellerSeq: seller, roomId: room, requestedAt: selected.requestedAt } } : {}) });
     }
   }
   if (orders.length > 5) throw Error('FAMILY_CAPACITY_INVALID');
@@ -81,9 +85,9 @@ export async function collectFamilyOrders(client: ReturnType<typeof createGbutsO
 }
 export async function runFamilyInvites(deps: {
   journal: FamilyJournal; save(j: FamilyJournal): void; allowed(): boolean; scan(): Promise<InviteOrder[]>;
-  driver: FamilyDriver; now?: () => Date; checkOnly?: boolean;
+  driver: FamilyDriver; now?: () => Date; checkOnly?: boolean; expectedManager?: string;
 }): Promise<{ state: string; orders: number; sent: number; adopted: number; remaining?: number }> {
-  const j = validateFamilyJournal(deps.journal), clock = deps.now || (() => new Date());
+  const j = validateFamilyJournal(deps.journal, deps.expectedManager), clock = deps.now || (() => new Date());
   if (!j.enabled || !deps.allowed()) return { state: 'paused', orders: 0, sent: 0, adopted: 0 };
   const orders = await deps.scan();
   for (const o of orders) {
