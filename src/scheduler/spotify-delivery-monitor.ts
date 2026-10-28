@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { SellerAlertInput, SellerAlertResult } from '../alerts/telegram';
 import { gbutsChatContainsText } from '../lib/gbuts-chat-delivery';
+import { explicitYouTubeBuyerEmails } from '../lib/youtube-buyer-email';
 import { extractGbutsSpotifyCredentials, isActiveGbutsSpotifyMember, isSpotifyAccountForBuyer,
   type GbutsChatMessage, type GbutsSpotifyMember } from '../lib/gbuts-spotify';
 import { requestedSpotifyNewAccount, spotifyRegisteredAccountInvitedReply, spotifyRegisteredLogin,
@@ -64,6 +65,10 @@ export function assessSpotifyBuyerDelivery(s: SpotifyBuyerDeliverySnapshot): Spo
     : SPOTIFY_INVITED_REPLY;
   if (gbutsChatContainsText([...s.messages], s.sellerSeq, expected)
     || (issued && spotifyChatContainsIssuedLogin(s.messages, s.sellerSeq, issued))) return null;
+  if (issued && s.messages.some(m => m.senderSeq === s.sellerSeq && m.messageType === 'TEXT'
+    && explicitYouTubeBuyerEmails(m.message).some(email => email.toLowerCase() !== issued.email.toLowerCase()
+      && spotifyChatContainsIssuedLogin([m], s.sellerSeq, { email, password: issued.password }))))
+    return { ...issueBase, code: 'identity_mismatch' };
   return { ...issueBase, code: s.uncertainDelivery ? 'delivery_uncertain' : 'delivery_missing' };
 }
 
@@ -97,7 +102,7 @@ const descriptions: Record<DeliveryIssueCode, string> = {
   notion_missing: '구매자의 계정 처리 요청에 연결된 Notion 기록이 없습니다.',
   notion_unbound: '새로 완료된 Notion 기록에 에브리뷰/벗츠 주문 연결이 없습니다. 수신자를 확인해야 합니다.',
   notion_ambiguous: '한 구매 요청에 Notion 기록이 여러 개 연결되어 자동 전달을 보류했습니다.',
-  identity_mismatch: '구매자 요청과 Notion 계정 연결이 달라 자동 전달을 확인해야 합니다.',
+  identity_mismatch: 'Notion 발급 정보가 구매자 요청 또는 저장된 계정 안내와 일치하지 않습니다. 추정 재전송 없이 확인이 필요합니다.',
   source_unavailable: '구매 내역·Notion·채팅 조회가 반복 실패하여 자동 전달 여부를 확인하지 못하고 있습니다.',
 };
 

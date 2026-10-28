@@ -44,6 +44,10 @@ describe('Spotify completion/read-only delivery assessment', () => {
     expect(assessSpotifyBuyerDelivery(s)).toBeNull();
     expect(assessSpotifyBuyerDelivery({ ...s, messages: s.messages.map(m => ({ ...m, senderSeq: 42 })) })?.code).toBe('delivery_missing');
   });
+  it('distinguishes a different saved issued identity from an unsent account', () => {
+    expect(assessSpotifyBuyerDelivery({ ...buyer(), messages: [message, { senderSeq: 7, messageType: 'TEXT',
+      createdAt: '2026-10-28T03:03:00Z', message: 'different@example.net PW : Issued456! 입니다!' }] })?.code).toBe('identity_mismatch');
+  });
   it('stays quiet while partner fulfillment is incomplete or a buyer is refunded', () => {
     expect(assessSpotifyBuyerDelivery({ ...buyer(), rows: [{ ...row, invited: false }] })).toBeNull();
     expect(assessSpotifyBuyerDelivery({ ...buyer(), rows: [{ ...row, registered: false, invited: false }] })).toBeNull();
