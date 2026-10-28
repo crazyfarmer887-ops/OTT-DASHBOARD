@@ -110,3 +110,14 @@ describe('YouTube INVITE rank renewal', () => {
     f.p.posts.push({ seq: 1, capacity: 5 }); expect(() => validateYouTubeRenewals(f.s)).toThrow();
   });
 });
+
+it('retains an active paid PICK post, then resumes normal rank renewal after expiry',async()=>{
+ const f=fixture();f.post.pickedUntil='2026-10-27 14:02:00';
+ await f.run();expect(f.client.closePost).not.toHaveBeenCalled();expect(f.client.createYouTubeInvitePost).not.toHaveBeenCalled();
+ f.advance(180000);await f.run();expect(f.client.createYouTubeInvitePost).toHaveBeenCalledOnce();
+});
+it('rechecks PICK immediately before closure and fails closed for an invalid expiry',async()=>{
+ const f=fixture();let calls=0;f.client.getPost.mockImplementation(async(seq)=>{calls++;return {...f.posts[seq],pickedUntil:calls>1?'2026-10-28 14:00:00':null};});
+ await f.run();expect(f.client.closePost).not.toHaveBeenCalled();
+ const invalid=fixture();invalid.post.pickedUntil='invalid';await invalid.run();expect(invalid.client.closePost).not.toHaveBeenCalled();expect(invalid.p.lastError).toBeTruthy();
+});

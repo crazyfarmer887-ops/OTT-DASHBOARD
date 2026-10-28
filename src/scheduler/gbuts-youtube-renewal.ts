@@ -6,6 +6,14 @@ import { activeOttOrder, koreaToday, ottDate } from '../lib/gbuts-ott';
 import type { createGbutsOttSellerClient, GbutsOttMember, GbutsOttPost } from '../lib/gbuts-ott-client';
 import { OTT_RANK_CHECK_INTERVAL, OTT_RANK_COOLDOWN } from './gbuts-ott-renewal';
 
+/** GButs paid PICK is attached to a post and must not be lost to rank reposting. */
+function activePickUntil(post: GbutsOttPost, now: Date): string | undefined {
+  if (post.pickedUntil == null || post.pickedUntil === '') return undefined;
+  const raw = String(post.pickedUntil).replace(' ', 'T');
+  const until = Date.parse(raw + (/(?:Z|[+-]\d\d:\d\d)$/.test(raw) ? '' : '+09:00'));
+  if (!Number.isFinite(until)) throw Error('벗츠 PICK 종료 시각 확인 필요');
+  return until > now.getTime() ? new Date(until).toISOString() : undefined;
+}
 export type InvitePayload = { category: 7; countries: string[]; subscriptionType: 'INVITE'; subscriptionPrincipal: ''; subscriptionCredential: '';
   subscriptionStartsAt: string; subscriptionEndsAt: string; price: number; priceType: 'DAY'; memberLimit: number;
   title: string; description: string; noticeBeforeOrder: string; noticeAfterOrder: string };
@@ -146,6 +154,8 @@ export async function renewSubscriptionRankings(client: InviteClient, options: {
       assertSource(post, p, entry.capacity); refreshMembers(p, post, members, now); if (entry.seq === p.currentPostSeq) source = post;
     }
     write(s); if (!source) throw Error('구독공유 원본 연결 확인 필요');
+    const pickedUntil = source.status === 'ON_SALE' ? activePickUntil(source, clock()) : undefined;
+    if (pickedUntil) { p.nextAt = pickedUntil; write(s); return { renewed, errors }; }
     if(!p.pending&&source.status!=='ON_SALE'){p.enabled=false;p.nextAt=next;write(s);return {renewed,errors};}
     let remaining = p.capacity - youtubeOccupied(p, now); if (remaining < 0) throw Error('구독공유 정원 초과 확인 필요');
     if (!remaining) { delete p.pending; p.nextAt = next; p.lastSuccess = now.toISOString(); write(s); return { renewed, errors }; }
@@ -153,7 +163,7 @@ export async function renewSubscriptionRankings(client: InviteClient, options: {
     privateFieldsHash(source);
     await options.verify?.(p);
     if(options.allowed&&!options.allowed())return {renewed,errors};
-    if(!p.pending){const current=await client.getPost(source.seq);assertSource(current,p,source.memberLimit);if(current.status!=='ON_SALE'){p.enabled=false;p.nextAt=next;write(s);return {renewed,errors};}}
+    if(!p.pending){const current=await client.getPost(source.seq);assertSource(current,p,source.memberLimit);const picked=activePickUntil(current,clock());if(picked){p.nextAt=picked;write(s);return {renewed,errors};}if(current.status!=='ON_SALE'){p.enabled=false;p.nextAt=next;write(s);return {renewed,errors};}}
     if (!p.pending) { p.pending = { phase: 'closing', sourcePostSeq: source.seq, afterSeq: await client.latestPostSeq() }; write(s); }
     if (source.status === 'ON_SALE') { try { await client.closePost(source.seq); } catch { /* Read closure, never assume failure/success. */ } }
     const [closed, final] = await Promise.all([client.getPost(source.seq), client.listOttMembers(source.seq)]);
