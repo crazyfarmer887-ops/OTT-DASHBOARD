@@ -53,6 +53,8 @@ export const hash = (s: unknown): string =>
   createHash("sha256").update(JSON.stringify(s)).digest("hex");
 export const fingerprint = (room: string, m: GbutsChatMessage) =>
   hash([room, m.senderSeq, m.createdAt, m.messageType, m.message]);
+const RESOLVED_ASSERTION =
+  /해결(?:됐(?:어요|습니다|네요|어|음)|되었(?:어요|습니다|네요))|잘\s*(?:돼요|되네요|됩니다|됐어요|됐습니다)|이제\s*(?:돼요|됩니다|되네요)|정상(?:적으로)?\s*(?:작동(?:해요|합니다)|재생(?:돼요|됩니다)|로그인(?:돼요|됩니다))/i;
 const rules: Array<[string, RegExp]> = [
   ["refund", /환불|취소|반품|청약|refund|cancel/i],
   [
@@ -71,10 +73,7 @@ const rules: Array<[string, RegExp]> = [
   ["location", /어디|어딨|알려|주세요|주세|안\s*보|못\s*찾|보내/i],
   ["login", /로그인|접속|login|sign.?in/i],
   ["gratitude", /감사|고마|thank(?:s| you)/i],
-  [
-    "thanks",
-    /해결(?:됐|되었|됐습니다|되네요)|잘\s*(?:돼|되|됩)|이제\s*(?:돼|됩)|정상(?:적으로)?\s*(?:작동|재생|로그인)/i,
-  ],
+  ["thanks", RESOLVED_ASSERTION],
   [
     "code",
     /인증|코드|가구|이메일|메일|초대|notion|노션|발급|링크|code|invite/i,
@@ -94,7 +93,7 @@ export function features(
   let issue = knownIssue(text, service);
   const labels = rules.filter(([, r]) => r.test(text)).map(([k]) => k);
   if (
-    /해결됐|해결되었|잘\s*(?:돼|되|됩)|정상.*재생/.test(text) &&
+    RESOLVED_ASSERTION.test(text) &&
     !/안\s*(?:돼|되|됐)|못\s*(?:해|했|하)|(?:되|오|받)지\s*(?:않|못)|여전히/.test(
       text,
     )

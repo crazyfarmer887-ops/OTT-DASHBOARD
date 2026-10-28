@@ -146,3 +146,13 @@ it("does not tell an unbound sale that its invite is being processed", async () 
   ).toBe("handoff");
   expect(deps.send).not.toHaveBeenCalled();
 });
+
+it.each(["로그인 잘되게 해주세요", "문제가 해결되었으면 좋겠습니다"])(
+  "does not treat a request or wish as resolution: %s",
+  async (text) => {
+    const { c, deps } = replay([text], true);
+    c.service = "넷플릭스";
+    await processInquiry(c, deps);
+    expect(deps.send.mock.calls.flat().join(" ")).not.toContain("해결되셨다니");
+  },
+);
