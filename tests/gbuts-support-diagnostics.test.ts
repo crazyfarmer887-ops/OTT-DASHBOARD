@@ -266,3 +266,10 @@ it("continues an error-specific guide after a short requested device answer", as
   expect(d.deps.send.mock.calls.at(-1)?.[0]).toContain("기기 전원");
   expect(d.deps.alert).not.toHaveBeenCalled();
 });
+it("does not restart troubleshooting when a solved message mentions the old error code", async () => {
+  const d = dialogue();
+  await d.say("NW-2-5");
+  expect(await d.say("NW-2-5 이제 해결됐어요 감사합니다")).toBe("sent");
+  expect(d.deps.send.mock.calls.at(-1)?.[0]).toContain("다행");
+  expect(d.deps.alert).not.toHaveBeenCalled();
+});

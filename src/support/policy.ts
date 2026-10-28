@@ -86,12 +86,13 @@ export function features(
   delivered: boolean,
   rounds: number,
 ): Features {
-  const issue = knownIssue(text, service);
+  let issue = knownIssue(text, service);
   const labels = rules.filter(([, r]) => r.test(text)).map(([k]) => k);
   if (
     /해결됐|해결되었|잘\s*(?:돼|되)|정상.*재생/.test(text) &&
     !/안\s*(?:돼|되|됐)|못\s*(?:해|했|하)|여전히/.test(text)
   ) {
+    issue = undefined;
     const i = labels.indexOf("failed");
     if (i >= 0) labels.splice(i, 1);
   }
