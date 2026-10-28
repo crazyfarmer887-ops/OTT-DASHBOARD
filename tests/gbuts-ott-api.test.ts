@@ -407,3 +407,17 @@ it('explicit Netflix activation defaults to rank and never enables unrelated old
  expect(Object.keys(readGbutsOttStore().renewals!)).toEqual(['넷플릭스:account@example.com']);expect(readGbutsOttStore().renewals!['넷플릭스:account@example.com']).toMatchObject({enabled:true,trigger:'rank',rankThreshold:5});
  expect((await configure(false)).status).toBe(200);expect(readGbutsOttStore().renewals!['넷플릭스:account@example.com'].enabled).toBe(false);
 });
+
+it('pauses the existing legacy OTT owner after its replacement ID crosses the future-policy watermark',async()=>{
+ vi.stubEnv('GBUTS_RANK_DEFAULTS_PATH',join(directory,'rank-defaults.json'));
+ writeSubscriptionRankDefaults({version:1,enabled:false,policies:{}});
+ const f=fixture();expect((await f.publish()).status).toBe(200);
+ const s=readGbutsOttStore();const key='넷플릭스:account@example.com';const original=structuredClone(s.renewals![key]);
+ s.listings['request-123'].state='closed';writeGbutsOttStore(s);
+ writeSubscriptionRankDefaults({version:1,enabled:true,activatedAt:new Date().toISOString(),activatedAfterSeq:90,watermark:90,policies:{}});
+ // The provider post is suspended; pausing an already owned policy needs no provider read or rebind.
+ const fetcher=vi.fn(async()=>{throw Error('A suspended source must not be rebound');});vi.stubGlobal('fetch',fetcher);
+ const result=await f.app.request('/gbuts/ott/renewals',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({enabled:false,listingIds:['request-123']})});
+ expect(result.status).toBe(200);expect(readGbutsOttStore().renewals![key]).toEqual({...original,enabled:false});
+ expect(readSubscriptionRankDefaults().policies).toEqual({});expect(fetcher).not.toHaveBeenCalled();
+});

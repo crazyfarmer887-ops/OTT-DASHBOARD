@@ -263,13 +263,17 @@ export function registerGbutsOttRoutes(app: Hono, deps: GbutsOttRuntimeDependenc
       const selected = body.listingIds.map(id => store.listings[id]);
       if (selected.some(l => !l || (!supportsGbutsOttRenewal(l)&&!futureSubscriptionRankApplies(l.postSeq!)) || !l.postSeq || !['registered', 'closed'].includes(l.state) || l.endDate <= koreaToday())) throw new Error('현재 재등록할 판매글을 확인해주세요.');
       for (const listing of selected) {
-        if(futureSubscriptionRankApplies(listing.postSeq!)){
+        const key = gbutsOttRenewalKey(listing.serviceType, listing.accountEmail); const previous = store.renewals[key];
+        // An old engine's replacement can have a newer ID than the defaults
+        // watermark. Its persisted owner must remain authoritative, especially
+        // when pausing a suspended source without a fresh provider bind.
+        const legacyOwner = previous?.listingId === listing.id;
+        if(!legacyOwner && futureSubscriptionRankApplies(listing.postSeq!)){
           const defaults=readSubscriptionRankDefaults();let policy=Object.values(defaults.policies).find(p=>p.posts.some(row=>row.seq===listing.postSeq));
           if(policy&&policy.currentPostSeq!==listing.postSeq)throw Error('최근 재등록된 판매글을 선택해주세요.');
           if(!policy)policy=bindSubscriptionRenewal(defaults,await gbutsOttClient().getPost(listing.postSeq!),body.enabled);
           policy.enabled=body.enabled;writeSubscriptionRankDefaults(defaults);continue;
         }
-        const key = gbutsOttRenewalKey(listing.serviceType, listing.accountEmail); const previous = store.renewals[key];
         if (previous && previous.listingId !== listing.id) throw new Error('최근 재등록된 판매글을 선택해주세요.');
         const rank = body.trigger === 'rank' || listing.serviceType === '넷플릭스';
         store.renewals[key] = previous ? { ...previous, enabled: body.enabled } : {

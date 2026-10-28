@@ -39,3 +39,18 @@ it('does not send onboarding questions to a completed bound historical buyer',as
  const sendText=vi.fn();await syncGbutsSpotifyMessages({listMembers:async()=>[member],openPrivateRoom:async()=> 'room',getChat:async()=>({messages:[]}),sellerAccountSeq:async()=>7,listRows:async()=>[{id:'done',orderKey:'15557:91',email:'issued@example.com',password:'Done!12345',emailHistory:[],registered:true,invited:true,cancelled:false}],sendText,readJournal:()=>({version:1,records:{}}),writeJournal:vi.fn()},15557);
  expect(sendText).not.toHaveBeenCalled();
 });
+
+it('retains a completed manual issue only with a saved exact seller pair after the same request',async()=>{
+ const completed:SpotifyNotionRow={id:'complete',orderKey:'15557:91',email:'manual@jamkkangudok.com',password:'Manual!12345',emailHistory:[],registered:true,invited:true,cancelled:false};
+ const request=msg('새 계정 발급해주세요','2026-10-28T02:00:00Z');
+ const delivery={...msg('ID : manual@jamkkangudok.com\n비밀번호 : Manual!12345','2026-10-28T03:00:00Z'),senderSeq:7};
+ let messages=[request,delivery];const replace=vi.fn();
+ const deps={listMembers:async()=>[member],sellerAccountSeq:async()=>7,openPrivateRoom:async()=> 'room',getChat:async()=>({messages}),listRows:async()=>[completed],getRow:async()=>completed,createRow:vi.fn(),replaceCredentials:vi.fn(),cancelRow:vi.fn(),replaceWithNewAccountRequestRow:replace};
+ expect(await syncGbutsSpotifyCredentials(deps,15557)).toMatchObject({updated:0,created:0,conflicts:0,waitingForCredentials:0});
+ expect(replace).not.toHaveBeenCalled();
+ messages=[request];expect(await syncGbutsSpotifyCredentials(deps,15557)).toMatchObject({conflicts:1});
+ messages=[request,{...delivery,message:'ID : different@jamkkangudok.com\n비밀번호 : Manual!12345'}];expect(await syncGbutsSpotifyCredentials(deps,15557)).toMatchObject({conflicts:1});
+ messages=[request,delivery,msg('새 계정 다시 만들어주세요','2026-10-28T04:00:00Z')];expect(await syncGbutsSpotifyCredentials(deps,15557)).toMatchObject({conflicts:1});
+ messages=[request,{...delivery,senderSeq:99}];expect(await syncGbutsSpotifyCredentials(deps,15557)).toMatchObject({conflicts:1});
+ expect(replace).not.toHaveBeenCalled();expect(deps.createRow).not.toHaveBeenCalled();
+});

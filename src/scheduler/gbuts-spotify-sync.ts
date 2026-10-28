@@ -7,7 +7,7 @@ import { loadSafeModeConfig } from '../api/safe-mode';
 import { getOrCreateSpotifyNewAccountCredentials, isGeneratedSpotifyLogin } from './spotify-new-account-credentials';
 import { LEGACY_SPOTIFY_POST_SEQ, spotifyPostSeqs } from '../lib/gbuts-spotify-listings';
 import { readGbutsSpotifyMessageJournal, requestedSpotifyNewAccount, sendGbutsText, syncGbutsSpotifyMessages,
-  writeGbutsSpotifyMessageJournal } from './gbuts-spotify-messages';
+  writeGbutsSpotifyMessageJournal, spotifyRegisteredLogin, spotifyChatContainsIssuedLogin } from './gbuts-spotify-messages';
 import {
   GbutsSellerRequestError, extractGbutsSpotifyCredentials, gbutsSpotifyOrderKey, isActiveGbutsSpotifyMember, isSpotifyAccountForBuyer,
   type GbutsChatMessage, type GbutsSpotifyMember, type SpotifyCredentials,
@@ -40,6 +40,7 @@ interface GbutsChatRoom {
 export interface GbutsSpotifySyncDependencies {
   orderKey?(postSeq: number, member: GbutsSpotifyMember): string;
   extractCredentials?(messages: readonly GbutsChatMessage[], buyer: number): Promise<SpotifyCredentials | null>;
+  sellerAccountSeq?(): Promise<number>;
   listMembers(postSeq: number): Promise<GbutsSpotifyMember[]>;
   openPrivateRoom(postSeq: number, userSeq: number): Promise<string>;
   getChat(roomId: string): Promise<{ messages: GbutsChatMessage[] }>;
@@ -61,6 +62,7 @@ export async function syncGbutsSpotifyCredentials(deps: GbutsSpotifySyncDependen
   const active = members.filter(isActiveGbutsSpotifyMember);
   const credentialsByOrder = new Map<string, SpotifyCredentials | null>();
   const newAccountRequestsByOrder = new Map<string, boolean>();
+  const newAccountRequestTimes = new Map<string, string>();
   const credentialCounts = new Map<string, number>();
   for (const member of active) {
     const orderKey = orderKeyFor(postSeq, member);
@@ -72,6 +74,7 @@ export async function syncGbutsSpotifyCredentials(deps: GbutsSpotifySyncDependen
       ? null : submitted;
     credentialsByOrder.set(orderKey, credentials);
     newAccountRequestsByOrder.set(orderKey, Boolean(newAccountRequestedAt && !credentials));
+    if (newAccountRequestedAt) newAccountRequestTimes.set(orderKey, newAccountRequestedAt);
     if (credentials) {
       const fingerprint = JSON.stringify([credentials.email, credentials.password]);
       credentialCounts.set(fingerprint, (credentialCounts.get(fingerprint) || 0) + 1);
@@ -102,6 +105,21 @@ export async function syncGbutsSpotifyCredentials(deps: GbutsSpotifySyncDependen
       } else if (newAccountRequestsByOrder.get(orderKey) && matches.length === 1 && matches[0].email && matches[0].password && deps.replaceWithNewAccountRequestRow && !isGeneratedSpotifyLogin(matches[0])) {
         const previous = matches[0];
         const current = await deps.getRow(previous.id);
+        // A historical manual issue need not match today's random-ID convention.
+        // Adopt only an exact saved seller pair AFTER this same latest buyer request.
+        if (current && current.orderKey === orderKey && !current.cancelled && current.registered && current.invited
+          && deps.sellerAccountSeq && current.email === previous.email && current.password === previous.password
+          && current.registeredEmail === previous.registeredEmail && current.registeredPassword === previous.registeredPassword) {
+          const requestedAt = newAccountRequestTimes.get(orderKey);
+          const room = await deps.openPrivateRoom(postSeq, member.userSeq);
+          const freshChat = await deps.getChat(room);
+          const latestRequest = requestedSpotifyNewAccount(freshChat.messages, member.userSeq);
+          const issued = spotifyRegisteredLogin(current);
+          const seller = await deps.sellerAccountSeq();
+          if (requestedAt && Number.isFinite(Date.parse(requestedAt)) && latestRequest === requestedAt && issued
+            && spotifyChatContainsIssuedLogin(freshChat.messages.filter(m => Number.isFinite(Date.parse(m.createdAt))
+              && Date.parse(m.createdAt) > Date.parse(requestedAt)), seller, issued)) continue;
+        }
         if (!deps.replaceWithNewAccountRequestRow || !current || current.orderKey !== orderKey || current.cancelled
           || current.registered || current.invited || current.email !== previous.email || current.password !== previous.password
           || current.registeredEmail !== previous.registeredEmail || current.registeredPassword !== previous.registeredPassword) { conflicts += 1; continue; }
