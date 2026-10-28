@@ -907,7 +907,7 @@ export function buildPartyAccessPublicPayload(
   const disneyMailboxUrl = record.serviceType === '디즈니플러스'
     && findGeneratedAccount(generatedStore, record.serviceType, record.accountEmail)?.emailAccessProvider === 'tinyhost'
     ? tinyhostMailboxUrl(credentialRecord.accountEmail)
-    : record.serviceType === '디즈니플러스' && findGeneratedAccount(generatedStore, record.serviceType, record.accountEmail)?.emailAccessProvider === 'emailverify'
+    : ['디즈니플러스','넷플릭스'].includes(record.serviceType) && findGeneratedAccount(generatedStore, record.serviceType, record.accountEmail)?.emailAccessProvider === 'emailverify'
       ? emailVerifyDisneyMailboxUrl(credentialRecord.accountEmail) : '';
   const base = {
     presentation: numberedNetflix ? 'gbuts-netflix-numbered' as const : numberedDisney ? 'gbuts-disney-numbered' as const : undefined,

@@ -74,7 +74,7 @@ export async function syncGbutsOtt(deps: GbutsOttRuntimeDependencies,
       // must use the current password-only policy, even if it pinned an older guide.
       const submitted = order.attemptedAt || order.delivery === 'attempted' || order.delivery === 'confirmed';
       return submitted ? order.deliveryMessage || buildGbutsNetflixLegacyDeliveryText(order.accessUrl!, order.profileNumber!)
-        : buildGbutsNetflixDeliveryText(order.accessUrl!, order.profileNumber!, listing.emailCodeProvider === 'aaryan');
+        : buildGbutsNetflixDeliveryText(order.accessUrl!, order.profileNumber!, listing.emailCodeProvider === 'aaryan', listing.emailCodeProvider === 'emailverify');
     }
     return order.deliveryMessage || (listing.deliveryMode === 'disney-numbered-password'
       ? buildGbutsDisneyDeliveryText(order.accessUrl!, order.profileNumber!, disneyAccountCapacity(store, listing))

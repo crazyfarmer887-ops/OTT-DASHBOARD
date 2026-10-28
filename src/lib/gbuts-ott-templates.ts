@@ -28,6 +28,8 @@ https://www.netflix.com/verifyage
 ${GBUTS_ACCOUNT_CHANGE_WARNING}`;
 
 export const GBUTS_NETFLIX_CODE_DESCRIPTION = GBUTS_NETFLIX_DESCRIPTION.replace('반드시 비밀번호로 로그인해 주세요. 이메일 인증·로그인 코드는 제공하지 않습니다.', '기본 로그인은 비밀번호로 진행해 주세요. 추가 이메일 코드가 필요하면 1:1 채팅에 4자리 로그인 코드 또는 6자리 계정 인증 코드를 요청해 주세요.');
+export const GBUTS_NETFLIX_MAILBOX_DESCRIPTION = GBUTS_NETFLIX_DESCRIPTION.replace('반드시 비밀번호로 로그인해 주세요. 이메일 인증·로그인 코드는 제공하지 않습니다.', '기본은 비밀번호 로그인입니다. 이메일 인증이 필요하면 구매 후 1:1 채팅으로 받는 이메일 접근 주소와 PIN으로 최신 인증 메일을 확인하세요.');
+export const GBUTS_NETFLIX_MAILBOX_AFTER_ORDER_NOTICE = 'ID·비밀번호·배정 프로필과 이메일 인증 주소·PIN을 구매 후 1:1 채팅으로 안내합니다.';
 
 export function makeGbutsOttDescription(serviceType: string): string {
   if (serviceType === '디즈니플러스') return `디즈니플러스 · 1인 1프로필 이용
@@ -117,7 +119,8 @@ ${emailCodeSupport ? '추가 코드가 필요하면 이 채팅에 “4자리 로
 프로필 생성·삭제 및 이름·PIN 변경, 계정 이메일·비밀번호·결제 설정 변경은 금지합니다.
 여러 기기에서 동시에 시청하지 마세요.`;
 }
-export function buildGbutsNetflixDeliveryText(_accessUrl: string, number: number, emailCodeSupport = false): string {
+export function buildGbutsNetflixDeliveryText(_accessUrl: string, number: number, emailCodeSupport = false, mailboxSupport = false): string {
+  if (mailboxSupport) return buildGbutsNetflixPasswordGuide(number).replace('이메일 인증·로그인 코드는 제공하지 않습니다.', '이메일 인증이 필요하면 함께 전달한 이메일 접근 주소와 PIN으로 최신 인증 메일을 확인해 주세요.');
   return buildGbutsNetflixPasswordGuide(number, emailCodeSupport);
 }
 /** History-only compatibility for the already delivered operational recovery. */

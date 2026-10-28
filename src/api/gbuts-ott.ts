@@ -4,7 +4,8 @@ import {subscriptionManagedRenewalViews} from '../scheduler/gbuts-rank-adoption'
 import { readAaryanTelegramConfig } from '../lib/aaryan-telegram';
 import { applyGbutsDisneySaleTerms, renewDueGbutsOttListings, DISNEY_RENEWAL_INTERVAL } from '../scheduler/gbuts-ott-renewal';
 import { loadSafeModeConfig } from './safe-mode';
-import { makeGbutsOttDescription, GBUTS_NETFLIX_CODE_DESCRIPTION } from '../lib/gbuts-ott-templates';
+import { makeGbutsOttDescription, GBUTS_NETFLIX_CODE_DESCRIPTION, GBUTS_NETFLIX_MAILBOX_DESCRIPTION } from '../lib/gbuts-ott-templates';
+import { buildGbutsNetflixMailboxText } from '../lib/gbuts-netflix-mailbox';
 import { Hono } from 'hono';
 import { createHash, randomUUID } from 'node:crypto';
 import { GBUTS_OTT_CATEGORIES, gbutsOttRenewalKey, supportsGbutsOttRenewal, enableNewNetflixRenewal, activeOttOrder, holdsDisneyProfile, koreaToday, ottKey, ottDate, sharedOttAccounts, updateGbutsOttOrders, type GbutsOttListing, type GbutsOttManagement, type GbutsOttStore } from '../lib/gbuts-ott';
@@ -176,13 +177,19 @@ export function registerGbutsOttRoutes(app: Hono, deps: GbutsOttRuntimeDependenc
         const serviceType = String(body.serviceType || ''); const accountEmail = String(body.accountEmail || '').trim();
         const endDate = String(body.endDate || ''); const capacity = Number(body.capacity); const dailyPrice = Number(body.dailyPrice);
         const id = String(body.requestId || ''); const title = String(body.title || `${serviceType} 프리미엄 · 계정 자동 안내`).trim();
-        const description = String(body.description || (body.emailCodeProvider === 'aaryan' ? GBUTS_NETFLIX_CODE_DESCRIPTION : makeGbutsOttDescription(serviceType))).trim();
+        const description = String(body.description || (body.emailCodeProvider === 'emailverify' ? GBUTS_NETFLIX_MAILBOX_DESCRIPTION : body.emailCodeProvider === 'aaryan' ? GBUTS_NETFLIX_CODE_DESCRIPTION : makeGbutsOttDescription(serviceType))).trim();
         const deliveryMode = serviceType === '디즈니플러스' ? 'disney-numbered-password' as const : undefined;
         const emailCodeProvider = body.emailCodeProvider;
         if (emailCodeProvider !== undefined) {
-          if (emailCodeProvider !== 'aaryan' || serviceType !== '넷플릭스') throw new Error('코드 전달 서비스 연결을 확인해주세요.');
-          const provider = readAaryanTelegramConfig();
-          if (!provider.allowedEmails.includes(accountEmail.toLowerCase()) || provider.expiresAt.slice(0,10) < endDate || Date.parse(provider.expiresAt) <= Date.now()) throw new Error('인증 코드 조회 권한 또는 기간을 확인해주세요.');
+          if (!['aaryan','emailverify'].includes(emailCodeProvider) || serviceType !== '넷플릭스') throw new Error('코드 전달 서비스 연결을 확인해주세요.');
+          if (emailCodeProvider === 'aaryan') {
+            const provider = readAaryanTelegramConfig();
+            if (!provider.allowedEmails.includes(accountEmail.toLowerCase()) || provider.expiresAt.slice(0,10) < endDate || Date.parse(provider.expiresAt) <= Date.now()) throw new Error('인증 코드 조회 권한 또는 기간을 확인해주세요.');
+          } else {
+            const credentials = await deps.listingCredentials?.({serviceType,accountEmail,emailCodeProvider} as GbutsOttListing);
+            if (!credentials || credentials.id.trim().toLowerCase() !== accountEmail.toLowerCase()) throw Error('넷플릭스 이메일 인증 연결을 먼저 확인해주세요.');
+            buildGbutsNetflixMailboxText(credentials, 1);
+          }
         }
         if (!GBUTS_OTT_CATEGORIES[serviceType] || !accountEmail || !/^[A-Za-z0-9_-]{8,100}$/.test(id)
           || !Number.isSafeInteger(capacity) || capacity < 1 || !Number.isSafeInteger(dailyPrice) || dailyPrice < 1 || dailyPrice > 100000

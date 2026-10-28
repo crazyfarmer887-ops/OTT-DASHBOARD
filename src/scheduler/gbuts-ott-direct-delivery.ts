@@ -6,6 +6,7 @@ import type { createGbutsOttSellerClient } from '../lib/gbuts-ott-client';
 import type { GbutsOttRuntimeDependencies } from './gbuts-ott-sync';
 import { sendGbutsText } from './gbuts-spotify-messages';
 import { buildGbutsDisneyDirectText, DISNEY_DIRECT_FORMAT } from '../lib/gbuts-disney-delivery';
+import { buildGbutsNetflixMailboxText, NETFLIX_MAILBOX_FORMAT } from '../lib/gbuts-netflix-mailbox';
 
 const fingerprint = (text: string) => createHash('sha256').update(text.trim()).digest('hex');
 // GButs also returns local Korean timestamps without a UTC offset.
@@ -53,11 +54,12 @@ export async function syncGbutsDirectCredentials(store: GbutsOttStore, orders: G
       // identical to an explicit request, without persisting the password.
       const purchasedAt = messageTime(order.purchasedAt || `${order.startDate}T00:00:00+09:00`);
       const disney = store.listings[order.listingId].deliveryMode === 'disney-numbered-password';
+      const netflixMailbox = store.listings[order.listingId].serviceType === '넷플릭스' && store.listings[order.listingId].emailCodeProvider === 'emailverify';
       // Only newly submitted password-only guides opt Netflix into automatic delivery.
       // Historical link-guide recipients are never bulk-messaged by this policy change.
       const netflix = store.listings[order.listingId].serviceType === '넷플릭스'
         && order.credentialDeliveryPolicy === 'netflix-password-v1';
-      const initialKey = fingerprint(`${disney ? DISNEY_DIRECT_FORMAT : 'netflix-password-v1'}:${order.key}`);
+      const initialKey = fingerprint(`${disney ? DISNEY_DIRECT_FORMAT : netflixMailbox ? NETFLIX_MAILBOX_FORMAT : 'netflix-password-v1'}:${order.key}`);
       const upgrade = disney && previous && ['confirmed', 'ready'].includes(previous.state) && previous.format !== DISNEY_DIRECT_FORMAT;
       const initial = (!previous || upgrade || (previous.state === 'ready' && previous.requestKey === initialKey)) && (disney || netflix)
         && Number.isFinite(purchasedAt) && purchasedAt <= Date.now()
@@ -79,9 +81,10 @@ export async function syncGbutsDirectCredentials(store: GbutsOttStore, orders: G
       const { id, password } = credentials;
       if (![id, password].every(value => value.trim() && !/[\r\n]/.test(value) && !isGraytagAccessNoticeCredential(value)))
         throw new Error('최신 ID·비밀번호가 올바르지 않습니다.');
-      const text = disney ? buildGbutsDisneyDirectText(credentials, order.profileNumber!) : `ID : ${id}\nPW : ${password}`;
-      if (!disney && Buffer.byteLength(text) > 500) throw new Error('직접 계정 전달 문구가 채팅 전송 한도를 초과했습니다.');
+      const text = disney ? buildGbutsDisneyDirectText(credentials, order.profileNumber!) : netflixMailbox ? buildGbutsNetflixMailboxText(credentials, order.profileNumber!) : `ID : ${id}\nPW : ${password}`;
+      if (!disney && !netflixMailbox && Buffer.byteLength(text) > 500) throw new Error('직접 계정 전달 문구가 채팅 전송 한도를 초과했습니다.');
       if (disney) { delivery.format = DISNEY_DIRECT_FORMAT; delivery.messageHashes = splitGbutsChatText(text).map(fingerprint); }
+      if (netflixMailbox) { delivery.format = NETFLIX_MAILBOX_FORMAT; delivery.messageHashes = splitGbutsChatText(text).map(fingerprint); }
       delivery.messageHash = fingerprint(text); delivery.state = 'attempted'; delivery.attemptedAt = new Date().toISOString();
       delete order.error; write(store);
       try {

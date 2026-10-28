@@ -11,7 +11,7 @@ export interface GbutsOttListing {
   state: GbutsOttListingState; postSeq?: number; createdAt: string; verifiedAt?: string; error?: string;
   beforePostSeqs?: number[];
   deliveryMode?: 'disney-numbered-password';
-  emailCodeProvider?: 'aaryan';
+  emailCodeProvider?: 'aaryan' | 'emailverify';
   rankSeedPostSeq?:number;
   replacedBy?: string;
   repostAfterSeq?: number;
@@ -28,7 +28,7 @@ export interface GbutsOttOrder {
   deliveryMessage?: string;
   credentialDeliveryPolicy?: 'netflix-password-v1';
   directDelivery?: { requestAt: string; requestKey: string; state: 'ready' | 'attempted' | 'confirmed' | 'blocked'; messageHash?: string; attemptedAt?: string;
-    format?: 'disney-mailbox-v1'; messageHashes?: string[] };
+    format?: 'disney-mailbox-v1' | 'netflix-mailbox-v1'; messageHashes?: string[] };
   purchasedAt?: string;
   profileNumber?: number;
   profileReleasedAt?: string;

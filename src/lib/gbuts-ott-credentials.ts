@@ -19,6 +19,8 @@ export function resolveGbutsOttDirectCredentials(order: GbutsOttOrder, listing: 
     throw new Error('구매자의 최신 계정 정보를 확인하지 못했습니다.');
   if (listing.deliveryMode === 'disney-numbered-password' && payload.emailAccessUrl)
     return resolveGbutsDisneyListingCredentials(listing, data);
+  if (listing.serviceType === '넷플릭스' && listing.emailCodeProvider === 'emailverify')
+    return resolveGbutsNetflixListingCredentials(listing, data);
   return { id: payload.credentials.id, password: payload.credentials.password,
     ...(listing.deliveryMode === 'disney-numbered-password' && payload.emailAccessUrl ? { emailAccessUrl: payload.emailAccessUrl } : {}) };
 }
@@ -56,5 +58,12 @@ export function resolveGbutsNetflixListingCredentials(listing: GbutsOttListing, 
     member: { kind: 'gbuts', memberId: `preview:${listing.id}`, memberName: '(판매글 계정 확인)', status: 'active', endDateTime: listing.endDate } });
   const enriched = enrichPartyAccessRecordWithKnownCredentials(record, data.accessRecords, data.maintenance, data.generated);
   const credentials = resolvePartyAccessCredentials(enriched, data.maintenance, data.generated);
-  const result = { id: credentials.id, password: credentials.password }; assertGbutsOttCredentials(result); return result;
+  const result: GbutsOttCredentials = { id: credentials.id, password: credentials.password };
+  if (listing.emailCodeProvider === 'emailverify') {
+    if (accounts[0].emailAccessProvider !== 'emailverify' || credentials.id.trim().toLowerCase() !== listing.accountEmail.trim().toLowerCase()
+      || !/^\d{6}$/.test(credentials.pin)) throw Error('넷플릭스 이메일 인증 연결과 PIN을 확인해주세요.');
+    result.emailAccessUrl = emailVerifyDisneyMailboxUrl(credentials.id); result.emailAccessPin = credentials.pin;
+    if (!result.emailAccessUrl) throw Error('넷플릭스 이메일 주소를 확인해주세요.');
+  }
+  assertGbutsOttCredentials(result); return result;
 }
