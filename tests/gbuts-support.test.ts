@@ -385,3 +385,24 @@ it("retries only the read-only Dify classification after a transient failure", a
   );
   expect(fetcher).toHaveBeenCalledTimes(2);
 });
+
+it("hands image-only inquiries to the owner without sending image URLs to inference", async () => {
+  const { c, deps } = harness();
+  c.messages = [{ ...msg("https://private/image"), messageType: "IMAGE" }];
+  expect(await processInquiry(c, deps)).toBe("handoff");
+  expect(deps.infer).not.toHaveBeenCalled();
+  expect(deps.send).not.toHaveBeenCalled();
+  expect(deps.alert).toHaveBeenCalledWith(
+    "attachment_review",
+    expect.any(Array),
+    expect.any(String),
+  );
+});
+it("keeps attachment-only historical shadow review silent", async () => {
+  const { c, deps } = harness("draft");
+  c.messages = [{ ...msg("https://private/image"), messageType: "IMAGE" }];
+  expect(await processInquiry(c, deps)).toBe("draft");
+  expect(deps.infer).not.toHaveBeenCalled();
+  expect(deps.send).not.toHaveBeenCalled();
+  expect(deps.alert).not.toHaveBeenCalled();
+});

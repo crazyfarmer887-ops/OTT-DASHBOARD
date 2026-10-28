@@ -259,6 +259,8 @@ async function run() {
                 body: `주문: ${c.postSeq}:${c.memberSeq}\n사유: ${
                   (
                     {
+                      attachment_review:
+                        "사진 또는 첨부 문의 — 원본 채팅 확인 필요",
                       refund_requested: "환불 요청 — 승인 여부 판단 필요",
                       replacement_requested:
                         "계정 교체 요청 — 승인 여부 판단 필요",

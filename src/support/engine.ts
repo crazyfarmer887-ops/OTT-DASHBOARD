@@ -128,7 +128,6 @@ export async function processInquiry(
   if (
     !latest ||
     latest.senderSeq !== c.buyerSeq ||
-    latest.messageType !== "TEXT" ||
     ordered.some(
       (m) =>
         m.senderSeq === c.sellerSeq &&
@@ -206,6 +205,20 @@ export async function processInquiry(
       time(latest.createdAt) < time(cfg.autoSince))
   )
     return "historical";
+  if (latest.messageType !== "TEXT") {
+    if (cfg.mode === "draft") {
+      room.receipts[event] = {
+        event,
+        state: "draft",
+        plan: "handoff",
+        at: now.toISOString(),
+        reason: "attachment_review",
+      };
+      deps.save();
+      return "draft";
+    }
+    return handoff("attachment_review");
+  }
   // A later human seller response takes ownership; routine workers get a full minute first.
   if (
     room.lastSentAt &&
