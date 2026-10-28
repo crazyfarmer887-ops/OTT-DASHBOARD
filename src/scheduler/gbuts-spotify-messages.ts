@@ -28,6 +28,14 @@ export function spotifyChatContainsIssuedLogin(messages: readonly GbutsChatMessa
     && passwordToken.test(m.message));
 }
 
+/** A saved different issued identity must not be replaced with a convention-derived guess. */
+export function spotifyChatHasDifferentIssuedLogin(messages: readonly GbutsChatMessage[], sellerSeq: number,
+  login: { email: string; password: string }): boolean {
+  return messages.some(m => m.senderSeq === sellerSeq && m.messageType === 'TEXT'
+    && explicitYouTubeBuyerEmails(m.message).some(email => email.toLowerCase() !== login.email.toLowerCase()
+      && spotifyChatContainsIssuedLogin([m], sellerSeq, { email, password: login.password })));
+}
+
 /** Explicit partner-issued fields take precedence; empty fields retain the legacy workflow. */
 export function spotifyRegisteredLogin(row: SpotifyNotionRow): { email: string; password: string } | null {
   const explicit = row.registeredEmail?.trim();
@@ -136,6 +144,11 @@ export async function syncGbutsSpotifyMessages(deps: GbutsSpotifyMessageDependen
     // The partner's Registered check confirms creation under the agreed domain.
     // The Notion ID may remain the buyer's original address.
     const issuedLogin = row?.registered ? spotifyRegisteredLogin(row) : null;
+    // An old manually issued address may not follow the partner-domain convention.
+    // Require an explicit correction rather than sending an inferred replacement.
+    if (row?.registered && issuedLogin && !row.registeredEmail?.trim()
+      && !spotifyChatContainsIssuedLogin(chat.messages, sellerSeq, issuedLogin)
+      && spotifyChatHasDifferentIssuedLogin(chat.messages, sellerSeq, issuedLogin)) continue;
     const deliveryEmail = row?.registered ? issuedLogin?.email : row?.email;
     const manuallyIssuedLogin = Boolean(row?.registered && newAccountRequestedAt
       && (!buyerCredentials || newAccountRequestedAt > buyerCredentials.receivedAt)

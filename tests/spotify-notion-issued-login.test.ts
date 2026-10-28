@@ -57,6 +57,18 @@ describe('Spotify partner-issued login delivery', () => {
     expect(sendText).not.toHaveBeenCalled();
     expect(Object.values(journal.records)).toEqual([expect.objectContaining({ state: 'confirmed', roomId: '777' })]);
   });
+  it('does not send a guessed domain-derived login when history records a different issued account', async () => {
+    const sendText = vi.fn(), journal = { version: 1 as const, records: {} };
+    await syncGbutsSpotifyMessages({
+      listMembers: async () => [{ seq: 91, userSeq: 42, productId: 'SPOT1', status: 'APPLY', cancelStatus: null }],
+      openPrivateRoom: async () => '777', sellerAccountSeq: async () => 7,
+      getChat: async () => ({ messages: [{ senderSeq: 42, messageType: 'TEXT', message: '새 계정 발급 부탁합니다', createdAt: '2026-10-27T00:00:00Z' },
+        { senderSeq: 7, messageType: 'TEXT', message: 'different@example.net PW : Original123!', createdAt: '2026-10-27T00:01:00Z' }] }),
+      listRows: async () => [{ id: 'p', orderKey: '15557:91', email: 'original@example.com', password: 'Original123!', emailHistory: [], registered: true, invited: true, cancelled: false }],
+      sendText, readJournal: () => journal, writeJournal: vi.fn(),
+    }, 15557);
+    expect(sendText).not.toHaveBeenCalled(); expect(Object.keys(journal.records)).toHaveLength(0);
+  });
   it('requires the exact email and whole password in one saved seller message', () => {
     const login = { email: 'issued@example.net', password: 'Issued456!' };
     const matches = (text: string, sender = 7) => spotifyChatContainsIssuedLogin([{ senderSeq: sender, messageType: 'TEXT', message: text, createdAt: '2026-10-28T00:00:00Z' }], 7, login);

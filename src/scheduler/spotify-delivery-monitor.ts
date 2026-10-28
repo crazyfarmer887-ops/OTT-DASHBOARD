@@ -1,11 +1,10 @@
 import { createHash } from 'node:crypto';
 import type { SellerAlertInput, SellerAlertResult } from '../alerts/telegram';
 import { gbutsChatContainsText } from '../lib/gbuts-chat-delivery';
-import { explicitYouTubeBuyerEmails } from '../lib/youtube-buyer-email';
 import { extractGbutsSpotifyCredentials, isActiveGbutsSpotifyMember, isSpotifyAccountForBuyer,
   type GbutsChatMessage, type GbutsSpotifyMember } from '../lib/gbuts-spotify';
 import { requestedSpotifyNewAccount, spotifyRegisteredAccountInvitedReply, spotifyRegisteredLogin,
-  SPOTIFY_INVITED_REPLY, spotifyChatContainsIssuedLogin } from './gbuts-spotify-messages';
+  SPOTIFY_INVITED_REPLY, spotifyChatContainsIssuedLogin, spotifyChatHasDifferentIssuedLogin } from './gbuts-spotify-messages';
 import type { SpotifyNotionRow } from './gbuts-spotify-sync';
 
 export type SpotifyPlatform = 'gbuts' | 'everyview';
@@ -65,9 +64,7 @@ export function assessSpotifyBuyerDelivery(s: SpotifyBuyerDeliverySnapshot): Spo
     : SPOTIFY_INVITED_REPLY;
   if (gbutsChatContainsText([...s.messages], s.sellerSeq, expected)
     || (issued && spotifyChatContainsIssuedLogin(s.messages, s.sellerSeq, issued))) return null;
-  if (issued && s.messages.some(m => m.senderSeq === s.sellerSeq && m.messageType === 'TEXT'
-    && explicitYouTubeBuyerEmails(m.message).some(email => email.toLowerCase() !== issued.email.toLowerCase()
-      && spotifyChatContainsIssuedLogin([m], s.sellerSeq, { email, password: issued.password }))))
+  if (issued && spotifyChatHasDifferentIssuedLogin(s.messages, s.sellerSeq, issued))
     return { ...issueBase, code: 'identity_mismatch' };
   return { ...issueBase, code: s.uncertainDelivery ? 'delivery_uncertain' : 'delivery_missing' };
 }
