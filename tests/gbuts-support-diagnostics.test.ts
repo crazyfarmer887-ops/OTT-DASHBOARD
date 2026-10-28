@@ -251,3 +251,18 @@ it("recognizes a successful follow-up instead of falsely escalating the word 해
   expect(d.deps.send.mock.calls.at(-1)?.[0]).toContain("다행");
   expect(d.deps.alert).not.toHaveBeenCalled();
 });
+it("advances when the customer repeats only the exact error code", async () => {
+  const d = dialogue();
+  await d.say("NW-2-5");
+  expect(await d.say("NW-2-5")).toBe("sent");
+  expect(d.deps.send.mock.calls.at(-1)?.[0]).toContain("30초");
+  expect(await d.say("NW-2-5")).toBe("handoff");
+  expect(d.deps.send).toHaveBeenCalledTimes(2);
+});
+it("continues an error-specific guide after a short requested device answer", async () => {
+  const d = dialogue("디즈니플러스");
+  await d.say("오류83");
+  expect(await d.say("TV예요")).toBe("sent");
+  expect(d.deps.send.mock.calls.at(-1)?.[0]).toContain("기기 전원");
+  expect(d.deps.alert).not.toHaveBeenCalled();
+});

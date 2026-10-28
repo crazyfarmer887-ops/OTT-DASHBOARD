@@ -48,7 +48,7 @@ export function conversationFeatures(
   if (
     !issue &&
     meta &&
-    outcome &&
+    (outcome || isDeviceOnly) &&
     !explicitCode &&
     !f.intents.some((x) =>
       ["account", "code", "refund", "replace", "thanks"].includes(x),
@@ -60,7 +60,7 @@ export function conversationFeatures(
   if (f.device === "unknown" && prior?.device && (issue || failed))
     f.device = prior.device;
   if (prior?.plan === "login_clarify" && isDeviceOnly) f.intents.push("login");
-  if (issue && meta?.issue === issue && outcome) {
+  if (issue && meta?.issue === issue) {
     if (meta.stage === 1 && GUIDES[issue].steps.length > 1)
       f.intents.push("diagnostic_step_2");
     else f.intents.push("diagnostic_exhausted");
