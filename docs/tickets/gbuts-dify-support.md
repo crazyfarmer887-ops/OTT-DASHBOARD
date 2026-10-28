@@ -27,6 +27,8 @@ Final V2 source e0a8481 (SHA256 534757d343661ea8a7bf0d49ed16c8c065d1260f992710ae
 - [x] Separate courtesy from resolution; aggregate fragmented buyer turns; negative/question guards.
 - [x] Preserve refund/diagnostic request before thanks; overdue unfulfilled delivery visibility.
 - [x] Known Google authentication/unbound-sale handoff without changing family binding or resending invites.
-- [ ] Local/Linux focused checks, real Dify replay, committed deployment, validated promotion.
+- [x] Local/Linux focused checks, real Dify replay, committed deployment, validated promotion.
 
 Private investigation found the incident order19088:50460 outside the legacy18756 invite chain. Initial receipt was acknowledged by the buyer after manual seller handling, and an address-change request also received a seller response. No duplicate invite attempted. Google worker independently reports GOOGLE_SIGNIN_REQUIRED; a read-only cookie-only probe also failed, so fresh authorized family-manager cookies are required for its restoration. Support changes do not bypass that authentication or broaden family bindings.
+
+V3 source4d63c3a:119focused tests passed locally/Linux; real Dify proof46fixtures+24actual inquiry features,34/34safe matches,0unsafe/invalid,6cache hits,0new provider attempts. Screenshot-pattern regressions now delegate or remain silent rather than sending a success closure. Fresh draft scan153rooms/errors0/unavailable7. Journals, owner pauses, uncertain-send receipts and previous manually handled order remain intact.
