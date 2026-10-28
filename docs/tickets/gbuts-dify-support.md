@@ -11,8 +11,10 @@
 
 ## V2
 
-- [ ] Official-source diagnostic catalog and compact actionable step templates.
-- [ ] Multi-turn issue/device memory, completed-step suppression and useful unknown-error clarification.
-- [ ] Dify anonymous diagnosis/stage allowlist and validated deterministic safety constraints.
-- [ ] Meaningful regression/hostile/multi-turn tests and private shadow replay.
-- [ ] Committed deployment, V2 proof, promotion and runtime smoke without synthetic sends.
+- [x] Official-source diagnostic catalog and compact actionable step templates.
+- [x] Multi-turn issue/device memory, completed-step suppression and useful unknown-error clarification.
+- [x] Dify anonymous diagnosis/stage allowlist and validated deterministic safety constraints.
+- [x] Meaningful regression/hostile/multi-turn tests and private shadow replay.
+- [x] Committed deployment, V2 proof, promotion and runtime smoke without synthetic sends.
+
+V2 source bf73ebf, SHA256 c5f439af800abf58cdb1445c463cf1e74674b56487d9d685f517445175c21fa6:102focused tests passed locally and on Linux; real Dify replay40fixtures+24historical inquiries,38/38safe matches,0unsafe/invalid.26policy cases;38Dify cases comprised14verified cached model outputs plus24knowledge/clarification outcomes,0new provider attempts.37actual historical inquiry features recollected privately under V2; no customer replay sends. Journals/receipts preserved; no pending uncertain SEND at cutover. Fresh scan152rooms/errors0/unavailable7; gate accepted and auto mode activated.
