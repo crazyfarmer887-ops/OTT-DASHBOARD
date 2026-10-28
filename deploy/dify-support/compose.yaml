@@ -30,6 +30,8 @@ services:
     ports: ["127.0.0.1:18081:5001"]
     extra_hosts: ["host.docker.internal:host-gateway"]
     environment:
+      LANG: C.UTF-8
+      LC_ALL: C.UTF-8
       MODE: api
       MIGRATION_ENABLED: "true"
       SECRET_KEY: ${SECRET_KEY:?}
@@ -59,7 +61,7 @@ services:
       ENABLE_COLLABORATION_MODE: "false"
       SSRF_PROXY_HTTP_URL: ""
       SSRF_PROXY_HTTPS_URL: ""
-      SSRF_DEFAULT_MAX_RETRIES: "0"
+      SSRF_DEFAULT_MAX_RETRIES: "1"
       PLUGIN_DAEMON_URL: http://127.0.0.1:5999
       PLUGIN_DAEMON_KEY: ${SECRET_KEY:?}
       CHECK_UPDATE_URL: ""
