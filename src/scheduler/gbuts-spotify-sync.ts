@@ -27,6 +27,7 @@ export interface SpotifyNotionRow {
   registeredPassword?: string;
   invited: boolean;
   cancelled: boolean;
+  updatedAt?: string;
 }
 
 interface GbutsChatRoom {
@@ -227,6 +228,7 @@ function parseNotionRow(value: unknown): SpotifyNotionRow | null {
     throw new Error('Spotify Notion Everyview identity invalid');
   return {
     id: page.id,
+    ...(typeof page.last_edited_time === 'string' ? { updatedAt: page.last_edited_time } : {}),
     orderKey: everyviewOrder || gbutsOrder,
     email,
     emailHistory,

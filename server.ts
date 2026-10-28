@@ -39,6 +39,7 @@ import { startGbutsOfficeMessages } from './src/scheduler/gbuts-office-messages.
 import { startGbutsChatAlerts } from './src/scheduler/gbuts-chat-alerts.ts';
 import { startGbutsSpotifySync } from './src/scheduler/gbuts-spotify-sync.ts';
 import { startEveryviewSpotifySync } from './src/scheduler/everyview-spotify-sync.ts';
+import { startSpotifyDeliveryMonitor } from './src/scheduler/spotify-delivery-monitor-runtime.ts';
 import { startGbutsOttSync } from './src/scheduler/gbuts-ott-sync.ts';
 import { gbutsOttRuntimeDependencies } from './src/api/index.ts';
 import { startYouTubeAutoListings } from './src/scheduler/youtube-auto-listings.ts';
@@ -289,6 +290,7 @@ startNotionInvitationSync({
 startGbutsOfficeMessages();
 startGbutsSpotifySync();
 startEveryviewSpotifySync();
+startSpotifyDeliveryMonitor();
 startGbutsChatAlerts();
 startGbutsOttSync(gbutsOttRuntimeDependencies);
 if (gbutsOttRuntimeDependencies.credentials) startGbutsNetflixCodes(gbutsOttRuntimeDependencies.credentials);

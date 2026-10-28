@@ -3,6 +3,14 @@ import { createGbutsSpotifyNotionClient } from '../src/scheduler/gbuts-spotify-s
 import { spotifyRegisteredAccountInvitedReply, spotifyRegisteredLogin, syncGbutsSpotifyMessages } from '../src/scheduler/gbuts-spotify-messages';
 
 describe('Spotify partner-issued login delivery', () => {
+  it('retains the Notion edit timestamp for future unbound-completion monitoring', async () => {
+    const client = createGbutsSpotifyNotionClient('test', undefined, vi.fn(async () => Response.json({ results: [{
+      id: 'recent', last_edited_time: '2026-10-28T04:00:00Z', properties: {
+        'Spotify account': { title: [{ plain_text: 'issued@example.net' }] }, Password: { rich_text: [] }, Invited: { checkbox: true },
+      },
+    }] })) as typeof fetch);
+    expect((await client.listRows())[0].updatedAt).toBe('2026-10-28T04:00:00Z');
+  });
   it.each(['Issued456!', ''])('delivers explicit Notion login fields with password override %j', async (issuedPassword) => {
     const page = { id: 'page-1', properties: {
       'Spotify account': { title: [{ plain_text: 'buyer@example.com' }] },
