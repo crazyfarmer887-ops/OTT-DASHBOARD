@@ -1,8 +1,10 @@
+import { conversationFeatures } from "./conversation";
+import { diagnosticMeta } from "./diagnostics";
 import type { GbutsChatMessage } from "../lib/gbuts-spotify";
 import {
   approvedPlan,
   allowedPlan,
-  features,
+  hasDeliveryEvidence,
   fingerprint,
   hash,
   POLICY_VERSION,
@@ -36,6 +38,7 @@ export type Receipt = {
   at: string;
   notified?: boolean;
   reason?: string;
+  device?: string;
 };
 export type RoomState = {
   rounds: number;
@@ -191,12 +194,20 @@ export async function processInquiry(
       room.rounds++;
       room.lastSentAt = old.at;
       deps.save();
+      if (diagnosticMeta(old.plan)?.review)
+        return handoff("account_restriction");
       return "reconciled";
     }
     return handoff("delivery_uncertain");
   }
   if (Object.values(room.receipts).some((r) => r.state === "attempted"))
     return handoff("previous_delivery_uncertain");
+  if (
+    old?.state === "delegated" &&
+    cfg.mode === "auto" &&
+    now.getTime() - time(old.at) >= 15 * 60000
+  )
+    return handoff("specialized_delivery_unresolved");
   if (old) return old.state;
   if (
     cfg.mode === "auto" &&
@@ -226,6 +237,7 @@ export async function processInquiry(
       (m) =>
         m.senderSeq === c.sellerSeq &&
         time(m.createdAt) > time(room.lastSentAt!) &&
+        !hasDeliveryEvidence([m], c.sellerSeq) &&
         !Object.values(room.receipts).some(
           (r) => r.reply === m.message && r.state === "confirmed",
         ),
@@ -235,15 +247,14 @@ export async function processInquiry(
     deps.save();
     return "human_owned";
   }
-  const f = features(latest.message, c.service, c.delivered, room.rounds);
-  if (
-    f.device !== "unknown" &&
-    Object.values(room.receipts)
-      .filter((r) => r.state === "confirmed")
-      .at(-1)?.plan === "login_clarify" &&
-    !f.intents.includes("login")
-  )
-    f.intents.push("login");
+  const f = conversationFeatures(
+    latest.message,
+    c.service,
+    c.delivered,
+    room.rounds,
+    Object.values(room.receipts),
+    latest.createdAt,
+  );
   let plan: Plan;
   try {
     const deterministic = allowedPlan(f);
@@ -268,6 +279,7 @@ export async function processInquiry(
     event,
     state: "draft",
     plan,
+    device: f.device,
     at: now.toISOString(),
     ...(plan in TEMPLATES
       ? { reply: TEMPLATES[plan as keyof typeof TEMPLATES] }
@@ -287,16 +299,26 @@ export async function processInquiry(
               ? "dispute"
               : f.intents.includes("failed")
                 ? "guidance_failed"
-                : "operator_decision"
+                : f.intents.includes("diagnostic_exhausted")
+                  ? "guidance_failed"
+                  : "operator_decision"
         : "draft_not_approved",
     );
   if (plan === "delegate") {
+    if (
+      cfg.mode === "auto" &&
+      Object.values(room.receipts).some(
+        (r) =>
+          r.state === "delegated" && now.getTime() - time(r.at) >= 15 * 60000,
+      )
+    )
+      return handoff("specialized_delivery_unresolved");
     rec.state = "delegated";
     deps.save();
     return "delegated";
   }
   if (room.lastSentAt && now.getTime() - time(room.lastSentAt) < 120000) {
-    rec.state = "superseded";
+    delete room.receipts[event];
     deps.save();
     return "cooldown";
   }
@@ -351,6 +373,7 @@ export async function processInquiry(
     room.rounds++;
     room.lastSentAt = rec.at;
     deps.save();
+    if (diagnosticMeta(plan)?.review) return handoff("account_restriction");
     return "sent";
   }
   return "uncertain";

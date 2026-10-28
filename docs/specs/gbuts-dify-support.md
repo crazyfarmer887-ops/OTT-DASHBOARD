@@ -16,3 +16,9 @@ Owner authorized existing-server 24/7 GButs support, first shadow drafts, then a
 ## Verification
 
 Tests at orchestration boundaries: paid/identity/expiry/isolation; shadow zero sends; refund/exchange/injection mandatory handoff; stale reads; seller takeover; bounded repeats; redact secrets; invalid workflow output; promotion proof/fresh activation; durable uncertain-send reconciliation; Telegram retry/dedupe. Real Dify workflow execution, private replay outcomes, localhost-only exposure, resource use and existing runtime checks must be observed separately from mocked tests.
+
+## V2 error-guided support (2026-10-28)
+
+Owner requested actual error-specific causes and actionable device-sensitive troubleshooting before escalation. Keep the Dify workflow and free-only privacy boundary. Add an official-source diagnostic catalog for Netflix, Disney+, Spotify and YouTube, with exact known error codes/phrases, bounded stages, follow-up context and no repeated completed guidance. Unknown symptoms ask for exact error/device first instead of immediate escalation. Only the anonymous diagnosis/stage/device labels reach inference; no raw conversation, codes, addresses or credentials. Shared-account recovery must not change passwords, household, memberships, payment or other users' sessions. Genuine household/country/family-change restrictions explain the constraint and hand off for operator review.
+
+Preserve all existing journals, uncertain-send recovery, identity/safe-mode/recheck gates and pre-activation cutoff. Require new policy proof and shadow replay before V2 promotion. Add multi-turn tests through the real processInquiry boundary, including clarification -> exact error -> next step -> failure handoff, topic changes, stale device context, dangerous mutations, source specificity, no private data inference, and message-size safety. Do not test by sending synthetic buyer messages.

@@ -1,16 +1,25 @@
 import { createHash } from "node:crypto";
 import type { GbutsChatMessage } from "../lib/gbuts-spotify";
 
-export const POLICY_VERSION = "gbuts-support-v1";
-export const PLANS = [
+import {
+  DIAGNOSTIC_TEMPLATES,
+  knownIssue,
+  diagnosticPlan,
+  diagnosticIssue,
+  type DiagnosticPlan,
+} from "./diagnostics";
+export const POLICY_VERSION = "gbuts-support-v2";
+const BASE_PLANS = [
   "where_account",
   "login_clarify",
   "login_steps",
   "thanks",
   "handoff",
   "delegate",
+  "troubleshoot_clarify",
 ] as const;
-export type Plan = (typeof PLANS)[number];
+export const PLANS = [...BASE_PLANS, ...Object.keys(DIAGNOSTIC_TEMPLATES)];
+export type Plan = (typeof BASE_PLANS)[number] | DiagnosticPlan;
 export type Features = {
   service: string;
   intents: string[];
@@ -19,6 +28,9 @@ export type Features = {
   rounds: number;
 };
 export const TEMPLATES = {
+  ...DIAGNOSTIC_TEMPLATES,
+  troubleshoot_clarify:
+    "원인을 좁히려면 화면의 오류 코드·문구와 사용 기기(TV·휴대폰·PC)를 알려주세요. 로그인 단계인지 재생·초대 단계인지, 이미 해본 방법도 함께 적어주세요. 이메일 전체·비밀번호·인증코드는 보내지 않으셔도 됩니다.",
   where_account:
     "구매하신 상품의 계정 정보는 이 1:1 채팅의 앞선 안내에서 확인해주세요. 안내가 보이지 않으면 말씀해주세요.",
   login_clarify:
@@ -49,7 +61,7 @@ const rules: Array<[string, RegExp]> = [
   ["dispute", /신고|사기|고소|경찰|소비자|분쟁|차지백|chargeback|죽여|찾아간/i],
   [
     "failed",
-    /안\s*돼|안\s*되|안됨|여전히|똑같|또\s*오류|해\s*봤|해봤|실패|안\s*와|안왔|못\s*받|못받/i,
+    /안\s*돼|안\s*되|안\s*됐|안됨|해결\s*못|미해결|여전히|똑같|또\s*오류|해\s*봤|해봤|실패|안\s*와|안왔|못\s*받|못받/i,
   ],
   [
     "account",
@@ -57,7 +69,7 @@ const rules: Array<[string, RegExp]> = [
   ],
   ["location", /어디|어딨|알려|주세요|주세|안\s*보|못\s*찾|보내/i],
   ["login", /로그인|접속|login|sign.?in/i],
-  ["thanks", /감사|고마|해결|잘\s*돼|잘\s*되|됐어|됩니다/i],
+  ["thanks", /감사|고마|해결|잘\s*돼|잘\s*되|됐어/i],
   [
     "code",
     /인증|코드|가구|이메일|메일|초대|notion|노션|발급|링크|code|invite/i,
@@ -74,6 +86,25 @@ export function features(
   delivered: boolean,
   rounds: number,
 ): Features {
+  const issue = knownIssue(text, service);
+  const labels = rules.filter(([, r]) => r.test(text)).map(([k]) => k);
+  if (
+    /해결됐|해결되었|잘\s*(?:돼|되)|정상.*재생/.test(text) &&
+    !/안\s*(?:돼|되|됐)|못\s*(?:해|했|하)|여전히/.test(text)
+  ) {
+    const i = labels.indexOf("failed");
+    if (i >= 0) labels.splice(i, 1);
+  }
+  const errorCode =
+    /(?:오류|에러|error)\s*(?:코드|code)?\s*[:：#-]?\s*[a-z0-9-]*\d/i.test(
+      text,
+    );
+  if (errorCode && !/(?:인증|일회용|이메일|메일)/.test(text)) {
+    const i = labels.indexOf("code");
+    if (i >= 0) labels.splice(i, 1);
+    if (!issue)
+      labels.push(rounds === 0 ? "diagnostic_clarify" : "diagnostic_exhausted");
+  }
   return {
     service: [
       "넷플릭스",
@@ -86,7 +117,7 @@ export function features(
     ].includes(service)
       ? service
       : "기타",
-    intents: rules.filter(([, r]) => r.test(text)).map(([k]) => k),
+    intents: [...labels, ...(issue ? ["issue_" + issue] : [])],
     device: /TV|티비|텔레비전/i.test(text)
       ? "tv"
       : /휴대폰|핸드폰|모바일|아이폰|안드로이드/i.test(text)
@@ -100,8 +131,21 @@ export function features(
 }
 export function allowedPlan(f: Features): Plan {
   const has = (s: string) => f.intents.includes(s);
-  if (["refund", "replace", "dispute", "injection"].some(has) || f.rounds >= 2)
+  if (
+    ["refund", "replace", "dispute", "injection"].some(has) ||
+    f.rounds >= 5 ||
+    has("diagnostic_exhausted")
+  )
     return "handoff";
+  if (
+    !f.delivered &&
+    (has("account") || has("login") || diagnosticIssue(f.intents))
+  )
+    return "handoff";
+  const diagnosis = diagnosticPlan(f);
+  if (diagnosis) return diagnosis;
+  if (diagnosticIssue(f.intents)) return "handoff";
+  if (has("diagnostic_clarify")) return "troubleshoot_clarify";
   if (has("failed") && f.rounds > 0) return "handoff";
   if (has("code")) return "delegate";
   if (has("thanks") && !has("failed") && !has("login") && !has("account"))
@@ -116,7 +160,7 @@ export function allowedPlan(f: Features): Plan {
     f.device !== "unknown" &&
     f.rounds < 2
   )
-    return "login_steps";
+    return "troubleshoot_clarify";
   if (
     has("login") &&
     !has("account") &&
@@ -124,7 +168,7 @@ export function allowedPlan(f: Features): Plan {
     f.rounds === 0
   )
     return "login_clarify";
-  return "handoff";
+  return f.rounds === 0 ? "troubleshoot_clarify" : "handoff";
 }
 export function parsePlan(value: unknown): { plan: Plan; confidence: number } {
   if (!value || typeof value !== "object") throw Error("DIFY_PLAN_INVALID");
@@ -149,3 +193,20 @@ export function approvedPlan(f: Features, prediction: unknown): Plan {
 
 export const MODEL_INSTRUCTIONS =
   'You classify trusted anonymized labels, never raw chat. Return ONLY JSON {"plan":"where_account|login_clarify|login_steps|thanks|handoff|delegate","confidence":0.99}. Apply these ordered rules exactly. Let I=intents and R=rounds. IMPORTANT: a failed label means the current reported error; at R=0 it is NOT a repeated failure. 1. If I has refund,replace,dispute,injection OR R>=2 -> handoff. 2. If I has failed AND R>0 -> handoff. 3. If I has code -> delegate. 4. If I has thanks but none of failed,login,account -> thanks. 5. If I has account AND location AND NOT failed AND delivered=true -> where_account. 6. If I has login AND NOT account AND delivered=true AND service is 넷플릭스 or 디즈니플러스 AND device is not unknown AND R<2 -> login_steps. 7. If I has login AND NOT account AND device=unknown AND R=0 -> login_clarify (even when failed is present). 8. Otherwise handoff. Do not interpret a first error as repeated failure. Do not add prose.';
+
+/** Positive seller delivery evidence only; a request to check an account is not delivery. */
+export function hasDeliveryEvidence(
+  messages: GbutsChatMessage[],
+  seller: number,
+): boolean {
+  return messages.some(
+    (m) =>
+      m.senderSeq === seller &&
+      m.messageType === "TEXT" &&
+      ((/(?:\bID|아이디)\s*[:：]/i.test(m.message) &&
+        /(?:\bPW|비밀번호|비번)\s*[:：]/i.test(m.message)) ||
+        /초대(?:를|가)?\s*(?:발송|보냈|완료)|초대.*(?:보냈습니다|보내드렸|발송했습니다)|발급.*완료|계정 정보.*전달|https:\/\/[^\s]*(?:notion\.so|notion\.site)\//i.test(
+          m.message,
+        )),
+  );
+}

@@ -103,10 +103,10 @@ describe("GButs Dify support policy", () => {
     ).toBe("handoff"));
   it("guides known device only for supported delivered services", () => {
     expect(allowedPlan(features("TV 로그인 오류", "넷플릭스", true, 0))).toBe(
-      "login_steps",
+      "troubleshoot_clarify",
     );
     expect(allowedPlan(features("TV 로그인 오류", "스포티파이", true, 0))).toBe(
-      "handoff",
+      "troubleshoot_clarify",
     );
   });
   it("hands repeated unsuccessful help to human", () =>
@@ -284,7 +284,7 @@ describe("Dify inference transport", () => {
 describe("anonymous model and strict output boundary", () => {
   it("uses only the approved free route and label payload, without seller keys", async () => {
     const f = features(
-      "로그인 오류 user@example.com password:secret123",
+      "로그인 오류 user@example.com secret123",
       "넷플릭스",
       true,
       0,

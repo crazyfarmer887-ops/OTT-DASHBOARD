@@ -1,3 +1,4 @@
+import { DIAGNOSTIC_LABELS, diagnosticMeta } from "./diagnostics";
 import { cachedPlan, cachePlan, permitModelRequest, blockModel } from "./cache";
 import {
   supportRoute,
@@ -86,6 +87,7 @@ export function validateFeatures(input: unknown): Features {
     "thanks",
     "code",
     "injection",
+    ...DIAGNOSTIC_LABELS,
   ];
   if (
     Object.keys(f).sort().join(",") !==
@@ -120,12 +122,20 @@ export async function modelPlan(
 ) {
   const f = validateFeatures(input);
   const route = supportRoute(env);
+  const expected = allowedPlan(f);
+  // Exact reviewed error guides and clarification use the Dify tool's knowledge rules.
+  // No model can invent instructions, recovery promises or account-changing actions.
+  if (
+    diagnosticMeta(expected) ||
+    expected === "troubleshoot_clarify" ||
+    (f.rounds >= 2 && ["thanks", "where_account"].includes(expected))
+  )
+    return { plan: expected, confidence: 1 };
   const root = env.GBUTS_SUPPORT_ROOT || "/home/ubuntu/.config/gbuts/support";
   const cached = cachedPlan(root, f, route);
   if (cached) return cached;
   permitModelRequest(root, route);
   await verifyRoutePrice(route, fetcher);
-  const expected = allowedPlan(f);
   if (route.paid)
     reserveSupportBudget(
       (env.GBUTS_SUPPORT_ROOT || "/home/ubuntu/.config/gbuts/support") +

@@ -2,7 +2,13 @@ import { writeFileSync, chmodSync } from "node:fs";
 import { loadGbutsSession } from "../src/lib/gbuts-session";
 import { createGbutsOttSellerClient } from "../src/lib/gbuts-ott-client";
 import { readGbutsOttStore } from "../src/lib/gbuts-ott-store";
-import { features, time, hash, type Features } from "../src/support/policy";
+import {
+  features,
+  time,
+  hash,
+  hasDeliveryEvidence,
+  type Features,
+} from "../src/support/policy";
 const root =
     process.env.GBUTS_SUPPORT_ROOT || "/home/ubuntu/.config/gbuts/support",
   session = loadGbutsSession();
@@ -42,15 +48,7 @@ for (const order of Object.values(store.orders)
         time(m.createdAt) < Date.now() - 7 * 86400000
       )
         continue;
-      const delivered = messages
-        .slice(0, i)
-        .some(
-          (x) =>
-            x.senderSeq === seller &&
-            /ID\s*[:：]|아이디\s*[:：]|계정\s*확인|초대.*(?:보냈|완료)/i.test(
-              x.message,
-            ),
-        );
+      const delivered = hasDeliveryEvidence(messages.slice(0, i), seller);
       const f = features(m.message, listing.serviceType, delivered, 0);
       if (!f.intents.length) continue;
       collected.push({

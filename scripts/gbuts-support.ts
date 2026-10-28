@@ -1,3 +1,4 @@
+import { planSummary } from "../src/support/diagnostics";
 import { createServer } from "node:http";
 import { timingSafeEqual } from "node:crypto";
 import {
@@ -30,7 +31,12 @@ import {
   type Proof,
 } from "../src/support/engine";
 import { difyPlan, modelPlan } from "../src/support/dify";
-import { POLICY_VERSION, time, hash } from "../src/support/policy";
+import {
+  POLICY_VERSION,
+  time,
+  hash,
+  hasDeliveryEvidence,
+} from "../src/support/policy";
 
 const root =
   process.env.GBUTS_SUPPORT_ROOT || "/home/ubuntu/.config/gbuts/support";
@@ -158,14 +164,7 @@ async function context(
     (!member.cancelStatus || member.cancelStatus === "REFUND_REJECTED") &&
     time(member.createdAt) <= Date.now() &&
     time(member.subscriptionEndsAt) >= Date.now();
-  const delivered = chat.messages.some(
-    (m) =>
-      m.senderSeq === seller &&
-      m.messageType === "TEXT" &&
-      /ID\s*[:：]|아이디\s*[:：]|계정\s*확인|초대.*(?:보냈|완료)|발급.*완료|계정 정보.*전달/i.test(
-        m.message,
-      ),
-  );
+  const delivered = hasDeliveryEvidence(chat.messages, seller);
   return {
     postSeq: post.seq,
     memberSeq: member.seq,
@@ -272,6 +271,10 @@ async function run() {
                 body: `주문: ${c.postSeq}:${c.memberSeq}\n사유: ${
                   (
                     {
+                      specialized_delivery_unresolved:
+                        "코드·초대·노션 전달 문의가 15분 이상 미해결 — 기존 전달 기록 확인 필요",
+                      account_restriction:
+                        "가구·국가·가족 가입 제한 — 원인 안내 후 판매자 확인 필요",
                       attachment_review:
                         "사진 또는 첨부 문의 — 원본 채팅 확인 필요",
                       refund_requested: "환불 요청 — 승인 여부 판단 필요",
@@ -291,7 +294,7 @@ async function run() {
                       operator_review_retry: "알림 재전달",
                     } as Record<string, string>
                   )[reason] || "확인 필요"
-                }\n진행 단계: ${plans.join(", ")}\n자동상담을 멈췄습니다. 해당 1:1 채팅에서 확인해주세요.`,
+                }\n진행 단계: ${plans.map(planSummary).join(", ")}\n자동상담을 멈췄습니다. 해당 1:1 채팅에서 확인해주세요.`,
                 actionUrl: "https://gbuts.com/seller/chats",
                 statePath: root + "/telegram-receipts.json",
                 throttleMs: 30 * 24 * 3600000,

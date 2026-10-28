@@ -16,7 +16,11 @@ const inferenceCounts = () => {
   return { hits: c.hits || 0, requests: c.requests || 0 };
 };
 const before = inferenceCounts();
-const cases: Array<{ features: Features; source: "fixture" | "real" }> = [];
+const cases: Array<{
+  features: Features;
+  source: "fixture" | "real";
+  gold?: string;
+}> = [];
 for (const text of [
   "환불해주세요",
   "교체 부탁",
@@ -47,6 +51,44 @@ for (const text of [
     features: features(text, "넷플릭스", true, text.startsWith("해봤") ? 1 : 0),
     source: "fixture",
   });
+// Independent expected diagnostic routes; these also run through the live Dify workflow.
+for (const [service, text, gold] of [
+  ["넷플릭스", "TV NW-2-5 오류", "d_nf_network_1"],
+  ["넷플릭스", "UI-800-3", "d_nf_cache_1"],
+  ["넷플릭스", "비밀번호가 틀렸어요", "d_nf_password_1"],
+  ["넷플릭스", "현재 계정을 사용하는 사람이 너무 많습니다", "d_nf_streams_1"],
+  ["넷플릭스", "이용 가구에 포함되지 않습니다", "d_nf_household_1"],
+  ["디즈니플러스", "오류 42", "d_disney_network_1"],
+  ["디즈니플러스", "오류 코드 83", "d_disney_device_1"],
+  ["디즈니플러스", "코드 14", "d_disney_password_1"],
+  ["디즈니플러스", "error code 73", "d_disney_location_1"],
+  ["스포티파이", "프리미엄인데 광고가 나와요", "d_spotify_premium_1"],
+  ["스포티파이", "초대 링크가 만료됐어요", "d_spotify_invite_1"],
+  ["스포티파이", "노션 권한이 없어요", "d_notion_access_1"],
+  ["유튜브", "초대 수락했는데 프리미엄이 없어요", "d_youtube_premium_1"],
+  ["유튜브", "가족 그룹 국가가 다르다고 나와요", "d_family_restriction_1"],
+])
+  cases.push({
+    features: features(text, service, true, 0),
+    source: "fixture",
+    gold,
+  });
+cases.push({
+  features: {
+    ...features("NW-2-5", "넷플릭스", true, 2),
+    intents: ["issue_nf_network", "diagnostic_step_2"],
+  },
+  source: "fixture",
+  gold: "d_nf_network_2",
+});
+cases.push({
+  features: {
+    ...features("NW-2-5", "넷플릭스", true, 3),
+    intents: ["issue_nf_network", "diagnostic_exhausted"],
+  },
+  source: "fixture",
+  gold: "handoff",
+});
 const real = JSON.parse(
   readFileSync(root + "/replay-features.json", "utf8"),
 ) as Features[];
@@ -68,7 +110,7 @@ const report = {
   caseResults: [] as unknown[],
 };
 for (const c of cases) {
-  const expected = allowedPlan(c.features);
+  const expected = c.gold || allowedPlan(c.features);
   let prediction = "error",
     valid = false;
   try {
