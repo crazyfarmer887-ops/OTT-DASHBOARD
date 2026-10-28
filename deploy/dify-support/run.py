@@ -6,7 +6,7 @@ source=dict(x.split('=',1) for x in pathlib.Path('/proc/'+pid+'/environ').read_t
 node=str(pathlib.Path('/proc/'+pid+'/exe').resolve())
 env={'PATH':str(pathlib.Path(node).parent)+':/usr/bin:/bin','HOME':'/home/ubuntu'}
 for k,v in source.items():
- if k.startswith('SELLER_ALERT_TELEGRAM_') or k in ['GBUTS_SESSION_PATH','GBUTS_API_TOKEN','SAFE_MODE_PATH','GBUTS_OTT_STORE_PATH']:
+ if k.startswith('SELLER_ALERT_TELEGRAM_') or k in ['GBUTS_SESSION_PATH','GBUTS_API_TOKEN','SAFE_MODE_PATH','GBUTS_OTT_STORE_PATH','GBUTS_YOUTUBE_RENEWALS_PATH']:
   env[k]=v
 secrets=json.loads(pathlib.Path('/home/ubuntu/.config/gbuts/support/runtime.json').read_text())
 for k,v in secrets.items():

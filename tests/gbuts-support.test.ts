@@ -78,7 +78,7 @@ describe("GButs Dify support policy", () => {
       }),
     ).toBe("handoff"),
   );
-  it.each(["감사합니다", "해결됐어요", "고마워요"])(
+  it.each(["해결됐어요", "이제 잘돼요"])(
     "can close solved inquiry: %s",
     (text) =>
       expect(allowedPlan(features(text, "넷플릭스", true, 0))).toBe("thanks"),

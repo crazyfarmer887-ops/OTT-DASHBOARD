@@ -85,6 +85,7 @@ export function validateFeatures(input: unknown): Features {
     "location",
     "login",
     "thanks",
+    "gratitude",
     "code",
     "injection",
     ...DIAGNOSTIC_LABELS,
@@ -128,6 +129,8 @@ export async function modelPlan(
   if (
     diagnosticMeta(expected) ||
     expected === "troubleshoot_clarify" ||
+    expected === "thanks" ||
+    expected === "acknowledge" ||
     (f.rounds >= 2 && ["thanks", "where_account"].includes(expected))
   )
     return { plan: expected, confidence: 1 };

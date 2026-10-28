@@ -80,7 +80,7 @@ export function conversationFeatures(
   if (
     !issue &&
     !f.intents.some((x) =>
-      ["login", "account", "thanks", "code"].includes(x),
+      ["login", "account", "thanks", "gratitude", "code"].includes(x),
     ) &&
     (!prior || (clarification && !explicitCode && !failed && !isDeviceOnly))
   )
@@ -89,4 +89,44 @@ export function conversationFeatures(
   if (!issue && clarification && (explicitCode || failed) && !isDeviceOnly)
     f.intents.push("diagnostic_exhausted");
   return f;
+}
+
+type TurnMessage = {
+  senderSeq: number;
+  messageType: string;
+  message: string;
+  createdAt: string;
+};
+/** One customer turn can span several bubbles. Stop at a seller response, attachment or >5min gap. */
+export function latestBuyerTurn(
+  messages: TurnMessage[],
+  buyer: number,
+  startAt: string,
+): string {
+  const ordered = [...messages].sort(
+    (a, b) => time(a.createdAt) - time(b.createdAt),
+  );
+  const end = ordered.at(-1);
+  if (!end || end.senderSeq !== buyer || end.messageType !== "TEXT") return "";
+  const parts: string[] = [];
+  let newer = time(end.createdAt),
+    total = 0;
+  for (let i = ordered.length - 1; i >= 0 && parts.length < 12; i--) {
+    const m = ordered[i],
+      t = time(m.createdAt);
+    if (
+      m.senderSeq !== buyer ||
+      m.messageType !== "TEXT" ||
+      !Number.isFinite(t) ||
+      t < time(startAt) ||
+      newer - t > 5 * 60000 ||
+      time(end.createdAt) - t > 5 * 60000
+    )
+      break;
+    if (total + m.message.length > 6000) break;
+    parts.unshift(m.message);
+    total += m.message.length;
+    newer = t;
+  }
+  return parts.join("\n");
 }

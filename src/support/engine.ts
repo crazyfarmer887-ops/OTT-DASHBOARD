@@ -1,4 +1,4 @@
-import { conversationFeatures } from "./conversation";
+import { conversationFeatures, latestBuyerTurn } from "./conversation";
 import { diagnosticMeta } from "./diagnostics";
 import type { GbutsChatMessage } from "../lib/gbuts-spotify";
 import {
@@ -32,6 +32,7 @@ export type Receipt = {
     | "confirmed"
     | "handoff"
     | "delegated"
+    | "acknowledged"
     | "superseded";
   plan: Plan;
   reply?: string;
@@ -92,6 +93,7 @@ export async function processInquiry(
     send(text: string): Promise<void>;
     alert(reason: string, plans: Plan[], incident: string): Promise<boolean>;
     allowed(): boolean;
+    deliveryBlocked?(): string | undefined;
     now?: () => Date;
   },
 ) {
@@ -208,6 +210,15 @@ export async function processInquiry(
     now.getTime() - time(old.at) >= 15 * 60000
   )
     return handoff("specialized_delivery_unresolved");
+  if (
+    cfg.mode === "auto" &&
+    !c.delivered &&
+    Object.values(room.receipts).some(
+      (r) =>
+        r.state === "delegated" && now.getTime() - time(r.at) >= 15 * 60000,
+    )
+  )
+    return handoff("specialized_delivery_unresolved");
   if (old) return old.state;
   if (
     cfg.mode === "auto" &&
@@ -247,8 +258,9 @@ export async function processInquiry(
     deps.save();
     return "human_owned";
   }
+  const buyerTurn = latestBuyerTurn(c.messages, c.buyerSeq, cfg.startAt);
   const f = conversationFeatures(
-    latest.message,
+    buyerTurn,
     c.service,
     c.delivered,
     room.rounds,
@@ -259,7 +271,9 @@ export async function processInquiry(
   try {
     const deterministic = allowedPlan(f);
     plan =
-      deterministic === "handoff" || deterministic === "delegate"
+      deterministic === "handoff" ||
+      deterministic === "delegate" ||
+      deterministic === "acknowledge"
         ? deterministic
         : approvedPlan(f, await deps.infer(f));
   } catch {
@@ -304,7 +318,14 @@ export async function processInquiry(
                   : "operator_decision"
         : "draft_not_approved",
     );
+  if (plan === "acknowledge") {
+    rec.state = "acknowledged";
+    deps.save();
+    return "acknowledged";
+  }
   if (plan === "delegate") {
+    const blocked = deps.deliveryBlocked?.();
+    if (cfg.mode === "auto" && blocked) return handoff(blocked);
     if (
       cfg.mode === "auto" &&
       Object.values(room.receipts).some(
@@ -340,7 +361,8 @@ export async function processInquiry(
       (m) => ![c.buyerSeq, c.sellerSeq].includes(m.senderSeq),
     ) ||
     !fm ||
-    fingerprint(c.roomId, fm) !== event
+    fingerprint(c.roomId, fm) !== event ||
+    latestBuyerTurn(fresh.messages, c.buyerSeq, cfg.startAt) !== buyerTurn
   ) {
     rec.state = "superseded";
     deps.save();

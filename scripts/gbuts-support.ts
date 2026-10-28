@@ -1,3 +1,5 @@
+import { readYouTubeRenewals } from "../src/scheduler/gbuts-youtube-renewal";
+import { FAMILY_SEED } from "../src/monitoring/gbuts-google-invites";
 import { planSummary } from "../src/support/diagnostics";
 import { createServer } from "node:http";
 import { timingSafeEqual } from "node:crypto";
@@ -254,6 +256,25 @@ async function run() {
             journal,
             save: () => durable("journal.json", journal),
             infer: difyPlan,
+            deliveryBlocked: () => {
+              if (c.service !== "유튜브") return;
+              try {
+                const policy =
+                  readYouTubeRenewals().policies[String(FAMILY_SEED)];
+                if (!policy?.posts.some((p) => p.seq === c.postSeq))
+                  return "invite_not_bound";
+                const dir = "/home/ubuntu/.config/gbuts/google-invites/";
+                const worker = JSON.parse(
+                  readFileSync(dir + "status.json", "utf8"),
+                );
+                if (worker.state === "error")
+                  return worker.lastError === "GOOGLE_SIGNIN_REQUIRED"
+                    ? "invite_auth_required"
+                    : "invite_worker_unavailable";
+              } catch {
+                return "invite_worker_unavailable";
+              }
+            },
             fresh: () => fresh(c),
             send: (t) => sendGbutsSingleText(c.roomId, seller, t),
             allowed: () =>
@@ -271,6 +292,12 @@ async function run() {
                 body: `주문: ${c.postSeq}:${c.memberSeq}\n사유: ${
                   (
                     {
+                      invite_not_bound:
+                        "해당 판매글이 Google 자동 초대 감시 대상에 연결되지 않았습니다. 수동 처리 기록과 가족 연결 확인 필요",
+                      invite_auth_required:
+                        "Google 자동 초대 세션이 로그아웃 상태입니다. 최신 쿠키 복원 필요",
+                      invite_worker_unavailable:
+                        "Google 초대 발송기가 오류 상태이거나 상태를 확인할 수 없습니다",
                       specialized_delivery_unresolved:
                         "코드·초대·노션 전달 문의가 15분 이상 미해결 — 기존 전달 기록 확인 필요",
                       account_restriction:

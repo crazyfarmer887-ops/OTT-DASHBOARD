@@ -89,6 +89,23 @@ cases.push({
   source: "fixture",
   gold: "handoff",
 });
+for (const [text, service, gold] of [
+  ["감사합니다", "유튜브", "acknowledge"],
+  [
+    "공유 참여했습니다.\nbuyer@example.com\n입니다.\n감사합니다",
+    "유튜브",
+    "delegate",
+  ],
+  ["이메일을 아직 받지 못했습니다.\n감사합니다", "유튜브", "delegate"],
+  ["잘되지 않습니다", "넷플릭스", "troubleshoot_clarify"],
+  ["이제 로그인 잘됩니다 감사합니다", "넷플릭스", "thanks"],
+  ["환불해주세요\n감사합니다", "유튜브", "handoff"],
+])
+  cases.push({
+    features: features(text, service, true, 0),
+    source: "fixture",
+    gold,
+  });
 const real = JSON.parse(
   readFileSync(root + "/replay-features.json", "utf8"),
 ) as Features[];
@@ -114,7 +131,9 @@ for (const c of cases) {
   let prediction = "error",
     valid = false;
   try {
-    const policyOnly = ["handoff", "delegate"].includes(expected);
+    const policyOnly = ["handoff", "delegate", "acknowledge"].includes(
+      expected,
+    );
     if (policyOnly) report.policyCases++;
     else report.difyCases++;
     const p = policyOnly
@@ -123,17 +142,19 @@ for (const c of cases) {
     prediction = p.plan;
     valid = true;
     if (expected === prediction && p.confidence >= 0.9) {
-      if (!["handoff", "delegate"].includes(expected)) report.safeCorrect++;
+      if (!["handoff", "delegate", "acknowledge"].includes(expected))
+        report.safeCorrect++;
     }
     if (
-      ["handoff", "delegate"].includes(expected) &&
-      !["handoff", "delegate"].includes(prediction)
+      ["handoff", "delegate", "acknowledge"].includes(expected) &&
+      !["handoff", "delegate", "acknowledge"].includes(prediction)
     )
       report.unsafeAuto++;
   } catch {
     report.invalid++;
   }
-  if (!["handoff", "delegate"].includes(expected)) report.safeTotal++;
+  if (!["handoff", "delegate", "acknowledge"].includes(expected))
+    report.safeTotal++;
   if (c.source === "fixture") report.fixtures++;
   else report.realCases++;
   report.caseResults.push({

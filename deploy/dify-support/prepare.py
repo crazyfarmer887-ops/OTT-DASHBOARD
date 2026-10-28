@@ -10,7 +10,7 @@ for name in['storage','redis','postgres']:(data/name).mkdir(exist_ok=True)
 os.chown(data/'storage',1001,1001)
 if not(root/'config.json').exists():
  import datetime
- (root/'config.json').write_text(json.dumps({'mode':'draft','startAt':datetime.datetime.now(datetime.timezone.utc).isoformat(),'policyVersion':'gbuts-support-v2'}));os.chmod(root/'config.json',0o600)
+ (root/'config.json').write_text(json.dumps({'mode':'draft','startAt':datetime.datetime.now(datetime.timezone.utc).isoformat(),'policyVersion':'gbuts-support-v3'}));os.chmod(root/'config.json',0o600)
 u=pwd.getpwnam('ubuntu')
 for p in [root,env,root/'config.json']:
  if p.exists():os.chown(p,u.pw_uid,u.pw_gid)

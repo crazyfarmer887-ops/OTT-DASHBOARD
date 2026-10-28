@@ -220,6 +220,7 @@ export function planSummary(plan: string): string {
     ? `${ISSUE_NAMES[m.issue]} ${m.stage}단계`
     : (
         {
+          acknowledge: "단순 인사·감사 — 자동 답변 생략",
           login_clarify: "기기 확인",
           troubleshoot_clarify: "오류 문구 확인",
           where_account: "전달 위치 안내",

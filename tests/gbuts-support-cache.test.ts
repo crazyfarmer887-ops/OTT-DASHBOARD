@@ -29,7 +29,7 @@ it("keeps cached answers available while an exhausted provider is paused", () =>
   const root = mkdtempSync(join(tmpdir(), "support-cache-"));
   try {
     const route = supportRoute({}),
-      f = features("감사합니다", "넷플릭스", true, 0);
+      f = features("해결됐어요", "넷플릭스", true, 0);
     cachePlan(root, f, route, { plan: "thanks", confidence: 1 });
     blockModel(root);
     expect(() => permitModelRequest(root, route)).toThrow("MODEL_BACKOFF");

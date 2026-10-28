@@ -8,7 +8,7 @@ import {
   diagnosticIssue,
   type DiagnosticPlan,
 } from "./diagnostics";
-export const POLICY_VERSION = "gbuts-support-v2";
+export const POLICY_VERSION = "gbuts-support-v3";
 const BASE_PLANS = [
   "where_account",
   "login_clarify",
@@ -17,6 +17,7 @@ const BASE_PLANS = [
   "handoff",
   "delegate",
   "troubleshoot_clarify",
+  "acknowledge",
 ] as const;
 export const PLANS = [...BASE_PLANS, ...Object.keys(DIAGNOSTIC_TEMPLATES)];
 export type Plan = (typeof BASE_PLANS)[number] | DiagnosticPlan;
@@ -61,7 +62,7 @@ const rules: Array<[string, RegExp]> = [
   ["dispute", /신고|사기|고소|경찰|소비자|분쟁|차지백|chargeback|죽여|찾아간/i],
   [
     "failed",
-    /안\s*돼|안\s*되|안\s*됐|안됨|해결\s*못|미해결|여전히|똑같|또\s*오류|해\s*봤|해봤|실패|안\s*와|안왔|못\s*받|못받/i,
+    /안\s*돼|안\s*되|안\s*됐|안됨|(?:되|오|받)지\s*(?:않|못)|해결\s*못|미해결|여전히|똑같|또\s*오류|해\s*봤|해봤|실패|안\s*와|안왔|못\s*받|못받/i,
   ],
   [
     "account",
@@ -69,7 +70,11 @@ const rules: Array<[string, RegExp]> = [
   ],
   ["location", /어디|어딨|알려|주세요|주세|안\s*보|못\s*찾|보내/i],
   ["login", /로그인|접속|login|sign.?in/i],
-  ["thanks", /감사|고마|해결|잘\s*돼|잘\s*되|됐어/i],
+  ["gratitude", /감사|고마|thank(?:s| you)/i],
+  [
+    "thanks",
+    /해결(?:됐|되었|됐습니다|되네요)|잘\s*(?:돼|되|됩)|이제\s*(?:돼|됩)|정상(?:적으로)?\s*(?:작동|재생|로그인)/i,
+  ],
   [
     "code",
     /인증|코드|가구|이메일|메일|초대|notion|노션|발급|링크|code|invite/i,
@@ -89,11 +94,25 @@ export function features(
   let issue = knownIssue(text, service);
   const labels = rules.filter(([, r]) => r.test(text)).map(([k]) => k);
   if (
-    /해결됐|해결되었|잘\s*(?:돼|되)|정상.*재생/.test(text) &&
-    !/안\s*(?:돼|되|됐)|못\s*(?:해|했|하)|여전히/.test(text)
+    /해결됐|해결되었|잘\s*(?:돼|되|됩)|정상.*재생/.test(text) &&
+    !/안\s*(?:돼|되|됐)|못\s*(?:해|했|하)|(?:되|오|받)지\s*(?:않|못)|여전히/.test(
+      text,
+    )
   ) {
     issue = undefined;
     const i = labels.indexOf("failed");
+    if (i >= 0) labels.splice(i, 1);
+  }
+  // In invite services a buyer-provided address is routing input, never proof of delivery.
+  if (
+    ["유튜브", "스포티파이"].includes(service) &&
+    /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i.test(text) &&
+    !labels.includes("code")
+  )
+    labels.push("code");
+  // A question about resolution is not the buyer confirming resolution.
+  if (/[?？]|(?:됐|됩|되)(?:나요|니까|는지)|될까요/.test(text)) {
+    const i = labels.indexOf("thanks");
     if (i >= 0) labels.splice(i, 1);
   }
   const errorCode =
@@ -146,11 +165,12 @@ export function allowedPlan(f: Features): Plan {
   const diagnosis = diagnosticPlan(f);
   if (diagnosis) return diagnosis;
   if (diagnosticIssue(f.intents)) return "handoff";
+  if (has("gratitude") && f.intents.every((x) => x === "gratitude"))
+    return "acknowledge";
   if (has("diagnostic_clarify")) return "troubleshoot_clarify";
-  if (has("failed") && f.rounds > 0) return "handoff";
+  if (has("thanks") && !has("failed")) return "thanks";
   if (has("code")) return "delegate";
-  if (has("thanks") && !has("failed") && !has("login") && !has("account"))
-    return "thanks";
+  if (has("failed") && f.rounds > 0) return "handoff";
   if (has("account") && has("location") && !has("failed") && f.delivered)
     return "where_account";
   if (
