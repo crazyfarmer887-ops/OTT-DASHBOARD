@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { parseGeneralPartyDetail, toManagementGeneralAccount } from '../src/lib/everyview-api';
+import { parseGeneralPartyDetail, parseHostParties, toManagementGeneralAccount } from '../src/lib/everyview-api';
 
 const GENERAL_PARTY_HTML = `
 <div class="myPartyA">
@@ -19,6 +19,14 @@ const GENERAL_PARTY_HTML = `
 </div>`;
 
 describe('everyview general managed party', () => {
+  test('reads owned cards with current extra classes and reordered attributes', () => {
+    const html = `<a class="mypg-gc host is-general" href="/partyLeader_free_detail_type1?id=618" data-search="Spotify family s618 spotify 스포티파이" data-type="general">party</a>
+    <a data-type="general" data-search="Spotify family s554 spotify 스포티파이" href="/partyLeader_free_detail_type1?id=554" class="is-general mypg-gc host">party</a>
+    <a class="mypg-gc joined" href="/partyLeader_free_detail_type1?id=999" data-search="other s999 spotify 스포티파이">not owned</a>`;
+    expect(parseHostParties(html).map(p => ({ id: p.partyId, type: p.partyType, service: p.serviceCode }))).toEqual([
+      { id: 618, type: 'free', service: 'spotify' }, { id: 554, type: 'free', service: 'spotify' },
+    ]);
+  });
   test('parses member and settlement fields from the everyview managed-party HTML', () => {
     const detail = parseGeneralPartyDetail(GENERAL_PARTY_HTML, 3607);
     expect(detail).toMatchObject({

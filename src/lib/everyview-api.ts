@@ -16,6 +16,7 @@
  */
 
 import { readFileSync } from 'node:fs';
+import { parseFragment, type DefaultTreeAdapterMap } from 'parse5';
 
 export const EVERYVIEW_BASE = 'https://everyview.kr';
 export const EVERYVIEW_COOKIE_PATH = '/home/ubuntu/everyview-session/cookies.json';
@@ -104,10 +105,16 @@ export interface EveryviewHostPartySummary {
 /** myParty 페이지에서 내가 개설한 파티 카드 추출 */
 export function parseHostParties(html: string): EveryviewHostPartySummary[] {
   const out: EveryviewHostPartySummary[] = [];
-  const cardRe = /<a class="mypg-gc host" href="([^"]+)" data-search="([^"]*)">([\s\S]*?)<\/a>/g;
-  let m: RegExpExecArray | null;
-  while ((m = cardRe.exec(html)) !== null) {
-    const [, href, search, body] = m;
+  type Node = DefaultTreeAdapterMap['node'];
+  const nodes: Node[] = [];
+  const visit = (node: Node) => { nodes.push(node); if ('childNodes' in node) node.childNodes.forEach(visit); };
+  visit(parseFragment(html));
+  for (const node of nodes) {
+    if (node.nodeName !== 'a' || !('attrs' in node)) continue;
+    const attribute = (name: string) => node.attrs.find(a => a.name === name)?.value || '';
+    const classes = attribute('class').split(/\s+/);
+    if (!classes.includes('mypg-gc') || !classes.includes('host')) continue;
+    const href = attribute('href'), search = attribute('data-search');
     const idMatch = href.match(/[?&]id=(\d+)/) || href.match(/\/partyLeader\/(\d+)/);
     if (!idMatch) continue;
     const parts = String(search || '').trim().split(/\s+/);

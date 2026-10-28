@@ -16,3 +16,11 @@ Validation:101 tests across eight relevant suites, including real provider HTML 
 
 - Party554/member1877 is an older resolved conversation. Its historical supplied pair matches one unassigned Notion row, and later buyer/seller messages say access returned. It must not receive a duplicate completion message.
 - Party554/member2070 is an active new-account request without a saved completion reply. An unassigned completed Notion row was created near the acknowledgement, but there is no explicit buyer/order link. Keep it held rather than transmitting an account based on timestamp proximity. This exception does not prevent future buyers in parties554/618 from entering the automatic workflow.
+
+## Live-list discovery regression and legacy recovery inbox
+
+The first real client preflight reproduced an additional defect: the existing Everyview host-card regex required `class="mypg-gc host"` exactly. Current production renders `mypg-gc host is-general` with additional attributes, so both owned Spotify parties vanished from the parsed list despite a valid session. A minimized regression failed with an empty list; the parser now reads HTML attributes and class tokens using parse5 and preserves owned-versus-joined separation.
+
+An old unmapped new-account request may be backfilled as an explicitly order-linked recovery row with empty account/password and both completion flags false. This records the real buyer request without allocating an uncertain account or generating a duplicate account. Partner verification supplies the actual issued information on that row; only the ordinary completion guards release delivery. `acknowledgementsAfter` prevents a second acknowledgement for the older manually acknowledged request. Operational status distinguishes `awaiting_partner` from a failed worker. This is a normal pending fulfillment state, not proof that account credentials have already been delivered.
+
+Current focused suite:113 tests in ten suites. The real server HTML shapes, official WebSocket handshake (no SEND), private session renewal and Notion property addition were verified before deployment. Existing completed conversations and all original unassigned rows remain intact.

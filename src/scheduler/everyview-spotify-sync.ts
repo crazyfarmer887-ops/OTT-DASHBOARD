@@ -6,7 +6,7 @@ import { loadSafeModeConfig } from '../api/safe-mode';
 import { extractGbutsCredentialsWithOpenRouter } from '../api/notion-chat-extraction';
 import { createSingleFlightRunner, runWithExclusivePollLock } from './poll-daemon';
 import { createGbutsSpotifyNotionClient, syncGbutsSpotifyPosts, type SpotifyNotionRow } from './gbuts-spotify-sync';
-import { readGbutsSpotifyMessageJournal, syncGbutsSpotifyMessages, writeGbutsSpotifyMessageJournal } from './gbuts-spotify-messages';
+import { readGbutsSpotifyMessageJournal, syncGbutsSpotifyMessages, writeGbutsSpotifyMessageJournal, spotifyRegisteredLogin } from './gbuts-spotify-messages';
 import { getOrCreateSpotifyNewAccountCredentials } from './spotify-new-account-credentials';
 import type { GbutsChatMessage, GbutsSpotifyMember } from '../lib/gbuts-spotify';
 
@@ -89,6 +89,18 @@ export async function runEveryviewSpotifyCycle() {
     },
     write: (j: CreationJournal) => writeJsonAtomic(creationPath(), j),
   };
+  const creations = creationDeps.read();
+  let reconciled = false;
+  for (const [key, record] of Object.entries(creations.orders)) {
+    if (record.state !== 'attempted') continue;
+    const found = rows.filter(row => row.orderKey === key);
+    if (found.length > 1) throw new Error('Everyview Notion order identity ambiguous');
+    if (found.length === 1) {
+      creations.orders[key] = { state: 'confirmed', pageId: found[0].id, updatedAt: new Date().toISOString() };
+      reconciled = true;
+    }
+  }
+  if (reconciled) creationDeps.write(creations);
   const deps = { ...notion, ...provider, extractCredentials: extractGbutsCredentialsWithOpenRouter,
     createRow: (key: string, credentials: Parameters<typeof notion.createRow>[1]) => {
       assertSendingAllowed();
@@ -103,14 +115,20 @@ export async function runEveryviewSpotifyCycle() {
   };
   const send = async (partyId: number, guidesOnly = false) => {
     await syncGbutsSpotifyMessages({ ...deps,
+      requestAckStartAt: config.acknowledgementsAfter,
       readJournal: () => readGbutsSpotifyMessageJournal(journalPath()),
       writeJournal: value => writeGbutsSpotifyMessageJournal(value, journalPath()),
     }, partyId, { guidesOnly });
   };
   const result = await syncGbutsSpotifyPosts(deps, config.partyIds,
     partyId => send(partyId), partyId => send(partyId, true));
-  const status = { state: result.errors.length ? 'error' : held ? 'needs_mapping' : 'checked', checkedAt: new Date().toISOString(),
-    held, historical, parties: result.posts.length, errors: result.errors.map(x => ({ partyId: x.postSeq, error: x.error })) };
+  const freshRows = await notion.listRows();
+  const activeKeys = new Set([...eligible].flatMap(([partyId, ids]) => [...ids].map(seq => everyviewSpotifyOrderKey(partyId, { seq }))));
+  const awaitingPartner = freshRows.filter(r => activeKeys.has(r.orderKey) && !r.cancelled
+    && (!r.invited || (r.registered && !spotifyRegisteredLogin(r)))).length;
+  const conflicts = result.posts.reduce((sum, post) => sum + post.conflicts, 0);
+  const status = { state: result.errors.length || conflicts ? 'error' : held ? 'needs_mapping' : awaitingPartner ? 'awaiting_partner' : 'checked', checkedAt: new Date().toISOString(),
+    held, historical, awaitingPartner, conflicts, parties: result.posts.length, errors: result.errors.map(x => ({ partyId: x.postSeq, error: x.error })) };
   writeJsonAtomic(statusPath(), status);
   return status;
 }

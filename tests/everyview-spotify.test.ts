@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { EventEmitter } from 'node:events';
 import { everyviewSpotifyOrderKey, parseEveryviewSpotifyChat, parseEveryviewSpotifyMembers, sendEveryviewSpotifyText } from '../src/lib/everyview-spotify';
 import { everyviewOrderEligibility, guardEveryviewNotionCreation, type EveryviewSpotifyConfig } from '../src/scheduler/everyview-spotify-sync';
-import { createGbutsSpotifyNotionClient } from '../src/scheduler/gbuts-spotify-sync';
+import { createGbutsSpotifyNotionClient, syncGbutsSpotifyCredentials } from '../src/scheduler/gbuts-spotify-sync';
 import { spotifyRegisteredLogin, syncGbutsSpotifyMessages } from '../src/scheduler/gbuts-spotify-messages';
 import type WebSocket from 'ws';
 
@@ -19,6 +19,22 @@ const config: EveryviewSpotifyConfig = { version: 1, enabled: true, sellerUserSe
   heldOrders: ['everyview:554:2070'], historicalBuyerAt: {} };
 
 describe('Everyview Spotify provider boundary', () => {
+  it('imports a legacy recovery request without inventing another account or repeating its acknowledgement', async () => {
+    let row = { id: 'recovery', orderKey: 'everyview:554:2070', email: '', password: '',
+      emailHistory: [], invited: false, registered: false, cancelled: false };
+    const sendText = vi.fn(), createNewAccountRequestRow = vi.fn(), journal = { version: 1 as const, records: {} };
+    const deps = { orderKey: everyviewSpotifyOrderKey, listRows: async () => [row], getRow: async () => row,
+      listMembers: async () => [{ seq: 2070, userSeq: 30227, productId: 'EVERYVIEW554', status: 'APPLY', cancelStatus: null }],
+      openPrivateRoom: async () => '4204', getChat: async () => parseEveryviewSpotifyChat(html, 30227, 32322, now),
+      extractCredentials: async () => null, createNewAccountRequestRow, createRow: vi.fn(), replaceCredentials: vi.fn(), cancelRow: vi.fn(),
+      sellerAccountSeq: async () => 32322, sendText, readJournal: () => journal, writeJournal: vi.fn(), requestAckStartAt: now.toISOString() };
+    expect(await syncGbutsSpotifyCredentials(deps, 554)).toMatchObject({ created: 0, waitingForCredentials: 1 });
+    await syncGbutsSpotifyMessages(deps, 554);
+    expect(createNewAccountRequestRow).not.toHaveBeenCalled(); expect(sendText).not.toHaveBeenCalled();
+    row = { ...row, email: 'issued@jamkkangudok.com', password: 'Issued123!', registered: true, invited: true };
+    await syncGbutsSpotifyMessages(deps, 554); await syncGbutsSpotifyMessages(deps, 554);
+    expect(sendText).toHaveBeenCalledTimes(1);
+  });
   it('recovers an uncertain Notion creation by query without a second POST', async () => {
     const journal = { version: 1 as const, orders: {} };
     const row = { id: 'p', orderKey: 'everyview:554:2070', email: 'issued@example.com', password: 'Issued123!',
