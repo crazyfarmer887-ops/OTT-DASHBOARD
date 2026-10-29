@@ -175,10 +175,11 @@ export async function readEveryviewDisneyPreflight(store: GbutsOttStore, request
   if (norm(credentials.id) !== norm(request.accountEmail)
     || norm(decodeGbutsSubscriptionCredential(post.subscriptionPrincipal)) !== norm(credentials.id)
     || decodeGbutsSubscriptionCredential(post.subscriptionCredential) !== credentials.password) throw Error('CREDENTIALS_UNVERIFIED');
-  return { accountHash, accountEndDate: request.accountEndDate, verifiedAt: now.toISOString(), accountCapacity: 6,
+  const finalReady = await sources.readiness(request);
+  return { accountHash, accountEndDate: request.accountEndDate, verifiedAt: sources.now().toISOString(), accountCapacity: 6,
     committedOtherPlaces: 5, profile6Available: true, otherSourcesComplete: true, currentAdvertisementsReserved: true,
-    syncReady: ready.syncReady === true, cutoffReady: ready.cutoffReady === true,
-    profileDeliveryReady: ready.profileDeliveryReady === true, credentialsValidated: true };
+    syncReady: ready.syncReady === true && finalReady.syncReady === true, cutoffReady: ready.cutoffReady === true && finalReady.cutoffReady === true,
+    profileDeliveryReady: ready.profileDeliveryReady === true && finalReady.profileDeliveryReady === true, credentialsValidated: true };
 }
 
 /** Read-only runtime adapter. It does not issue publication, chat or profile mutations. */
