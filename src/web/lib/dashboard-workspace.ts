@@ -1,4 +1,4 @@
-export type GraytagAccountId = 'primary' | 'youtube-invite-sales';
+export type GraytagAccountId = 'primary' | 'youtube-invite-sales' | 'secondary';
 export type DashboardWorkspace = GraytagAccountId | 'gbuts' | 'linkid';
 
 const GRAYTAG_ACCOUNT_STORAGE_KEY = 'aio.graytagAccount';
@@ -11,7 +11,7 @@ function storedPreference(key: string): string | null {
 
 export function getDashboardWorkspace(): DashboardWorkspace {
   const workspace = storedPreference(WORKSPACE_STORAGE_KEY);
-  if (workspace === 'gbuts' || workspace === 'linkid' || workspace === 'primary' || workspace === 'youtube-invite-sales') return workspace;
+  if (workspace === 'secondary' || workspace === 'gbuts' || workspace === 'linkid' || workspace === 'primary' || workspace === 'youtube-invite-sales') return workspace;
   return storedPreference(GRAYTAG_ACCOUNT_STORAGE_KEY) === 'youtube-invite-sales' ? 'youtube-invite-sales' : 'primary';
 }
 
@@ -24,7 +24,7 @@ export function setDashboardWorkspace(workspace: DashboardWorkspace): void {
 }
 
 export function getGraytagAccountId(): GraytagAccountId {
-  return getDashboardWorkspace() === 'youtube-invite-sales' ? 'youtube-invite-sales' : 'primary';
+  const workspace=getDashboardWorkspace();return workspace==='secondary'||workspace==='youtube-invite-sales'?workspace:'primary';
 }
 
 export function setGraytagAccountId(accountId: GraytagAccountId): void {

@@ -72,12 +72,12 @@ export default function BottomNav() {
       <div className="dashboard-breadcrumb"><span>운영 대시보드</span><span className="dashboard-slash">/</span><strong>{currentTab?.label || '판매 · 관리'}</strong></div>
       <label className="dashboard-workspace-select"><span>사용 계정</span><select aria-label="대시보드 사용 계정" value={workspace} onChange={event => {
         const value = event.target.value;
-        const next: DashboardWorkspace = value === 'gbuts' || value === 'linkid' || value === 'youtube-invite-sales' ? value : 'primary';
+        const next: DashboardWorkspace = value === 'secondary' || value === 'gbuts' || value === 'linkid' || value === 'youtube-invite-sales' ? value : 'primary';
         setWorkspace(next); setDashboardWorkspace(next);
         if (workspace === 'gbuts' || next === 'gbuts' || workspace === 'linkid' || next === 'linkid') window.location.assign(`/dashboard${dashboardWorkspaceHome(next)}`);
         else window.location.reload();
       }}>
-        <option value="primary">기본 GrayTag 계정</option><option value="youtube-invite-sales">유튜브 판매 전용</option><option value="gbuts">벗츠 전용</option><option value="linkid">링키드 전용</option>
+        <option value="primary">기본 GrayTag 계정</option><option value="secondary">그레이태그 2호기</option><option value="youtube-invite-sales">유튜브 판매 전용</option><option value="gbuts">벗츠 전용</option><option value="linkid">링키드 전용</option>
       </select></label>
     </header>
     {open && <button className="dashboard-nav-backdrop" aria-label="메뉴 배경 닫기" onClick={close} />}

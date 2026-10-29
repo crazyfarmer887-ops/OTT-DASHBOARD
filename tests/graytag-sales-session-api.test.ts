@@ -10,6 +10,7 @@ const authHeaders = { 'content-type': 'application/json', 'x-admin-token': 'sess
 beforeEach(() => {
   vi.resetModules();
   tempDir = mkdtempSync(join(tmpdir(), 'graytag-session-api-'));
+  process.env.GRAYTAG_SECONDARY_SESSION_PATH = join(tempDir,'secondary.json');
   process.env.AIO_ADMIN_TOKEN = 'session-admin-token';
   process.env.AUDIT_LOG_PATH = join(tempDir, 'audit.jsonl');
   process.env.GRAYTAG_SESSION_COOKIE_PATH = join(tempDir, 'primary-cookies.json');
@@ -20,7 +21,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllGlobals();
   rmSync(tempDir, { recursive: true, force: true });
-  for (const key of ['AIO_ADMIN_TOKEN', 'AUDIT_LOG_PATH', 'GRAYTAG_SESSION_COOKIE_PATH', 'YOUTUBE_GRAYTAG_SESSION_COOKIE_PATH', 'YOUTUBE_GRAYTAG_SESSION_STATUS_PATH']) {
+  for (const key of ['GRAYTAG_SECONDARY_SESSION_PATH','AIO_ADMIN_TOKEN', 'AUDIT_LOG_PATH', 'GRAYTAG_SESSION_COOKIE_PATH', 'YOUTUBE_GRAYTAG_SESSION_COOKIE_PATH', 'YOUTUBE_GRAYTAG_SESSION_STATUS_PATH']) {
     if (savedEnv[key] === undefined) delete process.env[key];
     else process.env[key] = savedEnv[key];
   }
@@ -175,4 +176,17 @@ describe('dedicated YouTube sales session API', () => {
       'Content-Type': 'application/json', Cookie: 'JSESSIONID=youtube-session',
     });
   });
+});
+
+test('stores secondary cookies separately and rejects unauthenticated import',async()=>{
+ const app=(await import('../src/api/index.ts')).default;
+ expect((await app.request('/session/accounts/secondary/cookies',{method:'POST'})).status).toBe(403);
+ writeFileSync(process.env.GRAYTAG_SESSION_COOKIE_PATH!,JSON.stringify({JSESSIONID:'primary-keep'}));
+ writeFileSync(process.env.YOUTUBE_GRAYTAG_SESSION_COOKIE_PATH!,JSON.stringify({JSESSIONID:'youtube-keep'}));
+ vi.stubGlobal('fetch',vi.fn(async()=>new Response(JSON.stringify({succeeded:true}),{headers:{'Content-Type':'application/json'}})));
+ const r=await app.request('/session/accounts/secondary/cookies',{method:'POST',headers:authHeaders,body:JSON.stringify({cookies:{JSESSIONID:'secondary-private'}})});
+ expect(r.status).toBe(200);expect(await r.text()).not.toContain('secondary-private');
+ expect(JSON.parse(readFileSync(process.env.GRAYTAG_SECONDARY_SESSION_PATH!,'utf8')).JSESSIONID).toBe('secondary-private');
+ expect(JSON.parse(readFileSync(process.env.GRAYTAG_SESSION_COOKIE_PATH!,'utf8')).JSESSIONID).toBe('primary-keep');
+ expect(JSON.parse(readFileSync(process.env.YOUTUBE_GRAYTAG_SESSION_COOKIE_PATH!,'utf8')).JSESSIONID).toBe('youtube-keep');
 });

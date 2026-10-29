@@ -1,3 +1,4 @@
+import { graytagSecondarySessionPath, selectedGraytagAccount, storedGraytagAccountCookies, graytagManagementCacheKey, type GraytagAccountId } from '../lib/graytag-account-session';
 import {verifyManagedSubscriptionRank} from '../scheduler/gbuts-rank-adoption';
 import {registerGbutsRankDefaultRoutes} from './gbuts-rank-defaults';
 import { registerGbutsYouTubeRenewalRoutes } from './gbuts-youtube-renewal';
@@ -451,21 +452,21 @@ function sanitizeForGraytag(text: string): string {
   return text.replace(/[\u{10000}-\u{10FFFF}]/gu, '⚠️');
 }
 
-type GraytagAccountId = 'primary' | 'youtube-invite-sales';
 
 function graytagAccountIdFromRequest(c: any): GraytagAccountId {
-  return c.req.header('x-graytag-account') === 'youtube-invite-sales' ? 'youtube-invite-sales' : 'primary';
+  return selectedGraytagAccount(c.req.header('x-graytag-account'));
 }
 
 function loadCookiesForAccount(accountId: GraytagAccountId): GraytagAuthCookies | null {
-  return accountId === 'youtube-invite-sales' ? loadGraytagAuthCookies() : loadSessionCookies();
+  return storedGraytagAccountCookies(accountId,loadSessionCookies);
 }
 
 function managementCacheKey(accountId: GraytagAccountId): string {
-  return accountId === 'youtube-invite-sales' ? 'auto-session:youtube-invite-sales' : 'auto-session';
+  return graytagManagementCacheKey(accountId);
 }
 
 function clearManagementAccountCaches(): void {
+  managementCache.clear('auto-session:secondary');
   managementCache.clear('auto-session');
   managementCache.clear('auto-session:youtube-invite-sales');
 }
@@ -1057,6 +1058,7 @@ app.get('/session/accounts', (c) => {
   const youtubeStatus = loadYouTubeSalesSessionStatus();
   return c.json({
     accounts: [
+      {id:'secondary',label:'그레이태그 2호기',purpose:'별도 계정 상품·채팅 관리',connected:Boolean(loadGraytagAuthCookies(graytagSecondarySessionPath())),dedicated:true},
       {
         id: 'primary',
         label: '기본 GrayTag 계정',
@@ -1076,6 +1078,15 @@ app.get('/session/accounts', (c) => {
       },
     ],
   });
+});
+
+app.post('/session/accounts/secondary/cookies',async c=>{
+  let cookies:GraytagAuthCookies;
+  try{const body=await c.req.json();cookies=parseGraytagCookieImport(body?.cookies||body);}catch{return c.json({ok:false,error:'쿠키 JSON 형식을 확인해주세요.'},400);}
+  const result=await validateYouTubeSalesSession(cookies);if(!result.valid)return c.json({ok:false,valid:false,error:result.detail},401);
+  try{writeGraytagAuthCookiesAtomic(graytagSecondarySessionPath(),cookies);managementCache.clear('auto-session:secondary');}
+  catch{return c.json({ok:false,error:'2호기 세션 저장 실패'},500);}
+  return c.json({ok:true,valid:true,account:{id:'secondary',label:'그레이태그 2호기'}});
 });
 
 app.post('/session/accounts/youtube-invite-sales/cookies', async (c) => {
@@ -3113,7 +3124,7 @@ async function sendGraytagChatMessage(
 ) {
   const userId = await resolveGraytagChatUserId(accountId, input.chatRoomUuid);
   const scriptPath = process.env.GRAYTAG_STOMP_SENDER_PATH || `${process.cwd()}/scripts/graytag-stomp-sender.cjs`;
-  const cookiePath = accountId === 'youtube-invite-sales' ? YOUTUBE_SALES_SESSION_COOKIE_PATH : SESSION_COOKIE_PATH;
+  const cookiePath = accountId === 'secondary' ? graytagSecondarySessionPath() : accountId === 'youtube-invite-sales' ? YOUTUBE_SALES_SESSION_COOKIE_PATH : SESSION_COOKIE_PATH;
   const args = [scriptPath, input.chatRoomUuid, sanitizeForGraytag(input.message), input.dealUsid || '', userId];
   const { stdout } = await execFileAsync('node', args, {
     timeout: 20_000,

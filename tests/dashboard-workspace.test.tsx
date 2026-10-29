@@ -33,7 +33,7 @@ describe('dashboard workspace selection', () => {
     document.body.innerHTML = renderToStaticMarkup(<Router ssrPath="/gbuts-sales"><BottomNav /></Router>);
     const select = document.querySelector('select')!;
     expect(select.value).toBe('gbuts');
-    expect(Array.from(select.options, option => option.text)).toEqual(['기본 GrayTag 계정', '유튜브 판매 전용', '벗츠 전용', '링키드 전용']);
+    expect(Array.from(select.options, option => option.text)).toEqual(['기본 GrayTag 계정', '그레이태그 2호기', '유튜브 판매 전용', '벗츠 전용', '링키드 전용']);
     const text = Array.from(document.querySelectorAll('button'), button => button.textContent?.trim());
     expect(text).toContain('벗츠 홈');
     expect(text).toContain('OTT 판매글 작성');
@@ -73,3 +73,5 @@ describe('dashboard workspace selection', () => {
   });
 
 });
+
+test('retains the separate second GrayTag workspace',()=>{setGraytagAccountId('secondary');expect(getDashboardWorkspace()).toBe('secondary');expect(getGraytagAccountId()).toBe('secondary');expect(dashboardWorkspaceHome('secondary')).toBe('/');});
