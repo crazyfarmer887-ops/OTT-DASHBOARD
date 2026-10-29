@@ -114,7 +114,11 @@ export async function syncGbutsOtt(deps: GbutsOttRuntimeDependencies,
     store.lastSuccess = new Date().toISOString(); store.lastError = null; write(store);
     return { orders: Object.values(store.orders).filter(x => activeOttOrder(x)).length, attempted, confirmed };
   }
-  const management = await deps.management();
+  // Disney allocation needs current occupancy, not finished-deal history or
+  // unrelated chat hydration. Use the same complete open-deal reader as renewal.
+  const disneyOnly = pendingOrders.every(order => gbutsOrderListing(store, order).serviceType === '디즈니플러스');
+  const management = disneyOnly && deps.renewalManagement
+    ? await deps.renewalManagement('디즈니플러스') : await deps.management();
   const manualMembers = deps.manualMembers();
   const profileErrors = allocateNetflixProfilesForSync(store, management, manualMembers);
   for (const [key, error] of allocateDisneyProfilesForSync(store, management, manualMembers)) profileErrors.set(key, error);
@@ -138,7 +142,7 @@ export async function syncGbutsOtt(deps: GbutsOttRuntimeDependencies,
       ...Object.values(store.orders).filter(x => x.key !== order.key && activeOttOrder(x)
         && gbutsOrderListing(store, x)?.accountEmail === listing.accountEmail).map(x => x.profileName || '')];
     if (listing.serviceType !== '넷플릭스') order.profileName ||= generateUniqueProfileNicknames(1, '', stableRandomFromSeed(order.key), excluded)[0];
-    order.accessUrl = await deps.access(order, listing, order.profileName!);
+    order.accessUrl = await deps.access(order, listing, order.profileName!, management);
     write(store);
     const roomId = await client.openPrivateRoom(order.postSeq, order.userSeq);
     if (order.roomId && order.roomId !== roomId) throw new Error('벗츠 구매자 채팅방이 변경되었습니다.');
@@ -177,24 +181,31 @@ export function startGbutsOttSync(deps: GbutsOttRuntimeDependencies): (() => voi
   const run = () => {
     if (pending) return;
     pending = true;
-    void withGbutsOttInventory(async () => {
-      if (loadSafeModeConfig().enabled) return;
+    const admitted = (work: () => Promise<void>) => withGbutsOttInventory(async () => {
+      if (process.env.GBUTS_OTT_SYNC_ENABLED !== 'true' || loadSafeModeConfig().enabled) return;
+      await work();
+    });
+    // Release the shared inventory queue between workloads. Everyview's queued
+    // observations must refresh before a slow renewal starts another long hold.
+    void (async () => {
       const token = loadGbutsSession()?.token || process.env.GBUTS_API_TOKEN?.trim();
       if (!token) return;
-      try {
+      await admitted(async () => { try {
         const result = await syncGbutsOtt(deps, createGbutsOttSellerClient(token));
-        const renewals = await renewDueGbutsOttListings(deps, createGbutsOttSellerClient(token));
-        if (renewals.renewed || renewals.errors) console.log('[GbutsOttRenewal]', renewals);
         if (result.attempted || result.confirmed) console.log('[GbutsOttSync]', result);
       } catch (e) {
         const store = readGbutsOttStore(); store.lastError = e instanceof Error ? e.message : '벗츠 주문 확인 실패'; writeGbutsOttStore(store);
         console.error('[GbutsOttSync]', store.lastError);
-      }
-      try { const youtube = await renewYouTubeInvites(createGbutsOttSellerClient(token),{allowed:()=>process.env.GBUTS_OTT_SYNC_ENABLED==='true'&&!loadSafeModeConfig().enabled}); if (youtube.renewed || youtube.errors) console.log('[GbutsYouTubeRenewal]', youtube); }
-      catch { console.error('[GbutsYouTubeRenewal] 재등록 기록 확인 필요'); }
-      try{const future=await syncFutureSubscriptionRank(createGbutsOttSellerClient(token),{verify:p=>verifyManagedSubscriptionRank(p,deps),allowed:()=>process.env.GBUTS_OTT_SYNC_ENABLED==='true'&&!loadSafeModeConfig().enabled});if(future.discovered||future.renewed||future.errors)console.log('[GbutsSubscriptionRank]',future);}
-      catch{console.error('[GbutsSubscriptionRank] 재등록 기본 설정 확인 필요');}
-    }).catch(e => console.error('[GbutsOttSync] inventory unavailable', e instanceof Error ? e.message : 'unknown'))
+      }});
+      await admitted(async () => { try {
+        const renewals = await renewDueGbutsOttListings(deps, createGbutsOttSellerClient(token));
+        if (renewals.renewed || renewals.errors) console.log('[GbutsOttRenewal]', renewals);
+      } catch { console.error('[GbutsOttRenewal] 재등록 기록 확인 필요'); } });
+      await admitted(async () => { try { const youtube = await renewYouTubeInvites(createGbutsOttSellerClient(token),{allowed:()=>process.env.GBUTS_OTT_SYNC_ENABLED==='true'&&!loadSafeModeConfig().enabled}); if (youtube.renewed || youtube.errors) console.log('[GbutsYouTubeRenewal]', youtube); }
+      catch { console.error('[GbutsYouTubeRenewal] 재등록 기록 확인 필요'); } });
+      await admitted(async () => { try{const future=await syncFutureSubscriptionRank(createGbutsOttSellerClient(token),{verify:p=>verifyManagedSubscriptionRank(p,deps),allowed:()=>process.env.GBUTS_OTT_SYNC_ENABLED==='true'&&!loadSafeModeConfig().enabled});if(future.discovered||future.renewed||future.errors)console.log('[GbutsSubscriptionRank]',future);}
+      catch{console.error('[GbutsSubscriptionRank] 재등록 기본 설정 확인 필요');} });
+    })().catch(e => console.error('[GbutsOttSync] inventory unavailable', e instanceof Error ? e.message : 'unknown'))
       .finally(() => { pending = false; });
   };
   let interval: ReturnType<typeof setInterval> | undefined;

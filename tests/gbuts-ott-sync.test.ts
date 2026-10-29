@@ -16,6 +16,19 @@ function fixture() {
   return { client, deps, send, get store() { return store; }, set members(value: typeof members) { members = value; }, get members() { return members; }, set messages(value: any[]) { messages = value; } };
 }
 describe('GButs OTT order delivery', () => {
+  it('delivers Disney from verified current inventory even when unrelated historical inventory is unavailable', async () => {
+    const f = fixture();
+    f.deps.writeStore({ ...f.store, listings: { 'request-1': fixtureListing({ serviceType: '디즈니플러스' }) } });
+    f.client.getPost.mockResolvedValue({ seq: 100, category1: { seq: 6 }, memberLimit: 2, memberCount: 1, status: 'ON_SALE', subscriptionEndsAt: '2026-12-01 23:59:59' });
+    f.deps.management = vi.fn(async () => { throw new Error('historical inventory 403'); });
+    const currentInventory = vi.fn(async () => ({ services: [{ serviceType: '디즈니플러스', accounts: [{
+      email: 'account@example.com', serviceType: '디즈니플러스', totalSlots: 6, members: [], expiryDate: '20261231T2359',
+    }] }], onSaleByKeepAcct: {} }));
+    await expect(syncGbutsOtt({ ...f.deps, renewalManagement: currentInventory }, f.client as any, f.send)).resolves.toMatchObject({ confirmed: 1 });
+    expect(f.store.orders['100:1'].delivery).toBe('confirmed');
+    expect(currentInventory).toHaveBeenCalledWith('디즈니플러스');
+    expect(f.deps.management).not.toHaveBeenCalled();
+  });
   it('checks an empty seller roster without loading unrelated GrayTag inventory', async () => {
     const f = fixture(); f.members = []; f.client.getPost.mockResolvedValue({ seq: 100, category1: { seq: 5 }, memberLimit: 2, memberCount: 0, status: 'CLOSED', subscriptionEndsAt: '2026-12-01 23:59:59' });
     f.deps.management = vi.fn(async () => { throw new Error('unnecessary inventory read'); });
