@@ -1,5 +1,5 @@
 import { afterEach, expect, test, vi } from 'vitest';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { buildSellerAlertText, sendSellerAlert } from '../src/alerts/telegram';
@@ -44,4 +44,20 @@ test('Spotify read-only delivery monitoring does not pretend to pause the sender
  expect(input.automationStatus).toContain('감시에서 전달 완료를 확인하지 못했습니다');
  expect(input.automationStatus).toContain('전달 작업 자체를 중지시킨 것은 아닙니다');
  expect(input.automationStatus).not.toContain('이 건은 보류');
+});
+
+
+test('owner mute suppresses only the selected alert family and survives unrelated sends',async()=>{
+ vi.stubEnv('SELLER_ALERT_TELEGRAM_BOT_TOKEN','fixture-token');vi.stubEnv('SELLER_ALERT_TELEGRAM_CHAT_ID','fixture-chat');
+ const root=mkdtempSync(join(tmpdir(),'attention-mute-'));try{
+ const statePath=join(root,'state.json');writeFileSync(statePath,JSON.stringify({sentAtByKey:{},mutedKeyPrefixes:['everyview-disney-cutoff:']}));
+ const fetcher=vi.fn(async()=>({ok:true}));
+ const input={title:'알림',body:'내용',statePath,fetchImpl:fetcher};
+ expect(await sendSellerAlert({...input,key:'everyview-disney-cutoff:708:EXPIRY_UNAVAILABLE'})).toEqual({sent:false,reason:'disabled'});
+ expect(fetcher).not.toHaveBeenCalled();
+ expect(await sendSellerAlert({...input,key:'buyer-delivery-failure:1'})).toEqual({sent:true,reason:'sent'});
+ expect(JSON.parse(readFileSync(statePath,'utf8')).mutedKeyPrefixes).toEqual(['everyview-disney-cutoff:']);
+ await sendSellerAlert({...input,key:'everyview-disney-cutoff:709:SESSION_REQUIRED'});
+ expect(fetcher).toHaveBeenCalledTimes(1);
+ }finally{rmSync(root,{recursive:true,force:true});}
 });

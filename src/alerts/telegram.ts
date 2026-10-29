@@ -37,7 +37,7 @@ export type SellerAlertInput = {
 const DEFAULT_ALERT_STATE_PATH = '/home/ubuntu/.hermes/hermes-agent/graytag-aio-manager-0606/data/alert-state.json';
 const DEFAULT_THROTTLE_MS = 30 * 60 * 1000;
 
-type AlertState = { sentAtByKey?: Record<string, number> };
+type AlertState = { sentAtByKey?: Record<string, number>; mutedKeyPrefixes?: string[] };
 
 function env(name: string): string {
   return String(process.env[name] || '').trim();
@@ -57,7 +57,8 @@ function saveState(path: string, state: AlertState): void {
   try {
     const dir = path.replace(/\/[^/]+$/, '');
     if (dir && !existsSync(dir)) mkdirSync(dir, { recursive: true });
-    writeFileSync(path, JSON.stringify({ sentAtByKey: state.sentAtByKey || {} }, null, 2), 'utf8');
+    writeFileSync(path, JSON.stringify({ sentAtByKey: state.sentAtByKey || {},
+      ...(state.mutedKeyPrefixes ? { mutedKeyPrefixes: state.mutedKeyPrefixes } : {}) }, null, 2), 'utf8');
   } catch {
     // Alerting must never break the dashboard/daemon path.
   }
@@ -124,6 +125,9 @@ export async function sendSellerAlert(input: SellerAlertInput): Promise<SellerAl
   const nowMs = input.nowMs ?? Date.now();
   const key = sanitizeAlertText(input.key).slice(0, 200);
   const state = loadState(statePath);
+  if (Array.isArray(state.mutedKeyPrefixes) && state.mutedKeyPrefixes.some(prefix =>
+    typeof prefix === 'string' && prefix.length > 0 && key.startsWith(prefix)))
+    return { sent: false, reason: 'disabled' };
   const sentAtByKey = state.sentAtByKey || {};
   const lastSentAt = Number(sentAtByKey[key] || 0);
 
@@ -151,7 +155,7 @@ export async function sendSellerAlert(input: SellerAlertInput): Promise<SellerAl
 
   if (env('SELLER_ALERT_TELEGRAM_DRY_RUN') === 'true') {
     sentAtByKey[key] = nowMs;
-    saveState(statePath, { sentAtByKey });
+    saveState(statePath, { ...state, sentAtByKey });
     return { sent: true, reason: 'sent' };
   }
 
@@ -164,7 +168,7 @@ export async function sendSellerAlert(input: SellerAlertInput): Promise<SellerAl
       });
       if (res.ok) {
         sentAtByKey[key] = nowMs;
-        saveState(statePath, { sentAtByKey });
+        saveState(statePath, { ...state, sentAtByKey });
         return { sent: true, reason: 'sent' };
       }
     } catch {
@@ -180,7 +184,7 @@ export async function sendSellerAlert(input: SellerAlertInput): Promise<SellerAl
       '--data-binary', body,
     ], { timeout: 20000, maxBuffer: 128 * 1024 });
     sentAtByKey[key] = nowMs;
-    saveState(statePath, { sentAtByKey });
+    saveState(statePath, { ...state, sentAtByKey });
     return { sent: true, reason: 'sent' };
   } catch {
     return { sent: false, reason: 'failed' };
