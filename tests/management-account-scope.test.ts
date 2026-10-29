@@ -12,6 +12,10 @@ describe('management account scope', () => {
       useLocalAccountRecords: false,
       persistLocalAccountState: false,
     });
+    expect(managementAccountScope('secondary')).toEqual({
+      useLocalAccountRecords: false,
+      persistLocalAccountState: false,
+    });
   });
 
   test('the management route applies the account scope before reading or merging local records', () => {
