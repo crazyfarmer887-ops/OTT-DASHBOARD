@@ -11,7 +11,7 @@ export function netflixCodeRequestKind(text: string): NetflixCodeKind | 'ambiguo
 }
 /** Accept exact bot/email/kind, correlated reply, and the actual Seoul email timestamp only. */
 export function parseAaryanCode(input: { text: string; senderId: string; messageId: number; replyTo: number | undefined; queryMessageId: number;
-  email: string; kind: NetflixCodeKind; requestedAt: string; now?: Date }): NetflixCode | undefined {
+  email: string; kind: NetflixCodeKind; requestedAt: string; now?: Date; lookbackMs?: number }): NetflixCode | undefined {
   const now = input.now || new Date(); const text = input.text;
   if (input.senderId !== AARYAN_BOT_ID || input.replyTo !== input.queryMessageId || (!Number.isSafeInteger(input.messageId) || input.messageId<1)
     || /https?:\/\/|비밀번호\s*재설정|password\s*reset|access revoked|not authorized|no matching|액세스.*(?:없|취소)/i.test(text)) return;
@@ -33,6 +33,6 @@ export function parseAaryanCode(input: { text: string; senderId: string; message
   if(!timestamps.length)return;
   const at = timestamps.sort((a,b) => Math.abs(now.getTime()-a) - Math.abs(now.getTime()-b))[0];
   const age = now.getTime() - at; const requested = Date.parse(input.requestedAt);
-  if (!Number.isFinite(requested) || age < -60_000 || age > 15*60_000 || at < requested - 120_000) return;
+  if (!Number.isFinite(requested) || age < -60_000 || age > 15*60_000 || at < requested - Math.min(15*60_000,Math.max(0,input.lookbackMs ?? 120_000))) return;
   return { email: input.email.toLowerCase(), kind, code: codes[0], receivedAt: new Date(at).toISOString(), botMessageId: input.messageId };
 }

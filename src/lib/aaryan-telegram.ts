@@ -13,12 +13,12 @@ export function readAaryanTelegramConfig(): AaryanTelegramConfig {
   return c;
 }
 let lookupBusy=false;
-export async function requestAaryanNetflixCode(email: string, kind: NetflixCodeKind, requestedAt: string): Promise<NetflixCode> {
+export async function requestAaryanNetflixCode(email: string, kind: NetflixCodeKind, requestedAt: string, lookbackMs = 120_000): Promise<NetflixCode> {
   // A busy supplier session must not leave HTTP requests queued past their timeout.
   if(lookupBusy)throw Error('AARYAN_BUSY');
-  lookupBusy=true;try{return await lookupAaryanNetflixCode(email,kind,requestedAt);}finally{lookupBusy=false;}
+  lookupBusy=true;try{return await lookupAaryanNetflixCode(email,kind,requestedAt,lookbackMs);}finally{lookupBusy=false;}
 }
-async function lookupAaryanNetflixCode(email: string, kind: NetflixCodeKind, requestedAt: string): Promise<NetflixCode> {
+async function lookupAaryanNetflixCode(email: string, kind: NetflixCodeKind, requestedAt: string, lookbackMs = 120_000): Promise<NetflixCode> {
   const config = readAaryanTelegramConfig(); const normalized = email.trim().toLowerCase();
   if (!config.allowedEmails.includes(normalized) || Date.parse(config.expiresAt) <= Date.now()) throw Error('AARYAN_EMAIL_NOT_ALLOWED');
   const logger = new Logger(LogLevel.NONE);
@@ -45,7 +45,7 @@ async function lookupAaryanNetflixCode(email: string, kind: NetflixCodeKind, req
           && m.message.toLowerCase().includes(normalized) && !messages.some(other=>other.out&&other.id>query.id);
         if(!correlated&&!menu)continue;
         const result = parseAaryanCode({text:m.message,senderId:String(m.senderId),messageId:m.id,replyTo:m.replyTo?.replyToMsgId,
-          queryMessageId:query.id,email:normalized,kind,requestedAt});
+          queryMessageId:query.id,email:normalized,kind,requestedAt,lookbackMs});
         if (correlated && result) return result;
         if (!callbackUsed) {
           const buttons = m.replyMarkup instanceof Api.ReplyInlineMarkup ? m.replyMarkup.rows.flatMap(r=>r.buttons) : [];

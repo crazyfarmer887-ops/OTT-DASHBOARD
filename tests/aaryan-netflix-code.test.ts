@@ -30,3 +30,5 @@ describe('Aaryan code correlation and freshness',()=>{
     expect(netflixCodeRequestKind('아이디 비번 주세요')).toBeUndefined();
   });
 });
+
+it('portal lookup allows a valid older code while legacy request binding stays strict',()=>{const f=fixture();f.now=new Date('2026-10-27T05:44:00Z');f.requestedAt=f.now.toISOString();expect(parseAaryanCode(f)).toBeUndefined();expect(parseAaryanCode({...f,lookbackMs:900000})).toMatchObject({code:'765432'});});

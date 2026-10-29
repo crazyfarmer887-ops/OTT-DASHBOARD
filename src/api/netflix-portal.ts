@@ -22,7 +22,7 @@ export interface NetflixPortalDependencies {
   origin?:string;
 }
 export function netflixPortalDependencies(credentials: NetflixPortalDependencies['credentials']): NetflixPortalDependencies {
-  return {read:readNetflixPortalStore,inventory:readGbutsOttStore,credentials,now:()=>new Date(),query:requestAaryanNetflixCode,
+  return {read:readNetflixPortalStore,inventory:readGbutsOttStore,credentials,now:()=>new Date(),query:(email,kind,at)=>requestAaryanNetflixCode(email,kind,at,15*60_000),
     client:()=>{const token=loadGbutsSession()?.token||process.env.GBUTS_API_TOKEN;if(!token)throw Error('SELLER_SESSION_REQUIRED');return createGbutsOttSellerClient(token);},
     allowed:()=>process.env.GBUTS_OTT_SYNC_ENABLED==='true'&&!loadSafeModeConfig().enabled,
     allowedEmail:email=>{const c=readAaryanTelegramConfig();return c.allowedEmails.includes(email)&&Date.parse(c.expiresAt)>Date.now();},alert:sendSellerAlert};
@@ -97,7 +97,7 @@ export function createNetflixPortalApp(deps:NetflixPortalDependencies) {
       code=await flight;}
     await verifiedNetflixPortalBinding(r,deps);
     const received=Date.parse(code.receivedAt),age=deps.now().getTime()-received;
-    if(code.email!==r.accountEmail||code.kind!==kind||!new RegExp(`^\\d{${kind==='login'?4:6}}$`).test(code.code)||!Number.isFinite(received)||age< -60_000||age>120_000)throw Error('CODE_BINDING_INVALID');
+    if(code.email!==r.accountEmail||code.kind!==kind||!new RegExp(`^\\d{${kind==='login'?4:6}}$`).test(code.code)||!Number.isFinite(received)||age< -60_000||age>15*60_000)throw Error('CODE_BINDING_INVALID');
     return c.json({code:code.code,kind,receivedAt:code.receivedAt});
   }catch(error){const known=error instanceof Error?error.message:'';if(known==='AARYAN_BUSY')return c.json({error:'다른 인증 요청을 확인 중입니다. 잠시 후 다시 눌러 주세요.'},409);
     if(r&&!['BUYER_INACTIVE','BUYER_ACCOUNT_CHANGED'].includes(known))await notify(r,'LOOKUP_FAILED').catch(()=>undefined);

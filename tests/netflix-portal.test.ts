@@ -75,11 +75,11 @@ test('two buyers sharing the same account never share another buyer’s cached c
  vi.advanceTimersByTime(31_000);expect((await request('/code',{kind:'login'},secondCookie)).status).toBe(200);
  expect(f.query).toHaveBeenCalledTimes(2);
 });
-test('an older code within supplier retention but outside the current request window is not returned',async()=>{
+test('a still valid supplier code older than two minutes remains accessible',async()=>{
  const f=fixture(),cookie=await f.unlock();
  f.query.mockResolvedValueOnce({email:f.listing.accountEmail,kind:'login',code:'1234',receivedAt:new Date(Date.now()-121_000).toISOString(),botMessageId:1});
- const response=await f.request('/code',{kind:'login'},cookie);expect(response.status).toBe(503);
- expect(JSON.stringify(await response.json())).not.toContain('1234');
+ const response=await f.request('/code',{kind:'login'},cookie);expect(response.status).toBe(200);
+ expect((await response.json()).code).toBe('1234');
 });
 function onboarding(){const f=fixture();const sendText=vi.fn(async(_room:string,seller:number,text:string)=>{for(const message of splitGbutsChatText(text))f.messages.push({senderSeq:seller,messageType:'TEXT',message,createdAt:new Date().toISOString()});});
  const sendImage=vi.fn(async(_room:string,seller:number,url:string)=>{f.messages.push({senderSeq:seller,messageType:'IMAGE',images:[url],message:'',createdAt:new Date().toISOString()});});const deps={...f.deps,write:vi.fn(),sendText,sendImage};return {...f,deps,sendText,sendImage};}
@@ -125,3 +125,5 @@ test('legacy delivery is suppressed only while the confirmed portal matches the 
   f.listing.accountEmail=f.record.accountEmail;f.order.roomId='other-buyer-room';expect(portalDelivered(f.order.key,f.inventory)).toBe(false);
  } finally {rmSync(dir,{recursive:true,force:true});}
 });
+
+test('supplier codes beyond fifteen minutes remain rejected',async()=>{const f=fixture(),cookie=await f.unlock();f.query.mockResolvedValueOnce({email:f.listing.accountEmail,kind:'login',code:'1234',receivedAt:new Date(Date.now()-901_000).toISOString(),botMessageId:1});expect((await f.request('/code',{kind:'login'},cookie)).status).toBe(503);});
