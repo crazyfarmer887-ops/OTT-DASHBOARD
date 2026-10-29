@@ -8,6 +8,7 @@ import { registerGbutsOttRoutes, reserveGraytagOttPlace } from '../src/api/gbuts
 import { readGbutsOttStore, writeGbutsOttStore } from '../src/lib/gbuts-ott-store';
 import { writeSpotifyListings } from '../src/lib/gbuts-spotify-listings';
 import { fixtureManagement } from './fixtures/gbuts-ott';
+import { disneyEveryviewAccountKey } from '../src/lib/gbuts-disney-everyview';
 let directory = ''; const env = { ...process.env };
 beforeEach(() => {
   vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-05T06:00:00Z'));
@@ -287,6 +288,16 @@ it('new Disney registration persists numbered password delivery and rejects occu
  expect(f.posts).toHaveLength(1);
 });
 
+it('holds new Disney and GrayTag publication while the cross-platform reservation is pending', async () => {
+ const f=fixture(); const store=readGbutsOttStore();
+ store.disneyEveryview={[disneyEveryviewAccountKey('account@example.com')]:{partyIds:[],snapshots:{}}};
+ writeGbutsOttStore(store);
+ const response=await f.publish({serviceType:'디즈니플러스',capacity:1});
+ expect(response.status).toBe(503); expect(f.posts).toHaveLength(0);
+ await expect(reserveGraytagOttPlace('디즈니플러스','ACCOUNT@example.com',f.deps)).rejects.toThrow('공동 자리 예약');
+ expect(Object.keys(readGbutsOttStore().graytagClaims)).toHaveLength(0);
+});
+
 
 describe('unsold Disney reservation transfer', () => {
   async function setup() {
@@ -318,6 +329,25 @@ describe('unsold Disney reservation transfer', () => {
   it('rejects any historical roster, even refunded customers', async () => {
     const f = await setup(); f.fixture.members = [{seq:1,status:'CANCEL',cancelStatus:'REFUNDED'}];
     expect((await f.repost()).status).toBe(409); expect(f.posts).toHaveLength(1); expect(f.posts[0].status).toBe('ON_SALE');
+  });
+  it('does not close or re-create a Disney post while an Everyview reservation is pending', async () => {
+    const f=await setup(); const store=readGbutsOttStore();
+    store.disneyEveryview={[disneyEveryviewAccountKey('account@example.com')]:{partyIds:[],snapshots:{}}};
+    writeGbutsOttStore(store);
+    expect((await f.repost()).status).toBe(409);
+    expect(f.posts).toHaveLength(1); expect(f.posts[0].status).toBe('ON_SALE');
+  });
+  it('reconciles an already submitted repost without resending after an Everyview reservation is added', async () => {
+    const f=await setup(), original=f.transport.getMockImplementation()!;
+    f.transport.mockImplementation(async (url,options)=>{
+      const result=await original(url,options);
+      if(new URL(String(url)).pathname==='/api/subscribe/share' && options?.method==='POST') throw new Error('lost response');
+      return result;
+    });
+    expect((await f.repost()).status).toBe(502); expect(f.posts).toHaveLength(2);
+    const store=readGbutsOttStore(); store.disneyEveryview={[disneyEveryviewAccountKey('account@example.com')]:{partyIds:[],snapshots:{}}};
+    writeGbutsOttStore(store);
+    expect((await f.repost()).status).toBe(200); expect(f.posts).toHaveLength(2);
   });
   it('stops publication and retains a buyer who pays during closure', async () => {
     const f = await setup(); const original = f.transport.getMockImplementation()!;

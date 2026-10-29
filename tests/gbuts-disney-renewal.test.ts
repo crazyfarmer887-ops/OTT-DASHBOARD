@@ -10,6 +10,7 @@ import { allocateNetflixProfilesForSync } from '../src/lib/gbuts-netflix-profile
 import { allocateDisneyProfilesForSync } from '../src/lib/gbuts-disney-profiles';
 import { syncGbutsOtt } from '../src/scheduler/gbuts-ott-sync';
 import { fixtureListing, fixtureOrder } from './fixtures/gbuts-ott';
+import { disneyEveryviewAccountKey } from '../src/lib/gbuts-disney-everyview';
 let directory='';
 beforeEach(()=>{ vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-21T14:00:00Z')); directory=mkdtempSync(join(tmpdir(),'disney-renewal-')); });
 afterEach(()=>{ vi.useRealTimers(); rmSync(directory,{recursive:true,force:true}); });
@@ -40,6 +41,69 @@ function fixture(sold=2, serviceType='디즈니플러스') {
   const advance=()=>vi.setSystemTime(new Date(Date.now()+DISNEY_RENEWAL_INTERVAL));
   return {path,initial,listing,replacementId,member,rosters,posts,client,deps,creds,management,run,advance,store:()=>readGbutsOttStore(path)};
 }
+test('renewal subtracts confirmed Everyview buyers and reservations without changing old buyer profiles',async()=>{
+ const f=fixture(2), store=f.store(), key=disneyEveryviewAccountKey(f.listing.accountEmail);
+ store.disneyEveryview={[key]:{partyIds:[700],snapshots:{'700':{source:'everyview:700',complete:true,advertisedVacancies:0,verifiedAt:new Date().toISOString(),claims:[{id:'e1',state:'active',profileNumber:4}]}}}};
+ f.deps.writeStore(store);
+ expect((await f.run()).renewed).toBe(1);
+ expect(f.posts[1].memberLimit).toBe(2);
+ expect(f.store().orders['100:1'].profileNumber).toBe(1);
+ expect(f.store().orders['100:2'].profileNumber).toBe(2);
+});
+test('renewal never closes or republishes when the linked Everyview snapshot is stale or incomplete',async()=>{
+ const f=fixture(2), store=f.store(), key=disneyEveryviewAccountKey(f.listing.accountEmail);
+ store.disneyEveryview={[key]:{partyIds:[700],snapshots:{'700':{source:'everyview:700',complete:true,advertisedVacancies:0,verifiedAt:'2026-10-21T13:50:00Z',claims:[]}}}};
+ f.deps.writeStore(store);
+ expect((await f.run()).errors).toBe(1);
+ expect(f.client.closePost).not.toHaveBeenCalled();expect(f.client.createPost).not.toHaveBeenCalled();
+});
+test('an Everyview reservation intent without a party ID prevents closing or publishing',async()=>{
+ const f=fixture(2), store=f.store(), key=disneyEveryviewAccountKey(f.listing.accountEmail);
+ store.disneyEveryview={[key]:{partyIds:[],snapshots:{}}};f.deps.writeStore(store);
+ expect((await f.run()).errors).toBe(1);
+ expect(f.client.closePost).not.toHaveBeenCalled(); expect(f.client.createPost).not.toHaveBeenCalled();
+});
+test('renewal rechecks freshness after closing the original and refuses to create on a stale snapshot',async()=>{
+ const f=fixture(2), store=f.store(), key=disneyEveryviewAccountKey(f.listing.accountEmail);
+ store.disneyEveryview={[key]:{partyIds:[700],snapshots:{'700':{source:'everyview:700',complete:true,advertisedVacancies:0,verifiedAt:new Date().toISOString(),claims:[]}}}};
+ f.deps.writeStore(store);
+ f.client.closePost.mockImplementation(async()=>{f.posts[0].status='CLOSED';vi.setSystemTime(Date.now()+121_000);});
+ expect((await f.run()).errors).toBe(1);
+ expect(f.client.createPost).not.toHaveBeenCalled();
+ expect(f.store().renewals![f.listing.accountEmail].pendingId).toBeTruthy();
+});
+test('every advertised Everyview place is reserved before GButs renewal and its policy cap is preserved',async()=>{
+ const f=fixture(2), store=f.store(), key=disneyEveryviewAccountKey(f.listing.accountEmail);
+ store.disneyEveryview={[key]:{partyIds:[700],snapshots:{'700':{source:'everyview:700',complete:true,advertisedVacancies:1,verifiedAt:new Date().toISOString(),claims:[
+  {id:'buyer',kind:'buyer',state:'active',profileNumber:4},{id:'advertised-place',kind:'advertised',state:'pending',profileNumber:5}]}}}};
+ f.deps.writeStore(store);
+ expect((await f.run()).renewed).toBe(1);expect(f.posts[1].memberLimit).toBe(1);
+});
+test('six-place shared account preserves GButs five-place quota while Everyview reserves profile six',async()=>{
+ const f=fixture(2), store=f.store(), key=disneyEveryviewAccountKey(f.listing.accountEmail);
+ f.management.services[0].accounts[0].totalSlots=6;
+ store.disneyEveryview={[key]:{accountCapacity:6,partyIds:[700],snapshots:{'700':{source:'everyview:700',complete:true,
+   advertisedVacancies:1,verifiedAt:new Date().toISOString(),claims:[{id:'reserved-six',kind:'advertised',state:'pending',profileNumber:6}]}}}};
+ f.deps.writeStore(store);
+ expect((await f.run()).renewed).toBe(1);
+ expect(f.posts[1].memberLimit).toBe(3);
+ expect(f.store().renewals![f.listing.accountEmail].capacity).toBe(5);
+ expect(f.store().orders['100:1'].profileNumber).toBe(1);expect(f.store().orders['100:2'].profileNumber).toBe(2);
+});
+test('renewal refuses a declared six-seat mapping when the actual account has only five seats',async()=>{
+ const f=fixture(2), store=f.store(), key=disneyEveryviewAccountKey(f.listing.accountEmail);
+ store.disneyEveryview={[key]:{accountCapacity:6,partyIds:[700],snapshots:{'700':{source:'everyview:700',complete:true,
+   advertisedVacancies:1,verifiedAt:new Date().toISOString(),claims:[{id:'reserved-six',kind:'advertised',state:'pending',profileNumber:6}]}}}};
+ f.deps.writeStore(store);
+ expect((await f.run()).errors).toBe(1);
+ expect(f.client.closePost).not.toHaveBeenCalled();expect(f.client.createPost).not.toHaveBeenCalled();
+});
+test('unaccounted advertised Everyview places stop renewal before any original post is closed',async()=>{
+ const f=fixture(2), store=f.store(), key=disneyEveryviewAccountKey(f.listing.accountEmail);
+ store.disneyEveryview={[key]:{partyIds:[700],snapshots:{'700':{source:'everyview:700',complete:true,advertisedVacancies:1,verifiedAt:new Date().toISOString(),claims:[]}}}};
+ f.deps.writeStore(store);
+ expect((await f.run()).errors).toBe(1);expect(f.client.closePost).not.toHaveBeenCalled();expect(f.client.createPost).not.toHaveBeenCalled();
+});
 test('partial sales retain original orders/rooms/receipts and advertise only remaining capacity; restart continues the chain',async()=>{
   const f=fixture(2); const before=f.store().orders;
   expect(await f.run()).toEqual({renewed:1,checked:1,errors:0});

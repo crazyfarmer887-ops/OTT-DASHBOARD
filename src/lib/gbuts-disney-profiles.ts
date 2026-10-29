@@ -1,4 +1,5 @@
 import { disneyAccountCapacity, activeOttOrder, deliverableOttOrder, holdsDisneyProfile, koreaToday, ottKey, type GbutsOttManagement, type GbutsOttStore } from './gbuts-ott';
+import { disneyEveryviewInventory, requireDisneyEveryviewAvailable } from './gbuts-disney-everyview';
 
 /** Numbered Disney listings use a dedicated six-place account. Never renumber a delivered buyer. */
 export function allocateDisneyProfilesForSync(store: GbutsOttStore, management: GbutsOttManagement, manual: any[], now = new Date()): Map<string, string> {
@@ -29,10 +30,20 @@ export function allocateDisneyProfilesForSync(store: GbutsOttStore, management: 
           throw new Error('디즈니 프로필 번호가 중복되거나 올바르지 않습니다.');
         used.add(order.profileNumber);
       }
+      const crossPlatform = disneyEveryviewInventory(store, listings.find(l => ottKey(l.serviceType, l.accountEmail) === key)!, now,
+        { ignoreUnassignedNewGbuts: true });
+      requireDisneyEveryviewAvailable(crossPlatform);
+      if (crossPlatform && (!Number.isInteger(account.totalSlots) || account.totalSlots < crossPlatform.capacity))
+        throw new Error('공동 계정의 실제 전체 자리 수를 확인해주세요.');
+      // Existing buyers remain assigned; Everyview's verified profile numbers are
+      // included before selecting a place for a new GButs buyer.
+      for (const number of crossPlatform?.occupiedProfiles || []) used.add(number);
       const pending = orders.filter(x => deliverableOttOrder(x, now) && x.profileNumber === undefined)
         .map(order => ({ order, time: Date.parse((order.purchasedAt || order.startDate).replace(' ', 'T') + (/(?:Z|[+-]\d\d:\d\d)$/.test(order.purchasedAt || order.startDate) ? '' : (order.purchasedAt || order.startDate).length === 10 ? 'T00:00:00+09:00' : '+09:00')) }));
       if (pending.some(x => !Number.isFinite(x.time))) throw new Error('디즈니 구매 순서를 확인하지 못했습니다.');
-      if (pending.length + used.size > capacity) throw new Error('디즈니 계정의 프로필 자리가 부족합니다.');
+      // A verified Everyview reservation outside the GButs numbering range
+      // consumes account capacity, but does not consume a GButs-numbered slot.
+      if (pending.length + [...used].filter(n => n <= capacity).length > capacity) throw new Error('디즈니 계정의 프로필 자리가 부족합니다.');
       pending.sort((a, b) => a.time - b.time || a.order.postSeq - b.order.postSeq || a.order.memberSeq - b.order.memberSeq);
       for (const { order } of pending) {
         const number = Array.from({length:capacity}, (_, i) => i + 1).find(n => !used.has(n))!;

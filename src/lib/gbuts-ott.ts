@@ -2,6 +2,8 @@ import {futureSubscriptionRankApplies} from './gbuts-rank-defaults';
 import type { NetflixGuideDelivery } from './gbuts-netflix-guide';
 import { isGraytagAccessNoticeCredential } from './graytag-fill';
 import { calculateAccountVacancy, getPartyMax } from '../web/lib/account-slots';
+import type { DisneySeatSnapshot } from './disney-cross-platform-inventory';
+import { createHash } from 'node:crypto';
 
 export const GBUTS_OTT_CATEGORIES: Record<string, number> = { 넷플릭스: 5, 디즈니플러스: 6, 티빙: 8, 웨이브: 10 };
 export type GbutsOttListingState = 'submitting' | 'registered' | 'uncertain' | 'failed' | 'closed';
@@ -55,6 +57,8 @@ export interface GbutsOttStore {
   version: 1; listings: Record<string, GbutsOttListing>; orders: Record<string, GbutsOttOrder>;
   renewals?: Record<string, GbutsOttRenewal>;
   graytagClaims: Record<string, GraytagOttClaim>; lastSuccess: string | null; lastError: string | null;
+  /** Explicit per-account mapping, keyed by a hash of the normalized Disney email. */
+  disneyEveryview?: Record<string, { partyIds: number[]; snapshots: Record<string, DisneySeatSnapshot>; accountCapacity?: number }>;
 }
 export const emptyGbutsOttStore = (): GbutsOttStore => ({ version: 1, listings: {}, orders: {}, graytagClaims: {}, lastSuccess: null, lastError: null });
 export interface GbutsOttAccount {
@@ -210,7 +214,13 @@ export function sharedOttAccounts(management: GbutsOttManagement, manualMembers:
     const gbuts = accountGbutsInventory(store, account.serviceType, account.email, now);
     const claims = pendingGraytagClaims(store, account, management);
     const total = getPartyMax(account.serviceType, account.totalSlots);
-    const occupied = vacancy.currentUsers + vacancy.manualCount + vacancy.recruiting + gbuts.currentUsers + gbuts.recruiting + claims;
+    // A mapped Everyview account keeps profile 6 segregated for its entire
+    // lifecycle, even before CREATE, after a sale, or during stale observation.
+    // Count the durable account hold once, not once per changing roster event.
+    const everyviewKey = createHash('sha256').update(account.email.trim().toLowerCase()).digest('hex');
+    const everyview = account.serviceType === '디즈니플러스' && store.disneyEveryview
+      && Object.prototype.hasOwnProperty.call(store.disneyEveryview,everyviewKey) ? 1 : 0;
+    const occupied = vacancy.currentUsers + vacancy.manualCount + vacancy.recruiting + gbuts.currentUsers + gbuts.recruiting + claims + everyview;
     const endDate = ottDate(account.expiryDate);
     const references = [...(management.onSaleByKeepAcct[account.email] || []), ...(account.members || [])];
     const dailyPrices = references.flatMap(x => {
@@ -224,7 +234,7 @@ export function sharedOttAccounts(management: GbutsOttManagement, manualMembers:
       && (account.generatedAccount ? account.generatedAccount.paymentStatus === 'paid' : vacancy.currentUsers + manualCount > 0);
     return { key: ottKey(account.serviceType, account.email), serviceType: account.serviceType, accountEmail: account.email,
       total, graytag: vacancy.currentUsers + vacancy.recruiting, manual: manualCount,
-      gbuts: gbuts.currentUsers + gbuts.recruiting, claims, occupied, available: eligible ? Math.max(0, total - occupied) : 0,
+      gbuts: gbuts.currentUsers + gbuts.recruiting, everyview, claims, occupied, available: eligible ? Math.max(0, total - occupied) : 0,
       overbooked: occupied > total, endDate, suggestedDailyPrice: dailyPrices.length ? Math.min(...dailyPrices) : null, eligible };
   });
 }

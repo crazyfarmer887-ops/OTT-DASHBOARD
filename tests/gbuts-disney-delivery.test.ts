@@ -15,6 +15,7 @@ import { syncGbutsOtt } from '../src/scheduler/gbuts-ott-sync';
 import { syncGbutsDirectCredentials } from '../src/scheduler/gbuts-ott-direct-delivery';
 import { GbutsChatDeliveryError, splitGbutsChatText, gbutsChatContainsText } from '../src/lib/gbuts-chat-delivery';
 import { buildGbutsDisneyDirectText } from '../src/lib/gbuts-disney-delivery';
+import { disneyEveryviewAccountKey } from '../src/lib/gbuts-disney-everyview';
 beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-21T06:00:00Z')); });
 afterEach(() => vi.useRealTimers());
 function fixture() {
@@ -23,6 +24,65 @@ function fixture() {
  const management={services:[{serviceType:'디즈니플러스',accounts:[{email:'account@example.com',serviceType:'디즈니플러스',totalSlots:6,members:[],expiryDate:'2026-12-31',generatedAccount:{paymentStatus:'paid'}}]}],onSaleByKeepAcct:{}};
  return {store,management};
 }
+test('Everyview seats are honored before allocating new GButs profiles and stale snapshots fail closed', () => {
+ const f=fixture(), account='account@example.com', key=disneyEveryviewAccountKey(account);
+ f.store.orders['100:1']=fixtureOrder({key:'100:1',memberSeq:1,profileNumber:1,profileName:'1',delivery:'confirmed'});
+ f.store.orders['100:2']=fixtureOrder({key:'100:2',memberSeq:2,userSeq:12});
+ f.store.disneyEveryview={[key]:{partyIds:[700],snapshots:{'700':{source:'everyview:700',complete:true,advertisedVacancies:0,verifiedAt:new Date().toISOString(),claims:[{id:'reservation',state:'pending',profileNumber:2}]}}}};
+ expect(allocateDisneyProfilesForSync(f.store,f.management,[]).size).toBe(0);
+ expect(f.store.orders['100:1'].profileNumber).toBe(1);
+ expect(f.store.orders['100:2'].profileNumber).toBe(3);
+ f.store.orders['100:3']=fixtureOrder({key:'100:3',memberSeq:3,userSeq:13});
+ vi.setSystemTime(Date.now()+121_000);
+ expect(allocateDisneyProfilesForSync(f.store,f.management,[]).size).toBe(1);
+ expect(f.store.orders['100:3'].profileNumber).toBeUndefined();
+ expect(f.store.orders['100:1'].profileNumber).toBe(1);
+ expect(f.store.orders['100:2'].profileNumber).toBe(3);
+});
+test('unmatched and conflicting Everyview buyers prevent new profile allocation', () => {
+ const f=fixture(), key=disneyEveryviewAccountKey('account@example.com');
+ f.store.orders['100:1']=fixtureOrder({key:'100:1',memberSeq:1,profileNumber:1,profileName:'1',delivery:'confirmed'});
+ f.store.orders['100:2']=fixtureOrder({key:'100:2',memberSeq:2,userSeq:12});
+ f.store.disneyEveryview={[key]:{partyIds:[700],snapshots:{'700':{source:'everyview:700',complete:true,advertisedVacancies:0,verifiedAt:new Date().toISOString(),claims:[{id:'not-matched',state:'unknown'}]}}}};
+ expect(allocateDisneyProfilesForSync(f.store,f.management,[]).size).toBe(1);
+ expect(f.store.orders['100:2'].profileNumber).toBeUndefined();
+ f.store.disneyEveryview[key].snapshots['700'].claims=[{id:'conflict',state:'active',profileNumber:1}];
+ expect(allocateDisneyProfilesForSync(f.store,f.management,[]).size).toBe(1);
+ expect(f.store.orders['100:1'].profileNumber).toBe(1);
+});
+test('a durable Everyview intent blocks allocation until verified, then reserves profile six even before purchase', () => {
+ const f=fixture(), key=disneyEveryviewAccountKey('account@example.com');
+ f.store.orders['100:1']=fixtureOrder({key:'100:1',memberSeq:1,profileNumber:1,profileName:'1',delivery:'confirmed'});
+ f.store.orders['100:2']=fixtureOrder({key:'100:2',memberSeq:2,userSeq:12});
+ f.store.disneyEveryview={[key]:{partyIds:[],snapshots:{}}};
+ expect(allocateDisneyProfilesForSync(f.store,f.management,[]).size).toBe(1);
+ expect(f.store.orders['100:2'].profileNumber).toBeUndefined();
+ f.store.disneyEveryview[key]={partyIds:[700],snapshots:{'700':{source:'everyview:700',complete:true,advertisedVacancies:1,
+   verifiedAt:new Date().toISOString(),claims:[{id:'reserved-six',state:'pending',kind:'advertised',profileNumber:6}]}}};
+ for(let n=3;n<=5;n++) f.store.orders[`100:${n}`]=fixtureOrder({key:`100:${n}`,memberSeq:n,userSeq:n+10,
+   profileNumber:n-1,profileName:String(n-1),delivery:'confirmed'});
+ expect(allocateDisneyProfilesForSync(f.store,f.management,[]).size).toBe(0);
+ expect(f.store.orders['100:2'].profileNumber).toBe(5);
+ expect(f.store.orders['100:1'].profileNumber).toBe(1);
+});
+test('an explicit six-profile account keeps GButs quota at five and reserves Everyview profile six', () => {
+ const f=fixture(), key=disneyEveryviewAccountKey('account@example.com');
+ f.store.listings['request-1'].capacity=5;
+ for(let n=1;n<=4;n++) f.store.orders[`100:${n}`]=fixtureOrder({key:`100:${n}`,memberSeq:n,userSeq:n+10,
+   profileNumber:n,profileName:String(n),delivery:'confirmed'});
+ f.store.orders['100:5']=fixtureOrder({key:'100:5',memberSeq:5,userSeq:15});
+ f.store.disneyEveryview={[key]:{accountCapacity:6,partyIds:[700],snapshots:{'700':{source:'everyview:700',
+   complete:true,advertisedVacancies:1,verifiedAt:new Date().toISOString(),claims:[{id:'reserved-six',state:'pending',kind:'advertised',profileNumber:6}]}}}};
+ expect(allocateDisneyProfilesForSync(f.store,f.management,[]).size).toBe(0);
+ expect(f.store.orders['100:5'].profileNumber).toBe(5);
+ expect(f.store.listings['request-1'].capacity).toBe(5);
+ for(let n=1;n<=4;n++) expect(f.store.orders[`100:${n}`].profileNumber).toBe(n);
+ const invalid=fixture();invalid.store.listings['request-1'].capacity=5;invalid.store.disneyEveryview=structuredClone(f.store.disneyEveryview);
+ invalid.store.orders['100:5']=fixtureOrder({key:'100:5',memberSeq:5,userSeq:15});
+ invalid.management.services[0].accounts[0].totalSlots=5;
+ expect(allocateDisneyProfilesForSync(invalid.store,invalid.management,[]).size).toBe(1);
+ expect(invalid.store.orders['100:5'].profileNumber).toBeUndefined();
+});
 test('six buyers keep stable purchase-order numbers through restart, refund and reuse; duplicate leases deny access', () => {
  const f=fixture();
  for(const n of [6,3,1,5,2,4]) f.store.orders[`100:${n}`]=fixtureOrder({key:`100:${n}`,memberSeq:n,userSeq:n+10,purchasedAt:`2026-10-21 10:0${n}:00`});

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { activeOttOrder, accountGbutsInventory, isGbutsOttBuyerMatch, updateGbutsOttOrders, emptyGbutsOttStore, mergeGbutsOttManagement, sharedOttAccounts, type GbutsOttListing, type GbutsOttOrder } from '../src/lib/gbuts-ott';
+import { disneyEveryviewAccountKey } from '../src/lib/gbuts-disney-everyview';
 import { createPartyAccessLinkRecord, isPartyAccessAllowed, buildPartyAccessProfileStatuses } from '../src/lib/party-access';
 import { buildGbutsOttPost } from '../src/lib/gbuts-ott-client';
 
@@ -15,6 +16,23 @@ describe('shared OTT capacity', () => {
   it('reserves unsold GButs places together with GrayTag listings', () => {
     const store = emptyGbutsOttStore(); store.listings['request-1'] = fixtureListing();
     expect(sharedOttAccounts(fixtureManagement(), [], store)[0]).toMatchObject({ total: 5, graytag: 3, gbuts: 2, available: 0 });
+  });
+  it('counts a dedicated Everyview sixth seat exactly once before, during and after sale', () => {
+    const store=emptyGbutsOttStore(),email='account@example.com',key=disneyEveryviewAccountKey(email);
+    store.listings['request-1']=fixtureListing({serviceType:'디즈니플러스',deliveryMode:'disney-numbered-password',capacity:5});
+    const management={services:[{serviceType:'디즈니플러스',accounts:[{email,serviceType:'디즈니플러스',totalSlots:6,
+      members:[],expiryDate:'2026-12-31',generatedAccount:{paymentStatus:'paid'}}]}],onSaleByKeepAcct:{}} as any;
+    expect(sharedOttAccounts(management,[],store,now)[0]).toMatchObject({total:6,gbuts:5,everyview:0,occupied:5,available:1});
+    store.disneyEveryview={[key]:{accountCapacity:6,partyIds:[],snapshots:{}}};
+    expect(sharedOttAccounts(management,[],store,now)[0]).toMatchObject({gbuts:5,everyview:1,occupied:6,available:0,overbooked:false});
+    store.disneyEveryview[key]={accountCapacity:6,partyIds:[1],snapshots:{'1':{source:'everyview:1',complete:true,
+      advertisedVacancies:1,verifiedAt:now.toISOString(),claims:[{id:'seat6',profileNumber:6,kind:'advertised',state:'pending'}]}}};
+    expect(sharedOttAccounts(management,[],store,now)[0]).toMatchObject({everyview:1,occupied:6,available:0});
+    store.disneyEveryview[key].snapshots['1']={source:'everyview:1',complete:true,advertisedVacancies:0,verifiedAt:now.toISOString(),
+      claims:[{id:'seat6',profileNumber:6,kind:'buyer',state:'active'}]};
+    expect(sharedOttAccounts(management,[],store,now)[0]).toMatchObject({everyview:1,occupied:6,available:0});
+    store.disneyEveryview[key].snapshots['1'].complete=false;
+    expect(sharedOttAccounts(management,[],store,now)[0]).toMatchObject({everyview:1,occupied:6,available:0});
   });
   it('a paid member replaces a reserved GButs place rather than taking a second place', () => {
     const store = emptyGbutsOttStore(); store.listings['request-1'] = fixtureListing(); store.orders['100:1'] = fixtureOrder();

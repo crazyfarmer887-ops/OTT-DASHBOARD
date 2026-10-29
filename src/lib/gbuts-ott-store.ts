@@ -9,6 +9,9 @@ export function readGbutsOttStore(path = process.env.GBUTS_OTT_STORE_PATH || DEF
   if (data.version !== 1 || !data.listings || !data.orders || !data.graytagClaims
     || [data.listings, data.orders, data.graytagClaims].some(x => typeof x !== 'object' || Array.isArray(x)))
     throw new Error('벗츠 공동 재고 기록을 확인하지 못했습니다.');
+  if (data.disneyEveryview !== undefined && (!data.disneyEveryview || typeof data.disneyEveryview !== 'object' || Array.isArray(data.disneyEveryview)
+    || Object.keys(data.disneyEveryview).some(key => !/^[a-f0-9]{64}$/.test(key))))
+    throw new Error('에브리뷰 자리 연결 설정을 확인하지 못했습니다.');
   for (const [id, listing] of Object.entries(data.listings) as Array<[string, any]>) {
     if (listing?.id !== id || !Number.isSafeInteger(listing.capacity) || listing.capacity < 1
       || !GBUTS_OTT_CATEGORIES[listing.serviceType] || typeof listing.accountEmail !== 'string' || !listing.accountEmail.trim()

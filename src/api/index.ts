@@ -86,6 +86,7 @@ import { loadGbutsSession, parseGbutsToken, saveGbutsSession } from '../lib/gbut
 import { dedupeGraytagManagementDeals, graytagCredentialHydrationDeals, GRAYTAG_INVENTORY_PAGE_SIZE, isAuthoritativeGraytagInventoryResponse, readVerifiedGraytagManagementSnapshot } from '../lib/graytag-management-snapshot';
 import { gbutsOttClient, registerGbutsOttRoutes, reserveGraytagOttPlace, settleGraytagOttPlace } from './gbuts-ott';
 import { registerGbutsSpotifyListingRoutes } from './gbuts-spotify-listings';
+import { registerEveryviewDisneyPublicationRoutes } from './everyview-disney-publish';
 import { spotifyPostSeqs } from '../lib/gbuts-spotify-listings';
 import { registerManualAccountRoutes } from './manual-account-registration';
 import { assertUnclaimedGbutsNetflixProfile, availableNetflixProfiles } from '../lib/gbuts-netflix-profiles';
@@ -295,6 +296,7 @@ const SAFE_MODE_RISKY_PATHS = new Set([
   '/chat/notice/send',
   '/post/create',
   '/post/keepAcct',
+  '/everyview/disney/publish',
   '/bulk-update-keepmemo',
   '/youtube/products',
   '/youtube/products/registrations/reconcile',
@@ -6793,6 +6795,7 @@ registerGbutsOttRoutes(app, gbutsOttRuntimeDependencies);
 registerGbutsYouTubeRenewalRoutes(app, gbutsOttClient);
 registerGbutsRankDefaultRoutes(app,gbutsOttClient,p=>verifyManagedSubscriptionRank(p,gbutsOttRuntimeDependencies));
 registerGbutsSpotifyListingRoutes(app);
+registerEveryviewDisneyPublicationRoutes(app, gbutsOttRuntimeDependencies);
 registerLinkidRoutes(app);
 
 app.post('/party-access/:token/consent', async (c) => {

@@ -26,6 +26,7 @@ import {
   assertSubscriptionRankInventory,
 } from "../src/scheduler/gbuts-rank-adoption";
 import { emptyGbutsOttStore, accountGbutsInventory, type GbutsOttListing } from "../src/lib/gbuts-ott";
+import { disneyEveryviewAccountKey } from "../src/lib/gbuts-disney-everyview";
 import {
   readGbutsOttStore,
   writeGbutsOttStore,
@@ -536,6 +537,83 @@ it("checks outside-market capacity again after closure and keeps an uncreated ma
     state: "submitting",
     capacity: 3,
   });
+});
+it("holds generic Disney rank repost before closing when a cross-platform reservation exists", async () => {
+  const f=fixture(6,"SHARE"), inventory=emptyGbutsOttStore();
+  inventory.listings.sale={ id:"sale",requestHash:"h",serviceType:"디즈니플러스",accountEmail:"private-id@example.com",
+    capacity:5,dailyPrice:140,endDate:"2026-12-31",title:"title",description:"body",deliveryMode:"disney-numbered-password",
+    state:"registered",postSeq:100,createdAt:"2026-10-27T07:00:00Z" };
+  inventory.disneyEveryview={[disneyEveryviewAccountKey("private-id@example.com")]:{partyIds:[],snapshots:{}}};
+  writeGbutsOttStore(inventory);
+  const management={services:[{serviceType:"디즈니플러스",accounts:[{email:"private-id@example.com",serviceType:"디즈니플러스",
+    totalSlots:6,members:[],expiryDate:"2026-12-31",generatedAccount:{paymentStatus:"paid"}}]}],onSaleByKeepAcct:{}};
+  const deps=()=>({...f.deps(),reserve:reserveSubscriptionRankPlaces,adopt:adoptSubscriptionRankPost,
+    verify:async(p:any)=>assertSubscriptionRankInventory(p,management,[])});
+  await syncFutureSubscriptionRank(f.client as InviteClient,deps());f.advance(360_000);
+  await syncFutureSubscriptionRank(f.client as InviteClient,deps());
+  expect(f.client.closePost).not.toHaveBeenCalled();
+  expect(f.client.createSubscriptionPost).not.toHaveBeenCalled();
+});
+async function dedicatedDisneyRankFixture(options:{kind?:'advertised'|'buyer'|'reserved'; stale?:boolean; quota?:number; outside?:boolean}={}) {
+  const f=fixture(6,'SHARE'), inventory=emptyGbutsOttStore();
+  inventory.listings.sale={id:'sale',requestHash:'h',serviceType:'디즈니플러스',accountEmail:'private-id@example.com',
+    capacity:5,dailyPrice:140,endDate:'2026-12-31',title:'title',description:'body',deliveryMode:'disney-numbered-password',
+    state:'registered',postSeq:100,createdAt:'2026-10-27T07:00:00Z'};
+  for(let n=1;n<=2;n++) inventory.orders[`100:${n}`]={key:`100:${n}`,listingId:'sale',postSeq:100,memberSeq:n,userSeq:n+10,
+    name:`buyer${n}`,status:'APPLY',cancelStatus:null,startDate:'2026-10-27',endDate:'2026-12-31',delivery:'confirmed',
+    profileNumber:n,profileName:String(n),verifiedAt:new Date().toISOString()};
+  const kind=options.kind||'advertised';
+  inventory.disneyEveryview={[disneyEveryviewAccountKey('private-id@example.com')]:{accountCapacity:6,partyIds:[700],
+    snapshots:{'700':{source:'everyview:700',complete:true,verifiedAt:new Date(Date.now()-(options.stale?121_000:0)).toISOString(),
+      advertisedVacancies:kind==='advertised'?1:0,claims:[{id:'dedicated_700_6',profileNumber:6,kind,
+        state:kind==='buyer'?'active':'pending',...(kind==='buyer'?{buyerIdentity:'a'.repeat(64)}:{})}]}}}};
+  writeGbutsOttStore(inventory);
+  const management={services:[{serviceType:'디즈니플러스',accounts:[{email:'private-id@example.com',serviceType:'디즈니플러스',
+    totalSlots:6,members:options.outside?[{dealUsid:'outside',status:'Using',endDateTime:'2026-12-31'}]:[],
+    expiryDate:'2026-12-31',generatedAccount:{paymentStatus:'paid'}}]}],onSaleByKeepAcct:{}};
+  const deps=()=>({...f.deps(),reserve:reserveSubscriptionRankPlaces,adopt:adoptSubscriptionRankPost,
+    verify:async(p:any)=>assertSubscriptionRankInventory(p,management,[])});
+  await syncFutureSubscriptionRank(f.client as InviteClient,deps());
+  if(options.quota) f.state.policies['100'].capacity=options.quota;
+  f.advance(360_000);
+  return {f,deps,inventory};
+}
+it.each(['advertised','buyer','reserved'] as const)('allows generic Disney rank repost with a verified dedicated six (%s)',async kind=>{
+  const {f,deps}=await dedicatedDisneyRankFixture({kind});
+  await syncFutureSubscriptionRank(f.client as InviteClient,deps());
+  expect(f.client.closePost).toHaveBeenCalledTimes(1);
+  expect(f.client.createSubscriptionPost).toHaveBeenCalledTimes(1);
+  expect(f.client.createSubscriptionPost.mock.calls[0][0].memberLimit).toBe(3);
+  expect(readGbutsOttStore().orders['100:1'].profileNumber).toBe(1);
+  expect(readGbutsOttStore().orders['100:2'].profileNumber).toBe(2);
+});
+it.each([{stale:true},{quota:6},{outside:true}])('blocks generic Disney repost if freshness, quota or outside reservations are unsafe: %o',async options=>{
+  const {f,deps}=await dedicatedDisneyRankFixture(options);
+  await syncFutureSubscriptionRank(f.client as InviteClient,deps());
+  expect(f.client.closePost).not.toHaveBeenCalled();expect(f.client.createSubscriptionPost).not.toHaveBeenCalled();
+});
+it.each(['wrong-profile','unknown','incomplete','missing-snapshot','buyer-mismatch'] as const)('blocks generic Disney repost on %s evidence',async variant=>{
+ const {f,deps}=await dedicatedDisneyRankFixture();const store=readGbutsOttStore();
+ const entry=store.disneyEveryview![disneyEveryviewAccountKey('private-id@example.com')], snapshot=entry.snapshots['700'];
+ if(variant==='wrong-profile') snapshot.claims=[{id:'dedicated',profileNumber:5,kind:'advertised',state:'pending'}];
+ if(variant==='unknown') snapshot.claims=[{id:'dedicated',profileNumber:6,kind:'advertised',state:'unknown'}];
+ if(variant==='incomplete') snapshot.complete=false;
+ if(variant==='missing-snapshot') delete entry.snapshots['700'];
+ if(variant==='buyer-mismatch') store.orders['100:1'].userSeq=999;
+ writeGbutsOttStore(store);
+ if(variant==='buyer-mismatch') await expect(syncFutureSubscriptionRank(f.client as InviteClient,deps())).rejects.toThrow('구매자 연결');
+ else await syncFutureSubscriptionRank(f.client as InviteClient,deps());
+ expect(f.client.closePost).not.toHaveBeenCalled();expect(f.client.createSubscriptionPost).not.toHaveBeenCalled();
+});
+it('blocks unbound direct Disney repost while a mapped account exists and its identity is unknown',async()=>{
+ const f=fixture(6,'SHARE'), inventory=emptyGbutsOttStore();
+ inventory.disneyEveryview={[disneyEveryviewAccountKey('private-id@example.com')]:{partyIds:[],snapshots:{}}};
+ writeGbutsOttStore(inventory);
+ const deps=()=>({...f.deps(),reserve:reserveSubscriptionRankPlaces,adopt:adoptSubscriptionRankPost,
+   verify:async(p:any)=>assertSubscriptionRankInventory(p,{services:[],onSaleByKeepAcct:{}},[])});
+ await syncFutureSubscriptionRank(f.client as InviteClient,deps());f.advance(360_000);
+ await syncFutureSubscriptionRank(f.client as InviteClient,deps());
+ expect(f.client.closePost).not.toHaveBeenCalled();expect(f.client.createSubscriptionPost).not.toHaveBeenCalled();
 });
 it("preflights public payloads before closing a sellable original", async () => {
   const f = fixture();

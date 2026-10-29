@@ -176,8 +176,8 @@ function stripTags(s: string): string {
 /** 파티 상세 페이지 파싱 (파티장 이름/슬롯/로그인정보/공지/기간) */
 export function parsePartyDetail(html: string, partyId: number): EveryviewPartyDetail {
   // 슬롯 (나 + 파티원 + 빈자리)
-  const slots = [...html.matchAll(/<div class="pld-slot-name ([^"]+)">([^<]*)<\/div>/g)].map((m) => ({
-    cls: m[1],
+  const slots = [...html.matchAll(/<div class="pld-slot-name(?:\s+([^"]*))?">([^<]*)<\/div>/g)].map((m) => ({
+    cls: m[1] || '',
     name: stripTags(m[2]),
   }));
   const hostSlot = slots.find((s) => s.cls.includes('slot-name-host'));
@@ -371,7 +371,10 @@ export interface EveryviewCreatePartyInput {
   paymentType: 'PERIOD' | 'RECURRING';
   oneDayUsageFee: number;
   monthUsageFee: number;
-  shareEndDate?: string | null; // PERIOD일 때 YYYY-MM-DD
+  shareEndDate?: string | null; // FIXED 기간제일 때 YYYY-MM-DD
+  periodTermType?: 'FIXED' | 'ROLLING'; // 생략은 기존 FIXED 기간제
+  usageDays?: number | null;          // ROLLING 기간제는 참여일부터 1~730일
+  totalUsageFee?: number | null;      // ROLLING 기간제의 1인당 총 결제액
   shareUserCnt: number;         // 모집 인원
   services: EveryviewCreateServiceInput[];
 }
@@ -392,10 +395,26 @@ function validateEveryviewCreateParty(input: EveryviewCreatePartyInput): string 
       return `${svc.serviceName}의 공유 안내를 입력해주세요.`;
     }
   }
+  if (input.periodTermType !== undefined && !['FIXED', 'ROLLING'].includes(input.periodTermType)) return '기간 계산 방식을 확인해주세요.';
   if (input.paymentType === 'PERIOD') {
-    if (!input.shareEndDate) return '공유 종료일을 선택해주세요.';
-    if (!(input.oneDayUsageFee >= 0 && input.monthUsageFee >= 0)) return '요금을 확인해주세요.';
-  } else if (!(input.monthUsageFee > 0)) return '월 요금을 입력해주세요.';
+    if (input.periodTermType === 'ROLLING') {
+      if (input.shareEndDate) return '참여일부터 이용하는 기간에는 공유 종료일을 설정할 수 없어요.';
+      if (!Number.isSafeInteger(input.usageDays) || input.usageDays! < 1 || input.usageDays! > 730) return '이용 일수는 1~730일이어야 해요.';
+      if (!Number.isSafeInteger(input.totalUsageFee) || input.totalUsageFee! <= 0
+        || !Number.isSafeInteger(input.oneDayUsageFee) || input.oneDayUsageFee <= 0
+        || !Number.isSafeInteger(input.monthUsageFee)
+        || input.oneDayUsageFee !== Math.round(input.totalUsageFee! / input.usageDays!)
+        || input.monthUsageFee !== input.oneDayUsageFee * 30) return '총 이용료와 일·월 환산 요금을 확인해주세요.';
+    } else {
+      if (!input.shareEndDate) return '공유 종료일을 선택해주세요.';
+      if (input.usageDays != null || input.totalUsageFee != null) return '고정 종료일에는 참여일부터 이용 일수와 총액을 설정할 수 없어요.';
+      if (!(input.oneDayUsageFee >= 0 && input.monthUsageFee >= 0)) return '요금을 확인해주세요.';
+    }
+  } else {
+    if (input.paymentType !== 'RECURRING') return '공유 방식을 확인해주세요.';
+    if (input.periodTermType != null || input.usageDays != null || input.totalUsageFee != null) return '정기 공유에는 기간제 설정을 사용할 수 없어요.';
+    if (!(input.monthUsageFee > 0)) return '월 요금을 입력해주세요.';
+  }
   return null;
 }
 
@@ -413,6 +432,9 @@ export async function createEveryviewParty(
       monthUsageFee: Math.round(input.monthUsageFee),
       shareEndDate: input.paymentType === 'RECURRING' ? null : input.shareEndDate,
       shareUserCnt: input.shareUserCnt,
+      ...(input.paymentType === 'PERIOD' && input.periodTermType === 'ROLLING'
+        ? { shareEndDate: null, periodTermType: 'ROLLING', usageDays: input.usageDays, totalUsageFee: input.totalUsageFee }
+        : {}),
     },
     party: {
       recruitTitle: input.recruitTitle.trim(),

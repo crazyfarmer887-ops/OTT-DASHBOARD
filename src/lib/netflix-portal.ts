@@ -60,5 +60,5 @@ export function netflixPortalEnabledForListing(listing:GbutsOttListing):boolean 
   const s=readNetflixPortalStore();return s?.enabled===true&&s.onboardingEnabled===true;
 }
 export function netflixPortalNotice(r: NetflixPortalRecord): string {
-  return `[이메일 인증 안내]\n앞으로 넷플릭스 인증코드는 아래 전용 페이지에서 직접 확인하실 수 있습니다.\n${portalUrl(r)}\n이메일 PIN : ${r.pin}\n\n넷플릭스에서 먼저 인증을 요청한 뒤, 위 링크에 PIN을 입력하고 필요한 “4자리 로그인 코드” 또는 “6자리 인증 코드”를 선택해 주세요.\nPIN은 이 페이지 입장용이며 넷플릭스 인증코드와 다릅니다.\n계정·배정 프로필·이용 기간은 그대로입니다. 아래 사용법 이미지를 참고해 주세요.`;
+  return `[이메일 인증 안내]\n앞으로 넷플릭스 인증코드는 아래 전용 페이지에서 직접 확인하실 수 있습니다.\n${portalUrl(r)}\n이메일 PIN : ${r.pin}\n\n넷플릭스 로그인 화면에서 “로그인 코드 사용”을 선택하면 이메일로 4자리 코드가 발송됩니다. 위 링크에 이메일 PIN을 입력한 뒤 “4자리 로그인 코드”를 선택하세요. 가구·계정 확인 화면이 6자리를 요구할 때만 “6자리 인증 코드”를 선택하세요.\n넷플릭스에서 먼저 인증을 요청한 뒤, 위 링크에 PIN을 입력하고 필요한 “4자리 로그인 코드” 또는 “6자리 인증 코드”를 선택해 주세요.\nPIN은 이 페이지 입장용이며 넷플릭스 인증코드와 다릅니다.\n계정·배정 프로필·이용 기간은 그대로입니다. 아래 사용법 이미지를 참고해 주세요.`;
 }

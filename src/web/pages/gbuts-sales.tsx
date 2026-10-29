@@ -7,7 +7,7 @@ import { makeGbutsOttDescription } from '../../lib/gbuts-ott-templates';
 import GbutsSpotifySalesPage from './gbuts-spotify-sales';
 import ListingPeriodPresets from '../components/listing-period-presets';
 
-type Account = { key: string; serviceType: string; accountEmail: string; total: number; graytag: number; manual: number; gbuts: number; claims: number; available: number; overbooked: boolean; endDate: string; suggestedDailyPrice: number | null };
+type Account = { key: string; serviceType: string; accountEmail: string; total: number; graytag: number; manual: number; gbuts: number; everyview?: number; claims: number; available: number; overbooked: boolean; endDate: string; suggestedDailyPrice: number | null };
 type Listing = { id: string; postSeq?: number; serviceType: string; accountEmail: string; capacity: number; dailyPrice: number; endDate: string; state: string; error?: string };
 type Order = { key: string; name: string; listingId: string; profileName?: string; profileNumber?: number; profileReleasedAt?: string; endDate: string; delivery: string; status: string; cancelStatus: string | null; accessUrl?: string; error?: string };
 type Data = { enabled: boolean; accounts: Account[]; listings: Listing[]; orders: Order[]; unlinked: { seq: number; serviceType: string; status: string; memberCount: number; memberLimit: number; endDate: string }[]; unlinkedCheckError?: string | null; lastSuccess: string | null; lastError: string | null; inventory?: { status: string; updatedAt: string } | null };
@@ -159,7 +159,7 @@ function GbutsOttSalesPage({ view }: { view: 'sales' | 'orders' }) {
       {data && !data.accounts.some(x => x.available > 0 && (!requestedService || x.serviceType === requestedService)) && <p style={{ color: '#B45309', fontSize: 13 }}>현재 판매 가능한 자리가 없습니다. 기존 계정의 결제·이용 기간과 공동 재고를 확인해 주세요.</p>}
       {account?.serviceType === '넷플릭스' && <p style={{ fontSize:12, lineHeight:1.6 }}>넷플릭스 프로필 이름을 1, 2, 3, 4, 5로 미리 만들어주세요. 구매자에게 빈 프로필 번호를 순서대로 안내하며, 환불 완료·이용 종료된 번호는 재사용합니다.</p>}
       {account?.serviceType === '디즈니플러스' && <p style={{fontSize:12}}>새 디즈니 판매는 구매 순서대로 1~6번 프로필 생성을 안내합니다. 이메일 접근 없이 ID·비밀번호 로그인만 안내하므로 기존 이용자·모집이 없는 전용 계정을 선택하세요.</p>}
-      {account && <p style={{ fontSize: 12 }}>전체 {account.total}자리 · 그레이태그 {account.graytag} · 수동 {account.manual} · 벗츠 {account.gbuts} · 등록 확인 중 {account.claims} · 남은 {account.available}자리</p>}
+      {account && <p style={{ fontSize: 12 }}>전체 {account.total}자리 · 그레이태그 {account.graytag} · 수동 {account.manual} · 벗츠 {account.gbuts}{!!account.everyview && <> · 에브리뷰 확보 {account.everyview}</>} · 등록 확인 중 {account.claims} · 남은 {account.available}자리</p>}
       <ListingPeriodPresets startDate={today} endDate={endDate} maxEndDate={account?.endDate} disabled={busy || !account}
         onChange={value => { setEndDate(value); requestId.current = crypto.randomUUID(); }} />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginTop: 15 }}>

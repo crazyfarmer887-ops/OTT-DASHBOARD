@@ -6,6 +6,7 @@ import { createGbutsOttSellerClient, type GbutsOttPost, type GbutsOttMember } fr
 import { decodeGbutsSubscriptionCredential } from '../lib/gbuts-subscription-credentials';
 import type { GbutsOttCredentials } from '../lib/gbuts-disney-delivery';
 import type { GbutsOttRuntimeDependencies } from './gbuts-ott-sync';
+import { disneyEveryviewInventory, requireDisneyEveryviewAvailable } from '../lib/gbuts-disney-everyview';
 export const DISNEY_RENEWAL_INTERVAL = 60 * 60 * 1000;
 export const OTT_RANK_CHECK_INTERVAL = 60_000;
 export const OTT_RANK_COOLDOWN = 5 * 60_000;
@@ -17,6 +18,17 @@ function accountOrders(store: GbutsOttStore, serviceType: string, email: string,
       && (activeOttOrder(order, now) || holdsDisneyProfile(order, listing, now) || holdsNetflixProfile(order, listing, now)
         || (order.status === 'MISSING' && order.cancelStatus !== 'REFUNDED' && order.endDate >= koreaToday(now)));
   });
+}
+function availableForRenewal(store: GbutsOttStore, listing: GbutsOttListing, capacity: number, now: Date): number {
+  const shared = disneyEveryviewInventory(store, listing, now);
+  const available = requireDisneyEveryviewAvailable(shared);
+  const policyRemaining = capacity - accountOrders(store, listing.serviceType, listing.accountEmail, now).length;
+  return available === null ? policyRemaining : Math.min(available, policyRemaining);
+}
+function verifiedAccountCapacity(store: GbutsOttStore, listing: GbutsOttListing, policyCapacity: number, now: Date): number {
+  const shared = disneyEveryviewInventory(store, listing, now);
+  requireDisneyEveryviewAvailable(shared);
+  return Math.max(policyCapacity, shared?.capacity || 0);
 }
 function title(post: GbutsOttPost): string {
   let value = post.title;
@@ -132,6 +144,8 @@ async function rankedRenewal(store: GbutsOttStore, client: ReturnType<typeof cre
 /** Called only inside withGbutsOttInventory, shared with sales sync/publication. */
 export async function renewDueGbutsOttListings(deps: GbutsOttRuntimeDependencies,
   client: ReturnType<typeof createGbutsOttSellerClient>, now = new Date()): Promise<{ renewed: number; checked: number; errors: number }> {
+  const startedAt = Date.now();
+  const checkedNow = () => new Date(now.getTime() + Math.max(0, Date.now() - startedAt));
   const read = deps.readStore || readGbutsOttStore; const write = deps.writeStore || writeGbutsOttStore;
   const store = read(); const result = { renewed: 0, checked: 0, errors: 0 };
   const rankCheck = await rankedRenewal(store, client, now, write);
@@ -191,7 +205,7 @@ export async function renewDueGbutsOttListings(deps: GbutsOttRuntimeDependencies
         if (replacement) { replacement.state = 'failed'; replacement.error = '새 글 생성 전 자동 재등록이 중단되었습니다.'; }
         complete(); continue;
       }
-      assertDedicatedAccount(await (deps.renewalManagement ? deps.renewalManagement(source.serviceType) : deps.management()), source.serviceType, policy.accountEmail, policy.capacity, source.endDate);
+      assertDedicatedAccount(await (deps.renewalManagement ? deps.renewalManagement(source.serviceType) : deps.management()), source.serviceType, policy.accountEmail, verifiedAccountCapacity(store, source, policy.capacity, checkedNow()), source.endDate);
       const key = ottKey(source.serviceType, policy.accountEmail);
       if (deps.manualMembers().some(m => ottKey(m.serviceType || '', m.accountEmail || '') === key && m.status === 'active' && m.endDate >= koreaToday(now))
         || Object.values(store.graytagClaims).some(c => ottKey(c.serviceType, c.accountEmail) === key)
@@ -211,7 +225,7 @@ export async function renewDueGbutsOttListings(deps: GbutsOttRuntimeDependencies
         if (listing.id === source.id) post = actual;
       }
       if (!post) throw new Error('원본 판매글 확인이 필요합니다.');
-      let remaining = policy.capacity - accountOrders(store, source.serviceType, policy.accountEmail, now).length;
+      let remaining = availableForRenewal(store, source, policy.capacity, checkedNow());
       if (remaining < 0) throw new Error('기존 이용자가 계정 정원보다 많아 재등록을 보류합니다.');
       if (!remaining && !replacement) { complete(); continue; }
       if (!replacement) {
@@ -234,13 +248,13 @@ export async function renewDueGbutsOttListings(deps: GbutsOttRuntimeDependencies
       source.state = 'closed'; source.verifiedAt = now.toISOString();
       updateGbutsOttOrders(store, source, finalMembers, now.toISOString());
       if (!sameConditions(closed, source)) throw new Error('모집 종료 중 조건이 변경되어 재등록을 보류합니다.');
-      remaining = policy.capacity - accountOrders(store, source.serviceType, policy.accountEmail, now).length;
+      remaining = availableForRenewal(store, source, policy.capacity, checkedNow());
       if (remaining < 0) throw new Error('마지막 구매 후 정원을 확인해야 합니다.');
       if (!remaining) {
         replacement.state = 'failed'; replacement.error = '모집 종료 중 만석이 되어 새 글을 생성하지 않았습니다.';
         complete(); continue;
       }
-      assertDedicatedAccount(await (deps.renewalManagement ? deps.renewalManagement(source.serviceType) : deps.management()), source.serviceType, policy.accountEmail, policy.capacity, source.endDate);
+      assertDedicatedAccount(await (deps.renewalManagement ? deps.renewalManagement(source.serviceType) : deps.management()), source.serviceType, policy.accountEmail, verifiedAccountCapacity(store, source, policy.capacity, checkedNow()), source.endDate);
       credentials = await deps.listingCredentials?.(source);
       if (!credentials) throw new Error('최신 계정 정보를 확인해주세요.');
       const finalTitle = policy.saleTerms?.title || title(closed);

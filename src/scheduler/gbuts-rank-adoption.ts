@@ -1,4 +1,5 @@
 import { readSubscriptionRankDefaults } from "../lib/gbuts-rank-defaults";
+import { disneyEveryviewAccountKey, disneyEveryviewInventory, requireDisneyEveryviewAvailable } from "../lib/gbuts-disney-everyview";
 import { createHash } from "node:crypto";
 import { readGbutsOttStore, writeGbutsOttStore } from "../lib/gbuts-ott-store";
 import {
@@ -10,6 +11,7 @@ import {
   GBUTS_OTT_CATEGORIES,
   sharedOttAccounts,
   ottDate,
+  koreaToday,
   type GbutsOttStore,
   type GbutsOttListing,
 } from "../lib/gbuts-ott";
@@ -246,16 +248,51 @@ export function existingOttRankPostSeqs(store: GbutsOttStore): Set<number> {
 }
 
 /** Keep the original marketplace quota inside the SAME verified cross-market inventory. */
+function assertUnboundDisneyRankSafe(p:YouTubeRenewal,store:GbutsOttStore):void {
+  if(p.categorySeq===6 && p.subscriptionType==='SHARE' && Object.keys(store.disneyEveryview||{}).length>0)
+    throw Error("디즈니 판매글의 공동 계정 연결 확인 필요");
+}
 export function assertSubscriptionRankInventory(
   p: YouTubeRenewal,
   management: import("../lib/gbuts-ott").GbutsOttManagement,
   manual: any[],
+  now = new Date(),
 ) {
   const store = readGbutsOttStore();
   const source = Object.values(store.listings).find(
     (l) => l.postSeq === p.currentPostSeq,
   );
-  if (!source) return;
+  if (!source) {assertUnboundDisneyRankSafe(p,store);return;}
+  let everyviewReserved = 0;
+  const key = disneyEveryviewAccountKey(source.accountEmail);
+  const mapped = source.serviceType === "디즈니플러스" && store.disneyEveryview
+    && Object.prototype.hasOwnProperty.call(store.disneyEveryview, key);
+  if (mapped) {
+    const mapping = store.disneyEveryview![key];
+    // Only the explicitly segregated setup is safe for this generic publisher.
+    // Stale, uncertain or partial evidence never permits closing the old post.
+    if (source.deliveryMode !== "disney-numbered-password" || mapping?.accountCapacity !== 6
+      || p.capacity > 5 || p.capacity < 1 || !Array.isArray(mapping.partyIds) || mapping.partyIds.length !== 1)
+      throw Error("에브리뷰 전용 6번과 벗츠 정원 확인 필요");
+    const snapshot = mapping.snapshots?.[String(mapping.partyIds[0])];
+    const held = snapshot?.claims?.filter(c => c.state !== "released") || [];
+    if (held.length !== 1 || held[0].profileNumber !== 6
+      || !((held[0].kind === "buyer" && held[0].state === "active" && /^[a-f0-9]{64}$/.test(held[0].buyerIdentity || "") && snapshot?.advertisedVacancies === 0)
+        || (held[0].kind === "advertised" && held[0].state === "pending" && snapshot?.advertisedVacancies === 1)
+        || (held[0].kind === "reserved" && held[0].state === "pending" && snapshot?.advertisedVacancies === 0)))
+      throw Error("에브리뷰 6번 자리 상태 확인 필요");
+    const shared = disneyEveryviewInventory(store, source, now);
+    requireDisneyEveryviewAvailable(shared);
+    if (!shared || shared.capacity !== 6) throw Error("공동 계정 정원 확인 필요");
+    for (const member of Object.values(p.members)) {
+      if (!(["APPLY", "MISSING"].includes(member.status) && member.cancelStatus !== "REFUNDED" && member.endDate >= koreaToday(now))) continue;
+      const order = store.orders[`${member.postSeq}:${member.seq}`];
+      if (!order || order.userSeq !== member.userSeq || order.status !== member.status
+        || order.cancelStatus !== member.cancelStatus || order.endDate !== member.endDate)
+        throw Error("벗츠 구매자 공동 재고 확인 필요");
+    }
+    everyviewReserved = 1;
+  }
   const view = structuredClone(store),
     chain = new Set(p.posts.map((row) => row.seq));
   const ids = new Set(
@@ -280,6 +317,7 @@ export function assertSubscriptionRankInventory(
     account.overbooked ||
     !account.eligible ||
     account.available < p.capacity - subscriptionExternalOccupancy(p) ||
+    (everyviewReserved > 0 && account.total < 6) ||
     account.endDate < p.endDate
   )
     throw Error("다른 판매처의 자리 또는 계정 기간 확인 필요");
@@ -288,10 +326,11 @@ export async function verifyManagedSubscriptionRank(
   p: YouTubeRenewal,
   deps: import("./gbuts-ott-sync").GbutsOttRuntimeDependencies,
 ) {
-  const source = Object.values(readGbutsOttStore().listings).find(
+  const store=readGbutsOttStore();
+  const source = Object.values(store.listings).find(
     (l) => l.postSeq === p.currentPostSeq,
   );
-  if (!source) return;
+  if (!source) {assertUnboundDisneyRankSafe(p,store);return;}
   const management = await (deps.renewalManagement
     ? deps.renewalManagement(source.serviceType)
     : deps.management());

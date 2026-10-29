@@ -15,6 +15,7 @@ import { readGbutsOttStore, withGbutsOttInventory, writeGbutsOttStore } from '..
 import type { GbutsOttRuntimeDependencies } from '../scheduler/gbuts-ott-sync';
 import { buildGbutsSalesOverview } from '../lib/gbuts-sales-overview';
 import { availableNetflixProfiles } from '../lib/gbuts-netflix-profiles';
+import { assertDisneyPublicationCoordinated } from '../lib/gbuts-disney-everyview';
 import { deletedSpotifyPostSeqs } from '../lib/gbuts-spotify-listings';
 export function gbutsOttClient() {
   const token = loadGbutsSession()?.token || process.env.GBUTS_API_TOKEN?.trim();
@@ -130,6 +131,7 @@ export function registerGbutsOttRoutes(app: Hono, deps: GbutsOttRuntimeDependenc
       const client = gbutsOttClient(); const post = await client.getPost(postSeq);
       const serviceType = Object.entries(GBUTS_OTT_CATEGORIES).find(([, category]) => category === post.category1.seq)?.[0];
       if (!serviceType) throw new Error('지원하지 않는 서비스 판매글입니다.');
+      assertDisneyPublicationCoordinated(store, serviceType, accountEmail);
       if (!['ON_SALE', 'CLOSED', 'SUSPENDED', 'REFUNDED'].includes(post.status)) throw new Error('현재 상태의 판매글은 연결할 수 없습니다.');
       if (post.priceType !== 'DAY' || !Number.isSafeInteger(Number(post.price)) || Number(post.price) < 1)
         throw new Error('하루 요금으로 등록된 판매글만 연결할 수 있습니다.');
@@ -202,6 +204,7 @@ export function registerGbutsOttRoutes(app: Hono, deps: GbutsOttRuntimeDependenc
           error: previous.requestHash !== requestHash ? '이미 사용한 등록 요청입니다.' : '기존 등록 결과를 확인해주세요.' }, previous.requestHash !== requestHash ? 409 : 200);
         if (Object.values(store.listings).some(x => x.requestHash === requestHash && ['submitting', 'uncertain', 'registered'].includes(x.state)))
           return c.json({ ok: false, error: '같은 내용의 판매글 등록 요청이 이미 있습니다. 연결된 판매글을 확인해주세요.' }, 409);
+        assertDisneyPublicationCoordinated(store, serviceType, accountEmail);
         const client = gbutsOttClient();
         const [management, posts] = await Promise.all([publicationManagement(deps), client.listPosts()]);
         assertBoundPosts(store, posts);
@@ -395,6 +398,7 @@ export function registerGbutsOttRoutes(app: Hono, deps: GbutsOttRuntimeDependenc
           return c.json({ ok: true, listing: previous });
         }
       } else if (source.state !== 'registered') throw new Error('현재 모집 중인 미판매 글을 선택해주세요.');
+      assertDisneyPublicationCoordinated(store, source.serviceType, source.accountEmail);
       const [post, members] = await Promise.all([client.getPost(source.postSeq), client.listOttMembers(source.postSeq)]);
       if (post.category1.seq !== 6 || post.subscriptionType !== 'SHARE' || post.memberLimit !== source.capacity
         || ottDate(post.subscriptionEndsAt) !== source.endDate || Number(post.price) !== source.dailyPrice || post.priceType !== 'DAY'
@@ -449,6 +453,7 @@ export function registerGbutsOttRoutes(app: Hono, deps: GbutsOttRuntimeDependenc
 export async function reserveGraytagOttPlace(serviceType: string, accountEmail: string, deps: GbutsOttRuntimeDependencies, endDate?: string): Promise<string> {
   return withGbutsOttInventory(async () => {
     const store = readGbutsOttStore();
+    assertDisneyPublicationCoordinated(store, serviceType, accountEmail);
     if (Object.keys(store.listings).length) assertBoundPosts(store, await gbutsOttClient().listPosts());
     const management = await deps.management();
     const account = sharedOttAccounts(management, deps.manualMembers(), store).find(x => x.key === ottKey(serviceType, accountEmail));

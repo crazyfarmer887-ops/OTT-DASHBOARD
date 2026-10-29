@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { createEveryviewParty, EVERYVIEW_CREATE_SERVICES } from '../src/lib/everyview-api';
 
@@ -22,6 +22,7 @@ const validInput = {
 };
 
 describe('everyview party creation (write)', () => {
+  afterEach(() => vi.unstubAllGlobals());
   test('create endpoint exists and invalidates management cache on success', () => {
     expect(API).toContain("app.post('/everyview/create-party'");
     expect(API).toMatch(/create-party[\s\S]*?everyviewManagementCache = null;/);
@@ -44,6 +45,46 @@ describe('everyview party creation (write)', () => {
     const dp = EVERYVIEW_CREATE_SERVICES.find(s => s.code === 'disney_plus');
     expect(yt?.id).toBe(1);
     expect(dp?.id).toBe(4);
+  });
+
+  test('sends 30-day participation-based terms matching the official form', async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ result: '200', partyId: 123 }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const result = await createEveryviewParty('cookie', { ...validInput, periodTermType: 'ROLLING', usageDays: 30,
+      totalUsageFee: 2910, shareEndDate: null, oneDayUsageFee: 97, monthUsageFee: 2910 });
+    expect(result).toEqual({ ok: true, partyId: 123 });
+    const options = fetchMock.mock.calls[0][1] as RequestInit;
+    const payment = JSON.parse((options.body as FormData).get('partyData') as string).payment;
+    expect(payment).toEqual({ paymentType: 'PERIOD', periodTermType: 'ROLLING', usageDays: 30,
+      totalUsageFee: 2910, oneDayUsageFee: 97, monthUsageFee: 2910, shareEndDate: null, shareUserCnt: 4 });
+  });
+
+  test('rejects missing, invalid, contradictory or inconsistent rolling period data before network', async () => {
+    const fetchMock = vi.fn(); vi.stubGlobal('fetch', fetchMock);
+    const valid = { ...validInput, periodTermType: 'ROLLING' as const, usageDays: 30,
+      totalUsageFee: 2910, shareEndDate: null, oneDayUsageFee: 97, monthUsageFee: 2910 };
+    for (const patch of [
+      { usageDays: null }, { usageDays: 0 }, { usageDays: 731 }, { usageDays: 1.5 },
+      { totalUsageFee: null }, { totalUsageFee: 0 }, { shareEndDate: '2027-01-24' },
+      { oneDayUsageFee: 96 }, { monthUsageFee: 2900 }, { periodTermType: 'INVALID' },
+      { paymentType: 'RECURRING' },
+    ]) {
+      const result = await createEveryviewParty('cookie', { ...valid, ...patch } as any);
+      expect(result.ok).toBe(false);
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test('keeps existing fixed and recurring payloads unchanged', async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ result: '200', partyId: 123 }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    await createEveryviewParty('cookie', validInput);
+    await createEveryviewParty('cookie', { ...validInput, paymentType: 'RECURRING' });
+    const payments = fetchMock.mock.calls.map((call) => JSON.parse(((call[1] as RequestInit).body as FormData).get('partyData') as string).payment);
+    expect(payments[0]).toEqual({ paymentType: 'PERIOD', oneDayUsageFee: 167, monthUsageFee: 5000,
+      shareEndDate: '2026-09-30', shareUserCnt: 4 });
+    expect(payments[1]).toEqual({ paymentType: 'RECURRING', oneDayUsageFee: 167, monthUsageFee: 5000,
+      shareEndDate: null, shareUserCnt: 4 });
   });
 
   test('page renders write form with confirm gate and all key fields', () => {

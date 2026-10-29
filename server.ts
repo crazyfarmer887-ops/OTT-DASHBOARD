@@ -42,6 +42,9 @@ import { startGbutsOfficeMessages } from './src/scheduler/gbuts-office-messages.
 import { startGbutsChatAlerts } from './src/scheduler/gbuts-chat-alerts.ts';
 import { startGbutsSpotifySync } from './src/scheduler/gbuts-spotify-sync.ts';
 import { startEveryviewSpotifySync } from './src/scheduler/everyview-spotify-sync.ts';
+import { everyviewDisneyCutoffRuntimeDependencies, startEveryviewDisneyCutoffFromEnv } from './src/scheduler/everyview-disney-cutoff.ts';
+import { startEveryviewDisneyInventoryFromEnv } from './src/scheduler/everyview-disney-inventory-runtime.ts';
+import { disneyMonitoringRecoveryDependencies, startDisneyMonitoringRecoveryFromEnv } from './src/scheduler/everyview-disney-startup-recovery.ts';
 import { startSpotifyDeliveryMonitor } from './src/scheduler/spotify-delivery-monitor-runtime.ts';
 import { startGbutsOttSync } from './src/scheduler/gbuts-ott-sync.ts';
 import { gbutsOttRuntimeDependencies } from './src/api/index.ts';
@@ -296,6 +299,9 @@ startNotionInvitationSync({
 startGbutsOfficeMessages();
 startGbutsSpotifySync();
 startEveryviewSpotifySync();
+startEveryviewDisneyCutoffFromEnv(() => everyviewDisneyCutoffRuntimeDependencies(gbutsOttRuntimeDependencies.management));
+startEveryviewDisneyInventoryFromEnv();
+startDisneyMonitoringRecoveryFromEnv(() => disneyMonitoringRecoveryDependencies(gbutsOttRuntimeDependencies));
 startSpotifyDeliveryMonitor();
 startGbutsChatAlerts();
 startGbutsOttSync(gbutsOttRuntimeDependencies);
