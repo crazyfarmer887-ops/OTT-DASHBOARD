@@ -119,7 +119,8 @@ ${emailCodeSupport ? '추가 코드가 필요하면 이 채팅에 “4자리 로
 프로필 생성·삭제 및 이름·PIN 변경, 계정 이메일·비밀번호·결제 설정 변경은 금지합니다.
 여러 기기에서 동시에 시청하지 마세요.`;
 }
-export function buildGbutsNetflixDeliveryText(_accessUrl: string, number: number, emailCodeSupport = false, mailboxSupport = false): string {
+export function buildGbutsNetflixDeliveryText(_accessUrl: string, number: number, emailCodeSupport = false, mailboxSupport = false, portalSupport = false): string {
+  if (portalSupport) return buildGbutsNetflixPasswordGuide(number).replace('이메일 인증·로그인 코드는 제공하지 않습니다.', '이메일 인증이 필요하면 이어서 전달하는 전용 인증 페이지 주소와 PIN을 이용해 주세요. 4자리 로그인 코드와 6자리 인증 코드를 직접 확인하실 수 있습니다.');
   if (mailboxSupport) return buildGbutsNetflixPasswordGuide(number).replace('이메일 인증·로그인 코드는 제공하지 않습니다.', '이메일 인증이 필요하면 함께 전달한 이메일 접근 주소와 PIN으로 최신 인증 메일을 확인해 주세요.');
   return buildGbutsNetflixPasswordGuide(number, emailCodeSupport);
 }

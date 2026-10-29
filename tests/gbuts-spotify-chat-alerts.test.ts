@@ -99,6 +99,17 @@ describe('GButs Spotify buyer chat alerts', () => {
     expect(await syncGbutsSpotifyChatAlerts(deps, 15557)).toEqual({ sent: 1, messages: 1, failed: 1, unavailable: 0 });
     expect(sendAlert).toHaveBeenCalledTimes(1);
   });
+  it('records deliberately suppressed routine messages and still alerts for an unresolved issue',async()=>{
+    const {deps,journal,sendAlert}=setup([
+      {...buyerMessage,message:'4자리 로그인 코드',createdAt:'2026-10-04T10:01:00Z'},
+      {...buyerMessage,message:'코드가 안 와요',createdAt:'2026-10-04T10:01:01Z'},
+    ]);
+    const scoped={...deps,suppressBuyerMessage:(_post:number,_member:typeof member,entry:typeof buyerMessage)=>entry.message==='4자리 로그인 코드'};
+    const result=await syncGbutsSpotifyChatAlerts(scoped,15557);
+    expect(result).toMatchObject({sent:1,messages:1});expect(sendAlert.mock.calls[0][0].body).toContain('코드가 안 와요');
+    expect(sendAlert.mock.calls[0][0].body).not.toContain('4자리 로그인 코드');expect(Object.keys(journal.sent).length).toBeGreaterThan(0);
+    await syncGbutsSpotifyChatAlerts(scoped,15557);expect(sendAlert).toHaveBeenCalledTimes(1);
+  });
 
   it('only treats an inaccessible completed refund as closed, not ordinary request failures', async () => {
     const { deps } = setup();

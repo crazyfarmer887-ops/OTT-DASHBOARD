@@ -1,4 +1,5 @@
 import { gbutsOrderListing } from '../lib/gbuts-ott';
+import { netflixPortalEnabledForListing } from '../lib/netflix-portal';
 import {verifyManagedSubscriptionRank} from './gbuts-rank-adoption';
 import {syncFutureSubscriptionRank} from './gbuts-future-rank';
 import { renewYouTubeInvites } from './gbuts-youtube-renewal';
@@ -75,7 +76,7 @@ export async function syncGbutsOtt(deps: GbutsOttRuntimeDependencies,
       // must use the current password-only policy, even if it pinned an older guide.
       const submitted = order.attemptedAt || order.delivery === 'attempted' || order.delivery === 'confirmed';
       return submitted ? order.deliveryMessage || buildGbutsNetflixLegacyDeliveryText(order.accessUrl!, order.profileNumber!)
-        : buildGbutsNetflixDeliveryText(order.accessUrl!, order.profileNumber!, listing.emailCodeProvider === 'aaryan', listing.emailCodeProvider === 'emailverify');
+        : buildGbutsNetflixDeliveryText(order.accessUrl!, order.profileNumber!, listing.emailCodeProvider === 'aaryan', listing.emailCodeProvider === 'emailverify',netflixPortalEnabledForListing(listing));
     }
     return order.deliveryMessage || (listing.deliveryMode === 'disney-numbered-password'
       ? buildGbutsDisneyDeliveryText(order.accessUrl!, order.profileNumber!, disneyAccountCapacity(store, listing))

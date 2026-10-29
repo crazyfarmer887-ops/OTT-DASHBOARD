@@ -41,6 +41,7 @@ export interface GbutsSpotifyChatAlertDependencies {
   buyerName?(member: GbutsSpotifyMember): string;
   now?(): string;
   processBuyerChat?(chat: { postSeq: number; member: GbutsSpotifyMember; roomId: string; messages: GbutsChatMessage[] }): Promise<void>;
+  suppressBuyerMessage?(postSeq:number, member:GbutsSpotifyMember, entry:GbutsChatMessage): boolean;
 }
 
 function fingerprint(roomId: string, entry: GbutsChatMessage, occurrence: number): string {
@@ -90,7 +91,11 @@ export async function syncGbutsSpotifyChatAlerts(deps: GbutsSpotifyChatAlertDepe
       const eventTime = Date.parse(entry.createdAt);
       if (!Number.isFinite(eventTime) || eventTime < startMs) continue;
       const id = fingerprint(roomId, entry, occurrence);
-      if (!journal.sent[id]) unseen.push({ id, entry });
+      if (!journal.sent[id] && deps.suppressBuyerMessage?.(postSeq, member, entry)) {
+        // Persist a hash-only receipt so a later scan cannot notify this routine message.
+        journal.sent[id] = deps.now?.() ?? new Date().toISOString();
+        deps.writeJournal(journal);
+      } else if (!journal.sent[id]) unseen.push({ id, entry });
     }
     if (!unseen.length) continue;
     const header = [deps.accountLabel ? `판매 계정: ${deps.accountLabel.slice(0, 80)}` : '',

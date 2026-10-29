@@ -1,4 +1,6 @@
 import { createHash } from 'node:crypto';
+import { portalDelivered } from '../lib/netflix-portal';
+import { gbutsOrderListing } from '../lib/gbuts-ott';
 import { existsSync, readFileSync } from 'node:fs';
 import { loadSafeModeConfig } from '../api/safe-mode';
 import { writeJsonAtomic } from '../lib/graytag-sales-session';
@@ -34,17 +36,18 @@ export type NetflixCodeDependencies = { store(): GbutsOttStore; client: Client; 
   query(email: string,kind: NetflixCodeKind,requestedAt: string): Promise<NetflixCode>; send: typeof sendGbutsText;
   allowed?(): boolean; read(): NetflixCodeJournal; write(s: NetflixCodeJournal): void; now(): Date };
 function bound(store: GbutsOttStore, key: string, now = new Date()): {order: GbutsOttOrder;listing: GbutsOttListing} | undefined {
-  const order = store.orders[key]; const listing = order && store.listings[order.listingId];
+  const order = store.orders[key]; const listing = order && gbutsOrderListing(store,order);
   if (!listing || listing.serviceType!=='넷플릭스' || listing.emailCodeProvider!=='aaryan' || !deliverableOttOrder(order,now)
-    || !hasGbutsOttProfileLease(store,order,undefined,now) || order.delivery!=='confirmed' || !order.roomId || !order.profileNumber) return;
+    || !hasGbutsOttProfileLease(store,order,undefined,now) || order.delivery!=='confirmed' || !order.roomId || !order.profileNumber || portalDelivered(key,store)) return;
   return {order,listing};
 }
 async function verifiedChat(deps: NetflixCodeDependencies, key: string) {
   if (deps.allowed && !deps.allowed()) return;
   const binding=bound(deps.store(),key,deps.now());if(!binding)return;
-  const {order,listing}=binding;
+  const {order}=binding;
   const [post,members]=await Promise.all([deps.client.getPost(order.postSeq),deps.client.listOttMembers(order.postSeq)]);
-  if(post.category1.seq!==5 || post.memberLimit!==listing.capacity || ottDate(post.subscriptionEndsAt)!==listing.endDate) return;
+  const original=deps.store().listings[order.listingId];
+  if(post.category1.seq!==5 || post.memberLimit!==original.capacity || ottDate(post.subscriptionEndsAt)!==original.endDate) return;
   const exact=members.filter(m=>m.seq===order.memberSeq&&m.userSeq===order.userSeq);
   if(exact.length!==1 || !deliverableOttOrder({...exact[0],endDate:ottDate(exact[0].subscriptionEndsAt)},deps.now())) return;
   if(await deps.client.openPrivateRoom(order.postSeq,order.userSeq)!==order.roomId)return;

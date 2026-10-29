@@ -2,6 +2,9 @@ import { sendSellerAlert } from '../alerts/telegram';
 import { loadSafeModeConfig } from '../api/safe-mode';
 import { createGbutsOttSellerClient } from '../lib/gbuts-ott-client';
 import { loadGbutsSession } from '../lib/gbuts-session';
+import { readNetflixPortalStore, portalRecordMatches } from '../lib/netflix-portal';
+import { readGbutsOttStore } from '../lib/gbuts-ott-store';
+import { netflixCodeRequestKind } from '../lib/aaryan-netflix-code';
 import { GBUTS_SPOTIFY_POST_SEQ } from './gbuts-spotify-sync';
 import { classifyCodeRequest, processCodeReminder, readCodeReminderJournal, writeCodeReminderJournal,
   type CodeReminderChat } from './gbuts-code-reminder';
@@ -18,6 +21,15 @@ interface ChatScanDependencies extends Omit<GbutsSpotifyChatAlertDependencies, '
 function productName(raw: string | undefined, postSeq: number): string {
   try { const value = JSON.parse(raw || '{}'); if (typeof value.ko === 'string') return value.ko.slice(0, 100); } catch { /* Plain text names are also supported. */ }
   return raw?.slice(0, 100) || `판매글 ${postSeq}`;
+}
+export function isRoutineNetflixPortalMessage(value:string):boolean {
+  const text=value.trim();
+  if (/(?:안\s*(?:되|돼|와|왔|나오)|못\s*(?:받|보|들어|하)|오류|실패|환불|교체|만료|문제|도움|error|fail|not\s+work)/i.test(text)) return false;
+  return !!netflixCodeRequestKind(text) || /^(?:감사합니다|고맙습니다|감사해요|네|넵|확인했습니다|확인했어요|잘\s*됩니다)[.!~\s]*$/i.test(text);
+}
+function messageTime(value:string):number {
+  const local=/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:\.\d+)?$/.test(value);
+  return Date.parse(local ? `${value.replace(' ','T')}+09:00` : value);
 }
 export async function syncGbutsChatAlerts(deps: ChatScanDependencies) {
   if (!Number.isFinite(Date.parse(deps.startAt))) throw new Error('벗츠 채팅 감시 시작 시각을 확인해주세요.');
@@ -66,6 +78,15 @@ export function startGbutsChatAlerts(): (() => void) | undefined {
       const session = loadGbutsSession(); const token = session?.token || process.env.GBUTS_API_TOKEN?.trim();
       if (!token) return;
       const client = createGbutsOttSellerClient(token);
+      const completedPortals = new Map<string,number>();
+      try {
+        const portal=readNetflixPortalStore();
+        if(portal?.enabled){const inventory=readGbutsOttStore();for(const r of Object.values(portal.records)){
+          const o=inventory.orders[r.orderKey],confirmed=Date.parse(r.image.confirmedAt||'');
+          if(o&&r.text.state==='confirmed'&&r.image.state==='confirmed'&&Number.isFinite(confirmed)&&portalRecordMatches(r,inventory,o))
+            completedPortals.set(r.orderKey,Math.floor(confirmed/1000)*1000);
+        }}
+      } catch { /* Fail open for owner alerts if the portal registry cannot be read. */ }
       const reminderReady = reminders && Number.isFinite(Date.parse(reminderStartAt)) && !!process.env.OPENROUTER_API_KEY?.trim();
       let sellerSeq = 0;
       if (reminderReady) {
@@ -73,6 +94,7 @@ export function startGbutsChatAlerts(): (() => void) | undefined {
         catch { console.error('[GbutsChatAlerts] 코드 자동 안내 판매자 확인 실패'); }
       }
       const processBuyerChat = reminderReady && sellerSeq > 0 ? async (chat: CodeReminderChat) => {
+        if(completedPortals.has(`${chat.postSeq}:${chat.member.seq}`)) return;
         await processCodeReminder(chat, { ...client, sellerSeq, startAt: reminderStartAt,
           classify: async text => {
             if (Date.now() < inferenceRetryAfter) throw new Error('코드 문의 분류 재시도 대기');
@@ -88,6 +110,10 @@ export function startGbutsChatAlerts(): (() => void) | undefined {
         sendAlert: sendSellerAlert, accountLabel: session?.sellerLabel || '기본 벗츠 판매 계정', startAt,
         spotifyPostSeq, spotifyStartAt: process.env.GBUTS_SPOTIFY_CHAT_ALERT_START_AT,
         processBuyerChat,
+        suppressBuyerMessage: (postSeq,member,entry) => {
+          const since=completedPortals.get(`${postSeq}:${member.seq}`),at=messageTime(entry.createdAt);
+          return since!==undefined&&Number.isFinite(at)&&at>=since&&isRoutineNetflixPortalMessage(entry.message);
+        },
       });
       if (result.sent || result.failed || result.errors) console.log('[GbutsChatAlerts]', result);
     } catch { console.error('[GbutsChatAlerts] 구매자 채팅 확인 실패'); }

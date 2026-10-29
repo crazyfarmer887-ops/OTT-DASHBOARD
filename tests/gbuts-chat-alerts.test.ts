@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { syncGbutsChatAlerts } from '../src/scheduler/gbuts-chat-alerts';
+import { isRoutineNetflixPortalMessage, syncGbutsChatAlerts } from '../src/scheduler/gbuts-chat-alerts';
 import type { GbutsSpotifyChatAlertJournal } from '../src/scheduler/gbuts-spotify-chat-alerts';
 
 function setup() {
@@ -24,6 +24,10 @@ function setup() {
   return { deps, sendAlert, read: () => journal };
 }
 describe('GButs all-product chat alerts', () => {
+  it('classifies only routine code requests and acknowledgements as quiet, never a problem or refund',()=>{
+    for(const text of ['4자리 로그인 코드','6자리 인증 코드 주세요','감사합니다','확인했어요'])expect(isRoutineNetflixPortalMessage(text),text).toBe(true);
+    for(const text of ['코드가 안 와요','로그인 코드가 안 돼요','인증 오류입니다','환불해주세요','교체 부탁해요','언제 받을 수 있나요?'])expect(isRoutineNetflixPortalMessage(text),text).toBe(false);
+  });
   it('scans every product including completed sales, preserves the Spotify baseline and deduplicates after restart', async () => {
     const { deps, sendAlert, read } = setup();
     expect(await syncGbutsChatAlerts(deps)).toEqual({ posts: 3, sent: 3, messages: 4, failed: 0, errors: 0, unavailable: 0 });

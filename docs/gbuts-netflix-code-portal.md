@@ -1,0 +1,13 @@
+# Buyer Netflix code portal
+
+User authorized all currently bot-backed Netflix accounts to use email-verify.one, one-time link/PIN/image notices to existing valid buyers, the same automatic delivery for future buyers, and Telegram alerts only for errors.
+
+Host a buyer-scoped portal at https://email-verify.one/netflix/{random-token}. Proxy only that path and its exact /api/netflix-portal/ API namespace to the established AIO runtime; leave email/Resend/Disney authentication unchanged. Each record binds a cryptographic token, six-digit PIN, exact paid GButs order/room/current account/profile and original expiry. Keep secrets in a0600private registry, never Git/logs/admin summaries. Verify the live paid member and private room before onboarding, code lookup and returning a code. Expired/refunded/reassigned buyers cannot access the portal, even with an old PIN/session.
+
+The existing owner Telegram session and pinned supplier bot remain the upstream source. Serialize supplier interactions and coalesce identical concurrent queries. Require exact account, code kind, correlated bot reply and freshness. Show only fresh4/6digit login/account codes; no reset/payment mail or arbitrary links. Codes remain in memory only. PIN sessions are HttpOnly/Secure/SameSite=Strict, expire30minutes and are token-scoped; add Origin checks, bounded input, PIN/IP throttles and query cooldown. No admin token reaches the browser.
+
+One durable onboarding record per current buyer binding: query history before SEND, persist attempted hashes before sending link/PIN, verify all text parts, then attach a reviewed actual-screen guide once. Unknown submissions are history-only; retry only definite pre-SEND failures. Legacy valid buyers are explicitly included; future buyers wait for their normal account delivery. Retire direct bot-code chat delivery only after the new notice and image are confirmed. Keep general AI support paused, account passwords/profiles/prices/capacities/renewals unchanged.
+
+Telegram receives actionable connection/lookup/onboarding errors with deduplication and a concrete next action. Successful lookups, onboarding and ordinary page checks are silent. Empty/no-fresh-code UI guides the buyer to request a new Netflix code; do not repeatedly ping the owner for an unchanged condition.
+
+Validate with fake transport tests (no real customer test messages), production supplier identity/auth checks, no-auth/wrong-PIN/cross-token/refund/stale-code denial, browser PIN/empty-state screenshots, one-time real buyer notices, authenticated history receipts and running-worker smoke. Use local commit/push/source-archive release with a reviewed Nginx snippet and rollback backup.

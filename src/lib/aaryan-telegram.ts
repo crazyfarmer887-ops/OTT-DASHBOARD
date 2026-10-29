@@ -12,7 +12,13 @@ export function readAaryanTelegramConfig(): AaryanTelegramConfig {
     || !Array.isArray(c.allowedEmails) || !c.allowedEmails.length || !Number.isFinite(Date.parse(c.expiresAt))) throw Error('AARYAN_CONFIG_INVALID');
   return c;
 }
+let lookupBusy=false;
 export async function requestAaryanNetflixCode(email: string, kind: NetflixCodeKind, requestedAt: string): Promise<NetflixCode> {
+  // A busy supplier session must not leave HTTP requests queued past their timeout.
+  if(lookupBusy)throw Error('AARYAN_BUSY');
+  lookupBusy=true;try{return await lookupAaryanNetflixCode(email,kind,requestedAt);}finally{lookupBusy=false;}
+}
+async function lookupAaryanNetflixCode(email: string, kind: NetflixCodeKind, requestedAt: string): Promise<NetflixCode> {
   const config = readAaryanTelegramConfig(); const normalized = email.trim().toLowerCase();
   if (!config.allowedEmails.includes(normalized) || Date.parse(config.expiresAt) <= Date.now()) throw Error('AARYAN_EMAIL_NOT_ALLOWED');
   const logger = new Logger(LogLevel.NONE);

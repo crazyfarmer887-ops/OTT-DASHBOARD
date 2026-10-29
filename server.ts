@@ -1,4 +1,7 @@
 import { startGbutsNetflixCodes } from './src/scheduler/gbuts-netflix-codes.ts';
+import { createNetflixPortalApp, netflixPortalDependencies } from './src/api/netflix-portal.ts';
+import { netflixPortalHtml, netflixPortalCsp } from './src/lib/netflix-portal-page.ts';
+import { startNetflixPortalOnboarding } from './src/scheduler/netflix-portal-onboarding.ts';
 import { startLinkidSync } from './src/scheduler/linkid-sync.ts';
 import { Hono } from 'hono';
 import { serve } from '@hono/node-server';
@@ -85,7 +88,10 @@ app.use('/api/*', async (c, next) => {
   return next();
 });
 
+if (gbutsOttRuntimeDependencies.credentials) app.route('/api/netflix-portal',createNetflixPortalApp(netflixPortalDependencies(gbutsOttRuntimeDependencies.credentials)));
 app.route('/api', apiApp);
+app.get('/netflix/:token',c=>{const token=c.req.param('token');if(!/^[A-Za-z0-9_-]{43}$/.test(token))return c.text('페이지를 찾을 수 없습니다.',404);
+  const nonce=randomBytes(18).toString('base64');return c.html(netflixPortalHtml(token,nonce),200,{'Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Robots-Tag':'noindex, nofollow','Content-Security-Policy':netflixPortalCsp(nonce)});});
 
 const DASHBOARD_CONFIGURATION_ERROR = 'Dashboard authentication is not configured.';
 
@@ -294,6 +300,7 @@ startSpotifyDeliveryMonitor();
 startGbutsChatAlerts();
 startGbutsOttSync(gbutsOttRuntimeDependencies);
 if (gbutsOttRuntimeDependencies.credentials) startGbutsNetflixCodes(gbutsOttRuntimeDependencies.credentials);
+if (gbutsOttRuntimeDependencies.credentials) startNetflixPortalOnboarding(gbutsOttRuntimeDependencies.credentials);
 startLinkidSync();
 startYouTubeBuyerGuide({
   listDeals: fetchNotionDeliveryDeals,

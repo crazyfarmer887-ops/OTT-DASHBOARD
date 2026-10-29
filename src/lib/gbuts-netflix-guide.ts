@@ -6,8 +6,13 @@ export const NETFLIX_GUIDE_ASSET = {
   sha256: '20cea3138402f9c2b5bac1b70994f94f992d90801794681884e854170cf274bd',
   url: 'https://d2127ils61dstw.cloudfront.net/upload/2026-10-28/e046120a18964b36a186301209f0a081.jpg',
 } as const;
+export const NETFLIX_PORTAL_GUIDE_ASSET = {
+  version: 'netflix-portal-real-v1',
+  sha256: 'e06176b8d0a4353ee628db8d2fea2372e32607721e8d0a5da6f533dbde1fe2ef',
+  url: 'https://d2127ils61dstw.cloudfront.net/upload/2026-10-29/549b8d0859004db18fafec9b7bd8e532.jpg',
+} as const;
 export function isGbutsGuideImageUrl(value: unknown): value is string {
-  return value === NETFLIX_GUIDE_ASSET.url;
+  return value === NETFLIX_GUIDE_ASSET.url || value === NETFLIX_PORTAL_GUIDE_ASSET.url;
 }
 export interface NetflixGuideConfig { enabled: boolean; activatedAt: string; allowedAccountEmails: string[] }
 export interface NetflixGuideDelivery {
