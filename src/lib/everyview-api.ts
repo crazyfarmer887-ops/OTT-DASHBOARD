@@ -376,10 +376,12 @@ export interface EveryviewCreatePartyInput {
   usageDays?: number | null;          // ROLLING 기간제는 참여일부터 1~730일
   totalUsageFee?: number | null;      // ROLLING 기간제의 1인당 총 결제액
   shareUserCnt: number;         // 모집 인원
+  feeRate?: number;
   services: EveryviewCreateServiceInput[];
 }
 
 function validateEveryviewCreateParty(input: EveryviewCreatePartyInput): string | null {
+  if(input.feeRate !== undefined && (!Number.isFinite(input.feeRate)||input.feeRate<0||input.feeRate>100)) return '수수료율을 확인해주세요.';
   if (!input.recruitTitle.trim()) return '모집 제목을 입력해주세요.';
   if (input.recruitTitle.length > 25) return '모집 제목은 최대 25자예요.';
   if (!input.recruitInfo.trim()) return '파티 소개를 입력해주세요.';
@@ -426,6 +428,7 @@ export async function createEveryviewParty(
   if (validationError) return { ok: false, msg: validationError };
 
   const partyData = {
+    ...(input.feeRate !== undefined ? {feeRate: input.feeRate} : {}),
     payment: {
       paymentType: input.paymentType,
       oneDayUsageFee: Math.round(input.oneDayUsageFee),

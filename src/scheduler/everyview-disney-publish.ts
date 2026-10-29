@@ -180,8 +180,8 @@ export async function publishEveryviewDisneySeat(request: EveryviewDisneyPublish
       return { state: 'held', reason: 'PAUSED_AFTER_RESERVATION' };
     const input: EveryviewCreatePartyInput = { recruitTitle: publishedTitle, recruitInfo: request.description,
       paymentType: 'PERIOD', periodTermType: 'ROLLING', usageDays: 30, totalUsageFee: 2910,
-      oneDayUsageFee: 97, monthUsageFee: 2910, shareEndDate: null, shareUserCnt: 1,
-      services: [{ serviceCode: 'disney_plus', serviceName: '디즈니+', shareType: 'ACCOUNT',
+      oneDayUsageFee: 97, monthUsageFee: 2910, shareEndDate: null, shareUserCnt: 1, feeRate:10,
+      services: [{ serviceCode: 'disney_plus', serviceName: '디즈니+', serviceOptionCode:'direct', serviceOptionName:'프리미엄', shareType: 'ACCOUNT',
         userId: credentials.id, userPassword: credentials.password, additionalInfo: notice }] };
     let response: { ok: boolean; partyId?: number };
     try { response = await deps.submit(input); } catch { return { state: 'held', reason: 'SUBMISSION_UNCONFIRMED' }; }
