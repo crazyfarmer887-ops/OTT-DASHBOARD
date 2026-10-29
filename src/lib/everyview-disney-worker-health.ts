@@ -7,6 +7,6 @@ export function markDisneyWorker(kind:DisneyWorkerKind,state:DisneyWorkerState,n
   beats.set(kind,{pid:process.pid,state,at:now});
 }
 export function disneyWorkerHealthy(kind:DisneyWorkerKind,now=Date.now(),maxAgeMs=120_000):boolean {
-  const b=beats.get(kind);return !!b&&b.pid===process.pid&&b.state==='checked'&&Number.isFinite(now)&&Number.isFinite(b.at)
+  const b=beats.get(kind);return !!b&&b.pid===process.pid&&(b.state==='checked'||(kind==='recovery'&&b.state==='held'))&&Number.isFinite(now)&&Number.isFinite(b.at)
     &&Number.isFinite(maxAgeMs)&&maxAgeMs>0&&b.at<=now&&now-b.at<=maxAgeMs;
 }
