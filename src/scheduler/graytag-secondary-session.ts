@@ -1,0 +1,13 @@
+import { loadGraytagAuthCookies,writeGraytagAuthCookiesAtomic,writeJsonAtomic,type GraytagAuthCookies } from '../lib/graytag-sales-session';
+import { graytagSecondarySessionPath } from '../lib/graytag-account-session';
+import { sendSellerAlert } from '../alerts/telegram';
+export async function checkGraytagSecondarySession(deps:{read():GraytagAuthCookies|null;write(c:GraytagAuthCookies):void;fetch:typeof fetch;status(value:{connected:boolean;checkedAt:string}):void;now():Date}):Promise<'missing'|'ok'|'expired'|'unavailable'>{
+ const cookies=deps.read();if(!cookies)return 'missing';
+ try{const r=await deps.fetch('https://graytag.co.kr/ws/lender/findBeforeUsingLenderDeals?finishedDealIncluded=false&sorting=Latest&page=1&rows=1',{headers:{Cookie:Object.entries(cookies).filter(([,v])=>!!v).map(([k,v])=>`${k}=${v}`).join('; '),Referer:'https://graytag.co.kr/lender/deal/list'},redirect:'manual',signal:AbortSignal.timeout(15000)});
+  if(r.status>=300&&r.status<400||r.status===401||r.status===403){deps.status({connected:false,checkedAt:deps.now().toISOString()});return 'expired';}
+  if(!r.ok)return 'unavailable';const body=await r.json() as {succeeded?:boolean};if(body.succeeded!==true){deps.status({connected:false,checkedAt:deps.now().toISOString()});return 'expired';}
+  const next={...cookies};for(const line of r.headers.getSetCookie?.()||[]){const match=line.match(/^(AWSALB|AWSALBCORS|JSESSIONID)=([^;]+)/);if(match&&match[2])next[match[1] as keyof GraytagAuthCookies]=match[2];}
+  if(JSON.stringify(next)!==JSON.stringify(cookies))deps.write(next);deps.status({connected:true,checkedAt:deps.now().toISOString()});return 'ok';
+ }catch{return 'unavailable';}
+}
+export function startGraytagSecondarySession(){let running=false,failures=0;const run=()=>{if(running)return;running=true;void checkGraytagSecondarySession({read:()=>loadGraytagAuthCookies(graytagSecondarySessionPath()),write:c=>writeGraytagAuthCookiesAtomic(graytagSecondarySessionPath(),c),fetch,status:s=>writeJsonAtomic(graytagSecondarySessionPath()+'.status.json',s),now:()=>new Date()}).then(async state=>{if(state==='missing'||state==='ok'){failures=0;return;}if(++failures>=2)await sendSellerAlert({provider:'graytag',category:'system',attention:'action-required',key:'graytag-secondary-session',title:'그레이태그 2호기 연결 확인 필요',body:'2호기 로그인 상태를 확인하지 못했습니다.',nextAction:'2호기 로그인과 저장된 세션을 확인해주세요.',throttleMs:3600000});}).catch(()=>undefined).finally(()=>{running=false;});};const first=setTimeout(run,8000),timer=setInterval(run,5*60000);first.unref();timer.unref();return()=>{clearTimeout(first);clearInterval(timer);};}

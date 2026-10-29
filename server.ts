@@ -1,3 +1,4 @@
+import { startGraytagSecondarySession } from './src/scheduler/graytag-secondary-session.ts';
 import { startGbutsNetflixCodes } from './src/scheduler/gbuts-netflix-codes.ts';
 import { createNetflixPortalApp, netflixPortalDependencies } from './src/api/netflix-portal.ts';
 import { netflixPortalHtml, netflixPortalCsp } from './src/lib/netflix-portal-page.ts';
@@ -285,6 +286,7 @@ serve({ fetch: app.fetch, port });
 console.log(`GrayTag local server running at http://localhost:${port}`);
 
 // 스케줄러 시작
+startGraytagSecondarySession();
 scheduleAutoSync(port);
 startUndercutterScheduler(port);
 startPollDaemon();
