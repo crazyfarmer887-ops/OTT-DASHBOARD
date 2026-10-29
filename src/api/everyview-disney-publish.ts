@@ -89,7 +89,8 @@ export function registerEveryviewDisneyPublicationRoutes(app: Hono, gbuts: Gbuts
           return c.json({ ok:false,state:'held',reason:'MONITOR_HANDOFF_PENDING',partyId:result.partyId },409);
         return c.json({ ok:true,state:'confirmed',partyId:result.partyId });
       }
-      return c.json({ ok:false,state:'held',reason:result.reason },409);
+      const readiness=await inspectDisneyPublicationReadiness(request,disneyReadinessRuntimeDependencies(gbuts));
+      return c.json({ ok:false,state:'held',reason:result.reason,diagnostics:readiness.diagnostics },409);
     } catch { return c.json({ ok:false,state:'held',reason:'PUBLICATION_UNAVAILABLE' },503); }
   });
 }

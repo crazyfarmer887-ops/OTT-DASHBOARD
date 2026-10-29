@@ -127,7 +127,7 @@ export async function readEveryviewDisneyPreflight(store: GbutsOttStore, request
   if (listings.length !== 1 || listings[0].capacity < 1 || listings[0].capacity > 5 || disneyAccountCapacity(store,listings[0]) !== 5
     || !sources.gbuts.listingCredentials) throw Error('GBUTS_LISTING_UNVERIFIED');
   const listing = listings[0], [posts,post,members,management,ready,credentials,everyviewClear] = await Promise.all([
-    sources.listPosts(),sources.getPost(listing.postSeq!),sources.listMembers(listing.postSeq!),sources.gbuts.management({ forceRefresh: true }),
+    sources.listPosts(),sources.getPost(listing.postSeq!),sources.listMembers(listing.postSeq!),(sources.gbuts.renewalManagement ? sources.gbuts.renewalManagement('디즈니플러스') : sources.gbuts.management({ forceRefresh: true })),
     sources.readiness(request),sources.gbuts.listingCredentials(listing),sources.everyviewNoConflict(request),
   ]);
   if (everyviewClear !== true) throw Error('EVERYVIEW_CONFLICT_OR_UNVERIFIED');

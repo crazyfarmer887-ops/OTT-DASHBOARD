@@ -299,7 +299,7 @@ startNotionInvitationSync({
 startGbutsOfficeMessages();
 startGbutsSpotifySync();
 startEveryviewSpotifySync();
-startEveryviewDisneyCutoffFromEnv(() => everyviewDisneyCutoffRuntimeDependencies(gbutsOttRuntimeDependencies.management));
+startEveryviewDisneyCutoffFromEnv(() => everyviewDisneyCutoffRuntimeDependencies(() => gbutsOttRuntimeDependencies.renewalManagement ? gbutsOttRuntimeDependencies.renewalManagement('디즈니플러스') : gbutsOttRuntimeDependencies.management({forceRefresh:true})));
 startEveryviewDisneyInventoryFromEnv();
 startDisneyMonitoringRecoveryFromEnv(() => disneyMonitoringRecoveryDependencies(gbutsOttRuntimeDependencies));
 startSpotifyDeliveryMonitor();
