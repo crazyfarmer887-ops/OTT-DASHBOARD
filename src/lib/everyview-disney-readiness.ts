@@ -1,3 +1,5 @@
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { disneyEveryviewAccountKey } from './gbuts-disney-everyview';
 import { isAioDashboardMainProcess } from './aio-main-process';
 import { readDisneyRecoveryIntents, type DisneyRecoveryIntents } from '../scheduler/everyview-disney-startup-recovery';
@@ -86,9 +88,8 @@ export function disneyReadinessRuntimeDependencies(gbuts?:GbutsOttRuntimeDepende
     recovery:process.env.EVERYVIEW_DISNEY_RECOVERY_ENABLED==='true'}),owner:isAioDashboardMainProcess,healthy:disneyWorkerHealthy,
     notificationReady:async()=>{const token=process.env.SELLER_ALERT_TELEGRAM_BOT_TOKEN?.trim(),chat=process.env.SELLER_ALERT_TELEGRAM_CHAT_ID?.trim();
       if(!token||!chat||!/^\-?\d+$/.test(chat))return false;
-      try{const res=await fetch(`https://api.telegram.org/bot${token}/getChat`,{method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({chat_id:chat}),signal:AbortSignal.timeout(8_000)});const body=await res.json() as any;
-        return res.ok&&body?.ok===true&&String(body?.result?.id)===chat;}catch{return false;}},
+      try{const {stdout}=await promisify(execFile)('curl',['-fsS','--max-time','15','-X','POST',`https://api.telegram.org/bot${token}/getChat`,'-H','Content-Type: application/json','--data-binary',JSON.stringify({chat_id:chat})],{timeout:20000,maxBuffer:131072});
+        const body=JSON.parse(stdout);return body?.ok===true&&String(body?.result?.id)===chat;}catch{return false;}},
     profileDeliveryPrepared:async request=>{if(!gbuts?.listingCredentials)return false;
       const key=disneyEveryviewAccountKey(request.accountEmail),matches=Object.values(readGbutsOttStore().listings)
         .filter(l=>l.serviceType==='디즈니플러스'&&disneyEveryviewAccountKey(l.accountEmail)===key&&l.state==='registered'
