@@ -43,6 +43,8 @@ export interface GbutsOttOrder {
 export interface GraytagOttClaim {
   id: string; serviceType: string; accountEmail: string; productUsid?: string;
   state: 'pending' | 'registered' | 'uncertain'; createdAt: string;
+  accountId?: 'secondary'; profileNumber?: 6; endDate?: string;
+  sourceEveryviewPartyId?: number; everyviewRetiredAt?: string;
 }
 export interface GbutsOttRenewal {
   accountEmail: string; capacity: number; listingId: string; enabled: boolean; nextAt: string;
@@ -53,12 +55,20 @@ export interface GbutsOttRenewal {
   trigger?: 'hourly' | 'rank'; rankThreshold?: number;
   lastRank?: number | null; rankCheckedAt?: string; lastRepostedAt?: string;
 }
+/** A secondary-account reservation stays separate from GButs profiles 1–5. */
+export function verifiedSecondaryDisneySeat(claim: GraytagOttClaim): boolean {
+  return claim.serviceType === '디즈니플러스' && claim.accountId === 'secondary' && claim.profileNumber === 6
+    && claim.state === 'registered' && !!claim.productUsid && !!claim.endDate
+    && Number.isSafeInteger(claim.sourceEveryviewPartyId) && claim.sourceEveryviewPartyId! > 0
+    && Number.isFinite(Date.parse(claim.everyviewRetiredAt || ''));
+}
 export interface GbutsOttStore {
   version: 1; listings: Record<string, GbutsOttListing>; orders: Record<string, GbutsOttOrder>;
   renewals?: Record<string, GbutsOttRenewal>;
   graytagClaims: Record<string, GraytagOttClaim>; lastSuccess: string | null; lastError: string | null;
   /** Explicit per-account mapping, keyed by a hash of the normalized Disney email. */
   disneyEveryview?: Record<string, { partyIds: number[]; snapshots: Record<string, DisneySeatSnapshot>; accountCapacity?: number }>;
+  retiredEveryviewPartyIds?: number[];
 }
 export const emptyGbutsOttStore = (): GbutsOttStore => ({ version: 1, listings: {}, orders: {}, graytagClaims: {}, lastSuccess: null, lastError: null });
 export interface GbutsOttAccount {
@@ -202,6 +212,7 @@ export function pendingGraytagClaims(store: GbutsOttStore, account: GbutsOttAcco
     ...(management.onSaleByKeepAcct[account.email] || []).map(x => String(x.productUsid || '')),
   ].filter(Boolean));
   return Object.values(store.graytagClaims).filter(x => ottKey(x.serviceType, x.accountEmail) === ottKey(account.serviceType, account.email)
+    && !(x.accountId === 'secondary' && x.state === 'registered' && x.endDate && x.endDate < koreaToday())
     && (!x.productUsid || !productIds.has(x.productUsid))).length;
 }
 export function sharedOttAccounts(management: GbutsOttManagement, manualMembers: any[], store: GbutsOttStore, now = new Date()) {

@@ -423,3 +423,16 @@ test('expired Netflix history needs no paid credentials and cannot stop a health
  await expect(syncGbutsOtt(f.deps,f.client as any)).resolves.toEqual({orders:0,attempted:0,confirmed:0});
  expect(syncDisneyCredentials).toHaveBeenCalledOnce();expect(syncNetflixCredentials).not.toHaveBeenCalled();expect(f.deps.listingCredentials).toHaveBeenCalledTimes(1);
 });
+
+
+test('keeps the verified secondary sixth seat outside the five-place GButs renewal quota',async()=>{
+ const f=fixture(2);f.management.services[0].accounts[0].totalSlots=6;
+ const store=f.store();store.graytagClaims.secondary={id:'secondary',serviceType:'디즈니플러스',accountEmail:f.listing.accountEmail,
+ state:'registered',createdAt:new Date().toISOString(),accountId:'secondary',profileNumber:6,endDate:'2026-11-20',
+ sourceEveryviewPartyId:707,everyviewRetiredAt:new Date().toISOString(),productUsid:'secondary-product'};
+ f.deps.writeStore(store);await f.run();
+ expect(f.client.createPost).toHaveBeenCalledOnce();expect(f.client.createPost.mock.calls[0][0].capacity).toBe(3);
+ expect(f.store().graytagClaims.secondary.productUsid).toBe('secondary-product');
+ const invalid=f.store();invalid.graytagClaims.secondary.state='uncertain';f.deps.writeStore(invalid);f.advance();await f.run();
+ expect(f.client.createPost).toHaveBeenCalledTimes(1);
+});

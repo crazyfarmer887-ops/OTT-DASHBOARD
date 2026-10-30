@@ -213,3 +213,12 @@ test('public account payload suppresses mail access for numbered Disney but pres
  for(const value of ['https://tinyhost.shop/other@example.com','https://tinyhost.shop.evil.test/mailbox@example.com','http://tinyhost.shop/mailbox@example.com','https://tinyhost.shop/mailbox@example.com?x=1','https://user:pw@tinyhost.shop/mailbox@example.com','javascript:alert(1)']) expect(safeTinyhostEmailAccessUrl(value,account.email)).toBe('');
  expect(safeTinyhostEmailAccessUrl(payload.emailAccessUrl,account.email)).toBe(payload.emailAccessUrl);
 });
+
+
+test('secondary reservations keep profile six unavailable while GButs assigns only its five-place pool',()=>{
+ const f=fixture();f.store.listings['request-1'].capacity=5;
+ f.store.graytagClaims.secondary={id:'secondary',serviceType:'디즈니플러스',accountEmail:'account@example.com',state:'pending',createdAt:new Date().toISOString(),
+ accountId:'secondary',profileNumber:6,endDate:'2026-11-20',sourceEveryviewPartyId:707};
+ f.store.orders['100:1']=fixtureOrder();expect(allocateDisneyProfilesForSync(f.store,f.management,[]).size).toBe(0);
+ expect(f.store.orders['100:1'].profileNumber).toBe(1);expect(f.store.graytagClaims.secondary.profileNumber).toBe(6);
+});

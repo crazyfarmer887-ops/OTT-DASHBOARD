@@ -82,3 +82,10 @@ describe('Disney seller startup recovery',()=>{
   expect(await recoverDisneyMonitoring(f.deps)).toBe('paused');expect(f.writeInventory).not.toHaveBeenCalled();
  });
 });
+
+
+it('never restores monitors for a party explicitly retired after a verified transfer',async()=>{
+ const f=fixture();const store=f.getStore();f.deps.readInventory=()=>({...structuredClone(store),retiredEveryviewPartyIds:[123]});
+ expect(await recoverDisneyMonitoring(f.deps)).toBe('checked');expect(f.verifyBinding).not.toHaveBeenCalled();
+ expect(f.writeCutoff).not.toHaveBeenCalled();expect(f.writeInventoryConfig).not.toHaveBeenCalled();
+});

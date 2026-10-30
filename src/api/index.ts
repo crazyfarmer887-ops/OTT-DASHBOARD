@@ -2651,7 +2651,9 @@ app.post('/post/keepAcct', async (c) => {
     if (!r.data?.succeeded) return c.json({ error: r.data?.message || '계정 설정 실패' }, 400);
 
     clearManagementAccountCaches();
-    await releaseGraytagOttClaims([String(productUsid)]);
+    // A secondary account's product is absent from primary inventory snapshots.
+    // Keep its shared-capacity reservation after configuring native delivery.
+    if (graytagAccountIdFromRequest(c) === 'primary') await releaseGraytagOttClaims([String(productUsid)]);
     return c.json({ ok: true, managementCacheCleared: true });
   } catch (e: any) {
     return c.json({ error: e.message }, 500);

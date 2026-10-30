@@ -1,4 +1,4 @@
-import { gbutsOrderListing } from '../lib/gbuts-ott';
+import { gbutsOrderListing, verifiedSecondaryDisneySeat } from '../lib/gbuts-ott';
 import { createHash } from 'node:crypto';
 import { GBUTS_OTT_CATEGORIES, activeOttOrder, holdsDisneyProfile, holdsNetflixProfile, supportsGbutsOttRenewal, koreaToday, ottDate, ottKey, updateGbutsOttOrders, type GbutsOttListing, type GbutsOttOrder, type GbutsOttStore, type GbutsOttRenewal, type GbutsOttManagement } from '../lib/gbuts-ott';
 import { readGbutsOttStore, writeGbutsOttStore } from '../lib/gbuts-ott-store';
@@ -28,7 +28,7 @@ function availableForRenewal(store: GbutsOttStore, listing: GbutsOttListing, cap
 function verifiedAccountCapacity(store: GbutsOttStore, listing: GbutsOttListing, policyCapacity: number, now: Date): number {
   const shared = disneyEveryviewInventory(store, listing, now);
   requireDisneyEveryviewAvailable(shared);
-  return Math.max(policyCapacity, shared?.capacity || 0);
+  return Math.max(policyCapacity, shared?.capacity || 0, ...Object.values(store.graytagClaims).filter(c => ottKey(c.serviceType,c.accountEmail) === ottKey(listing.serviceType,listing.accountEmail) && verifiedSecondaryDisneySeat(c) && c.endDate! >= koreaToday(now)).map(() => 6));
 }
 function title(post: GbutsOttPost): string {
   let value = post.title;
@@ -208,7 +208,7 @@ export async function renewDueGbutsOttListings(deps: GbutsOttRuntimeDependencies
       assertDedicatedAccount(await (deps.renewalManagement ? deps.renewalManagement(source.serviceType) : deps.management()), source.serviceType, policy.accountEmail, verifiedAccountCapacity(store, source, policy.capacity, checkedNow()), source.endDate);
       const key = ottKey(source.serviceType, policy.accountEmail);
       if (deps.manualMembers().some(m => ottKey(m.serviceType || '', m.accountEmail || '') === key && m.status === 'active' && m.endDate >= koreaToday(now))
-        || Object.values(store.graytagClaims).some(c => ottKey(c.serviceType, c.accountEmail) === key)
+        || Object.values(store.graytagClaims).some(c => ottKey(c.serviceType, c.accountEmail) === key && !verifiedSecondaryDisneySeat(c))
         || Object.values(store.listings).some(l => l.id !== source.id && l.id !== replacement?.id && ottKey(l.serviceType, l.accountEmail) === key && !['closed', 'failed'].includes(l.state)))
         throw new Error('다른 판매처 또는 중복 모집 기록이 있어 자동 재등록을 보류합니다.');
       // Refresh current and still occupied old posts. Keep historical buyer IDs/rooms

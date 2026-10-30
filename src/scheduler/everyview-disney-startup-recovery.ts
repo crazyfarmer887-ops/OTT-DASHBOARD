@@ -81,6 +81,7 @@ export async function recoverDisneyMonitoring(deps:DisneyRecoveryDeps):Promise<'
       ...(record.state==='confirmed'&&record.confirmedAt?{confirmedAt:record.confirmedAt}:{})};
   }
   for(const [accountHash,record] of Object.entries(j.records)) {
+    if(record.partyId && startupStore.retiredEveryviewPartyIds?.includes(record.partyId)) continue;
     const intent=intents.accounts[accountHash];
     if(!intent||hash(intent.accountEmail)!==accountHash||record.accountHash!==accountHash
       ||record.accountEndDate!==intent.accountEndDate||record.profileNumber!==6){held=true;continue;}

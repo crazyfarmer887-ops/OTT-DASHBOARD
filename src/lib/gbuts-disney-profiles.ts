@@ -19,6 +19,11 @@ export function allocateDisneyProfilesForSync(store: GbutsOttStore, management: 
       }
       const capacity = disneyAccountCapacity(store, listings.find(l => ottKey(l.serviceType, l.accountEmail) === key)!);
       const used = new Set<number>();
+      const secondary = Object.values(store.graytagClaims).filter(c => ottKey(c.serviceType,c.accountEmail) === key && c.accountId === 'secondary'
+        && c.profileNumber === 6 && !(c.state === 'registered' && c.endDate && c.endDate < koreaToday(now)));
+      if (secondary.length && account.totalSlots < 6) throw Error('공동 계정의 실제 전체 자리 수를 확인해주세요.');
+      if (secondary.length > 1) throw Error('그레이태그 2호기 자리 예약이 중복되었습니다.');
+      if (secondary.length) used.add(6);
       for (const order of orders.filter(x => activeOttOrder(x, now) || holdsDisneyProfile(x, store.listings[x.listingId], now))) {
         if (store.listings[order.listingId].deliveryMode !== 'disney-numbered-password' || order.profileReleasedAt)
           throw new Error('다른 방식으로 배정된 디즈니 주문을 확인해주세요.');

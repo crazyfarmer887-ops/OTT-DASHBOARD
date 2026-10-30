@@ -52,7 +52,14 @@ export function readGbutsOttStore(path = process.env.GBUTS_OTT_STORE_PATH || DEF
       || (order.profileReleasedAt !== undefined && (order.profileNumber === undefined || !Number.isFinite(Date.parse(order.profileReleasedAt)) || !['refunded', 'expired'].includes(order.profileReleaseReason)))) throw new Error('벗츠 구매자 기록이 올바르지 않습니다.');
   for (const [id, claim] of Object.entries(data.graytagClaims) as Array<[string, any]>)
     if (claim?.id !== id || !GBUTS_OTT_CATEGORIES[claim.serviceType] || typeof claim.accountEmail !== 'string' || !claim.accountEmail.trim()
+      || (claim.accountId !== undefined && (claim.accountId !== 'secondary' || claim.serviceType !== '디즈니플러스'
+        || claim.profileNumber !== 6 || !/^\d{4}-\d{2}-\d{2}$/.test(claim.endDate || '')
+        || !Number.isSafeInteger(claim.sourceEveryviewPartyId) || claim.sourceEveryviewPartyId < 1
+        || (claim.everyviewRetiredAt !== undefined && !Number.isFinite(Date.parse(claim.everyviewRetiredAt)))))
       || !['pending', 'registered', 'uncertain'].includes(claim.state)) throw new Error('그레이태그 자리 확보 기록이 올바르지 않습니다.');
+  if (data.retiredEveryviewPartyIds !== undefined && (!Array.isArray(data.retiredEveryviewPartyIds)
+    || data.retiredEveryviewPartyIds.some(id => !Number.isSafeInteger(id) || id < 1)
+    || new Set(data.retiredEveryviewPartyIds).size !== data.retiredEveryviewPartyIds.length)) throw Error('종료한 에브리뷰 파티 기록이 올바르지 않습니다.');
   if (data.renewals !== undefined) {
     if (!data.renewals || typeof data.renewals !== 'object' || Array.isArray(data.renewals)) throw new Error('자동 재등록 설정이 올바르지 않습니다.');
     for (const [key, policy] of Object.entries(data.renewals) as Array<[string, any]>) {
