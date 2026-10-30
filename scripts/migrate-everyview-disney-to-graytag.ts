@@ -2,6 +2,8 @@
 import { readFileSync, existsSync, mkdirSync, copyFileSync, chmodSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
+import { buildMultipartJsonBody, curlFetch } from '../src/api/http-transport';
+import { buildGbutsRenewalInventory } from '../src/lib/gbuts-ott-renewal-inventory';
 import { gbutsOttRuntimeDependencies } from '../src/api/index';
 import { readGbutsOttStore, writeGbutsOttStore } from '../src/lib/gbuts-ott-store';
 import { writeJsonAtomic, loadGraytagAuthCookies } from '../src/lib/graytag-sales-session';
@@ -51,7 +53,7 @@ async function run(apply:boolean) {
   const cookieHeader=Object.entries(cookies).filter(([,v])=>v).map(([k,v])=>`${k}=${v}`).join('; ');
   const headers={Cookie:cookieHeader,'User-Agent':'Mozilla/5.0','X-Requested-With':'XMLHttpRequest',Referer:'https://graytag.co.kr/lender/deal/list'};
   const native=async(url:string,init:RequestInit={})=>{
-    const r=await fetch(url,{...init,headers:{...headers,...init.headers},redirect:'manual',signal:AbortSignal.timeout(20000)});
+    const r=await curlFetch(url,{...init,headers:{...headers,...init.headers}},'');
     if(!r.ok||r.status>=300)throw Error('GRAYTAG_REQUEST_FAILED_'+r.status);return r;
   };
   const rows=async()=>{
@@ -64,7 +66,15 @@ async function run(apply:boolean) {
   const targets=new Map([...config.parties.map(p=>[p.partyId,p.accountEmail] as const),
     ...Object.values(journal.records).map(p=>[p.partyId,p.accountEmail] as const)]);
   if(!targets.size)throw Error('NO_TRANSFER_TARGETS');
-  const management=await gbutsOttRuntimeDependencies.renewalManagement!('디즈니플러스');
+  const primary=loadGraytagAuthCookies(process.env.GRAYTAG_SESSION_COOKIE_PATH||'/home/ubuntu/graytag-session/cookies.json');
+  if(!primary)throw Error('PRIMARY_SESSION_REQUIRED');
+  const primaryHeaders={...headers,Cookie:Object.entries(primary).filter(([,v])=>v).map(([k,v])=>`${k}=${v}`).join('; ')};
+  const primarySnapshot=await readVerifiedGraytagManagementSnapshot((kind,_finished,page)=>curlFetch(buildFinishedDealsUrl(kind,page,100,false),{headers:primaryHeaders},''),{includeFinished:false});
+  const dataDir='/home/ubuntu/.hermes/hermes-agent/graytag-aio-manager-0606/data/';
+  const privateRead=(path:string)=>JSON.parse(readFileSync(path,'utf8'));
+  const management=buildGbutsRenewalInventory(privateRead(process.env.GENERATED_ACCOUNTS_PATH||dataDir+'generated-accounts.json'),
+    [...primarySnapshot.afterOpenDeals,...primarySnapshot.beforeOpenDeals],privateRead(process.env.PARTY_ACCESS_LINKS_PATH||dataDir+'party-access-links.json'),
+    privateRead(dataDir+'party-maintenance-checklists.json'),'디즈니플러스');
   const manual=gbutsOttRuntimeDependencies.manualMembers();
   const owned=await fetchEveryviewHostParties(ev);
   // Verify every target before removing any buyer-facing party.
@@ -124,9 +134,9 @@ async function run(apply:boolean) {
     const model=transferProductModel(record.endDate);
     if(record.phase==='removed'){
       allRows=await rows();record.baseline=allRows.map(r=>String(r.productUsid));record.phase='registering';save(journal);
-      const form=new FormData();form.set('productModel',new Blob([JSON.stringify(model)],{type:'application/json'}),'blob');
+      const form=buildMultipartJsonBody(model);
       try {
-        const result=await (await native('https://graytag.co.kr/ws/lender/registerProduct',{method:'POST',body:form})).json() as any;
+        const result=await (await native('https://graytag.co.kr/ws/lender/registerProduct',{method:'POST',body:form.body,headers:{'Content-Type':form.contentType}})).json() as any;
         if(result.succeeded===true&&typeof result.data==='string'&&result.data){record.productUsid=result.data;record.phase='registered';save(journal);}
       }catch{/* Never repeat an uncertain CREATE. */}
     }
