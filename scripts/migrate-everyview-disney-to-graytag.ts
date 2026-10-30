@@ -17,6 +17,7 @@ import { disneyEveryviewAccountKey } from '../src/lib/gbuts-disney-everyview';
 import { sharedOttAccounts, ottDate, koreaToday } from '../src/lib/gbuts-ott';
 import { readVerifiedGraytagManagementSnapshot, dedupeGraytagManagementDeals } from '../src/lib/graytag-management-snapshot';
 import { buildFinishedDealsUrl } from '../src/lib/graytag-fill';
+import { savedGraytagKeepMemo } from '../src/lib/graytag-keep-delivery';
 import { safeDisneyEmailAccessUrl } from '../src/lib/disney-mailbox';
 
 const journalPath = process.env.DISNEY_GRAYTAG_TRANSFER_PATH || '/home/ubuntu/.config/gbuts/disney-graytag-secondary-transfers.json';
@@ -24,14 +25,14 @@ const inventoryConfigPath = process.env.EVERYVIEW_DISNEY_INVENTORY_CONFIG_PATH |
 const cutoffConfigPath = process.env.EVERYVIEW_DISNEY_CUTOFF_CONFIG_PATH || '/home/ubuntu/.config/gbuts/everyview-disney-cutoff.json';
 type Transfer = { partyId: number; accountEmail: string; claimId: string; endDate: string;
   phase: 'reserved'|'removing'|'removed'|'registering'|'registered'|'configured';
-  baseline?: string[]; productUsid?: string; retiredAt?: string };
+  baseline?: string[]; productUsid?: string; retiredAt?: string; termDays?: 30 };
 type Journal = { version: 1; records: Record<string, Transfer> };
 const readJournal = (): Journal => existsSync(journalPath) ? JSON.parse(readFileSync(journalPath,'utf8')) : {version:1,records:{}};
 const save = (j: Journal) => writeJsonAtomic(journalPath,j);
 const same = (a:string,b:string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
 export function transferEndDate(today: string): string {
-  const date = new Date(`${today}T00:00:00Z`); date.setUTCDate(date.getUTCDate()+29);
+  const date = new Date(`${today}T00:00:00Z`); date.setUTCDate(date.getUTCDate()+30);
   return date.toISOString().slice(0,10);
 }
 export function transferProductModel(endDate: string) {
@@ -106,7 +107,7 @@ async function run(apply:boolean) {
     const id=String(partyId),key=disneyEveryviewAccountKey(email);
     let record=journal.records[id];
     if(!record){record=journal.records[id]={partyId,accountEmail:email,claimId:'everyview-to-graytag-secondary-'+id,
-      endDate:transferEndDate(koreaToday()),phase:'reserved'};save(journal);}
+      endDate:transferEndDate(koreaToday()),phase:'reserved',termDays:30};save(journal);}
     const store=readGbutsOttStore();
     if(!store.graytagClaims[record.claimId]){
       store.graytagClaims[record.claimId]={id:record.claimId,serviceType:'디즈니플러스',accountEmail:email,state:'pending',createdAt:new Date().toISOString(),
@@ -131,6 +132,8 @@ async function run(apply:boolean) {
       if(inventory){inventory.parties=inventory.parties.filter(p=>p.partyId!==partyId);writeJsonAtomic(inventoryConfigPath,inventory);}
       if(cutoff){cutoff.parties=cutoff.parties.filter(p=>p.partyId!==partyId);writeJsonAtomic(cutoffConfigPath,cutoff);}
     }
+    if(record.termDays!==30){record.endDate=transferEndDate(koreaToday());record.termDays=30;save(journal);
+      const correction=readGbutsOttStore();correction.graytagClaims[record.claimId].endDate=record.endDate;writeGbutsOttStore(correction);}
     const model=transferProductModel(record.endDate);
     if(record.phase==='removed'){
       allRows=await rows();record.baseline=allRows.map(r=>String(r.productUsid));record.phase='registering';save(journal);
@@ -141,10 +144,19 @@ async function run(apply:boolean) {
       }catch{/* Never repeat an uncertain CREATE. */}
     }
     if(record.phase==='registering'){
-      const candidates=(await rows()).filter(r=>!record.baseline?.includes(String(r.productUsid))&&r.name===model.name
+      const candidates=(await rows()).filter(r=>!record.baseline?.includes(String(r.productUsid))&&(r.productName||r.name)===model.name
         &&r.productTypeString==='디즈니플러스'&&ottDate(r.endDateTime)===record.endDate);
       if(candidates.length!==1)throw Error('CREATE_UNCONFIRMED_NO_RETRY');
       record.productUsid=String(candidates[0].productUsid);record.phase='registered';save(journal);
+    }
+    let current=(await rows()).find(r=>String(r.productUsid)===record.productUsid);
+    if(!current)throw Error('REGISTERED_PRODUCT_MISSING');
+    if(ottDate(current.endDateTime)!==record.endDate||Number(current.purePrice)!==3150){
+      if(current.dealStatus!=='OnSale'||current.dealUsid)throw Error('TERMS_CHANGE_BUYER_PRESENT');
+      const result=await(await native('https://graytag.co.kr/ws/lender/updateProductInfo',{method:'POST',headers:{'Content-Type':'application/json;charset=UTF-8'},
+        body:JSON.stringify({usid:record.productUsid,name:model.name,copy:current.copy||'',sellingGuide:model.sellingGuide,endDate:model.endDate,
+          netflixSeatCount:current.netflixSeatCount||'0',productCountryString:current.productCountryString||'',price:model.price})})).json() as any;
+      if(result.succeeded!==true)throw Error('TERM_CORRECTION_UNCONFIRMED');
     }
     const latest=readGbutsOttStore(),claim=latest.graytagClaims[record.claimId];claim.productUsid=record.productUsid;claim.state='uncertain';writeGbutsOttStore(latest);
     const source=Object.values(latest.listings).find(l=>l.serviceType==='디즈니플러스'&&same(l.accountEmail,email)&&l.deliveryMode==='disney-numbered-password')!;
@@ -156,8 +168,10 @@ async function run(apply:boolean) {
       if(result.succeeded!==true)throw Error('AUTO_DELIVERY_SAVE_FAILED');
     }
     const saved=(await rows()).find(r=>String(r.productUsid)===record.productUsid);
-    if(!saved||!same(String(saved.keepAcct||''),creds.id)||saved.keepPasswd!==creds.password||!String(saved.keepMemo||'').includes('6번')
-      ||!String(saved.keepMemo||'').includes(creds.emailAccessUrl!)||ottDate(saved.endDateTime)!==record.endDate)throw Error('AUTO_DELIVERY_READBACK_FAILED');
+    const memoHtml=await(await native('https://graytag.co.kr/lender/product/keepAcctSetting?productUsid='+encodeURIComponent(record.productUsid!))).text();
+    const savedMemo=savedGraytagKeepMemo(memoHtml);
+    if(!saved||!same(String(saved.keepAcct||''),creds.id)||saved.keepPasswd!==creds.password||!savedMemo.includes('6번')
+      ||!savedMemo.includes(creds.emailAccessUrl!)||ottDate(saved.endDateTime)!==record.endDate||Number(saved.purePrice)!==3150||Number(saved.remainderDays)!==30)throw Error('AUTO_DELIVERY_READBACK_FAILED');
     const final=readGbutsOttStore();final.graytagClaims[record.claimId].state='registered';writeGbutsOttStore(final);
     record.phase='configured';save(journal);
     console.log(JSON.stringify({partyId,sourceDeleted:true,productUsid:record.productUsid,profile:6,dailyPrice:105,totalPrice:3150,endDate:record.endDate,autoDeliveryVerified:true}));

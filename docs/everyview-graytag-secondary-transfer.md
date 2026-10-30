@@ -6,4 +6,6 @@ Use the committed `scripts/migrate-everyview-disney-to-graytag.ts` operational s
 
 The former Everyview hold becomes an explicit secondary GrayTag claim on profile6. A verified retired-party tombstone prevents startup recovery restoring removed monitors. Native GrayTag automatic delivery is saved and read back before marking the claim registered. Other GrayTag claims and uncertain claims retain the original fail-closed behavior. GButs allocation remains in1–5; a registered secondary sixth seat does not disable the existing five-place renewal quota. Shared inventory continues reserving the secondary place until its fixed end date, including after configuring its native credentials.
 
-The date is fixed by the official GrayTag product form, rather than rolling per buyer:2026-10-30 through2026-11-28, total KRW3150 at initial publication. Later buyers see the remaining period. Each listing explicitly states the fixed end date.
+The date is fixed by the official GrayTag product form, rather than rolling per buyer:2026-10-30 through2026-11-29, total KRW3150 at initial publication. Later buyers see the remaining period. Each listing explicitly states the fixed end date.
+
+Provider read-back clarified two contracts: the GrayTag list uses the date difference (not inclusive dates), so30remaining days end on November29; and `keepMemo` is absent from the seller-list JSON and must be read from the saved private delivery form. The first created product is reconciled and corrected in place only while unsold, never registered twice.
